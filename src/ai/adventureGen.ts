@@ -1,6 +1,7 @@
 import type { ComponentType, ProviderConfig, StoryCardMemoryMode, StoryCardType } from "../types/adventure";
 import { isNativeDeepSeekProvider, sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
 import { ADVENTURE_GENERATION_BEST_PRACTICES } from "./authoringBestPractices";
+import { jsonrepair } from "jsonrepair";
 
 export interface GenComponent {
   title: string;
@@ -85,6 +86,15 @@ function parseJsonFenced<T>(text: string): T {
       errors.push(e);
     }
   }
+
+  for (const candidate of candidates) {
+    try {
+      return JSON.parse(jsonrepair(candidate)) as T;
+    } catch (e) {
+      errors.push(e);
+    }
+  }
+
   const preview = trimmed.slice(0, 300);
   throw new Error(`Could not parse model response as JSON. Raw response (first 300 chars): ${preview}\n\nParse error: ${String(errors[0])}`);
 }

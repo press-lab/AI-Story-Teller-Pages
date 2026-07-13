@@ -71,6 +71,28 @@ describe("runAdventureGen", () => {
     expect(result.openingScene).toBe("The white sand is still warm.");
   });
 
+  it("repairs unescaped quotes inside generated prose", async () => {
+    vi.mocked(sendOpenAICompatibleChatCompletion).mockResolvedValue({
+      content: [
+        "```json",
+        "{",
+        '  "title": "The Enchanted Getaway",',
+        '  "openingScene": "Riley calls the view "exquisite" and leans against the balcony.",',
+        '  "components": [],',
+        '  "storyCards": []',
+        "}",
+        "```",
+      ].join("\n"),
+      usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+      raw: {},
+    });
+
+    const result = await runAdventureGen("private island premise", config);
+
+    expect(result.title).toBe("The Enchanted Getaway");
+    expect(result.openingScene).toBe('Riley calls the view "exquisite" and leans against the balcony.');
+  });
+
   it("uses native DeepSeek structured output controls and memory-specific component guidance", async () => {
     vi.mocked(sendOpenAICompatibleChatCompletion).mockResolvedValue({
       content: JSON.stringify({ title: "Structured", openingScene: "", components: [], storyCards: [] }),
