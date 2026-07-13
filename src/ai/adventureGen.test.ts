@@ -49,6 +49,26 @@ describe("runAdventureGen", () => {
     expect(result.storyCards.map((card) => card.title)).toEqual(["Margo"]);
   });
 
+  it("parses generated setup JSON wrapped in a markdown code fence", async () => {
+    vi.mocked(sendOpenAICompatibleChatCompletion).mockResolvedValue({
+      content: [
+        "```json {",
+        '  "title": "The Unfettered Isle",',
+        '  "openingScene": "The white sand is still warm.",',
+        '  "components": [],',
+        '  "storyCards": []',
+        "}",
+      ].join("\n"),
+      usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+      raw: {},
+    });
+
+    const result = await runAdventureGen("private island premise", config);
+
+    expect(result.title).toBe("The Unfettered Isle");
+    expect(result.openingScene).toBe("The white sand is still warm.");
+  });
+
   it("uses native DeepSeek structured output controls and memory-specific component guidance", async () => {
     vi.mocked(sendOpenAICompatibleChatCompletion).mockResolvedValue({
       content: JSON.stringify({ title: "Structured", openingScene: "", components: [], storyCards: [] }),

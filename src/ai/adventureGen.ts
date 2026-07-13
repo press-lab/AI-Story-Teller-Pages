@@ -74,31 +74,47 @@ const defaultPreferences: AdventureGenPreferences = {
 };
 
 function parseJsonFenced<T>(text: string): T {
-  const trimmed = text.trim();
+  const trimmed = text.trim().replace(/^\uFEFF/, "");
+  const candidates = collectJsonCandidates(trimmed);
+  const errors: unknown[] = [];
 
-  const attempts: Array<() => string | undefined> = [
-    // 1. Fenced block spanning the whole response
-    () => trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i)?.[1],
-    // 2. Any fenced block anywhere in the response
-    () => trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)?.[1],
-    // 3. Outermost {...}
-    () => { const s = trimmed.indexOf("{"); const e = trimmed.lastIndexOf("}"); return s !== -1 && e > s ? trimmed.slice(s, e + 1) : undefined; },
-    // 4. Raw response as-is
-    () => trimmed,
-  ];
-
-  let lastErr: unknown;
-  for (const attempt of attempts) {
-    const candidate = attempt();
-    if (!candidate) continue;
+  for (const candidate of candidates) {
     try {
       return JSON.parse(candidate) as T;
     } catch (e) {
-      lastErr = e;
+      errors.push(e);
     }
   }
   const preview = trimmed.slice(0, 300);
-  throw new Error(`Could not parse model response as JSON. Raw response (first 300 chars): ${preview}\n\nParse error: ${String(lastErr)}`);
+  throw new Error(`Could not parse model response as JSON. Raw response (first 300 chars): ${preview}\n\nParse error: ${String(errors[0])}`);
+}
+
+function collectJsonCandidates(trimmed: string): string[] {
+  const candidates: string[] = [];
+
+  const add = (candidate: string | undefined) => {
+    const normalized = candidate?.trim();
+    if (normalized && !candidates.includes(normalized)) candidates.push(normalized);
+  };
+
+  const fencedWhole = trimmed.match(/^```[^\S\r\n]*(?:json)?[^\S\r\n]*(?:\r?\n)?([\s\S]*?)\s*```$/i)?.[1];
+  const fencedAnywhere = trimmed.match(/```[^\S\r\n]*(?:json)?[^\S\r\n]*(?:\r?\n)?([\s\S]*?)\s*```/i)?.[1];
+  const looseLeadingFence = trimmed.match(/^```[^\S\r\n]*(?:json)?[^\S\r\n]*(?:\r?\n)?([\s\S]*)$/i)?.[1]?.replace(/\s*```\s*$/i, "");
+
+  add(fencedWhole);
+  add(fencedAnywhere);
+  add(looseLeadingFence);
+  add(extractOutermostObject(looseLeadingFence ?? ""));
+  add(extractOutermostObject(trimmed));
+  add(trimmed);
+
+  return candidates;
+}
+
+function extractOutermostObject(text: string): string | undefined {
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  return start !== -1 && end > start ? text.slice(start, end + 1) : undefined;
 }
 
 const SYSTEM_PROMPT = `You are an expert interactive fiction game master and world builder. Given a premise, generate a complete starter setup for an AI-powered text adventure.
