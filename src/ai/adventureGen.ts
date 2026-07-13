@@ -104,11 +104,48 @@ function collectJsonCandidates(trimmed: string): string[] {
   add(fencedWhole);
   add(fencedAnywhere);
   add(looseLeadingFence);
+  add(extractFirstJsonObject(looseLeadingFence ?? ""));
+  add(extractFirstJsonObject(trimmed));
   add(extractOutermostObject(looseLeadingFence ?? ""));
   add(extractOutermostObject(trimmed));
   add(trimmed);
 
   return candidates;
+}
+
+function extractFirstJsonObject(text: string): string | undefined {
+  const start = text.indexOf("{");
+  if (start === -1) return undefined;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = start; i < text.length; i += 1) {
+    const char = text[i];
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === "\"") {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === "\"") {
+      inString = true;
+    } else if (char === "{") {
+      depth += 1;
+    } else if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
+  }
+
+  return undefined;
 }
 
 function extractOutermostObject(text: string): string | undefined {

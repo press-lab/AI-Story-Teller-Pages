@@ -58,6 +58,8 @@ describe("runAdventureGen", () => {
         '  "components": [],',
         '  "storyCards": []',
         "}",
+        "",
+        "Trailing note: this setup includes {one private cove}.",
       ].join("\n"),
       usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
       raw: {},
