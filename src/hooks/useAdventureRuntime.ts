@@ -131,6 +131,9 @@ async function sendStoryCompletionWithGuard({
   const corrected = await sendOpenAICompatibleChatCompletion({
     messages: correctionMessages,
     config: correctionConfig(config, responseLengthHint),
+    // This tightly constrained rewrite does not benefit from hidden reasoning. DeepSeek's
+    // default thinking mode can otherwise consume the entire small correction budget.
+    thinking: "disabled",
   });
   return { content: corrected.content, usage: combineProviderUsage(response.usage, corrected.usage) };
 }

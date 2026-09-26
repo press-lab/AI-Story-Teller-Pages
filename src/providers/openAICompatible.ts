@@ -220,6 +220,7 @@ async function sendAnthropicRequest(
   messages: ChatMessage[],
   config: ProviderConfig,
   signal?: AbortSignal,
+  thinking?: SendChatCompletionOptions["thinking"],
 ): Promise<ProviderResponse> {
   const systemParts = messages.filter((m) => m.role === "system").map((m) => m.content);
   const chatMessages = messages.filter((m) => m.role !== "system");
@@ -250,6 +251,9 @@ async function sendAnthropicRequest(
         // Anthropic supports top_p / top_k but NOT presence/frequency penalties.
         ...(config.topP !== undefined ? { top_p: config.topP } : {}),
         ...(config.topK !== undefined && config.topK > 0 ? { top_k: config.topK } : {}),
+        ...(thinking && isNativeDeepSeekProvider(config)
+          ? { reasoning: { effort: thinking === "disabled" ? "none" : "high" } }
+          : {}),
       }),
     });
   } catch (err) {
@@ -301,7 +305,7 @@ export async function sendOpenAICompatibleChatCompletion({
 
   const endpoint = completionEndpoint(config.baseUrl);
   if (isAnthropicFormat(config.baseUrl)) {
-    return sendAnthropicRequest(endpoint, messages, config, signal);
+    return sendAnthropicRequest(endpoint, messages, config, signal, thinking);
   }
   return sendOpenAIRequest(endpoint, messages, config, signal, responseFormat, thinking);
 }

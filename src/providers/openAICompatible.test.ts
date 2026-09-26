@@ -282,6 +282,32 @@ describe("sendOpenAICompatibleChatCompletion", () => {
     });
   });
 
+  it("disables DeepSeek thinking for Anthropic-format requests when requested", async () => {
+    const spy = mockFetch(200, { content: [{ type: "text", text: "ok" }] });
+
+    await sendOpenAICompatibleChatCompletion({
+      messages: [{ role: "user", content: "Rewrite this." }],
+      config: { ...config, baseUrl: "https://api.deepseek.com/anthropic" },
+      thinking: "disabled",
+    });
+
+    const body = JSON.parse(spy.mock.calls[0][1]?.body as string);
+    expect(body.reasoning).toEqual({ effort: "none" });
+  });
+
+  it("does not send DeepSeek reasoning controls to other Anthropic-compatible providers", async () => {
+    const spy = mockFetch(200, { content: [{ type: "text", text: "ok" }] });
+
+    await sendOpenAICompatibleChatCompletion({
+      messages: [{ role: "user", content: "Rewrite this." }],
+      config: { ...config, baseUrl: "https://api.example.com/anthropic/v1" },
+      thinking: "disabled",
+    });
+
+    const body = JSON.parse(spy.mock.calls[0][1]?.body as string);
+    expect(body.reasoning).toBeUndefined();
+  });
+
   it("does not modify messages when promptCaching is false or unset", async () => {
     const spy = mockFetch(200, { choices: [{ message: { content: "ok" } }] });
     await sendOpenAICompatibleChatCompletion({
