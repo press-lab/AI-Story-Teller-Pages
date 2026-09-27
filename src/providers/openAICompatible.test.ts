@@ -292,7 +292,8 @@ describe("sendOpenAICompatibleChatCompletion", () => {
     });
 
     const body = JSON.parse(spy.mock.calls[0][1]?.body as string);
-    expect(body.reasoning).toEqual({ effort: "none" });
+    expect(body.thinking).toEqual({ type: "disabled" });
+    expect(body.reasoning).toBeUndefined();
   });
 
   it("defaults DeepSeek Anthropic-format requests to non-thinking output", async () => {
@@ -304,7 +305,8 @@ describe("sendOpenAICompatibleChatCompletion", () => {
     });
 
     const body = JSON.parse(spy.mock.calls[0][1]?.body as string);
-    expect(body.reasoning).toEqual({ effort: "none" });
+    expect(body.thinking).toEqual({ type: "disabled" });
+    expect(body.reasoning).toBeUndefined();
   });
 
   it("enables DeepSeek Anthropic reasoning only when explicitly requested", async () => {
@@ -317,7 +319,8 @@ describe("sendOpenAICompatibleChatCompletion", () => {
     });
 
     const body = JSON.parse(spy.mock.calls[0][1]?.body as string);
-    expect(body.reasoning).toEqual({ effort: "high" });
+    expect(body.thinking).toEqual({ type: "enabled" });
+    expect(body.reasoning).toBeUndefined();
   });
 
   it("does not send DeepSeek reasoning controls to other Anthropic-compatible providers", async () => {
@@ -331,6 +334,7 @@ describe("sendOpenAICompatibleChatCompletion", () => {
 
     const body = JSON.parse(spy.mock.calls[0][1]?.body as string);
     expect(body.reasoning).toBeUndefined();
+    expect(body.thinking).toBeUndefined();
   });
 
   it("does not modify messages when promptCaching is false or unset", async () => {

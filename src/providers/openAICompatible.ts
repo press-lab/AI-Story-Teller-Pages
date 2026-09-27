@@ -252,7 +252,8 @@ async function sendAnthropicRequest(
         ...(config.topP !== undefined ? { top_p: config.topP } : {}),
         ...(config.topK !== undefined && config.topK > 0 ? { top_k: config.topK } : {}),
         ...(isNativeDeepSeekProvider(config)
-          ? { reasoning: { effort: thinking === "enabled" ? "high" : "none" } }
+          // Anthropic uses thinking.type; reasoning.effort belongs to Responses.
+          ? { thinking: { type: thinking ?? "disabled" } }
           : {}),
       }),
     });
