@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { buildContext } from "../contextBuilder/contextBuilder";
 import { saveAdventure } from "../db/adventureDb";
+import { scanEventMemories } from "../memory/eventMemoryScan";
 import { regenerateProposalContent } from "../memory/memoryDetection";
 import { generateArcContinuations, generateArcDirector, generateArcFromHistory, generateBrainFromName as generateBrainEntry, generateComponentContent, pickConvergentContinuation } from "../ai/generators";
 import { PLOT_ESSENTIALS_BEST_PRACTICES } from "../ai/authoringBestPractices";
@@ -639,6 +640,17 @@ export function useAdventureRuntime(
     return runBrainAudit(adventure, activeProviderConfig, nTurns, { includeAI });
   }
 
+  async function findEventMemories(onProgress: (message: string) => void, signal: AbortSignal): Promise<void> {
+    if (!adventure || loading) return;
+    setLoading(true);
+    try {
+      await scanEventMemories(adventure, activeProviderConfig, actions => {
+        if (adventureRef.current?.id !== adventure.id) throw new Error("Event scan stopped because the active adventure changed.");
+        applyActionsAndPersist(actions);
+      }, onProgress, signal);
+    } finally { setLoading(false); }
+  }
+
   async function regenerateMemoryProposal(proposalId: string): Promise<void> {
     if (!adventure) return;
     const proposal = adventure.activeState.memoryProposals.find((p) => p.id === proposalId);
@@ -784,6 +796,7 @@ Respond with ONLY the new content — no preamble, no labels, no explanation.`;
     auditComponents,
     auditBrains,
     regenerateMemoryProposal,
+    findEventMemories,
     regeneratePlotEssentials,
     generateComponent,
     generateArc,

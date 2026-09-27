@@ -257,7 +257,7 @@ Rules:
 - Return [] if no changes are needed`;
 }
 
-const VALID_TYPES = new Set(["character", "location", "lore", "plot", "custom"]);
+const VALID_TYPES = new Set(["character", "location", "lore", "plot", "event", "custom"]);
 const VALID_MEMORY_MODES = new Set(["static", "living", "historical"]);
 
 function parseLLMResponse(raw: string): AuditRecommendation[] {

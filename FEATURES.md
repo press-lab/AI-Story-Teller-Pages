@@ -492,3 +492,12 @@ currentArc component (arcLog + arcPremise)
 ---
 
 *Last updated: 2026-06-04*
+
+
+## Event Memory Story Cards
+
+Event Memory (`type: event`) is a historical Story Card category for notable completed experiences: first meetings, commitments, revelations, consequential choices, and distinctive shared experiences. Background discovery proposes them even when the participants already have cards or Brains. Suggestions retain exact Chronicle message IDs, participant names, recall cues, and a reason for keeping the event. Event suggestions always await approval; historical records are not rewritten by automated updates. Users can edit, deactivate, pin, or delete them in Story Cards. Existing historical cards keep their original categories.
+
+Recall uses phrase matches and participant-assisted cue word overlap, with up to three automatically recalled Event Memories per context build, subject to existing context budgets. A participant name alone does not trigger their history. Pinned, always-on, and manually forced cards retain their explicit inclusion controls. Context Preview shows each included card and its recall reason. This is bounded cue retrieval, not embedding-based semantic search.
+
+Memory Suggestions offers “Find event memories in earlier play”: an explicit background-model scan of the Chronicle in overlapping 24-message excerpts, stepping by 20 messages. It displays progress, preserves completed suggestions on failure/cancellation, and stops after the current request when cancelled. Each excerpt uses one provider request. No scan runs automatically on import. Source evidence can be inspected on approved Event Memory cards; unavailable source messages are identified rather than fabricated.

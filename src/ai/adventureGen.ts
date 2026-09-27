@@ -63,7 +63,7 @@ const generatedComponentTypes = new Set<ComponentType>([
   "authorNote",
   "custom",
 ]);
-const storyCardTypes = new Set<StoryCardType>(["character", "location", "lore", "plot", "custom"]);
+const storyCardTypes = new Set<StoryCardType>(["character", "location", "lore", "plot", "event", "custom"]);
 const storyCardMemoryModes = new Set<StoryCardMemoryMode>(["static", "living", "historical"]);
 
 const defaultPreferences: AdventureGenPreferences = {

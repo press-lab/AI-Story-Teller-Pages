@@ -283,7 +283,7 @@ export function defaultArcState(): ArcPacingState {
 
 export function makeStoryCard(overrides: Partial<StoryCard> & Pick<StoryCard, "title" | "content">): StoryCard {
   const timestamp = nowIso();
-  const memoryMode = overrides.memoryMode ?? "static";
+  const memoryMode = overrides.type === "event" ? "historical" : overrides.memoryMode ?? "static";
   return {
     id: overrides.id ?? createId("story"),
     title: overrides.title,
@@ -291,6 +291,7 @@ export function makeStoryCard(overrides: Partial<StoryCard> & Pick<StoryCard, "t
     matchType: overrides.matchType ?? "phrase",
     content: overrides.content,
     type: overrides.type ?? "custom",
+    eventMemory: overrides.eventMemory,
     memoryMode,
     compactKind: overrides.compactKind,
     compactStatus: overrides.compactStatus,
@@ -303,7 +304,7 @@ export function makeStoryCard(overrides: Partial<StoryCard> & Pick<StoryCard, "t
     protected: overrides.protected ?? false,
     inclusionPolicy: overrides.inclusionPolicy ?? "triggered",
     priority: overrides.priority ?? 0,
-    autoUpdate: overrides.autoUpdate ?? false,
+    autoUpdate: overrides.type === "event" ? false : overrides.autoUpdate ?? false,
     autoUpdateCooldownTurns: overrides.autoUpdateCooldownTurns ?? 3,
     lastAutoUpdateTurn: overrides.lastAutoUpdateTurn,
     lastMemoryUpdatedAt: overrides.lastMemoryUpdatedAt,
@@ -437,7 +438,7 @@ function normalizeStoryCardEntry(card: StoryCard, migrateGuardedFacts: boolean):
   const normalized: StoryCard = {
     ...card,
     matchType: card.matchType ?? "phrase",
-    memoryMode: card.memoryMode ?? (
+    memoryMode: card.type === "event" ? "historical" : card.memoryMode ?? (
       (card.state ?? "").split(/\s+/).includes("living")
         ? "living"
         : (card.state ?? "").split(/\s+/).includes("archivedArc")
@@ -446,7 +447,7 @@ function normalizeStoryCardEntry(card: StoryCard, migrateGuardedFacts: boolean):
     ),
     protected: card.protected ?? false,
     inclusionPolicy: card.inclusionPolicy ?? "triggered",
-    autoUpdate: card.autoUpdate ?? false,
+    autoUpdate: card.type === "event" ? false : card.autoUpdate ?? false,
     autoUpdateCooldownTurns: card.autoUpdateCooldownTurns ?? 3,
     coreFacts: card.coreFacts ?? [],
     currentFacts: card.currentFacts ?? [],

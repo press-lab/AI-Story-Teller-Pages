@@ -109,6 +109,10 @@ export function applyAIMemoryUpdate(adventure: Adventure, updates: AIMemoryUpdat
         rejectedUpdates.push(reject(update, "Story card not found."));
         continue;
       }
+      if (card.type === "event") {
+        rejectedUpdates.push(reject(update, "Event memories are historical records; edit them explicitly instead of auto-updating them."));
+        continue;
+      }
       const patch = storyCardPatch(update);
       if (Object.keys(patch).length === 0) {
         rejectedUpdates.push(reject(update, "Story card update had no content, triggers, or state change."));

@@ -364,6 +364,7 @@ export default function App() {
             {...common}
             loading={runtime.loading}
             onRegenerateProposal={runtime.regenerateMemoryProposal}
+            onFindEventMemories={runtime.findEventMemories}
             onReconcileMemory={runtime.reconcileMemory}
           />
         );
