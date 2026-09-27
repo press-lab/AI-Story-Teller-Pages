@@ -13,6 +13,11 @@ import { adventureReducer } from "../state/adventureReducer";
 import { storyCardContextContent } from "../memory/storyCardPolicy";
 import type { Adventure } from "../types/adventure";
 
+// These dispatch tests isolate provider generation; validation has real-provider-mock integration coverage.
+vi.mock("../memory/validateMemoryUpdate", () => ({
+  validateMemoryUpdate: vi.fn(async (_a, _p, _s, _t, previous, content) => ({ changed: Boolean(content.trim()) && content !== previous && content !== "NONE" })),
+}));
+
 vi.mock("../providers/openAICompatible", () => ({
   isNativeDeepSeekProvider: vi.fn((config: { baseUrl: string }) => config.baseUrl.includes("deepseek.com")),
   sendOpenAICompatibleChatCompletion: vi.fn(),
@@ -304,7 +309,7 @@ describe("runSemanticPostTurnEvaluation", () => {
     const result = await runMemoryCycle(adventure, providerConfig);
 
     expect(result.actions.some((action) => action.type === "ADD_MEMORY_PROPOSAL")).toBe(true);
-    expect(mockProvider.mock.calls[1][0].messages[0].content).toContain("Write exactly one sentence");
+    expect(mockProvider.mock.calls[1][0].messages[0].content).toContain("Write exactly one short sentence");
     expect(result.actions.some((action) => action.type === "APPLY_COMPONENT_UPDATE")).toBe(false);
 
     // pressure auto-approves by default, so content is applied immediately
@@ -388,7 +393,7 @@ describe("runSemanticPostTurnEvaluation", () => {
     mockProvider.mockImplementation(async (request) => {
       const system = request.messages[0]?.content ?? "";
       const user = request.messages[1]?.content ?? "";
-      if (system.includes("SINGLE most story-relevant condition") && user.includes("plotEssentialsPressure:component-pressure")) {
+      if (system.includes("evaluation engine") && user.includes("plotEssentialsPressure:component-pressure")) {
         return { content: '["plotEssentialsPressure:component-pressure"]', raw: {} };
       }
       if (system.includes("SINGLE most story-relevant condition") && user.includes("storyCard:card-margo")) {

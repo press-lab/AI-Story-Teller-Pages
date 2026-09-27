@@ -669,7 +669,7 @@ export function SettingsPage({
                 </div>
                 <p className="muted">
                   These toggles apply to Memory Suggestions created by automatic detection, manual builders,
-                  inline memory tags, and Plot Essentials history carry-forward.
+                  and inline memory tags. Replaced Plot Essentials text remains in component history; it does not automatically become a Story Card.
                 </p>
               </>
             )}

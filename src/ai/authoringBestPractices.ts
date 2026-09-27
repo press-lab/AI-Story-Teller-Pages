@@ -28,7 +28,7 @@ export const STORY_CARD_BEST_PRACTICES = `Story Card best practices:
 - Use present tense for static always-true facts and living current-state cards. Use past tense for historical/completed events.
 - Character cards should carry a VOICE CONTRACT with rhythm, default move, emotional defense, never-sounds-like, and example lines.
 - Living cards are for evolving current relationships, arrangements, statuses, searches, obligations, and recurring dynamic subjects. Updates merge/archive instead of creating sibling cards.
-- Historical cards are for completed events and outgoing Plot Essentials facts.`;
+- Historical cards are for evidenced, completed durable events. Removing or correcting a Plot Essentials fact does not establish a historical event.`;
 
 export const TRIGGER_BEST_PRACTICES = `Trigger best practices:
 - Triggers decide whether a card enters context, so false matches are harmful.

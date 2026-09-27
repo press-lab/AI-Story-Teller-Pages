@@ -1013,7 +1013,7 @@ describe("adventureReducer", () => {
     expect(state.activeState.memoryProposals.some((p) => p.id === "pressure-duplicate")).toBe(false);
   });
 
-  it("auto-approves Story Card history created by an auto-approved Plot Essentials replacement", () => {
+  it("does not manufacture history from an auto-approved Plot Essentials replacement", () => {
     const plot = makeComponent({
       id: "component-plot",
       title: "Plot Essentials",
@@ -1043,7 +1043,7 @@ describe("adventureReducer", () => {
     });
 
     expect(state.components.find((component) => component.id === "component-plot")?.content).toContain("warn Margo");
-    expect(state.storyCards.some((card) => card.content.includes("silver warrant"))).toBe(true);
+    expect(state.storyCards.some((card) => card.content.includes("silver warrant"))).toBe(false);
     expect(state.activeState.memoryProposals.find((proposal) => proposal.id === "plot-replacement")?.status).toBe("approved");
     expect(
       state.activeState.memoryProposals.some(
@@ -1054,7 +1054,7 @@ describe("adventureReducer", () => {
       state.activeState.memoryProposals.some(
         (proposal) => proposal.proposedType === "storyCard" && proposal.status === "approved" && proposal.content.includes("silver warrant"),
       ),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("approving a proposal that names a card by an alias updates that card instead of duplicating it", () => {
@@ -1305,7 +1305,7 @@ describe("adventureReducer", () => {
     });
   });
 
-  it("routes related generated facts into an existing living story card instead of creating a sibling", () => {
+  it("routes an explicitly targeted fact into its existing living story card", () => {
     const viktor = makeStoryCard({
       id: "card-viktor",
       title: "Viktor's Lattice Heart",
@@ -1320,6 +1320,7 @@ describe("adventureReducer", () => {
       type: "ADD_MEMORY_PROPOSAL",
       proposal: makeMemoryProposal({
         id: "viktor-update",
+        targetId: "card-viktor",
         proposedType: "storyCard",
         title: "Fused Commune Maintenance",
         content: "- Viktor's lattice heart now requires periodic commune maintenance.",
@@ -1382,7 +1383,7 @@ describe("adventureReducer", () => {
     expect(searchCard?.keys).toEqual(["Piltover specialists", "sealed warrant"]);
   });
 
-  it("replaces Plot Essentials and turns outgoing PE facts into pending historical card proposals", () => {
+  it("replaces Plot Essentials without treating omitted facts as historical events", () => {
     const plot = makeComponent({
       id: "component-pe",
       title: "Plot Essentials",
@@ -1414,12 +1415,11 @@ describe("adventureReducer", () => {
     const outgoing = state.activeState.memoryProposals.filter(
       (proposal) => proposal.proposedType === "storyCard" && proposal.status === "pending",
     );
-    expect(outgoing.some((proposal) => proposal.content.includes("Drowned Choir"))).toBe(true);
-    expect(outgoing.every((proposal) => proposal.memoryMode === "historical")).toBe(true);
+    expect(outgoing).toHaveLength(0);
     expect(state.activeState.memoryProposals.find((proposal) => proposal.id === "pe-replacement")?.status).toBe("approved");
   });
 
-  it("archives direct AI Plot Essentials replacements through historical Story Card proposals", () => {
+  it("keeps direct Plot Essentials replacements out of Story Card history", () => {
     const plot = makeComponent({
       id: "component-pe-direct",
       title: "Plot Essentials",
@@ -1443,11 +1443,10 @@ describe("adventureReducer", () => {
     const outgoing = state.activeState.memoryProposals.filter(
       (proposal) => proposal.proposedType === "storyCard" && proposal.status === "pending",
     );
-    expect(outgoing.some((proposal) => proposal.content.includes("Drowned Choir"))).toBe(true);
-    expect(outgoing.every((proposal) => proposal.memoryMode === "historical")).toBe(true);
+    expect(outgoing).toHaveLength(0);
   });
 
-  it("auto-approves outgoing Plot Essentials history when Story Cards are auto-approved", () => {
+  it("does not auto-approve removed Plot Essentials claims as history", () => {
     const plot = makeComponent({
       id: "component-pe-auto-history",
       title: "Plot Essentials",
@@ -1469,8 +1468,8 @@ describe("adventureReducer", () => {
       content: "- Caitlyn's task force has moved from sealing the Pumpworks to guarding the canal exits.",
     });
 
-    expect(state.storyCards.some((card) => card.content.includes("Drowned Choir") && card.memoryMode === "historical")).toBe(true);
-    expect(state.activeState.memoryProposals.some((proposal) => proposal.status === "approved" && proposal.content.includes("Drowned Choir"))).toBe(true);
+    expect(state.storyCards.some((card) => card.content.includes("Drowned Choir") && card.memoryMode === "historical")).toBe(false);
+    expect(state.activeState.memoryProposals.some((proposal) => proposal.status === "approved" && proposal.content.includes("Drowned Choir"))).toBe(false);
   });
 
   it("does not resurrect a dismissed suggestion, but still allows new living-card updates", () => {

@@ -225,14 +225,18 @@ Runs in background after each turn (async, doesn't block story).
 - Queues generated actions (brain/card/component updates) — run in parallel up to `maxParallelUpdateCalls`
 
 ### `runMemoryCycle` (periodic, `lastMemoryCycleTurn`):
-- Single-pick evaluation: story card update conditions + plot essentials conditions
-- At most one fires per cycle
-- All output routes to Memory Inbox (always awaits approval)
+- Plot conditions are evaluated independently: Plot Essentials, Active Pressure, and Current Arc may all fire in one cycle. Pressure cannot consume the Plot Essentials slot.
+- At most one eligible Story Card and one Brain update are selected per cycle; discovery separately proposes missing durable subjects.
+- Generated output routes through Memory Inbox and honors per-type auto-approval settings.
+- Plot Essentials and Active Pressure replacements and targeted Story Card rewrites pass size/format checks and a separate model-based evidence review before a proposal or direct write. Unchanged output is skipped. Invalid output leaves memory unchanged and records an evaluation error. Review calls use the background provider and count toward background token usage; they add one call per nonempty, changed candidate that passes format checks. This review is a model judgment, not a guarantee of factual accuracy.
+- Plot Essentials replacements retain valid constraints, remove stale current state, and distinguish knowledge from belief, claims from facts, and plans from completed events. Removed text remains in component update history; removal alone never creates historical Story Cards.
+- Story Card routing uses explicit target IDs, exact titles, or exact non-character trigger aliases. Shared vocabulary in content or source scenes does not establish identity. Character trigger keys are activation cues, not implicit identity aliases. Approval preserves the resolved destination. Cross-subject similarity deduplication excludes character cards.
+- Existing saved content is not migrated or silently cleaned by these safeguards.
 
 ### Condition builders:
-- `plotEssentialsConditions()` — plotEssentials (auto-update=true), currentArc (has arcPremise), activePressure
-- `storyCardUpdateConditions()` — first eligible card with auto-update=true, not on cooldown
-- `summaryConditions()` — rolling summary (frequency-gated)
+- Plot conditions: active Plot Essentials with auto-update enabled (or an unset legacy flag when memory detection is enabled), Current Arc with a premise, and Active Pressure.
+- Story Card conditions: all eligible auto-update cards, respecting cooldowns; select only a meaningful durable change, not a scene recap or private interpretation.
+- Brain conditions: existing active Brains matching the scene, respecting cooldowns.
 
 ### Cooldown tracking:
 - Per-component: `lastAutoUpdateTurn` + `autoUpdateCooldownTurns`

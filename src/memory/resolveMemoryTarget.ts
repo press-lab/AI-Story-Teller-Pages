@@ -43,21 +43,6 @@ function normalize(value: string): string {
   return value.toLocaleLowerCase().replace(/[^\p{L}\p{N}\s']/gu, " ").replace(/\s+/g, " ").trim();
 }
 
-function normalizedTokens(value: string): Set<string> {
-  const tokens = normalize(value)
-    .split(/\s+/)
-    .filter((token) => token.length > 2 && !TOKEN_STOPWORDS.has(token));
-  return new Set(tokens);
-}
-
-function overlapScore(input: Set<string>, candidate: Set<string>): number {
-  let score = 0;
-  for (const token of input) {
-    if (candidate.has(token)) score += 1;
-  }
-  return score;
-}
-
 export function isLivingStoryCard(card: Pick<StoryCard, "memoryMode" | "state">): boolean {
   return card.memoryMode === "living" || (card.state ?? "").split(/\s+/).includes("living");
 }
@@ -113,33 +98,16 @@ function exactStoryCardTarget(adventure: Adventure, draft: MemoryTargetDraft, in
   if (exactTitle && guardedExactTitleTarget(exactTitle, draft)) return exactTitle;
   if (
     exactTitle &&
-    targetAcceptsMode(exactTitle, inferredMode) &&
-    (inferredMode !== "static" || draft.appendContent === true)
+    targetAcceptsMode(exactTitle, inferredMode)
   ) {
     return exactTitle;
   }
   return adventure.storyCards.find((card) =>
     card.active &&
+    card.type !== "character" &&
     targetAcceptsMode(card, inferredMode) &&
-    (inferredMode !== "static" || draft.appendContent === true) &&
     card.keys.some((key) => normalize(key) === titleNorm)
   );
-}
-
-function bestRelatedTarget(adventure: Adventure, draft: MemoryTargetDraft, inferredMode: StoryCardMemoryMode): StoryCard | undefined {
-  const inputTokens = normalizedTokens([draft.title, draft.content, draft.sourceText].filter(Boolean).join(" "));
-  if (inputTokens.size === 0) return undefined;
-  const candidates = adventure.storyCards.filter((card) => card.active && targetAcceptsMode(card, inferredMode));
-  let best: { card: StoryCard; score: number } | undefined;
-  for (const card of candidates) {
-    const subjectTokens = normalizedTokens([card.title, ...card.keys].join(" "));
-    const contentTokens = normalizedTokens(card.content.slice(0, 1200));
-    const score =
-      overlapScore(inputTokens, subjectTokens) * 4 +
-      Math.min(8, overlapScore(inputTokens, contentTokens));
-    if (score >= 8 && (!best || score > best.score)) best = { card, score };
-  }
-  return best?.card;
 }
 
 function incompatibleTarget(adventure: Adventure, draft: MemoryTargetDraft, inferredMode: StoryCardMemoryMode): StoryCard | undefined {
@@ -225,7 +193,7 @@ export function resolveMemoryTarget(adventure: Adventure, draft: MemoryTargetDra
   const requestedTarget = draft.targetId ? adventure.storyCards.find((card) => card.id === draft.targetId) : undefined;
   const inferredMode = draft.memoryMode ?? requestedTarget?.memoryMode ?? inferStoryCardMemoryMode(draft);
   const blockedTarget = incompatibleTarget(adventure, draft, inferredMode);
-  const target = exactStoryCardTarget(adventure, draft, inferredMode) ?? bestRelatedTarget(adventure, draft, inferredMode);
+  const target = exactStoryCardTarget(adventure, draft, inferredMode);
   const targetMode = target ? (isLivingStoryCard(target) ? "living" : target.memoryMode) : undefined;
   const memoryMode = target ? (targetMode ?? inferredMode) : inferredMode;
   const appendContent = target ? (draft.appendContent ?? true) : undefined;
