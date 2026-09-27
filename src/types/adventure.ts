@@ -779,7 +779,7 @@ export type AdventureAction =
   | { type: "UNPIN_STORY_CARD"; storyCardId: string }
   | { type: "UPDATE_STORY_CARD"; storyCardId: string; patch: Partial<StoryCard> }
   | { type: "APPLY_STORY_CARD_UPDATE"; storyCardId: string; content?: string; patch?: Partial<Pick<StoryCard, "keys" | "state">> }
-  | { type: "MARK_STORY_CARD_UPDATED"; storyCardId: string; turn: number }
+  | { type: "MARK_STORY_CARD_UPDATED"; storyCardId: string; turn: number; proposalId?: string }
   | { type: "MARK_COMPONENT_UPDATED"; componentId: string; turn: number }
   | { type: "ADVANCE_ARC_PACING"; triggeredIds: string[]; turn: number }
   | { type: "SET_ARC_PHASE"; componentId: string; phase: ArcPhase; turn?: number }

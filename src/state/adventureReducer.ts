@@ -1455,6 +1455,12 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
         }),
       });
     case "MARK_STORY_CARD_UPDATED":
+      // Approval-gated auto-updates carry the proposal id that justified starting the
+      // cooldown. If proposal dedupe rejected that candidate, do not pretend the card
+      // was updated and postpone the next useful review.
+      if (action.proposalId && !state.activeState.memoryProposals.some((proposal) => proposal.id === action.proposalId)) {
+        return state;
+      }
       return touchAdventure(state, {
         storyCards: updateById(state.storyCards, action.storyCardId, (item) => touch({ ...item, lastAutoUpdateTurn: action.turn })),
       });
@@ -1637,7 +1643,6 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
       const targetStoryCard = clean.proposedType === "storyCard" && clean.targetId
         ? state.storyCards.find((card) => card.id === clean.targetId)
         : undefined;
-      const isLivingUpdate = isUpdate && targetStoryCard ? isLivingStoryCard(targetStoryCard) : false;
       const hasMemoryPatch =
         Boolean(clean.storyCardPatch && Object.keys(clean.storyCardPatch).length > 0) ||
         Boolean(clean.componentPatch && Object.keys(clean.componentPatch).length > 0);
@@ -1646,14 +1651,19 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
         normalizeProposalTitle(p.title) === normTitle &&
         (p.targetId ?? "") === (clean.targetId ?? "");
       const duplicatesPending = state.activeState.memoryProposals.some((p) => p.status === "pending" && matchesTarget(p));
-      // A dismissed suggestion shouldn't come back every turn. Living-card UPDATES are exempt:
-      // each is a distinct new development that shares the card's title, so title-matching a past
-      // dismissal must not block future updates to that card.
+      // A dismissed new-card suggestion should not come back every turn. Targeted updates are
+      // different: a Brain or Story Card keeps evolving, so rejecting one revision must not mute
+      // every later revision for that target. Only suppress a targeted update when its content is
+      // the same or substantially duplicates the dismissed revision.
       const duplicatesDismissed =
         state.activeState.memoryProposals.some((p) =>
           (p.status === "rejected" || p.status === "ignored") &&
           matchesTarget(p) &&
-          (!isLivingUpdate || contentLooksDuplicate(p.content, clean.content) || normalizedReplacementContent(p.content) === normalizedReplacementContent(clean.content))
+          (
+            !clean.targetId ||
+            contentLooksDuplicate(p.content, clean.content) ||
+            normalizedReplacementContent(p.content) === normalizedReplacementContent(clean.content)
+          )
         );
       const duplicatesCard =
         clean.proposedType === "storyCard" &&

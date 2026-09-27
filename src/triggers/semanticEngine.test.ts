@@ -179,7 +179,12 @@ describe("runSemanticPostTurnEvaluation", () => {
     const result = await runMemoryCycle(adventure, providerConfig);
 
     expect(result.actions.some((action) => action.type === "ADD_MEMORY_PROPOSAL")).toBe(true);
-    expect(result.actions).toContainEqual({ type: "MARK_STORY_CARD_UPDATED", storyCardId: "card-margo", turn: 5 });
+    expect(result.actions).toContainEqual(expect.objectContaining({
+      type: "MARK_STORY_CARD_UPDATED",
+      storyCardId: "card-margo",
+      turn: 5,
+      proposalId: expect.any(String),
+    }));
   });
 
   it("skips story-card auto-update conditions while the card is on cooldown", async () => {
@@ -256,7 +261,12 @@ describe("runSemanticPostTurnEvaluation", () => {
 
     expect(result.actions.some((action) => action.type === "ADD_MEMORY_PROPOSAL")).toBe(true);
     expect(result.actions.some((action) => action.type === "APPLY_STORY_CARD_UPDATE")).toBe(false);
-    expect(result.actions).toContainEqual({ type: "MARK_STORY_CARD_UPDATED", storyCardId: "card-joke", turn: 5 });
+    expect(result.actions).toContainEqual(expect.objectContaining({
+      type: "MARK_STORY_CARD_UPDATED",
+      storyCardId: "card-joke",
+      turn: 5,
+      proposalId: expect.any(String),
+    }));
 
     let reduced = result.actions.reduce((next, action) => adventureReducer(next, action), adventure);
     expect(reduced.storyCards[0].content).toBe("Old joke.");
@@ -406,7 +416,12 @@ describe("runSemanticPostTurnEvaluation", () => {
       "brain:brain-margo",
     ]);
     expect(result.actions.filter((action) => action.type === "ADD_MEMORY_PROPOSAL")).toHaveLength(3);
-    expect(result.actions).toContainEqual({ type: "MARK_STORY_CARD_UPDATED", storyCardId: "card-margo", turn: 5 });
+    expect(result.actions).toContainEqual(expect.objectContaining({
+      type: "MARK_STORY_CARD_UPDATED",
+      storyCardId: "card-margo",
+      turn: 5,
+      proposalId: expect.any(String),
+    }));
 
     const reduced = result.actions.reduce((next, action) => adventureReducer(next, action), adventure);
     expect(reduced.components.find((component) => component.id === "component-pressure")?.content).toBe("The breach is sealed, but the gate is still failing.");

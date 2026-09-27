@@ -581,7 +581,7 @@ async function generatedActionsFor(
         return {
           actions: [
             { type: "ADD_MEMORY_PROPOSAL", proposal },
-            { type: "MARK_STORY_CARD_UPDATED", storyCardId: card.id, turn: adventure.activeState.turn },
+            { type: "MARK_STORY_CARD_UPDATED", storyCardId: card.id, turn: adventure.activeState.turn, proposalId: proposal.id },
           ],
           generated: { targetType: "storyCard", targetId: card.id, title: card.title, preview: preview(content) },
         };
