@@ -632,7 +632,7 @@ export function SettingsPage({
             <h3>Memory Detection</h3>
             <p className="muted">
               After each turn, use the evaluation model to detect new durable facts worth storing as memory proposals.
-              The pre-filter skips the call when nothing novel is detected.
+              The discovery pass reviews recent story evidence for missing Story Cards, even when the story response omitted memory tags.
             </p>
             <CheckboxField
               label="Enable AI memory detection"

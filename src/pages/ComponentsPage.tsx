@@ -845,7 +845,7 @@ export function ComponentsPage({ adventure, dispatch, loading, onSuggestPlotUpda
                   {component.type === "plotEssentials" && (
                     <CheckboxField
                       label="Auto-suggest full replacements when current truth drifts"
-                      checked={component.autoUpdate === true}
+                      checked={component.autoUpdate ?? adventure.memoryDetectionSettings.enabled}
                       onChange={(autoUpdate) => dispatch({ type: "UPDATE_COMPONENT", componentId: component.id, patch: { autoUpdate } })}
                     />
                   )}

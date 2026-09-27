@@ -33,6 +33,7 @@ const providerConfig = {
 function baseAdventure(): Adventure {
   return {
     ...createDefaultAdventure("Semantic Test"),
+    memoryDetectionSettings: { enabled: false, everyNTurns: 1, generateContent: true },
     activeState: {
       ...createDefaultAdventure("Semantic Test").activeState,
       turn: 5,
@@ -881,5 +882,97 @@ describe("grounded arc updates", () => {
     mockProvider.mockResolvedValueOnce({ content: "NONE", raw: {} });
     const result = await runMemoryCycle(scenario(), providerConfig);
     expect(result.actions.some(action => action.type === "ADD_MEMORY_PROPOSAL")).toBe(false);
+  });
+});
+
+
+describe("memory discovery and component suggestions", () => {
+  function discoveryAdventure() {
+    const a = baseAdventure();
+    a.memoryDetectionSettings.enabled = true;
+    a.components = [];
+    a.storyCards = [];
+    a.brains = [];
+    a.messages = [
+      { id: "priya-intro", role: "assistant" as const, content: "Priya is a product manager in Capitol Hill. You match on a dating app.", createdAt: "2026-01-01T00:00:00Z" },
+      { id: "priya-plan", role: "assistant" as const, content: "Priya sends her address for your agreed meeting at 9:30.", createdAt: "2026-01-01T00:01:00Z" },
+      { id: "bar", role: "assistant" as const, content: "Rosa serves you a drink while you wait.", createdAt: "2026-01-01T00:02:00Z" },
+    ];
+    return a;
+  }
+  const priya = { title: "Priya", content: "Priya is a product manager in Capitol Hill.", storyCardType: "character", memoryMode: "static", suggestedTriggers: ["Priya"], rationale: "Named character with an ongoing interaction and an agreed meeting.", evidenceMessageIds: ["priya-intro", "priya-plan"] };
+
+  it("discovers Priya without existing cards, Brains, conditions, or inline tags", async () => {
+    const a = discoveryAdventure();
+    a.memoryAutoApprove.storyCard = false;
+    mockProvider.mockResolvedValueOnce({ content: JSON.stringify([priya]), usage: { promptTokens: 31, completionTokens: 12, totalTokens: 43 }, raw: {} });
+    const result = await runMemoryCycle(a, providerConfig);
+    const state = result.actions.reduce(adventureReducer, a);
+    expect(state.activeState.memoryProposals).toContainEqual(expect.objectContaining({ title: "Priya", proposedType: "storyCard", storyCardType: "character", status: "pending", sourceText: expect.stringContaining("priya-plan") }));
+    expect(state.brains).toHaveLength(0);
+    expect(state.storyCards).toHaveLength(0);
+    expect(state.activeState.lastMemoryCycleTurn).toBe(5);
+    expect(result.tokenUsage).toEqual({ promptTokens: 31, completionTokens: 12 });
+    expect(result.logEntry.conditionsEvaluated.some(c => c.id === "storyCardDiscovery")).toBe(true);
+    const approved = adventureReducer(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: state.activeState.memoryProposals[0].id });
+    expect(approved.storyCards).toContainEqual(expect.objectContaining({ title: "Priya", type: "character" }));
+  });
+
+  it("suppresses known, pending, duplicate, and unsupported candidates", async () => {
+    const a = discoveryAdventure();
+    a.storyCards = [makeStoryCard({ title: "Rosa", content: "Rosa is a bartender.", autoUpdate: false })];
+    mockProvider.mockResolvedValue({ content: JSON.stringify([priya, priya, { ...priya, title: "Rosa" }, { ...priya, title: "Invented", evidenceMessageIds: ["missing"] }]), raw: {} });
+    const first = await runMemoryCycle(a, providerConfig);
+    expect(first.actions.filter(a => a.type === "ADD_MEMORY_PROPOSAL")).toHaveLength(1);
+    a.memoryAutoApprove.storyCard = false;
+    const state = first.actions.reduce(adventureReducer, a);
+    const second = await runMemoryCycle(state, providerConfig);
+    expect(second.actions.filter(a => a.type === "ADD_MEMORY_PROPOSAL")).toHaveLength(0);
+  });
+
+  it("honors disabled detection and optional blank proposal bodies", async () => {
+    const a = discoveryAdventure();
+    a.memoryDetectionSettings.enabled = false;
+    await runMemoryCycle(a, providerConfig);
+    expect(mockProvider).not.toHaveBeenCalled();
+    a.memoryDetectionSettings.enabled = true;
+    a.memoryDetectionSettings.generateContent = false;
+    mockProvider.mockResolvedValueOnce({ content: JSON.stringify([priya]), raw: {} });
+    const result = await runMemoryCycle(a, providerConfig);
+    expect(result.actions).toContainEqual(expect.objectContaining({ type: "ADD_MEMORY_PROPOSAL", proposal: expect.objectContaining({ title: "Priya", content: "" }) }));
+  });
+
+  it("logs discovery failures and still stamps the cycle and counts usage", async () => {
+    mockProvider.mockResolvedValueOnce({ content: "not JSON", usage: { promptTokens: 9, completionTokens: 2, totalTokens: 11 }, raw: {} });
+    const result = await runMemoryCycle(discoveryAdventure(), providerConfig);
+    expect(result.logEntry.errors[0]).toContain("Story Card discovery failed");
+    expect(result.actions).toContainEqual({ type: "SET_LAST_MEMORY_CYCLE_TURN", turn: 5 });
+    expect(result.tokenUsage).toEqual({ promptTokens: 9, completionTokens: 2 });
+  });
+
+  it("reviews legacy Plot Essentials with current content, but respects explicit opt-out", async () => {
+    const a = discoveryAdventure();
+    a.components = [makeComponent({ id: "pe", title: "Plot Essentials", type: "plotEssentials", content: "You have not met Priya." })];
+    mockProvider.mockResolvedValueOnce({ content: '["plotEssentialsDrift:pe"]', raw: {} })
+      .mockResolvedValueOnce({ content: "You are due to meet Priya at 9:30.", raw: {} })
+      .mockResolvedValueOnce({ content: "[]", raw: {} });
+    const result = await runMemoryCycle(a, providerConfig);
+    expect(mockProvider.mock.calls[0][0].messages.at(-1)?.content).toContain("You have not met Priya.");
+    expect(result.actions).toContainEqual(expect.objectContaining({ type: "ADD_MEMORY_PROPOSAL", proposal: expect.objectContaining({ proposedType: "plotEssentialsUpdate", targetId: "pe" }) }));
+    a.components[0].autoUpdate = false;
+    mockProvider.mockResolvedValueOnce({ content: "[]", raw: {} });
+    const optedOut = await runMemoryCycle(a, providerConfig);
+    expect(optedOut.logEntry.conditionsEvaluated.some(c => c.id === "plotEssentialsDrift:pe")).toBe(false);
+  });
+
+  it("lets a later eligible card win instead of starving behind the first card", async () => {
+    const a = baseAdventure();
+    a.components = [];
+    a.storyCards = ["first", "second"].map(id => makeStoryCard({ id, title: id, content: "Original fact.", keys: [], autoUpdate: true }));
+    mockProvider.mockResolvedValueOnce({ content: '["storyCard:second"]', raw: {} })
+      .mockResolvedValueOnce({ content: "A new durable fact.", raw: {} });
+    const result = await runMemoryCycle(a, providerConfig);
+    expect(result.logEntry.conditionsEvaluated.map(c => c.id)).toEqual(["storyCard:first", "storyCard:second"]);
+    expect(result.actions).toContainEqual(expect.objectContaining({ type: "ADD_MEMORY_PROPOSAL", proposal: expect.objectContaining({ targetId: "second" }) }));
   });
 });

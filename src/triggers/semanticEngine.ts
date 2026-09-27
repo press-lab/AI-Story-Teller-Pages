@@ -22,6 +22,7 @@ import type {
 import { isNativeDeepSeekProvider, sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
 import { backgroundProviderConfigIssue, resolveBackgroundProviderConfig } from "../providers/backgroundProvider";
 import { applyAIMemoryUpdate } from "../memory/applyAIMemoryUpdate";
+import { detectStoryCardProposals } from "../memory/memoryDetection";
 import { memoryCanonMessages } from "../memory/memoryCanon";
 import { resolveMemoryTarget } from "../memory/resolveMemoryTarget";
 import {
@@ -266,7 +267,7 @@ function brainConditions(adventure: Adventure): SemanticCondition[] {
 
 function plotEssentialsDriftConditions(adventure: Adventure): SemanticCondition[] {
   return adventure.components
-    .filter((c) => c.type === "plotEssentials" && c.active && c.autoUpdate === true)
+    .filter((c) => c.type === "plotEssentials" && c.active && (c.autoUpdate === true || (c.autoUpdate === undefined && adventure.memoryDetectionSettings.enabled)))
     .map((component) => ({
       id: `plotEssentialsDrift:${component.id}`,
       label: `Plot Essentials Drift: ${component.title}`,
@@ -326,15 +327,13 @@ function storyCardUpdateConditions(adventure: Adventure): SemanticCondition[] {
     .filter((card) => card.active && card.autoUpdate)
     .filter((card) => !isStoryCardOnAutoUpdateCooldown(adventure, card))
     .filter((card) => card.keys.length === 0 || matchPatterns(excerpt, card.keys, card.matchType ?? "phrase").matched);
-  const target = eligible[0];
-  if (!target) return [];
-  return [{
+  return eligible.map((target) => ({
     id: `storyCard:${target.id}`,
     label: `Story Card: ${target.title}`,
     condition: `when the story has established new details, developments, or changes that should update the fact card titled "${target.title}" — only fire when something meaningfully new has been revealed about this entity`,
     sourceType: "storyCard" as const,
     actionFactory: () => [{ type: "updateStoryCard" as const, storyCardId: target.id }],
-  }];
+  }));
 }
 
 function buildConditions(adventure: Adventure): SemanticCondition[] {
@@ -364,6 +363,8 @@ async function evaluateConditionIds(
           content: JSON.stringify(
             {
               storyExcerpt: recentExcerpt(adventure),
+              currentPlot: adventure.components.filter(c => c.active && ["plotEssentials", "activePressure"].includes(c.type)).map(c => ({ id: c.id, content: c.content })),
+              currentCards: adventure.storyCards.filter(c => conditions.some(condition => condition.id === `storyCard:${c.id}`)).map(c => ({ id: c.id, content: storyCardContextContent(c) })),
               conditions: conditions.map(({ id, condition }) => ({ id, condition })),
             },
             null,
@@ -1885,10 +1886,6 @@ export async function runMemoryCycle(
   const storyCardConditions = buildStoryCardMemoryConditions(adventure);
   const characterConditions = buildCharacterMemoryConditions(adventure);
   const allConditions = [...plotConditions, ...storyCardConditions, ...characterConditions];
-  if (allConditions.length === 0) {
-    return { actions: [{ type: "LOG_EVALUATION_RESULT", entry: emptyLog }], logEntry: emptyLog };
-  }
-
   const plotEval = await evaluateConditionIds(forcePropose, providerConfig, plotConditions, accum, { singlePick: true });
   const storyCardEval = await evaluateConditionIds(forcePropose, providerConfig, storyCardConditions, accum, { singlePick: true });
   const characterEval = await evaluateConditionIds(forcePropose, providerConfig, characterConditions, accum, { singlePick: true });
@@ -1900,18 +1897,6 @@ export async function runMemoryCycle(
     (condition): condition is SemanticCondition => Boolean(condition),
   );
 
-  if (firedConditions.length === 0) {
-    const logEntry: EvaluationLogEntry = { ...emptyLog, conditionsEvaluated: allConditions.map(({ id, label, condition, sourceType }) => ({ id, label, condition, sourceType })), errors };
-    return {
-      actions: [
-        { type: "SET_LAST_MEMORY_CYCLE_TURN", turn: adventure.activeState.turn },
-        { type: "LOG_EVALUATION_RESULT", entry: logEntry },
-      ],
-      logEntry,
-      tokenUsage: accum,
-    };
-  }
-
   const generationTasks = firedConditions.flatMap((firedCondition) =>
     firedCondition.actionFactory(adventure).map((ta) => () =>
       generatedActionsFor(forcePropose, providerConfig, ta, firedCondition.id, undefined, accum),
@@ -1921,7 +1906,11 @@ export async function runMemoryCycle(
 
   const generatedContent: GeneratedContentPreview[] = [];
   const allActions: AdventureAction[] = [];
-  const resultErrors: string[] = [...errors];
+  const discovery = await detectStoryCardProposals(adventure, providerConfig);
+  allActions.push(...discovery.actions);
+  accum.promptTokens += discovery.tokenUsage.promptTokens;
+  accum.completionTokens += discovery.tokenUsage.completionTokens;
+  const resultErrors: string[] = [...errors, ...discovery.errors];
 
   for (const result of results) {
     allActions.push(...result.actions);
@@ -1931,9 +1920,9 @@ export async function runMemoryCycle(
 
   const logEntry: EvaluationLogEntry = {
     ...emptyLog,
-    conditionsEvaluated: allConditions.map(({ id, label, condition, sourceType }) => ({ id, label, condition, sourceType })),
-    conditionsFired: firedConditions.map((condition) => condition.id),
-    actionsExecuted: firedConditions.map((condition) => `Memory cycle: ${condition.label}`),
+    conditionsEvaluated: [...allConditions.map(({ id, label, condition, sourceType }) => ({ id, label, condition, sourceType })), ...(discovery.evaluated ? [{ id: "storyCardDiscovery", label: "New Story Cards", condition: "Discover durable subjects missing from Story Cards", sourceType: "storyCard" as const }] : [])],
+    conditionsFired: [...firedConditions.map((condition) => condition.id), ...(discovery.actions.length ? ["storyCardDiscovery"] : [])],
+    actionsExecuted: [...firedConditions.map((condition) => `Memory cycle: ${condition.label}`), ...discovery.actions.flatMap(action => action.type === "ADD_MEMORY_PROPOSAL" ? [`Story Card discovery: ${action.proposal.title}`] : [])],
     generatedContent,
     errors: resultErrors,
   };

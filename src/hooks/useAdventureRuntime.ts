@@ -246,7 +246,7 @@ export function useAdventureRuntime(
     const currentTurn = adventureState.activeState.turn;
     const last = adventureState.activeState.lastMemoryCycleTurn;
     if (last !== undefined && currentTurn - last < settings.everyNTurns) return;
-    void startMemoryCycle(adventureState);
+    void startMemoryCycle({ ...adventureState, memoryDetectionSettings: settings });
   }
 
   async function startMemoryCycle(adventureState: Adventure) {
