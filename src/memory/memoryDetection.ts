@@ -1,4 +1,5 @@
 import type { Adventure, MemoryProposal, ProviderConfig } from "../types/adventure";
+import { memoryCanonMessages } from "./memoryCanon";
 import { sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
 import {
   PLOT_ESSENTIALS_BEST_PRACTICES,
@@ -69,7 +70,7 @@ Respond with ONLY the content: no JSON, no preamble, no labels.`;
 
   const response = await sendOpenAICompatibleChatCompletion({
     config: resolvedProviderConfig(adventure, providerConfig),
-    messages: [{ role: "user", content: systemPrompt }],
+    messages: [...memoryCanonMessages(adventure, proposal.sourceText, proposal.title), { role: "user", content: systemPrompt }],
   });
 
   return response.content.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();

@@ -157,14 +157,15 @@ function ArcDirector({
         </div>
       )}
 
-      <Field label="The Baddie — which Story Cards / Brains is this arc about?">
+      <Field label="Pacing triggers — which Story Cards / Brains advance this arc?">
+        <p className="muted">Each selected card or brain that triggers adds one engagement per turn. Multiple matches add multiple points, even during ordinary conversation. Choose specific threats or evidence; selecting a frequent companion or a broad deal card can rush the arc. With no selections, pacing stays manual.</p>
         <div style={{ maxHeight: "9rem", overflowY: "auto", border: "1px solid #444", borderRadius: "4px", padding: "0.4rem" }}>
           {candidates.length === 0 && <p className="muted" style={{ margin: 0 }}>Create Story Cards or Brains first.</p>}
           {candidates.map((candidate) => (
             <label key={candidate.id} className="arc-thread-option">
               <input type="checkbox" checked={threadSet.has(candidate.id)} onChange={(event) => toggleThread(candidate.id, event.target.checked)} />
               <span>
-                {candidate.label} <span className="muted">({candidate.kind})</span>
+                {candidate.label} <span className="muted">({candidate.kind}){threadSet.has(candidate.id) ? ` · ${arc.threadEngagement[candidate.id] ?? 0} engagements` : ""}</span>
               </span>
             </label>
           ))}

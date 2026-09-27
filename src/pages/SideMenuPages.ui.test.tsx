@@ -84,7 +84,8 @@ describe("side menu page smoke coverage", () => {
     );
     // jsdom keeps <details> content in the DOM regardless of open state
     expect(screen.getByText("🎬 Arc Director")).toBeInTheDocument();
-    expect(screen.getByText(/The Baddie/)).toBeInTheDocument();
+    expect(screen.getByText(/Pacing triggers/)).toBeInTheDocument();
+    expect(screen.getByText(/Multiple matches add multiple points/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Generate Arc" })).toBeInTheDocument();
     cleanup();
 

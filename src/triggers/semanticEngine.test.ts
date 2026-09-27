@@ -846,3 +846,40 @@ describe("AI memory builders", () => {
     });
   });
 });
+
+
+describe("grounded arc updates", () => {
+  function scenario() {
+    const a = baseAdventure();
+    a.components = [
+      makeComponent({ id: "cross-arc", title: "Cross Bid", type: "currentArc", arcPremise: "Julian investigates Cullen Holdings", content: "The bid is open.", arcBreakInstruction: "HIDDEN CLIMAX" }),
+      makeComponent({ title: "Identity", type: "plotEssentials", content: "You are Seth Press. Julian Cross is a separate rival bidder." }),
+      makeComponent({ title: "Psychic rules", type: "custom", alwaysOn: true, content: "Seth is immune; Edythe cannot read him." }),
+    ];
+    a.messages = [{ id: "deal", role: "assistant", content: "Edythe offers you revised terms, subject to board approval.", createdAt: "2026-01-01T00:00:00Z" }];
+    return a;
+  }
+  it("grounds the request and keeps an arc claim pending with evidence", async () => {
+    const a = scenario();
+    mockProvider.mockResolvedValueOnce({ content: '["currentArc:cross-arc"]', raw: {} });
+    mockProvider.mockResolvedValueOnce({ content: "Seth received revised terms; board approval remained outstanding.", raw: {} });
+    const result = await runMemoryCycle(a, providerConfig);
+    const text = mockProvider.mock.calls[1][0].messages.map(m => m.content).join("\n");
+    expect(text).toContain("You are Seth Press");
+    expect(text).toContain("Edythe cannot read him");
+    expect(text).not.toContain("HIDDEN CLIMAX");
+    const state = result.actions.reduce(adventureReducer, a);
+    expect(state.components.find(c => c.id === "cross-arc")?.content).toBe("The bid is open.");
+    const proposal = state.activeState.memoryProposals.find(p => p.proposedType === "currentArcUpdate");
+    expect(proposal?.status).toBe("pending");
+    expect(proposal?.sourceText).toContain("subject to board approval");
+    const approved = adventureReducer(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal!.id });
+    expect(approved.components.find(c => c.id === "cross-arc")?.content).toContain("board approval remained outstanding");
+  });
+  it("does not turn a no-development response into an arc entry", async () => {
+    mockProvider.mockResolvedValueOnce({ content: '["currentArc:cross-arc"]', raw: {} });
+    mockProvider.mockResolvedValueOnce({ content: "NONE", raw: {} });
+    const result = await runMemoryCycle(scenario(), providerConfig);
+    expect(result.actions.some(action => action.type === "ADD_MEMORY_PROPOSAL")).toBe(false);
+  });
+});

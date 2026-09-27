@@ -662,7 +662,7 @@ export function SettingsPage({
                   <CheckboxField label="Legacy Summary" checked={activeSettings.memoryAutoApprove.summaryUpdate} onChange={(summaryUpdate) => updateMemoryAutoApprove({ summaryUpdate })} />
                   <CheckboxField label="Plot Essentials" checked={activeSettings.memoryAutoApprove.plotEssentialsUpdate} onChange={(plotEssentialsUpdate) => updateMemoryAutoApprove({ plotEssentialsUpdate })} />
                   <CheckboxField label="Active Pressure" checked={activeSettings.memoryAutoApprove.plotPressureUpdate} onChange={(plotPressureUpdate) => updateMemoryAutoApprove({ plotPressureUpdate })} />
-                  <CheckboxField label="Current Arc" checked={activeSettings.memoryAutoApprove.currentArcUpdate} onChange={(currentArcUpdate) => updateMemoryAutoApprove({ currentArcUpdate })} />
+                  <CheckboxField label="Current Arc (off: review generated events before they become canon)" checked={activeSettings.memoryAutoApprove.currentArcUpdate} onChange={(currentArcUpdate) => updateMemoryAutoApprove({ currentArcUpdate })} />
                   <CheckboxField label="Arc Proposals" checked={activeSettings.memoryAutoApprove.arcProposal} onChange={(arcProposal) => updateMemoryAutoApprove({ arcProposal })} />
                   <CheckboxField label="Story Cards" checked={activeSettings.memoryAutoApprove.storyCard} onChange={(storyCard) => updateMemoryAutoApprove({ storyCard })} />
                   <CheckboxField label="Characters" checked={activeSettings.memoryAutoApprove.brainUpdate} onChange={(brainUpdate) => updateMemoryAutoApprove({ brainUpdate })} />
