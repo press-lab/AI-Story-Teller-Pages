@@ -251,8 +251,8 @@ async function sendAnthropicRequest(
         // Anthropic supports top_p / top_k but NOT presence/frequency penalties.
         ...(config.topP !== undefined ? { top_p: config.topP } : {}),
         ...(config.topK !== undefined && config.topK > 0 ? { top_k: config.topK } : {}),
-        ...(thinking && isNativeDeepSeekProvider(config)
-          ? { reasoning: { effort: thinking === "disabled" ? "none" : "high" } }
+        ...(isNativeDeepSeekProvider(config)
+          ? { reasoning: { effort: thinking === "enabled" ? "high" : "none" } }
           : {}),
       }),
     });
