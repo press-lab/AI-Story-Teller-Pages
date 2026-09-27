@@ -252,6 +252,7 @@ ${adventureContext(adventure)}
 Recent play (most recent last):
 ${recent || "(none)"}
 
+Pacing counts each selected thread match every turn, including ordinary conversation. Choose only specific threats or evidence that should advance this arc; avoid frequent companions and broad setting/deal cards. An empty selection leaves pacing manual.
 Threads you may carry forward (use these exact ids in arcThreadKeys — only ids from this list):
 ${threads.map((t) => `[${t.id}] ${t.label}`).join("\n") || "(none)"}
 

@@ -22,6 +22,7 @@ import type {
 import { isNativeDeepSeekProvider, sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
 import { backgroundProviderConfigIssue, resolveBackgroundProviderConfig } from "../providers/backgroundProvider";
 import { applyAIMemoryUpdate } from "../memory/applyAIMemoryUpdate";
+import { memoryCanonMessages } from "../memory/memoryCanon";
 import { resolveMemoryTarget } from "../memory/resolveMemoryTarget";
 import {
   PLOT_ESSENTIALS_BEST_PRACTICES,
@@ -200,7 +201,8 @@ Write every entry as a COMPLETED PAST-TENSE record of what happened ("Setu confi
 
 Do NOT restate anything already in the existing log. Do NOT summarize the whole story. Append only what is new and arc-relevant.
 
-Return ONLY the new sentences as plain text.`;
+If no new completed arc development is supported, return exactly NONE. Do not turn routine dialogue or speculation into a breakthrough.
+Return ONLY the new sentences as plain text, or NONE.`;
 }
 
 function isStoryCardOnAutoUpdateCooldown(adventure: Adventure, card: StoryCard): boolean {
@@ -408,7 +410,8 @@ async function sendTargetedUpdate(
     config: evaluationConfig(adventure, providerConfig),
     messages: [
       { role: "system", content: prompt },
-      { role: "user", content: recentExcerpt(adventure) || "No recent history is available." },
+      ...memoryCanonMessages(adventure, recentExcerpt(adventure), prompt),
+      { role: "user", content: "Recent story evidence:\n" + (recentExcerpt(adventure) || "No recent history is available.") },
     ],
   });
   if (accum && response.usage) {
@@ -461,7 +464,7 @@ function makeProposal(
   return {
     id: createId("proposal"),
     sourceTurnId: String(adventure.activeState.turn),
-    sourceText: "",
+    sourceText: recentExcerpt(adventure),
     proposedType: fields.proposedType,
     title: fields.title,
     content: fields.content,
@@ -633,7 +636,7 @@ async function generatedActionsFor(
       const arcComp = adventure.components.find((c) => c.id === triggerAction.componentId && c.type === "currentArc");
       if (!arcComp) return { actions: [], error: `Current Arc component not found: ${triggerAction.componentId}` };
       const content = await sendTargetedUpdate(adventure, providerConfig, arcUpdatePrompt(arcComp), accum);
-      if (!content.trim()) return { actions: [] };
+      if (!content.trim() || content.trim() === "NONE") return { actions: [] };
       const proposal = makeProposal(
         { proposedType: "currentArcUpdate", title: arcComp.title, content, targetId: arcComp.id, rationale: "Arc event logged." },
         adventure,

@@ -292,3 +292,10 @@ interface ArcPacingState {
 
 The non-negotiable: **code owns timing, the break card's text owns outcome, and
 a capable model (V3.2-class) owns whether the cost actually lands.**
+
+
+### Memory accuracy and pacing setup
+
+Background memory updates receive named active narration rules, AI Instructions, Plot Essentials, always-on custom rules, character cards, and relevant lore alongside recent story evidence. Private brains, pending proposals, and gated arc instructions are excluded from these references. Generated entries retain their source excerpt for review. New adventures require approval for Current Arc updates by default; saved explicit auto-approval choices are preserved. Review remains important: grounding reduces ambiguity but cannot guarantee model factual accuracy.
+
+Arc pacing counts each selected card/brain match, not verified breakthroughs. Multiple selected matches in one turn add multiple engagements. Select specific threats or evidence rather than ever-present companions or broad topic cards; selecting nothing leaves pacing manual. Per-thread counts are visible in the Arc Director. The climax instruction remains gated until the break phase.

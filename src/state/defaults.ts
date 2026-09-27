@@ -95,7 +95,7 @@ export const defaultMemoryDetectionSettings: MemoryDetectionSettings = {
 export const defaultMemoryAutoApproveSettings: MemoryAutoApproveSettings = {
   summaryUpdate: false,
   plotEssentialsUpdate: false,
-  currentArcUpdate: true,
+  currentArcUpdate: false,
   arcProposal: false,
   plotPressureUpdate: true,
   plotMomentumUpdate: false,
