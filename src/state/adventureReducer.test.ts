@@ -764,7 +764,7 @@ describe("adventureReducer", () => {
     expect(child?.content).toContain("notification protocol");
   });
 
-  it("does not resurrect dismissed static story card update proposals", () => {
+  it("blocks repeated dismissed target updates but allows a materially new revision", () => {
     let state = baseAdventure();
     state = reduce(state, {
       type: "UPSERT_STORY_CARD",
@@ -796,12 +796,76 @@ describe("adventureReducer", () => {
       proposal: {
         ...proposal,
         id: "proposal-red-ring-2",
-        content: "• Red Ring pressure repeats through another probe aimed at Nix's stolen tech.",
       },
     });
 
     expect(state.activeState.memoryProposals.filter((entry) => entry.title === "Red Ring")).toHaveLength(1);
     expect(state.activeState.memoryProposals.find((entry) => entry.id === "proposal-red-ring-2")).toBeUndefined();
+
+    state = reduce(state, {
+      type: "ADD_MEMORY_PROPOSAL",
+      proposal: {
+        ...proposal,
+        id: "proposal-red-ring-3",
+        content: "• Shroud has abandoned the technology hunt and ordered the Red Ring to seize the harbor before dawn.",
+      },
+    });
+
+    expect(state.activeState.memoryProposals.find((entry) => entry.id === "proposal-red-ring-3")?.status).toBe("pending");
+  });
+
+  it("does not let one rejected Brain revision mute later Brain suggestions", () => {
+    let state = baseAdventure();
+    const brain = makeBrain({ id: "brain-edythe", characterName: "Edythe" });
+    state = { ...state, brains: [brain] };
+
+    const rejected = makeMemoryProposal({
+      id: "brain-update-1",
+      proposedType: "brainUpdate",
+      targetId: brain.id,
+      title: "Edythe",
+      content: JSON.stringify({ thoughts: { watched_door: "She decides the watcher knows Seth's apartment." } }),
+    });
+    state = reduce(state, { type: "ADD_MEMORY_PROPOSAL", proposal: rejected });
+    state = reduce(state, { type: "REJECT_MEMORY_PROPOSAL", proposalId: rejected.id });
+
+    state = reduce(state, {
+      type: "ADD_MEMORY_PROPOSAL",
+      proposal: {
+        ...rejected,
+        id: "brain-update-2",
+        content: JSON.stringify({ thoughts: { morning_promise: "She realizes staying until morning became a promise rather than surveillance." } }),
+      },
+    });
+
+    expect(state.activeState.memoryProposals.find((entry) => entry.id === "brain-update-2")?.status).toBe("pending");
+  });
+
+  it("does not start a Story Card cooldown when proposal dedupe discarded the candidate", () => {
+    let state = baseAdventure();
+    const card = makeStoryCard({ id: "card-edythe", title: "Edythe", content: "Existing facts." });
+    state = { ...state, storyCards: [card] };
+    const rejected = makeMemoryProposal({
+      id: "card-update-1",
+      proposedType: "storyCard",
+      targetId: card.id,
+      title: card.title,
+      content: "Edythe promises to remain until morning.",
+      appendContent: false,
+    });
+    state = reduce(state, { type: "ADD_MEMORY_PROPOSAL", proposal: rejected });
+    state = reduce(state, { type: "REJECT_MEMORY_PROPOSAL", proposalId: rejected.id });
+
+    state = reduce(state, { type: "ADD_MEMORY_PROPOSAL", proposal: { ...rejected, id: "card-update-2" } });
+    state = reduce(state, {
+      type: "MARK_STORY_CARD_UPDATED",
+      storyCardId: card.id,
+      turn: 42,
+      proposalId: "card-update-2",
+    });
+
+    expect(state.activeState.memoryProposals.find((entry) => entry.id === "card-update-2")).toBeUndefined();
+    expect(state.storyCards.find((entry) => entry.id === card.id)?.lastAutoUpdateTurn).toBeUndefined();
   });
 
   it("still allows new living-card updates after a different living update was dismissed", () => {
