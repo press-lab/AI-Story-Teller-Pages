@@ -65,6 +65,7 @@ export interface MemoryUpdateSnapshot {
   state: string;
   keys?: string[];
   type?: ComponentType | StoryCardType;
+  eventMemory?: EventMemory;
   memoryMode?: StoryCardMemoryMode;
   compactKind?: StoryCardCompactKind;
   compactStatus?: StoryCardCompactStatus;
@@ -131,7 +132,7 @@ export interface ComponentEntry {
   updatedAt: ISODateString;
 }
 
-export type StoryCardType = "character" | "location" | "lore" | "plot" | "custom";
+export type StoryCardType = "character" | "location" | "lore" | "plot" | "event" | "custom";
 export type StoryCardMemoryMode = "static" | "living" | "historical";
 export type StoryCardCompactKind =
   | "pact"
@@ -143,6 +144,16 @@ export type StoryCardCompactKind =
   | "truce";
 export type StoryCardCompactStatus = "active" | "strained" | "broken" | "resolved" | "superseded";
 
+export interface EventMemory {
+  /** Exact Chronicle messages supporting this completed event. */
+  sourceMessageIds: string[];
+  /** Character names/aliases; candidate links, not unconditional triggers. */
+  participants: string[];
+  /** Phrases describing situations where this event may be relevant. */
+  recallCues: string[];
+  kind: "first" | "commitment" | "revelation" | "choice" | "sharedExperience";
+}
+
 export interface StoryCard {
   id: string;
   title: string;
@@ -150,6 +161,7 @@ export interface StoryCard {
   matchType: TriggerMatchType;
   content: string;
   type: StoryCardType;
+  eventMemory?: EventMemory;
   /**
    * static: always-true reference facts; living: current evolving subject whose
    * updates merge/archive; historical: past event or completed arc record.
@@ -446,6 +458,7 @@ export interface MemoryProposal {
   appendContent?: boolean;
   memoryMode?: StoryCardMemoryMode;
   storyCardType?: StoryCardType;
+  eventMemory?: EventMemory;
   autoUpdate?: boolean;
   autoUpdateCooldownTurns?: number;
   storyCardPatch?: Partial<Pick<StoryCard, "active" | "pinned" | "protected" | "inclusionPolicy" | "priority" | "state" | "compactKind" | "compactStatus">>;

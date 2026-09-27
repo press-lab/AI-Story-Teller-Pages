@@ -7,7 +7,7 @@ import { approximateTokenCount } from "../tokenizer/approximateTokenCount";
 import type { AdventurePageProps } from "./pageTypes";
 import { CheckboxField, Field, Highlight, MemoryUpdateHistory, NumberInput, TokenCountBadge, UpdatedAtBadge, commaList, contentSnippet, formatCompactTimestamp, fromCommaList } from "./shared";
 
-const TYPE_ORDER: StoryCardType[] = ["character", "location", "lore", "plot", "custom"];
+const TYPE_ORDER: StoryCardType[] = ["character", "location", "lore", "plot", "event", "custom"];
 const MEMORY_MODE_OPTIONS: StoryCardMemoryMode[] = ["static", "living", "historical"];
 const COMPACT_KIND_OPTIONS: Array<{ value: StoryCardCompactKind; label: string }> = [
   { value: "pact", label: "Pact / deal" },
@@ -27,6 +27,7 @@ const TYPE_LABELS: Record<StoryCardType, string> = {
   location: "Location",
   lore: "Lore",
   plot: "Plot",
+  event: "Event Memory",
   custom: "Custom",
 };
 
@@ -236,7 +237,7 @@ export function StoryCardsPage({
         },
       });
     } else if (rec.action === "create") {
-      const validTypes = new Set<StoryCardType>(["character", "location", "lore", "plot", "custom"]);
+      const validTypes = new Set<StoryCardType>(["character", "location", "lore", "plot", "event", "custom"]);
       const type: StoryCardType = validTypes.has(rec.suggestedType as StoryCardType)
         ? (rec.suggestedType as StoryCardType)
         : "custom";
@@ -865,7 +866,7 @@ export function StoryCardsPage({
                       <select
                         value={card.type}
                         onChange={(event) =>
-                          dispatch({ type: "UPDATE_STORY_CARD", storyCardId: card.id, patch: { type: event.target.value as StoryCardType } })
+                          dispatch({ type: "UPDATE_STORY_CARD", storyCardId: card.id, patch: { type: event.target.value as StoryCardType, ...(event.target.value === "event" ? { memoryMode: "historical", autoUpdate: false } : {}) } })
                         }
                       >
                         {Object.entries(TYPE_LABELS).map(([value, label]) => (
@@ -879,6 +880,7 @@ export function StoryCardsPage({
                   <Field label="Memory Mode">
                     <select
                       value={card.memoryMode ?? "static"}
+                      disabled={card.type === "event"}
                       onChange={(event) =>
                         dispatch({ type: "UPDATE_STORY_CARD", storyCardId: card.id, patch: { memoryMode: event.target.value as StoryCard["memoryMode"] } })
                       }
@@ -1072,6 +1074,42 @@ export function StoryCardsPage({
                     />
                   </Field>
                   <div className="row">
+                    {card.type === "event" && (
+                      <fieldset>
+                        <legend>Event Memory recall and evidence</legend>
+                        <Field label="Participants">
+                          <input
+                            value={commaList(card.eventMemory?.participants ?? [])}
+                            onChange={event => dispatch({
+                              type: "UPDATE_STORY_CARD", storyCardId: card.id,
+                              patch: { eventMemory: {
+                                sourceMessageIds: [], recallCues: [], kind: "sharedExperience",
+                                ...card.eventMemory, participants: fromCommaList(event.target.value),
+                              } },
+                            })}
+                          />
+                        </Field>
+                        <Field label="Recall cues">
+                          <input
+                            value={commaList(card.eventMemory?.recallCues ?? card.keys)}
+                            onChange={event => dispatch({
+                              type: "UPDATE_STORY_CARD", storyCardId: card.id,
+                              patch: { eventMemory: {
+                                sourceMessageIds: [], participants: [], kind: "sharedExperience",
+                                ...card.eventMemory, recallCues: fromCommaList(event.target.value),
+                              } },
+                            })}
+                          />
+                        </Field>
+                        <details>
+                          <summary>Original event evidence</summary>
+                          {!card.eventMemory?.sourceMessageIds.length && <p>No Chronicle source messages are attached.</p>}
+                          {card.eventMemory?.sourceMessageIds.map(id => (
+                            <p key={id}><strong>{id}</strong>: {adventure.messages.find(message => message.id === id)?.content ?? "Source message is no longer available."}</p>
+                          ))}
+                        </details>
+                      </fieldset>
+                    )}
                     <button type="button" onClick={() => dispatch({ type: "REORDER_STORY_CARD", storyCardId: card.id, direction: "up" })}>
                       Move Up
                     </button>

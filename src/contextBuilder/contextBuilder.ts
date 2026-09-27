@@ -1,3 +1,4 @@
+import { selectEventMemories } from "../memory/eventMemory";
 import type {
   Adventure,
   BrainEntry,
@@ -503,6 +504,7 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
 
   // F. Story Cards + Auto-Cards
   const storyCardItems: ContextItem[] = [];
+  const recalledEvents = selectEventMemories(adventure.storyCards, triggerText);
   for (const card of prioritySort(adventure.storyCards)) {
     const forced = isForced(adventure, "storyCard", card.id);
     if (!card.active && !forced) {
@@ -510,11 +512,13 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
       continue;
     }
     const keysWithTitle = card.keys.includes(card.title) ? card.keys : [card.title, ...card.keys];
-    const match = matchPatterns(triggerText, keysWithTitle, card.matchType ?? "phrase");
+    const match = card.type === "event"
+      ? { matched: recalledEvents.has(card.id), pattern: recalledEvents.get(card.id) }
+      : matchPatterns(triggerText, keysWithTitle, card.matchType ?? "phrase");
     if (match.matched) triggeredThreadIds.add(card.id);
     const matched = card.inclusionPolicy === "always" || card.pinned || forced || (card.inclusionPolicy !== "manual" && match.matched);
     if (matched) {
-      const next = item(card.id, "storyCard", card.title, storyCardContextContent(card), card.priority, card.protected, card.pinned, card.active, card.inclusionPolicy, "user");
+      const next = item(card.id, "storyCard", card.title, (card.type === "event" ? "Historical reference; use only when relevant, do not force a callback.\n" : "") + storyCardContextContent(card), card.priority, card.protected, card.pinned, card.active, card.inclusionPolicy, "user");
       pushIncluded(next, `Story card included by ${card.pinned ? "pin" : forced ? "manual force" : card.inclusionPolicy === "always" ? "always policy" : `trigger ${match.pattern}`}; priority=${card.priority}; protected=${card.protected}.`);
       storyCardItems.push(next);
     } else {

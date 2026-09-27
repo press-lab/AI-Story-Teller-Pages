@@ -871,7 +871,7 @@ export async function runManualStoryCardsUpdate(
   return { actions: [...actions, { type: "LOG_EVALUATION_RESULT", entry: logEntry }], logEntry };
 }
 
-const STORY_CARD_TYPES = new Set<StoryCardType>(["character", "location", "lore", "plot", "custom"]);
+const STORY_CARD_TYPES = new Set<StoryCardType>(["character", "location", "lore", "plot", "event", "custom"]);
 
 function validMemoryMode(value: unknown): StoryCardMemoryMode | undefined {
   return value === "static" || value === "living" || value === "historical" ? value : undefined;
@@ -884,7 +884,8 @@ function validStoryCardType(value: unknown): StoryCardType | undefined {
 function defaultStoryCardType(intent: StoryCardAIBuilderRequest["intent"]): StoryCardType | undefined {
   if (intent === "character") return "character";
   if (intent === "location") return "location";
-  if (intent === "subplot" || intent === "event" || intent === "relationship") return "plot";
+  if (intent === "event") return "event";
+  if (intent === "subplot" || intent === "relationship") return "plot";
   if (intent === "faction" || intent === "object" || intent === "secret" || intent === "rule") return "lore";
   return undefined;
 }
@@ -992,7 +993,7 @@ Respond ONLY with valid JSON:
       "action": "create",
       "cardId": "existing-card-id-if-updating",
       "title": "Specific Card Title",
-      "storyCardType": "character|location|lore|plot|custom",
+      "storyCardType": "character|location|lore|plot|event|custom",
       "memoryMode": "static|living|historical",
       "content": "• Bullet fact one.\\n• Bullet fact two.",
       "keys": ["specific phrase", "narrow keyword"],
@@ -1573,7 +1574,7 @@ Respond ONLY with valid JSON:
       "content": "replacement or update content",
       "title": "optional proposal title",
       "memoryMode": "static|living|historical",
-      "storyCardType": "character|location|lore|plot|custom",
+      "storyCardType": "character|location|lore|plot|event|custom",
       "storyCardPatch": { "active": true, "pinned": false, "protected": false, "compactStatus": "resolved", "inclusionPolicy": "triggered" },
       "componentPatch": { "active": true, "pinned": false, "protected": false },
       "rationale": "one concrete sentence"

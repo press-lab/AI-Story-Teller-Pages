@@ -1,3 +1,4 @@
+import { sameEventMemory } from "../memory/eventMemory";
 import type {
   Adventure,
   AdventureAction,
@@ -67,6 +68,7 @@ function storyCardMemorySnapshot(card: StoryCard): MemoryUpdateSnapshot {
     state: card.state,
     keys: [...card.keys],
     type: card.type,
+    eventMemory: card.eventMemory,
     memoryMode: card.memoryMode,
     compactKind: card.compactKind,
     compactStatus: card.compactStatus,
@@ -751,6 +753,7 @@ function sanitizeProposal(proposal: MemoryProposal): MemoryProposal | null {
 }
 
 function routedProposal(state: Adventure, proposal: MemoryProposal): MemoryProposal {
+  if (proposal.proposedType === "storyCard" && proposal.storyCardType === "event") return { ...proposal, memoryMode: "historical", autoUpdate: false, targetId: undefined, appendContent: undefined };
   const routed = resolveMemoryTarget(state, {
     proposedType: proposal.proposedType,
     title: proposal.title,
@@ -849,6 +852,8 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal)
     const existing = state.storyCards.find(
       (card) => proposal.targetId ? card.id === proposal.targetId : normalizeProposalTitle(card.title) === normalizeProposalTitle(proposal.title),
     );
+    if (proposal.storyCardType === "event" && existing) return {};
+    if (existing?.type === "event") return {};
     const automationPatch = (current?: StoryCard): Partial<StoryCard> => ({
       ...(proposal.autoUpdate !== undefined ? { autoUpdate: proposal.autoUpdate } : {}),
       ...(proposal.autoUpdateCooldownTurns !== undefined
@@ -936,6 +941,7 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal)
           keys: sanitizeStoryCardTriggers(state, cardTitle, proposal.suggestedTriggers, undefined, proposal.memoryMode ?? "static"),
           memoryMode: proposal.memoryMode ?? "static",
           type: proposal.storyCardType ?? "custom",
+          eventMemory: proposal.eventMemory,
           active: true,
           pinned: false,
           autoUpdate: proposal.autoUpdate ?? false,
@@ -1175,7 +1181,7 @@ function applyCompanionMemoryProposals(
   for (const proposal of proposals) {
     const clean = sanitizeProposal(routedProposal(workingState, proposal));
     if (!clean) continue;
-    const autoApprove = workingState.memoryAutoApprove?.[clean.proposedType as keyof typeof workingState.memoryAutoApprove] ?? false;
+    const autoApprove = clean.storyCardType !== "event" && (workingState.memoryAutoApprove?.[clean.proposedType as keyof typeof workingState.memoryAutoApprove] ?? false);
     if (!autoApprove) {
       recorded.push(clean);
       continue;
@@ -1346,9 +1352,13 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
       return touchAdventure(state, { storyCards: updateById(state.storyCards, action.storyCardId, (item) => touch({ ...item, pinned: false })) });
     case "UPDATE_STORY_CARD":
       return touchAdventure(state, {
-        storyCards: updateById(state.storyCards, action.storyCardId, (item) => mergePatch<StoryCard>(item, action.patch)),
+        storyCards: updateById(state.storyCards, action.storyCardId, (item) => {
+          const next = mergePatch<StoryCard>(item, action.patch);
+          return next.type === "event" ? { ...next, memoryMode: "historical", autoUpdate: false } : next;
+        }),
       });
     case "APPLY_STORY_CARD_UPDATE":
+      if (state.storyCards.some(card => card.id === action.storyCardId && card.type === "event")) return state;
       if (action.content === undefined && (!action.patch || Object.keys(action.patch).length === 0)) return state;
       return touchAdventure(state, {
         storyCards: updateById(state.storyCards, action.storyCardId, (item) => {
@@ -1543,6 +1553,7 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
     case "ADD_MEMORY_PROPOSAL": {
       const clean = sanitizeProposal(routedProposal(state, action.proposal));
       if (!clean) return state;
+      if (clean.storyCardType === "event" && [...state.storyCards.filter(c => c.type === "event"), ...state.activeState.memoryProposals.filter(p => p.storyCardType === "event")].some(c => sameEventMemory(c, clean))) return state;
       // Dedup: drop a proposal that duplicates one already pending, one the user already
       // dismissed (rejected/ignored), or a NEW story card whose title already exists as a card.
       // Without this, the model re-suggesting the same entity each turn spawns a fresh duplicate —
@@ -1603,7 +1614,7 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
             normalizedReplacementContent(component.content) === normalizedReplacementContent(clean.content),
         );
       if (duplicatesPending || duplicatesDismissed || duplicatesCard || duplicatesStoryCardContent || duplicatesExistingCardContent || duplicatesExistingTargetContent || duplicatesCurrentPressure) return state;
-      const autoApprove = state.memoryAutoApprove?.[clean.proposedType as keyof typeof state.memoryAutoApprove] ?? false;
+      const autoApprove = clean.storyCardType !== "event" && (state.memoryAutoApprove?.[clean.proposedType as keyof typeof state.memoryAutoApprove] ?? false);
       if (autoApprove) {
         const approved = updateMemoryProposal(clean, { status: "approved" });
         const applied = applyApprovedMemoryProposal(state, approved);

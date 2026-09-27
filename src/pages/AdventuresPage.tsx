@@ -93,7 +93,7 @@ const COMPONENT_TYPE_LABELS: Record<ComponentType, string> = {
   memory: "Lore Block (legacy)",
   custom: "Custom",
 };
-const storyCardTypes: StoryCardType[] = ["character", "location", "lore", "plot", "custom"];
+const storyCardTypes: StoryCardType[] = ["character", "location", "lore", "plot", "event", "custom"];
 const uniqueComponentTypes = new Set<ComponentType>([
   "narrationRules",
   "aiInstructions",

@@ -17,16 +17,19 @@ const proposalTypes: MemoryProposalType[] = [
   "summaryUpdate",
   "ignore",
 ];
-const storyCardTypes: StoryCardType[] = ["character", "location", "lore", "plot", "custom"];
+const storyCardTypes: StoryCardType[] = ["character", "location", "lore", "plot", "event", "custom"];
 
 interface MemoryInboxPageProps extends AdventurePageProps {
+  onFindEventMemories?: (onProgress: (message: string) => void, signal: AbortSignal) => Promise<void>;
   onRegenerateProposal?: (proposalId: string) => Promise<void>;
   onReconcileMemory?: (request: MemoryReconcileRequest) => Promise<void>;
   loading?: boolean;
 }
 
-export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onReconcileMemory, loading = false }: MemoryInboxPageProps) {
+export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onReconcileMemory, onFindEventMemories, loading = false }: MemoryInboxPageProps) {
   const allProposals = [...adventure.activeState.memoryProposals].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const [eventScan, setEventScan] = useState<AbortController>();
+  const [eventProgress, setEventProgress] = useState("");
   const [sourceText, setSourceText] = useState("");
   const [reconcileDirective, setReconcileDirective] = useState("");
   const [reconcileEntryCount, setReconcileEntryCount] = useState(20);
@@ -105,7 +108,7 @@ export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onR
     <section className="page editor-surface memory-inbox-page">
       <div className="editor-page-summary">
         <p className="muted">
-          Review proposed memory writes before they become active story context.
+          Review proposed memory writes before they become active story context. Event Memories always wait for your approval.
         </p>
         <div className="editor-stat-row" aria-label="Memory suggestion counts">
           <span>{totalPending} pending</span>
@@ -114,6 +117,17 @@ export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onR
         </div>
       </div>
 
+      {onFindEventMemories && <div className="panel">
+        <button type="button" disabled={loading || Boolean(eventScan)} onClick={async () => {
+          const controller = new AbortController(); setEventScan(controller);
+          try { await onFindEventMemories(setEventProgress, controller.signal); }
+          catch (error) { setEventProgress(error instanceof Error ? error.message : "Event scan failed."); }
+          finally { setEventScan(undefined); }
+        }}>Find event memories in earlier play</button>
+        {eventScan && <button type="button" onClick={() => eventScan.abort()}>Stop after current excerpt</button>}
+        <p className="muted">Scans the Chronicle in excerpts using your background model. Each excerpt uses an AI request. Results remain suggestions for review.</p>
+        <p role="status">{eventProgress}</p>
+      </div>}
       <div className="editor-command-bar">
         <input
           type="search"
@@ -302,6 +316,7 @@ function ProposalCard({ proposal, dispatch, onUpdate, onRegenerate }: ProposalCa
 
       <details className="editor-tools-panel">
         <summary>Source &amp; details</summary>
+        {proposal.eventMemory && <p>Event Memory · {proposal.eventMemory.kind} · Participants: {proposal.eventMemory.participants.join(", ")} · Recall cues: {proposal.eventMemory.recallCues.join(", ")} · Source messages: {proposal.eventMemory.sourceMessageIds.join(", ")}</p>}
         <div className="grid two">
           <Field label="Source">
             <textarea
@@ -340,7 +355,7 @@ function ProposalCard({ proposal, dispatch, onUpdate, onRegenerate }: ProposalCa
                   onChange={(event) => onUpdate(proposal, { storyCardType: event.target.value as StoryCardType })}
                   disabled={!isPending}
                 >
-                  {storyCardTypes.map((type) => <option key={type} value={type}>{type}</option>)}
+                  {storyCardTypes.map((type) => <option key={type} value={type}>{type === "event" ? "Event Memory" : type}</option>)}
                 </select>
               </Field>
               <Field label="Memory Mode">
