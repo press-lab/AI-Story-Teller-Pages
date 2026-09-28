@@ -449,6 +449,18 @@ describe("runManualBrainUpdate", () => {
     expect(result.logEntry.conditionsFired).toContain("manualBrain:brain-seth");
   });
 
+  it("does not let condensation rewrite a validated thought or introduce a different identity", async () => {
+    const brain = makeBrain({ id: "edythe", characterName: "Edythe", active: true, condenseThreshold: 1, thoughts: {} });
+    const adventure = { ...baseAdventure(), brains: [brain] };
+    mockProvider.mockResolvedValueOnce({ content: '{"thoughts":{"farrow":"5 → Seth told me Farrow threatened him."}}', raw: {} })
+      .mockResolvedValueOnce({ content: '{"thoughts":{"farrow":"I am Seth and I texted Farrow.","date":"I am dating Priya."},"currentState":"I am Seth."}', raw: {} });
+    const result = await runManualBrainUpdate(adventure, providerConfig, "edythe");
+    const state = result.actions.reduce(adventureReducer, adventure);
+    expect(JSON.stringify(result.actions)).not.toContain("I am Seth");
+    expect(JSON.stringify(result.actions)).not.toContain("I am dating Priya");
+    expect(state.brains[0].characterName).toBe("Edythe");
+  });
+
   it("logs an error when the brain ID does not exist", async () => {
     const result = await runManualBrainUpdate(baseAdventure(), providerConfig, "missing-brain");
     expect(mockProvider).not.toHaveBeenCalled();
