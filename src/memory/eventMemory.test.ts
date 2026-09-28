@@ -31,10 +31,12 @@ beforeEach(() => provider.mockReset());
 
 describe("Event Memories", () => {
   it("discovers an event independently of an existing character, requires approval, and preserves evidence", async () => {
+    const reviewState = seed();
+    reviewState.memoryAutoApprove.storyCard = false;
     provider.mockResolvedValue({ content: JSON.stringify([candidate]), raw: {} });
-    const result = await detectStoryCardProposals(seed(), config);
+    const result = await detectStoryCardProposals(reviewState, config);
     expect(result.errors).toEqual([]);
-    let state = result.actions.reduce(adventureReducer, seed());
+    let state = result.actions.reduce(adventureReducer, reviewState);
     expect(state.storyCards).toHaveLength(1);
     const p = state.activeState.memoryProposals[0];
     expect(p.eventMemory?.sourceMessageIds).toEqual(["door"]);

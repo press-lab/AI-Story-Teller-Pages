@@ -1057,6 +1057,44 @@ describe("adventureReducer", () => {
     ).toBe(false);
   });
 
+  it("auto-approves new Event Memory Story Cards when Story Card auto-approval is enabled", () => {
+    const base = baseAdventure();
+    const state = reduce(
+      {
+        ...base,
+        memoryAutoApprove: { ...base.memoryAutoApprove, storyCard: true },
+      },
+      {
+        type: "ADD_MEMORY_PROPOSAL",
+        proposal: makeMemoryProposal({
+          id: "event-auto-approved",
+          proposedType: "storyCard",
+          storyCardType: "event",
+          memoryMode: "historical",
+          title: "The Silver Warrant Revelation",
+          content: "Azula revealed the silver warrant in the council chamber.",
+          suggestedTriggers: ["silver warrant", "council chamber revelation"],
+          eventMemory: {
+            sourceMessageIds: ["message-12"],
+            participants: ["Azula", "Seth"],
+            recallCues: ["silver warrant", "council chamber revelation"],
+            kind: "revelation",
+          },
+        }),
+      },
+    );
+
+    expect(state.storyCards).toContainEqual(expect.objectContaining({
+      title: "The Silver Warrant Revelation",
+      type: "event",
+      memoryMode: "historical",
+    }));
+    expect(state.activeState.memoryProposals).toContainEqual(expect.objectContaining({
+      id: "event-auto-approved",
+      status: "approved",
+    }));
+  });
+
   it("approving a proposal that names a card by an alias updates that card instead of duplicating it", () => {
     const toph = makeStoryCard({ id: "card-toph", title: "Toph Beifong", keys: ["Toph", "Beifong"], content: "• Greatest earthbender alive.", active: true });
     let state = { ...baseAdventure(), storyCards: [toph] };
