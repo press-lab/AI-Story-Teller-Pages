@@ -197,7 +197,7 @@ Authoring contract:
 ${ADVENTURE_GENERATION_BEST_PRACTICES}
 
 Component guidelines:
-- Always include one "plotEssentials" component containing the current operating truth: current situation, active tensions, obligations, and constraints that must shape every scene. Use 4-7 tight bullets and keep it under 140 words. Do not turn it into a full backstory or lore encyclopedia.
+- Always include one "plotEssentials" component containing the overarching premise, central long-term conflict, and persistent story-wide constraints. Put immediate threats in Active Pressure and the current storyline in Current Arc. Use 4-7 tight bullets and keep it under 140 words. Do not turn it into a full backstory or lore encyclopedia.
 - Include one "activePressure" component for the immediate external threat, obligation, deadline, or unresolved problem driving the opening. Keep it to exactly one concise sentence.
 - Add "aiInstructions" for scenario-specific generation constraints or drift prevention not covered by narration mechanics. Do not put story facts there. Structure it with named ALL-CAPS sections (SETTING, PLAYER POWER, STORY BEHAVIOR, PROSE, etc.) relevant to the premise. Each section should be 2-5 tight bullet points. Always include a PROSE section with guidance on sentence rhythm, dialogue voice diversity, and sensory vs. expository balance. Include a STORY BEHAVIOR section that specifies what the story should be driven by and what drift patterns to prevent. If the premise involves a powerful or exceptional player character, include a PLAYER POWER section with explicit rules about how NPCs engage without worship or constant nerf attempts. Omit sections that are not relevant to the premise.
 - Add "authorNote" only for concise tone, mood, pacing, or prose influence.
@@ -269,7 +269,7 @@ function setupPreferenceGuidance(preferences: AdventureGenPreferences): string {
 
 Apply these preferences by routing facts to the correct surfaces:
 - AI Instructions: behavior, player-control contract, prose mode, drift prevention, adult-content policy if opted in.
-- Plot Essentials: 4-7 bullets of current operating truth only.
+- Plot Essentials: 4-7 bullets of overarching premise and persistent story-wide constraints only.
 - Active Pressure: exactly one sentence naming the current external pressure.
 - Author's Note: brief tone/mood/pacing nudge only.
 - Story Cards/Brains: recurring people, relationships, locations, factions, secrets, rules, and evolving internal state.`;

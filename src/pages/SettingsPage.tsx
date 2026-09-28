@@ -381,55 +381,11 @@ export function SettingsPage({
           <p className="muted" style={{ marginTop: "0.5rem" }}>API keys are not written to adventure JSON or IndexedDB saves.</p>
         </article>
 
-        {/* ── Background Cost Mode ──────────────────── */}
-        {(() => {
-          const sem = activeSettings.semanticEvaluationSettings;
-          const bud = activeSettings.tokenBudgetSettings;
-          const mem = globalAdventureSettings.memoryDetectionSettings;
-          const isOff = !sem.enabled;
-          const isLight = sem.enabled && (sem.semanticEvalEveryNTurns ?? 1) >= 5 && (bud.autoSceneStateEveryNTurns ?? 1) >= 5 && mem.enabled && mem.everyNTurns >= 5;
-          const isNormal = sem.enabled && (sem.semanticEvalEveryNTurns ?? 1) === 2 && (bud.autoSceneStateEveryNTurns ?? 1) === 2 && mem.enabled && mem.everyNTurns === 3;
-          const isHeavy = sem.enabled && (sem.semanticEvalEveryNTurns ?? 1) === 1 && (bud.autoSceneStateEveryNTurns ?? 1) === 1 && mem.enabled && mem.everyNTurns === 1;
-          return (
-            <article className="panel settings-card settings-section-full" style={{ gridColumn: "1 / -1" }}>
-              <h3>Background Cost</h3>
-              <div className="toolbar" style={{ marginBottom: "0.5rem" }}>
-                <button type="button" className={isOff ? "active" : ""} title="Disable all background AI calls. Play-only." onClick={() => {
-                  updateSemanticSettings({ enabled: false, semanticEvalEveryNTurns: 1 });
-                  updateBudget({ autoSceneStateEveryNTurns: 0 });
-                  updateMemoryDetection({ enabled: false });
-                }}>Off</button>
-                <button type="button" className={isLight ? "active" : ""} title="PE/Summary check every 5 turns. Character thoughts are free (inline)." onClick={() => {
-                  updateSemanticSettings({ enabled: true, semanticEvalEveryNTurns: 5 });
-                  updateBudget({ autoSceneStateEveryNTurns: 5 });
-                  updateMemoryDetection({ enabled: true, everyNTurns: 5 });
-                }}>Light</button>
-                <button type="button" className={isNormal ? "active" : ""} title="PE/Summary check every 2–3 turns. Balanced." onClick={() => {
-                  updateSemanticSettings({ enabled: true, semanticEvalEveryNTurns: 2 });
-                  updateBudget({ autoSceneStateEveryNTurns: 2 });
-                  updateMemoryDetection({ enabled: true, everyNTurns: 3 });
-                }}>Normal</button>
-                <button type="button" className={isHeavy ? "active" : ""} title="PE/Summary check every turn. Maximum tracking." onClick={() => {
-                  updateSemanticSettings({ enabled: true, semanticEvalEveryNTurns: 1 });
-                  updateBudget({ autoSceneStateEveryNTurns: 1 });
-                  updateMemoryDetection({ enabled: true, everyNTurns: 1 });
-                }}>Heavy</button>
-              </div>
-              <div className="grid three" style={{ marginTop: "0.5rem" }}>
-                <Field label="Memory every N turns">
-                  <NumberInput min={1} value={mem.everyNTurns} onChange={(everyNTurns) => updateMemoryDetection({ everyNTurns: Math.max(1, everyNTurns) })} />
-                </Field>
-                <Field label="Scene state every N turns (0 = off)">
-                  <NumberInput min={0} value={bud.autoSceneStateEveryNTurns ?? 1} onChange={(autoSceneStateEveryNTurns) => updateBudget({ autoSceneStateEveryNTurns })} />
-                </Field>
-                <Field label="Semantic eval every N turns (0 = off)">
-                  <NumberInput min={0} value={sem.semanticEvalEveryNTurns ?? 1} onChange={(semanticEvalEveryNTurns) => updateSemanticSettings({ semanticEvalEveryNTurns })} />
-                </Field>
-              </div>
-            </article>
-          );
-        })()}
-
+        <article className="panel settings-card settings-section-full">
+          <h3>Automatic memory</h3>
+          <CheckboxField label="Remember while narrating (one pass)" checked={globalAdventureSettings.memoryDetectionSettings.enabled} onChange={(enabled) => updateMemoryDetection({ enabled })} />
+          <p className="muted">Story and small memory updates share one response. Unchanged memory needs no update. Routine memory checks no longer make separate API calls. Explicit custom rules, continuity corrections, and next-arc generation can still use additional calls.</p>
+        </article>
         {/* ── Context Budget (advanced) ─────────────── */}
         {advanced && (
           <article className="panel settings-card settings-section-full" style={{ gridColumn: "1 / -1" }}>
@@ -564,12 +520,12 @@ export function SettingsPage({
               />
             </Field>
             <CheckboxField
-              label="Route all auto-updates to Memory Inbox (disable to auto-apply without review)"
+              label="Review updates from custom semantic rules"
               checked={activeSettings.semanticEvaluationSettings.requireApprovalForAutoUpdates ?? true}
               onChange={(requireApprovalForAutoUpdates) => updateSemanticSettings({ requireApprovalForAutoUpdates })}
             />
             <p className="muted">
-              When on, all LLM-generated updates go to Memory Suggestions for your review instead of applying directly.
+              When on, updates from custom semantic rules go to Memory Suggestions. Automatic one-pass memory uses the per-type approval controls below.
             </p>
             <h4>Background Provider</h4>
             <p className="muted">
@@ -631,32 +587,15 @@ export function SettingsPage({
           <article className="panel settings-card">
             <h3>Memory Detection</h3>
             <p className="muted">
-              After each turn, use the evaluation model to detect new durable facts worth storing as memory proposals.
-              The discovery pass reviews recent story evidence for missing Story Cards, even when the story response omitted memory tags.
+              The narrator returns evidenced memory suggestions with the story. Local checks reject malformed, duplicate, or unsupported updates without another API call.
             </p>
             <CheckboxField
-              label="Enable AI memory detection"
+              label="Remember while narrating"
               checked={globalAdventureSettings.memoryDetectionSettings.enabled}
               onChange={(enabled) => updateMemoryDetection({ enabled })}
             />
             {globalAdventureSettings.memoryDetectionSettings.enabled && (
               <>
-                <Field label="Run every N turns (1 = every turn)">
-                  <NumberInput
-                    min={1}
-                    value={globalAdventureSettings.memoryDetectionSettings.everyNTurns}
-                    onChange={(everyNTurns) => updateMemoryDetection({ everyNTurns: Math.max(1, everyNTurns) })}
-                  />
-                </Field>
-                <CheckboxField
-                  label="Generate card content"
-                  checked={globalAdventureSettings.memoryDetectionSettings.generateContent}
-                  onChange={(generateContent) => updateMemoryDetection({ generateContent })}
-                />
-                <p className="muted">
-                  When on, the AI writes the proposal body in the same call — more useful but costs more tokens.
-                  When off, proposals arrive with blank content for you to fill in.
-                </p>
                 <div className="auto-approve-toggles">
                   <span className="auto-approve-label muted">Auto-approve:</span>
                   <CheckboxField label="Legacy Summary" checked={activeSettings.memoryAutoApprove.summaryUpdate} onChange={(summaryUpdate) => updateMemoryAutoApprove({ summaryUpdate })} />
@@ -669,7 +608,7 @@ export function SettingsPage({
                 </div>
                 <p className="muted">
                   These toggles apply to Memory Suggestions created by automatic detection, manual builders,
-                  and inline memory tags. Replaced Plot Essentials text remains in component history; it does not automatically become a Story Card.
+                  and one-pass memory. One-pass Plot Essentials, plot cards, and protected-card changes always require review. Plot Essentials holds the overarching story; Active Pressure holds immediate external stakes; Current Arc holds the ongoing storyline and pacing.
                 </p>
               </>
             )}
