@@ -1,6 +1,6 @@
 import type { MemoryProposal } from "../types/adventure";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createDefaultAdventure, makeComponent, makeStoryCard } from "../state/defaults";
+import { createDefaultAdventure, makeBrain, makeComponent, makeStoryCard } from "../state/defaults";
 import { adventureReducer } from "../state/adventureReducer";
 import { runMemoryCycle } from "../triggers/semanticEngine";
 import { validateMemoryUpdate, memoryUpdateShapeError } from "./validateMemoryUpdate";
@@ -10,7 +10,7 @@ vi.mock("../providers/openAICompatible", () => ({ isNativeDeepSeekProvider: () =
 import { sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
 const provider = vi.mocked(sendOpenAICompatibleChatCompletion);
 const config = { name: "test", baseUrl: "https://example.com", apiKey: "test", model: "test", temperature: 0, maxOutputTokens: 600 };
-const accepted = JSON.stringify({ accepted: true, meaningfulChange: true, evidenceMessageIds: ["arrival"], reason: "Arrival supersedes travel." });
+const accepted = JSON.stringify({ accepted: true, meaningfulChange: true, evidenceMessageIds: ["arrival"], reason: "Arrival supersedes travel.", pressureChange: "changed_obligation", identityMatchesTarget: true });
 function makeMemoryProposal(fields: Partial<MemoryProposal>): MemoryProposal {
   return { id: "test-proposal", proposedType: "storyCard", title: "Test", content: "", status: "pending", sourceTurnId: "245", sourceText: "", suggestedTriggers: [], confidence: 0.8, rationale: "Test", createdAt: "2026-09-27T12:42:00Z", updatedAt: "2026-09-27T12:42:00Z", ...fields };
 }
@@ -137,5 +137,69 @@ describe("Seattle memory quality", () => {
     expect(memoryUpdateShapeError("activePressure", "word ".repeat(46))).toContain("45-word");
     expect(memoryUpdateShapeError("plotEssentials", "word ".repeat(181))).toContain("180-word");
     expect(memoryUpdateShapeError("storyCard", "word ".repeat(501))).toContain("500-word");
+  });
+});
+
+
+describe("Seattle pressure and identity regressions", () => {
+  it.each(["same route", "shower", "typing indicator"])("rejects %s churn even when the evaluator fires", async detail => {
+    const a = seattle(); a.components = a.components.filter(c => c.type === "activePressure");
+    provider.mockResolvedValueOnce({ content: '["plotEssentialsPressure:pressure"]', raw: {} })
+      .mockResolvedValueOnce({ content: `Watchers remain while Seth continues the ${detail}.`, raw: {} })
+      .mockResolvedValueOnce({ content: JSON.stringify({ accepted: true, meaningfulChange: true, evidenceMessageIds: ["arrival"], pressureChange: "none" }), raw: {} });
+    const result = await runMemoryCycle(a, config);
+    expect(result.actions.some(a => a.type === "ADD_MEMORY_PROPOSAL" || a.type === "MARK_COMPONENT_UPDATED")).toBe(false);
+    expect(result.actions.reduce(adventureReducer, a).components[0].content).toBe(a.components[0].content);
+    const input = JSON.parse(provider.mock.calls[0][0].messages.at(-1)!.content);
+    expect(input.latestTurn.map((m: { id: string }) => m.id)).toEqual(["arrival"]);
+  });
+
+  it("cannot recycle an old threat as a latest-turn pressure change", async () => {
+    provider.mockResolvedValueOnce({ content: JSON.stringify({ accepted: true, meaningfulChange: true, evidenceMessageIds: ["correction"], pressureChange: "new_threat" }), raw: {} });
+    const result = await validateMemoryUpdate(seattle(), config, "activePressure", "Pressure", "Old pressure", "A watcher threatens Seth.");
+    expect(result.changed).toBe(false);
+    expect(result.error).toContain("latest turn");
+  });
+
+  it("allows pressure resolution without inventing a replacement threat", async () => {
+    const a = seattle(); a.messages.at(-1)!.content = "The watchers abandon the pursuit and release me without conditions.";
+    provider.mockResolvedValueOnce({ content: JSON.stringify({ accepted: true, meaningfulChange: true, evidenceMessageIds: ["arrival"], pressureChange: "resolved" }), raw: {} });
+    expect(await validateMemoryUpdate(a, config, "activePressure", "Pressure", "Watchers pursue Seth.", "There is no immediate external pressure.")).toEqual({ changed: true });
+  });
+
+  it.each([true, false])("blocks Seth's perspective in Edythe's brain with auto-approval=%s", async autoApprove => {
+    const a = seattle(); a.components = []; a.memoryAutoApprove.brainUpdate = autoApprove;
+    a.brains = [makeBrain({ id: "edythe", characterName: "Edythe", active: true, thoughts: {} })];
+    a.messages = [{ id: "arrival", role: "user", content: "Edythe is elsewhere. I text Farrow: don't text me. I arrange to meet Priya.", createdAt: "2026-09-27T12:41:00Z" }];
+    provider.mockResolvedValueOnce({ content: '["brain:edythe"]', raw: {} })
+      .mockResolvedValueOnce({ content: JSON.stringify({ thoughts: { date: "245 → I texted Farrow and arranged my date with Priya." } }), raw: {} })
+      .mockResolvedValueOnce({ content: JSON.stringify({ accepted: true, meaningfulChange: true, evidenceMessageIds: ["arrival"], identityMatchesTarget: false }), raw: {} });
+    const result = await runMemoryCycle(a, config);
+    expect(result.actions.some(a => a.type === "ADD_MEMORY_PROPOSAL")).toBe(false);
+    expect(result.actions.reduce(adventureReducer, a).brains[0].thoughts).toEqual({});
+    expect(result.logEntry.errors.join(" ")).toContain("target identity");
+  });
+
+  it("blocks Farrow's messages from becoming Edythe lore", async () => {
+    const a = seattle(); a.components = [];
+    a.storyCards = [makeStoryCard({ id: "edythe", title: "Edythe", type: "character", content: "Edythe is a guarded vampire.", autoUpdate: true, keys: [] })];
+    a.messages.at(-1)!.content = "I ignore Farrow's invitation signed —F. Edythe has left.";
+    provider.mockResolvedValueOnce({ content: '["storyCard:edythe"]', raw: {} })
+      .mockResolvedValueOnce({ content: "Edythe sends invitations signed —F.", raw: {} })
+      .mockResolvedValueOnce({ content: JSON.stringify({ accepted: true, meaningfulChange: true, evidenceMessageIds: ["arrival"], identityMatchesTarget: false }), raw: {} });
+    const result = await runMemoryCycle(a, config);
+    expect(result.actions.some(a => a.type === "ADD_MEMORY_PROPOSAL" || a.type === "MARK_STORY_CARD_UPDATED")).toBe(false);
+  });
+
+  it("accepts a supported reaction belonging to Edythe", async () => {
+    const a = seattle(); a.components = [];
+    a.brains = [makeBrain({ id: "edythe", characterName: "Edythe", active: true, thoughts: {} })];
+    a.messages.at(-1)!.content = "I tell Edythe that Farrow threatened me. She promises to investigate him.";
+    provider.mockResolvedValueOnce({ content: '["brain:edythe"]', raw: {} })
+      .mockResolvedValueOnce({ content: JSON.stringify({ thoughts: { farrow: "245 → Seth told me Farrow threatened him. I will investigate." } }), raw: {} })
+      .mockResolvedValueOnce({ content: accepted, raw: {} });
+    const result = await runMemoryCycle(a, config);
+    expect(result.logEntry.errors).toEqual([]);
+    expect(result.actions.some(a => a.type === "ADD_MEMORY_PROPOSAL")).toBe(true);
   });
 });
