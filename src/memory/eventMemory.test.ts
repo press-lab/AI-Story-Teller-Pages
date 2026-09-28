@@ -30,6 +30,14 @@ function eventCard() { return makeStoryCard({ id: "encounter", title: candidate.
 beforeEach(() => provider.mockReset());
 
 describe("Event Memories", () => {
+  it("keeps a completed event discoverable when a character card already mentions it", async () => {
+    const a = seed();
+    a.storyCards[0].content = content;
+    provider.mockResolvedValue({ content: JSON.stringify([candidate]), raw: {} });
+    const result = await detectStoryCardProposals(a, config);
+    expect(result.actions).toContainEqual(expect.objectContaining({ type: "ADD_MEMORY_PROPOSAL", proposal: expect.objectContaining({ storyCardType: "event", eventMemory: expect.objectContaining({ sourceMessageIds: ["door"] }) }) }));
+  });
+
   it("discovers an event independently of an existing character, requires approval, and preserves evidence", async () => {
     const reviewState = seed();
     reviewState.memoryAutoApprove.storyCard = false;

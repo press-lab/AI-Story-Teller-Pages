@@ -29,7 +29,7 @@ describe("normalizeAdventure", () => {
     expect(card?.coreFacts?.join("\n")).toContain("secret pact");
     expect(card?.coreFacts?.join("\n")).toContain("official cover story");
     expect([...(card?.currentFacts ?? []), ...(card?.recentDevelopments ?? [])].join("\n")).toContain("Sump air filter");
-    expect(card?.pinned).toBe(true);
+    expect(card?.pinned).toBe(false);
     expect(card?.protected).toBe(false);
   });
 });

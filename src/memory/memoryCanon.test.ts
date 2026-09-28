@@ -3,6 +3,25 @@ import { memoryCanonMessages } from "./memoryCanon";
 import { createDefaultAdventure, makeComponent, makeStoryCard, makeBrain, normalizeAdventure } from "../state/defaults";
 
 describe("memory canon grounding", () => {
+  it("omits default prose rules and off-scene profiles while preserving one-hop canon and custom instructions", () => {
+    const a = createDefaultAdventure();
+    a.components.push(makeComponent({ title: "Canon exception", type: "aiInstructions", content: "Vampires reflect normally." }));
+    a.storyCards = [
+      makeStoryCard({ title: "Player", content: "Seth is the player character.", type: "character" }),
+      makeStoryCard({ title: "Edythe", content: "Edythe's sister is Eleanor.", type: "character" }),
+      makeStoryCard({ title: "Eleanor", content: "Eleanor is a mechanic.", type: "character" }),
+      makeStoryCard({ title: "Oath", content: "Honor the oath.", protected: true }),
+      ...Array.from({ length: 20 }, (_, i) => makeStoryCard({ title: `Absent ${i}`, type: "character", content: "OFFSCENE ".repeat(100) })),
+    ];
+    const text = memoryCanonMessages(a, "Edythe speaks to me.", "Review the meeting").map(m => m.content).join("\n");
+    for (const fact of ["player character", "sister is Eleanor", "Eleanor is a mechanic", "reflect normally", "Honor the oath"]) expect(text).toContain(fact);
+    expect(text).not.toContain("OFFSCENE");
+    expect(text).not.toContain("END OPEN:");
+    expect(text.length).toBeLessThan(a.storyCards.map(c => c.content).join("\n").length / 4);
+    a.components[0].content = "Custom narration canon: Seth cannot swim.";
+    expect(memoryCanonMessages(a, "Edythe speaks.", "Review").map(m => m.content).join("\n")).toContain("Seth cannot swim");
+  });
+
   it("includes player identity and relevant rules without leaking private or gated state", () => {
     const a = createDefaultAdventure();
     a.components = [
@@ -20,8 +39,8 @@ describe("memory canon grounding", () => {
     ];
     a.brains = [makeBrain({ characterName: "Edythe", thoughts: { secret: "PRIVATE PLAN" } })];
     const text = memoryCanonMessages(a, "Edythe asks you about the deal.", "Append an arc event").map(m => m.content).join("\n");
-    for (const included of ["You are Seth Press", "Seth is the player character", "Julian is a rival bidder", "Seth is immune", "Vampires reflect normally"]) expect(text).toContain(included);
-    for (const excluded of ["SECRET CLIMAX", "Unverified old log", "PRIVATE PLAN", "OBSOLETE RULE", "UNRELATED LORE", "DISABLED CHARACTER"]) expect(text).not.toContain(excluded);
+    for (const included of ["You are Seth Press", "Seth is the player character", "Seth is immune", "Vampires reflect normally"]) expect(text).toContain(included);
+    for (const excluded of ["SECRET CLIMAX", "Unverified old log", "PRIVATE PLAN", "OBSOLETE RULE", "UNRELATED LORE", "DISABLED CHARACTER", "Julian is a rival bidder"]) expect(text).not.toContain(excluded);
   });
   it("defaults arc updates to review while preserving saved explicit choices", () => {
     const a = createDefaultAdventure();

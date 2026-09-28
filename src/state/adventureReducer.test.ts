@@ -1232,7 +1232,7 @@ describe("adventureReducer", () => {
     expect(merged?.coreFacts?.join("\n")).toContain("Their bond was a court secret");
     expect([...(merged?.currentFacts ?? []), ...(merged?.recentDevelopments ?? [])].join("\n")).toContain("private chambers");
     expect(merged?.content).not.toContain("court secret");
-    expect(merged?.pinned).toBe(true);
+    expect(merged?.pinned).toBe(false);
     expect(merged?.protected).toBe(false);
     expect(state.storyCards.filter((c) => c.title === "Setu and Nyxa")).toHaveLength(1);
     expect(merged?.keys).toContain("chambers");
@@ -1311,7 +1311,7 @@ describe("adventureReducer", () => {
     expect(updated?.coreFacts?.join("\n")).toContain("secret pact");
     expect(updated?.coreFacts?.join("\n")).toContain("official cover story");
     expect([...(updated?.currentFacts ?? []), ...(updated?.recentDevelopments ?? [])].join("\n")).toContain("Sump air filter");
-    expect(updated?.pinned).toBe(true);
+    expect(updated?.pinned).toBe(false);
     expect(updated?.protected).toBe(false);
     expect(updated?.priority).toBeGreaterThanOrEqual(80);
     expect(updated?.tokenBudget).toBeGreaterThanOrEqual(450);

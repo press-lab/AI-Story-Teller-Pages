@@ -309,7 +309,7 @@ describe("runSemanticPostTurnEvaluation", () => {
     const result = await runMemoryCycle(adventure, providerConfig);
 
     expect(result.actions.some((action) => action.type === "ADD_MEMORY_PROPOSAL")).toBe(true);
-    expect(mockProvider.mock.calls[1][0].messages[0].content).toContain("Write exactly one short sentence");
+    expect(mockProvider.mock.calls[1][0].messages.map(m => m.content).join("\n")).toContain("Write exactly one short sentence");
     expect(result.actions.some((action) => action.type === "APPLY_COMPONENT_UPDATE")).toBe(false);
 
     // pressure auto-approves by default, so content is applied immediately
@@ -391,7 +391,7 @@ describe("runSemanticPostTurnEvaluation", () => {
     };
 
     mockProvider.mockImplementation(async (request) => {
-      const system = request.messages[0]?.content ?? "";
+      const system = request.messages.map(m => m.content).join("\n");
       const user = request.messages[1]?.content ?? "";
       if (system.includes("evaluation engine") && user.includes("plotEssentialsPressure:component-pressure")) {
         return { content: '["plotEssentialsPressure:component-pressure"]', raw: {} };

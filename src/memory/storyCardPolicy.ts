@@ -168,7 +168,9 @@ export function applyGuardedStoryCardPolicy<T extends StoryCardPolicyInput>(card
     ...compactFacts,
     compactKind,
     compactStatus,
-    pinned: prominent ? true : (card.pinned ?? false),
+    // Guarding facts against loss must not force a subplot into every scene.
+    // Preserve explicit/saved pins, including an explicit user unpin.
+    pinned: card.pinned ?? false,
     priority: prominent ? Math.max(card.priority ?? 0, GUARDED_STORY_CARD_MIN_PRIORITY) : (card.priority ?? 0),
     tokenBudget,
     state: appendStateTag(card.state, GUARDED_STORY_CARD_STATE_TAG),

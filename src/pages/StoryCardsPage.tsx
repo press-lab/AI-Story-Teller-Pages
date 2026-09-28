@@ -1041,7 +1041,7 @@ export function StoryCardsPage({
                       onChange={(checked) => dispatch({ type: checked ? "ACTIVATE_STORY_CARD" : "DEACTIVATE_STORY_CARD", storyCardId: card.id })}
                     />
                     <CheckboxField
-                      label="Pinned (loads before other triggered cards)"
+                      label="Pinned (included even without a trigger match)"
                       checked={card.pinned}
                       onChange={(checked) => dispatch({ type: checked ? "PIN_STORY_CARD" : "UNPIN_STORY_CARD", storyCardId: card.id })}
                     />

@@ -31,11 +31,44 @@ function seattle() {
 beforeEach(() => { provider.mockReset(); });
 
 describe("Seattle memory quality", () => {
+  it("does not miss early evidence when discovery runs every five turns", async () => {
+    const a = seattle();
+    a.memoryDetectionSettings = { enabled: true, generateContent: true, everyNTurns: 5 };
+    a.messages = Array.from({ length: 10 }, (_, i) => ({
+      id: `evidence-${i}`, role: i % 2 ? "assistant" as const : "user" as const,
+      content: i === 1 ? "Mira is the new harbor master and will handle our permits." : "The conversation continues.", createdAt: "2026-09-27T12:40:00Z",
+    }));
+    provider.mockResolvedValueOnce({ content: JSON.stringify([{ title: "Mira", content: "Mira is the harbor master.", storyCardType: "character", evidenceMessageIds: ["evidence-1"] }]), raw: {} });
+    const result = await detectStoryCardProposals(a, config);
+    expect(result.actions).toContainEqual(expect.objectContaining({ type: "ADD_MEMORY_PROPOSAL", proposal: expect.objectContaining({ title: "Mira", sourceText: expect.stringContaining("harbor master") }) }));
+    expect(provider.mock.calls[0][0].messages.at(-1)?.content).toContain("evidence-0");
+  });
+
+  it("suppresses renamed captured facts, including dismissed and same-response duplicates, but keeps new facts", async () => {
+    const a = seattle(); a.memoryDetectionSettings.enabled = true;
+    a.storyCards = [makeStoryCard({ title: "Harbor", content: "Mira controls harbor permits." })];
+    a.activeState.memoryProposals = [makeMemoryProposal({ title: "Welcome", content: "Earnest offered Seth a chair.", status: "rejected" })];
+    a.messages.push({ id: "new", role: "assistant", content: "Mira controls harbor permits. Earnest offered Seth a chair. The floodgate has permanently collapsed.", createdAt: "2026-09-27T12:42:00Z" });
+    provider.mockResolvedValueOnce({ content: JSON.stringify([
+      { title: "Permit authority", content: "• Mira controls harbor permits." },
+      { title: "Hospitality", content: "Earnest offered Seth a chair." },
+      { title: "Floodgate", content: "The floodgate has permanently collapsed." },
+      { title: "Broken gate", content: "The floodgate has permanently collapsed." },
+    ].map(p => ({ ...p, storyCardType: "plot", evidenceMessageIds: ["new"] }))), raw: {} });
+    const result = await detectStoryCardProposals(a, config);
+    expect(result.actions).toHaveLength(1);
+    expect(result.actions[0]).toMatchObject({ type: "ADD_MEMORY_PROPOSAL", proposal: { title: "Floodgate" } });
+    const prompt = provider.mock.calls[0][0].messages.map(m => m.content).join("\n");
+    expect(prompt).toContain("Routine hospitality");
+    expect(prompt).toContain("Earnest offered Seth a chair");
+    expect(provider.mock.calls[0][0].messages[0].content).not.toContain("Permit authority");
+  });
+
   it("updates Plot Essentials and pressure independently with validated evidence", async () => {
     const a = seattle();
     const replacement = "Seth has heard Edythe's explanation of vampires but remains unconvinced. He has arrived at the Cullen house to meet her family.";
     provider.mockImplementation(async request => {
-      const system = request.messages.filter(m => m.role === "system").map(m => m.content).join("\n");
+      const system = request.messages.map(m => m.content).join("\n");
       if (system.includes("MEMORY UPDATE VALIDATION")) return { content: accepted, raw: {}, usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 } };
       if (system.includes("evaluation engine")) return { content: '["plotEssentialsPressure:pressure","plotEssentialsDrift:pe"]', raw: {} };
       if (system.includes("maintaining Plot Essentials")) return { content: replacement, raw: {} };
@@ -58,6 +91,19 @@ describe("Seattle memory quality", () => {
     expect(prompt).toContain("skepticism is not ignorance");
     expect(prompt).toContain("my actual text was witty");
     expect(prompt).toContain("I get out of the car");
+    const generations = provider.mock.calls.filter(([r]) => r.messages.some(m => m.content.includes("maintaining Plot Essentials") || m.content.includes("updating the Active Pressure")));
+    for (const [request] of [...generations, ...reviews]) {
+      // Shared reference prefix precedes variable target instructions in both paths.
+      expect(request.messages[0].content).toMatch(/^Memory accuracy:/);
+      expect(request.messages[1].content).toMatch(/^Canon component:/);
+    }
+    expect(generations).toHaveLength(2);
+    // The Anthropic adapter hoists system messages; no dynamic target may be there.
+    const systemPrompts = generations.map(([r]) => r.messages.filter(m => m.role === "system").map(m => m.content));
+    expect(systemPrompts[0]).toEqual(systemPrompts[1]);
+    for (const [request] of generations) {
+      expect(request.messages.find(m => m.content.includes("maintaining Plot Essentials") || m.content.includes("updating the Active Pressure"))?.role).toBe("user");
+    }
   });
 
   it("blocks narrated pressure before auto-approval and leaves existing pressure intact", async () => {
@@ -137,6 +183,15 @@ describe("Seattle memory quality", () => {
     expect(memoryUpdateShapeError("activePressure", "word ".repeat(46))).toContain("45-word");
     expect(memoryUpdateShapeError("plotEssentials", "word ".repeat(181))).toContain("180-word");
     expect(memoryUpdateShapeError("storyCard", "word ".repeat(501))).toContain("500-word");
+  });
+
+  it("grounds validation in characters named only by a proposed replacement", async () => {
+    const a = seattle();
+    a.storyCards = [makeStoryCard({ title: "Mira", type: "character", content: "Mira cannot read minds." })];
+    provider.mockResolvedValueOnce({ content: JSON.stringify({ accepted: false, reason: "Mira cannot read minds." }), raw: {} });
+    const result = await validateMemoryUpdate(a, config, "storyCard", "Seth", "Seth arrived.", "Mira read Seth's thoughts.");
+    expect(result.changed).toBe(false);
+    expect(provider.mock.calls[0][0].messages.map(m => m.content).join("\n")).toContain("Mira cannot read minds");
   });
 });
 
