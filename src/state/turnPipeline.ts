@@ -1,7 +1,6 @@
+import { ONE_PASS_MEMORY_ID, onePassMemoryActions, parseOnePassMemory } from "../memory/onePassMemory";
 import { buildContext, extractInlineThoughts } from "../contextBuilder/contextBuilder";
-import type { MemoryProposal } from "../types/adventure";
 import { runContinuityCheck, scanForRiskyClaims } from "../continuityLint";
-import { resolveMemoryTarget } from "../memory/resolveMemoryTarget";
 import { evaluateTriggerRules, type TriggerEvaluationEvent } from "../triggers/triggerEngine";
 import type {
   Adventure,
@@ -12,9 +11,8 @@ import type {
   ProviderConfig,
   ProviderUsage,
 } from "../types/adventure";
-import { createId, nowIso } from "../utils/id";
+import { createId } from "../utils/id";
 import { adventureReducer } from "./adventureReducer";
-import { cardMatchesName } from "./defaults";
 
 export interface MockableProviderResponse {
   content: string;
@@ -89,7 +87,9 @@ export async function applyProviderResponse({
   let next = adventure;
 
   // Extract inline thought tags and memory tags from the response before the player sees it.
-  const { cleanContent: thoughtCleanContent, thoughts: inlineThoughts, memoryTags } = extractInlineThoughts(response.content);
+  const memory = parseOnePassMemory(response.content);
+  const { cleanContent: thoughtCleanContent } = extractInlineThoughts(memory.story);
+  if (!thoughtCleanContent.trim()) throw new Error("The model returned no visible story. No memory was applied.");
   const rawContentForLint = thoughtCleanContent;
 
   // Continuity lint: scan for risky claims and, if found, run a targeted LLM check.
@@ -108,82 +108,30 @@ export async function applyProviderResponse({
     }
   }
 
-  // Apply inline thought captures to brains (zero extra API calls).
-  // Also collect thoughts from brains with printThoughts enabled so they can be appended visibly.
-  const visibleThoughtLines: string[] = [];
-  if (inlineThoughts.length > 0) {
-    const turn = next.activeState.turn;
-    for (const thought of inlineThoughts) {
-      const brain = next.brains.find(
-        (b) => b.characterName.toLowerCase() === thought.name.toLowerCase(),
-      );
-      if (brain && thought.key && thought.value) {
-        next = adventureReducer(next, {
-          type: "APPLY_BRAIN_UPDATE",
-          brainId: brain.id,
-          patch: {
-            thoughts: { [`${turn}_${thought.key}`]: `${turn} → ${thought.value}` },
-          },
-          mode: "append",
-          turn,
-          preview: thought.value,
-        });
-        if (brain.printThoughts) {
-          visibleThoughtLines.push(`*[${brain.characterName}]: ${thought.value}*`);
-        }
-      }
-    }
-  }
-  if (visibleThoughtLines.length > 0) {
-    finalContent = `${finalContent}\n\n${visibleThoughtLines.join("\n")}`;
+  const messageId = assistantMessageId ?? createId("message");
+  const memoryEnabled = mode !== "comms" && next.memoryDetectionSettings.enabled
+    && preProviderContext.sections.some(s => s.items.some(i => i.id === ONE_PASS_MEMORY_ID));
+  if (memoryEnabled) {
+    // Never apply memory from a discarded draft after a continuity rewrite.
+    const actions = onePassMemoryActions(next, preProviderContext, continuityCorrected ? [] : memory.updates,
+      finalContent, messageId, continuityCorrected ? "Memory skipped after continuity correction." : memory.error);
+    const before = next;
+    next = reduceActions(next, actions);
+    const visibleThoughts = next.brains.filter(b => b.printThoughts).flatMap(b => {
+      const old = before.brains.find(previous => previous.id === b.id);
+      return Object.entries(b.thoughts).filter(([key, value]) => old?.thoughts[key] !== value)
+        .map(([, value]) => "*[" + b.characterName + "]: " + value + "*");
+    });
+    if (visibleThoughts.length) finalContent += "\n\n" + visibleThoughts.join("\n");
   }
 
-  // Convert inline memory tags to story card proposals (zero extra API calls).
-  // Living-card routing: if a tag's subject already has a card (matched by exact title), it becomes
-  // an UPDATE to that card (append + archive on approval) instead of a duplicate sibling. Otherwise
-  // it's a new card. Either way it lands in the Memory Inbox for approval.
-  if (memoryTags.length > 0) {
-    const turn = next.activeState.turn;
-    for (const tag of memoryTags) {
-      const routed = resolveMemoryTarget(next, {
-        proposedType: "storyCard",
-        title: tag.title,
-        content: tag.content,
-        suggestedTriggers: tag.triggers,
-        memoryMode: tag.memoryMode,
-        category: tag.category,
-        sourceText: "",
-        rationale: `Inline memory tag: ${tag.category}`,
-      });
-      const existing = routed.targetId ? next.storyCards.find((c) => c.id === routed.targetId) : next.storyCards.find((c) => cardMatchesName(c, routed.title));
-      const now = nowIso();
-      const proposal: MemoryProposal = {
-        id: createId("proposal"),
-        sourceTurnId: String(turn),
-        sourceText: "",
-        proposedType: "storyCard",
-        title: routed.title,
-        content: routed.content,
-        suggestedTriggers: routed.suggestedTriggers,
-        confidence: 0.75,
-        rationale: routed.rationale ?? (existing ? `Update to "${existing.title}" (inline memory tag: ${tag.category})` : `Inline memory tag: ${tag.category}`),
-        status: "pending",
-        targetId: routed.targetId ?? existing?.id,
-        appendContent: routed.appendContent ?? Boolean(existing),
-        memoryMode: routed.memoryMode,
-        createdAt: now,
-        updatedAt: now,
-      };
-      next = adventureReducer(next, { type: "ADD_MEMORY_PROPOSAL", proposal });
-    }
-  }
 
   next = adventureReducer(next, {
     type: "ADD_MESSAGE",
     role: "assistant",
     content: finalContent,
     inputMode: undefined,
-    id: assistantMessageId,
+    id: messageId,
     createdAt,
     usage: response.usage,
   });
@@ -234,6 +182,7 @@ export async function runTurnPipeline({
   }
 
   const preProviderContext = buildContext(next, {
+    skipThoughtCapture: mode === "comms",
     currentInput: currentInputForContext ?? (recordUserInput ? text : undefined),
     latestModelOutput: latestAssistantOutput(next),
   });

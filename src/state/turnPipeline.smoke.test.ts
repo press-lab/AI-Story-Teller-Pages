@@ -341,7 +341,7 @@ describe("full turn smoke path", () => {
     expect(adventure.storyCards.some((card) => card.content.includes("west wall"))).toBe(false);
   });
 
-  it("routes an inline memory tag to a living-card UPDATE when its subject already has a card", async () => {
+  it("routes an one-pass memory update to a living-card UPDATE when its subject already has a card", async () => {
     let adventure = createDefaultAdventure("Tag Routing");
     adventure = dispatch(adventure, {
       type: "UPSERT_STORY_CARD",
@@ -350,7 +350,7 @@ describe("full turn smoke path", () => {
 
     // Model emits a memory tag whose title matches the existing card → should become an update, not a sibling.
     const provider = vi.fn(async () => ({
-      content: 'They go public.\n<memory category="relationship" memoryMode="living" title="Setu and Nyxa" content="• The bond is now openly acknowledged at court." triggers="Setu, Nyxa, court"/>',
+      content: "They go public. The bond is now openly acknowledged at court.\n<memory_updates>{\"updates\":[{\"kind\":\"card\",\"target\":\"Setu and Nyxa\",\"content\":\"The bond is now openly acknowledged at court.\",\"evidence\":\"They go public. The bond is now openly acknowledged at court.\",\"reason\":\"Durable new knowledge\"}]}</memory_updates>",
     }));
 
     const result = await runTurnPipeline({
@@ -373,7 +373,7 @@ describe("full turn smoke path", () => {
     expect(result.responseContent).not.toContain("<memory");
   });
 
-  it("keeps static lore cards static when inline memory tags target them", async () => {
+  it("keeps static lore cards static when one-pass memory updates target them", async () => {
     let adventure = createDefaultAdventure("Static Tag Routing");
     adventure = dispatch(adventure, {
       type: "UPSERT_STORY_CARD",
@@ -389,7 +389,7 @@ describe("full turn smoke path", () => {
     });
 
     const provider = vi.fn(async () => ({
-      content: 'A new signal pings.\n<memory category="world_fact" memoryMode="living" title="Red Ring" content="• Red Ring pressure now centers on stolen dampener cores." triggers="Red Ring, dampener cores"/>',
+      content: "A new signal pings. Red Ring controls the stolen dampener cores.\n<memory_updates>{\"updates\":[{\"kind\":\"card\",\"target\":\"Red Ring\",\"content\":\"Red Ring controls the stolen dampener cores.\",\"evidence\":\"A new signal pings. Red Ring controls the stolen dampener cores.\",\"reason\":\"Durable new knowledge\"}]}</memory_updates>",
     }));
 
     const result = await runTurnPipeline({
@@ -403,17 +403,18 @@ describe("full turn smoke path", () => {
 
     const proposal = result.adventure.activeState.memoryProposals.find((p) => p.proposedType === "storyCard");
     expect(proposal).toMatchObject({
-      title: "Red Ring: Current Status",
-      targetId: undefined,
-      appendContent: undefined,
-      memoryMode: "living",
+      title: "Red Ring",
+      targetId: "card-red-ring",
+      appendContent: true,
+      memoryMode: "static",
     });
     expect(result.adventure.storyCards.find((card) => card.id === "card-red-ring")?.memoryMode).toBe("static");
     expect(result.responseContent).not.toContain("<memory");
   });
 
-  it("appends inline brain thoughts without replacing the existing thought log", async () => {
+  it("appends one-pass brain thoughts without replacing the existing thought log", async () => {
     let adventure = createDefaultAdventure("Thought Capture");
+    adventure.memoryAutoApprove.brainUpdate = true;
     adventure = dispatch(adventure, {
       type: "UPSERT_BRAIN",
       brain: makeBrain({
@@ -427,7 +428,7 @@ describe("full turn smoke path", () => {
     });
 
     const provider = vi.fn(async () => ({
-      content: 'Margo studies the ward.\n<thought name="Margo" key="new_pattern">I saw the ward answer Seth before it answered me.</thought>',
+      content: "Margo sees the ward answer Seth first.\n<memory_updates>{\"updates\":[{\"kind\":\"thought\",\"target\":\"Margo\",\"content\":\"I saw the ward answer Seth before it answered me.\",\"evidence\":\"Margo sees the ward answer Seth first.\",\"reason\":\"Durable new knowledge\"}]}</memory_updates>",
     }));
 
     const result = await runTurnPipeline({
@@ -445,8 +446,9 @@ describe("full turn smoke path", () => {
     expect(result.responseContent).not.toContain("<thought");
   });
 
-  it("ignores inline brain thoughts that repeat an existing thought", async () => {
+  it("ignores one-pass brain thoughts that repeat an existing thought", async () => {
     let adventure = createDefaultAdventure("Thought Capture");
+    adventure.memoryAutoApprove.brainUpdate = true;
     adventure = dispatch(adventure, {
       type: "UPSERT_BRAIN",
       brain: makeBrain({
@@ -461,7 +463,7 @@ describe("full turn smoke path", () => {
     });
 
     const provider = vi.fn(async () => ({
-      content: 'Margo studies the ward.\n<thought name="Margo" key="new_pattern">I saw the ward answer Seth before it answered me.</thought>',
+      content: "Margo sees the ward answer Seth first.\n<memory_updates>{\"updates\":[{\"kind\":\"thought\",\"target\":\"Margo\",\"content\":\"I saw the ward answer Seth before it answered me.\",\"evidence\":\"Margo sees the ward answer Seth first.\",\"reason\":\"Durable new knowledge\"}]}</memory_updates>",
     }));
 
     const result = await runTurnPipeline({
@@ -477,7 +479,7 @@ describe("full turn smoke path", () => {
     expect(brain?.thoughts).toEqual({
       old_guard: "0 \u2192 I saw the ward answer Seth before it answered me.",
     });
-    expect(result.responseContent).toBe("Margo studies the ward.");
+    expect(result.responseContent).toBe("Margo sees the ward answer Seth first.");
   });
 
   it("does not advance Arc Director pacing from pinned context unless the thread actually matched", async () => {
@@ -537,18 +539,18 @@ describe("full turn smoke path", () => {
     expect(arc?.arcState?.threadEngagement["card-shroud"]).toBe(1);
   });
 
-  it("supports a silent continue cue while still processing inline memory tags", async () => {
+  it("supports a silent continue cue while still processing one-pass memory updates", async () => {
     let adventure = createDefaultAdventure("Silent Continue");
     adventure = dispatch(adventure, {
       type: "UPSERT_STORY_CARD",
-      storyCard: makeStoryCard({ id: "card-couple", title: "Setu and Nyxa", content: "• Their bond is a court secret.", keys: ["Setu", "Nyxa"], memoryMode: "living", active: true }),
+      storyCard: makeStoryCard({ id: "card-couple", title: "Setu and Nyxa", content: "• Their bond is a court secret.", keys: ["Setu", "Nyxa"], memoryMode: "living", active: true, pinned: true }),
     });
 
     let capturedPayload: ChatMessage[] | undefined;
     const provider = vi.fn(async (messages: ChatMessage[]) => {
       capturedPayload = messages;
       return {
-        content: 'They step into court.\n<memory category="relationship" title="Setu and Nyxa" content="• Their bond is now known by the council." triggers="Setu, Nyxa, council"/>',
+        content: "They step into court. Their bond is now known by the council.\n<memory_updates>{\"updates\":[{\"kind\":\"card\",\"target\":\"Setu and Nyxa\",\"content\":\"Their bond is now known by the council.\",\"evidence\":\"They step into court. Their bond is now known by the council.\",\"reason\":\"Durable new knowledge\"}]}</memory_updates>",
       };
     });
 

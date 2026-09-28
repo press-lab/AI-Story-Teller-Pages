@@ -1,3 +1,4 @@
+import { ONE_PASS_MEMORY_ID, onePassMemoryInstruction } from "../memory/onePassMemory";
 import { selectEventMemories } from "../memory/eventMemory";
 import { PLOT_MEMORY_THRESHOLD } from "../ai/authoringBestPractices";
 import type {
@@ -22,7 +23,7 @@ const SYSTEM_SHELL = `You are the story engine for AI Story Teller. The context 
 
 CONTEXT SECTIONS (read all, honour their order):
   B. AI Instructions — narrative rules and style for this adventure.
-  C. Plot Essentials — current operating truth and always-on constraints. Ground truth.
+  C. Plot Essentials — overarching premise, long-term conflict, and persistent story-wide constraints. Active Pressure names the immediate external threat or obligation.
   C2. Current Story Arc — active arc log and any gated Arc Director phase instruction.
   E. Components — general world-building context (always-on or pinned entries).
   F. Story Cards — World Info entries injected when their trigger keywords appear in recent text.
@@ -373,10 +374,8 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
   const budgetSettings = adventure.tokenBudgetSettings;
   const turnScopeText = buildTurnScopeContract(adventure.activeState.responseLengthHint);
   const captureEligible = options.skipThoughtCapture ? [] : eligibleBrainsForCapture(adventure, triggerText);
-  const thoughtCaptureText = captureEligible.length > 0 ? buildThoughtCaptureInstruction(captureEligible) : undefined;
-  const memoryCategories = options.skipThoughtCapture ? [] : enabledMemoryCategories(adventure);
-  const existingCardTitles = adventure.storyCards.map((c) => c.title);
-  const memoryTagText = memoryCategories.length > 0 ? buildMemoryTagInstruction(memoryCategories, existingCardTitles) : undefined;
+  const memoryText = !options.skipThoughtCapture && adventure.memoryDetectionSettings.enabled
+    ? onePassMemoryInstruction(captureEligible, enabledMemoryCategories(adventure)) : undefined;
   function pushExcluded(
     sourceType: ExcludedContextItem["sourceType"],
     id: string,
@@ -397,14 +396,10 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
   pushIncluded(systemItem, "System shell is always included and protected.");
   const turnScopeItem = item("turn-scope-contract", "system", "Turn Scope Contract", turnScopeText, 1000, true, false, true, "always", "system");
   pushIncluded(turnScopeItem, "Turn scope contract is always included and protected.");
-  const thoughtCaptureItem = thoughtCaptureText
-    ? item("thought-capture-instruction", "system", "Character Thought Capture", thoughtCaptureText, 1000, true, false, true, "always", "system")
+  const memoryItem = memoryText
+    ? item(ONE_PASS_MEMORY_ID, "system", "One-pass Memory", memoryText, 900, false, false, true, "always", "system")
     : undefined;
-  if (thoughtCaptureItem) pushIncluded(thoughtCaptureItem, "Thought capture instruction is included for eligible triggered brains.");
-  const memoryTagItem = memoryTagText
-    ? item("memory-tagging-instruction", "system", "Memory Tagging", memoryTagText, 1000, true, false, true, "always", "system")
-    : undefined;
-  if (memoryTagItem) pushIncluded(memoryTagItem, "Memory tagging instruction is included for enabled system trigger categories.");
+  if (memoryItem) pushIncluded(memoryItem, "Narration and automatic memory share one response.");
 
   // Track which component IDs have already been logged as excluded to avoid double-logging
   const loggedExcluded = new Set<string>();
@@ -427,7 +422,7 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
     pushIncluded(next, `Narration Rules loaded; priority=${component.priority}; protected=${component.protected}.`);
     return [next];
   });
-  const runtimeSystemItems = [turnScopeItem, thoughtCaptureItem, memoryTagItem].filter((entry): entry is ContextItem => Boolean(entry));
+  const runtimeSystemItems = [turnScopeItem, memoryItem].filter((entry): entry is ContextItem => Boolean(entry));
   const systemSection = section("system", "A. System Shell / Global Generation Rules", 0, [systemItem, ...runtimeSystemItems, ...narrationRulesItems]);
 
   // B2. AI Instructions — all active components with type === "aiInstructions"
@@ -562,6 +557,18 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
   });
 
   // J. Next Output Bias (+ response length hint)
+  if (memoryItem) {
+    // Single-item sections need not print their title. Explicit target names let the
+    // model address the correct entry without copying the full memory inventory.
+    const editableComponents = [...plotEssentialItems, ...currentArcItems].filter(entry =>
+      adventure.components.find(c => c.id === entry.id)?.autoUpdate !== false);
+    memoryItem.content += `\nEligible existing targets (use the exact title; omit updates if their content is absent): ${JSON.stringify({
+      cards: storyCardItems.map(entry => entry.title),
+      components: editableComponents.map(entry => ({ title: entry.title, type: adventure.components.find(c => c.id === entry.id)?.type })),
+    })}`;
+    memoryItem.tokenEstimate = approximateTokenCount(memoryItem.content);
+  }
+
   const nextTurnNote = adventure.activeState.nextTurnNote;
   if (nextTurnNote?.content.trim() && !nextTurnNote.active) {
     pushExcluded("nextTurnNote", "next-turn-note", "Next Output Bias", "inactive", "Next Output Bias has content but is not active.");
@@ -649,7 +656,7 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
   const budget = budgetSettings.maxContextTokens;
 
   const isDroppable = (sectionId: ContextSectionKind, entry: ContextItem): boolean => {
-    if (entry.protected || entry.sourceType === "system") return false;
+    if (entry.protected || entry.id === "system-shell") return false;
     if (
       sectionId === "storyCards" &&
       !entry.pinned &&

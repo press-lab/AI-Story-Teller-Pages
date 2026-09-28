@@ -20,11 +20,11 @@ The app is browser-only, local-first, IndexedDB-persisted, no backend. All LLM c
 2. `applyRuntimeEngines` on `input` — keyword/regex trigger rules fire synchronously
 3. `buildContext` — assembles provider payload (see Context Builder)
 4. Provider call — sends to LLM
-5. `extractInlineThoughts` — strips `<thought>` and `<memory>` tags from raw response
+5. `parseOnePassMemory` separates the hidden JSON tail; legacy tags are stripped without applying them
 6. Continuity Lint — if risky claim patterns matched, optional LLM correction pass
-7. Inline thought capture — brain `thoughts` updated from extracted `<thought>` tags
-8. Print thoughts — appended visibly to story output if `printThoughts: true` on brain
-9. Inline memory tagging — `<memory>` tags converted to `MemoryProposal` candidates
+7. Local memory validation — reject invalid evidence, targets, duplicates, and oversized output
+8. Approved thoughts update eligible existing Brains and print only when `printThoughts: true`
+9. One-pass `<memory_updates>` JSON tail — locally checked proposals and eligible Brain thoughts; no separate routine memory call
 10. `ADD_MESSAGE` — store cleaned assistant response
 11. `CONSUME_NEXT_TURN_NOTE` — clears if `expiresAfterUse`
 12. `applyRuntimeEngines` on `output` — keyword/regex trigger rules fire again
@@ -32,8 +32,8 @@ The app is browser-only, local-first, IndexedDB-persisted, no backend. All LLM c
 
 ### Background (async, after turn — not blocking):
 - Semantic evaluation (`runSemanticPostTurnEvaluation`) every `semanticEvalEveryNTurns` turns
-- Memory detection (`detectMemoryFromTurn`) every `memoryDetectionSettings.everyNTurns` turns
-- Memory cycle (`runMemoryCycle`) — periodic LLM check for story card / PE updates
+- Routine memory detection/cycles are no longer scheduled. `memoryDetectionSettings.enabled` selects the one-pass instruction; legacy interval/content fields remain save-compatible but do not schedule calls.
+- Arc continuation runs exceptionally after an arc reaches aftermath. Custom rule and arc requests are guarded against overlap.
 
 ---
 
@@ -83,7 +83,7 @@ When total exceeds `maxContextTokens`, items are dropped in priority order:
 |---|---|---|---|---|
 | `narrationRules` | Yes | System shell (A) | No | Primary per-adventure behavior contract. POV, agency, continuity, tone, format. Protected. One per adventure. |
 | `aiInstructions` | Yes | B | No | Optional separately inspectable scenario-specific contract. Not required when Narration Rules already contain the stable rules. Protected. One per adventure. |
-| `plotEssentials` | Yes | C | Yes (append) | Static world constants — setting, factions, arc beats. Human-edited. AI appends only via Memory Inbox. Auto-update toggle required. |
+| `plotEssentials` | Yes | C | Yes (append) | Overarching premise, long-term conflict, and persistent story-wide constraints. One-pass replacements always require review. |
 | `currentArc` | Yes | C2 | Yes (append) | Running arc log. Requires `arcPremise` for auto-update. Graduate → Story Card when done. |
 | `activePressure` | No* | C | Yes (replace) | One-sentence current external threat or obligation. Auto-updated, auto-approved by default. |
 | `immediateMomentum` | No | — | No | Disabled legacy type. Not generated, auto-updated, or assembled into context. |
@@ -98,7 +98,7 @@ When total exceeds `maxContextTokens`, items are dropped in priority order:
 - Auto-approval: `memoryAutoApprove.currentArcUpdate` (default `true`)
 - "Complete Arc → Story Card" button: creates a `plot` type Story Card from the log, clears content and arcPremise
 - Cooldown: 4 turns default (coarser than Active Pressure's 3)
-- Difference from Plot Essentials: PE = current operating truth and always-on constraints. Arc = the active conflict's running log (accumulates as story unfolds, then gets retired)
+- Difference from Plot Essentials: PE = overarching premise, long-term conflict, and persistent story-wide constraints. Arc = the active conflict's running log (accumulates as story unfolds, then gets retired)
 - Difference from Quests: Arc tracks narrative shape, not task completion. No objective states. Graduated arc becomes referenced backstory via Story Card, not a "quest completed" flag.
 
 ### Arc Director (deterministic story pacing)
@@ -181,8 +181,8 @@ Brains track named character inner state as a keyed thought record. Primary upda
 Triggered by `characterName` or any string in `triggers`, matched against recent text (phrase match). Also respects `inclusionPolicy`, `pinned`, `protected`.
 
 ### Update paths:
-1. **Inline `<thought>` tags** — primary path, zero-cost, each turn if brain is in context
-2. **Semantic engine** (`updateBrain`/`appendBrain` actions) — still available via trigger rules and memory cycle
+1. **One-pass memory thoughts** — narrator returns an evidenced thought in the same response; existing eligible Brains only, honoring per-type auto-approval and cooldowns
+2. **Semantic engine** (`updateBrain`/`appendBrain` actions) — still available via explicitly configured trigger rules
 3. **Manual** — "Update Now" button in BrainsPage
 
 ---
@@ -196,7 +196,7 @@ All AI-generated content suggestions pass through Memory Proposals before becomi
 ### Proposal types:
 | Type | Source | Auto-Approve Default | Apply Behavior |
 |---|---|---|---|
-| `storyCard` | Memory detection, inline `<memory>` tags, story card audit, "Remember This" | Off | Upsert story card |
+| `storyCard` | One-pass memory, story card audit, "Remember This" | Off | Upsert story card |
 | `brainUpdate` | Semantic engine (updateBrain/appendBrain) | Off | Apply BrainPatch |
 | `plotEssentialsUpdate` | Semantic engine, "Suggest Updates" | Off | Append to PE component |
 | `currentArcUpdate` | Semantic engine (updateComponentArc) | **On** | Append to arc component |
@@ -207,7 +207,15 @@ All AI-generated content suggestions pass through Memory Proposals before becomi
 
 Auto-approve settings: `adventure.memoryAutoApprove` — all togglable per adventure.
 
-### `ADD_MEMORY_PROPOSAL` auto-approves immediately if the matching `memoryAutoApprove` flag is true — the proposal never enters the inbox for those types.
+### One-pass validation and approval
+
+Narration and up to four small updates share one provider response. Empty updates are normal. Local checks verify shape, length, current-turn evidence, target existence/eligibility, and duplicates. Existing cards receive additive facts; at most one new recurring subject is proposed. New event recap cards are not generated. Arc updates append evidenced developments without changing authored pacing.
+
+`ADD_MEMORY_PROPOSAL` honors the matching auto-approval flag unless `requiresReview` is true. One-pass Plot Essentials changes, plot cards, and protected-card updates always require review. A broken or missing memory tail preserves the narrative, logs the problem, and never starts a repair call. Continuity/agency corrections retain their exceptional calls and discard memory from the rejected draft.
+
+The one-pass instruction is named and token-counted in Context Preview. Global memory enablement is used consistently for preview and generation and saved to the adventure snapshot. Output reserves up to 1,400 extra tokens for the hidden tail while respecting the configured provider cap. Usage includes both story and memory tokens in the narration call. This is an allowance, not a mandatory output size.
+
+These checks prove local routing and call counts, not model accuracy or literary quality. Memory evidence matching cannot establish every inference. Actual dollar savings depend on provider usage and optional exceptional calls.
 
 ---
 
@@ -224,7 +232,7 @@ Runs in background after each turn (async, doesn't block story).
 - Applies non-generated actions immediately (activate/deactivate/pin/force-include)
 - Queues generated actions (brain/card/component updates) — run in parallel up to `maxParallelUpdateCalls`
 
-### `runMemoryCycle` (periodic, `lastMemoryCycleTurn`):
+### Legacy `runMemoryCycle` (not scheduled by normal play):
 - Plot conditions are evaluated independently: Plot Essentials, Active Pressure, and Current Arc may all fire in one cycle. Pressure cannot consume the Plot Essentials slot.
 - At most one eligible Story Card and one Brain update are selected per cycle; discovery separately proposes missing durable subjects.
 - Generated output routes through Memory Inbox and honors per-type auto-approval settings.
@@ -329,7 +337,7 @@ Stores `targetType` (component/storyCard/brain), `targetId`, `expiresTurn`. Cont
 Multiple named presets stored in localStorage. Each: label, base URL, API key (localStorage only, never in adventure JSON), model, temperature, max output tokens, prompt caching/sticky-session preference, optional OpenRouter routing sort, and optional request throttle (enabled, min seconds between requests, max per minute).
 
 ### Background Provider Config:
-`SemanticEvaluationSettings.backgroundProviderConfig` — when set, all background LLM calls (semantic eval, memory cycle, brain updates, continuity lint) route through this provider. Primary pattern: fast/cheap model (e.g., Groq llama) for background, powerful model for story generation.
+`SemanticEvaluationSettings.backgroundProviderConfig` — when set, separate background LLM calls (custom semantic rules, manual memory updates, continuity lint) route through this provider. Primary pattern: fast/cheap model (e.g., Groq llama) for background, powerful model for story generation.
 
 ---
 
@@ -448,12 +456,11 @@ Player input
         ← authorNote
         ← nextTurnNote (if active)
         ← challengeMode instruction (if SET_CHALLENGE_MODE was dispatched)
-        ← [THOUGHT CAPTURE] injection (if brains present)
-        ← [MEMORY TAGGING] injection (if systemTriggers.enabled)
+        ← [ONE-PASS MEMORY] instruction (if automatic memory enabled)
     → LLM call (story provider)
-    → extractInlineThoughts
-        → <thought> tags → brain.thoughts updates
-        → <memory> tags → MemoryProposal candidates (storyCard type)
+    → parseOnePassMemory (strip tail, preserve visible story)
+        → local evidence/target/dedup checks
+        → approved thoughts and typed MemoryProposal candidates
     → continuityLint (scanForRiskyClaims → runContinuityCheck if matched)
     → ADD_MESSAGE (cleaned response)
     → keyword/regex triggers (output event)
@@ -467,14 +474,10 @@ Player input
                 → PE updates → ADD_MEMORY_PROPOSAL (plotEssentialsUpdate)
                 → arc updates → ADD_MEMORY_PROPOSAL (currentArcUpdate) [auto-approved]
                 → pressure updates → ADD_MEMORY_PROPOSAL [auto-approved]
-        → detectMemoryFromTurn
-            → ADD_MEMORY_PROPOSAL (storyCard or plotEssentialsUpdate)
-        → runMemoryCycle (periodic)
-            → storyCardUpdateConditions + plotEssentialsConditions
-            → ADD_MEMORY_PROPOSAL (always routed to inbox)
+        → arc continuation after aftermath (exceptional)
 
 ADD_MEMORY_PROPOSAL
-    → if memoryAutoApprove[proposedType] === true
+    → if memoryAutoApprove[proposedType] === true and !requiresReview
         → applyApprovedMemoryProposal immediately (never enters inbox)
     → else → enters memoryProposals[] as pending
         → user approves → applyApprovedMemoryProposal

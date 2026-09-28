@@ -1,3 +1,4 @@
+import { parseOnePassMemory } from "../memory/onePassMemory";
 import type { ChatMessage } from "../types/adventure";
 
 const PLAYER_ACTION_VERBS = [
@@ -49,7 +50,7 @@ export function storyResponseWordLimit(hint: number): number {
 }
 
 function stripHiddenTags(text: string): string {
-  return text
+  return parseOnePassMemory(text).story
     .replace(/<think>[\s\S]*?<\/think>/gi, "")
     .replace(/<thought[^>]*>[\s\S]*?<\/thought>/gi, "")
     .replace(/<memory\b[^>]*>/gi, "")
@@ -122,7 +123,7 @@ export function buildStoryResponseCorrectionMessages({
     },
     {
       role: "user",
-      content: `Player input for this turn:\n${playerInput || "(none; continue request)"}\n\nDraft to correct:\n${draft}`,
+      content: `Player input for this turn:\n${playerInput || "(none; continue request)"}\n\nDraft to correct:\n${stripHiddenTags(draft)}`,
     },
   ];
 }

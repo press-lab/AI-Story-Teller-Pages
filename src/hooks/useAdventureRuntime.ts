@@ -1,3 +1,4 @@
+import { ONE_PASS_MEMORY_ID, MEMORY_OUTPUT_RESERVE } from "../memory/onePassMemory";
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { buildContext } from "../contextBuilder/contextBuilder";
 import { saveAdventure } from "../db/adventureDb";
@@ -29,7 +30,6 @@ import {
   runManualStoryCardsUpdate,
   runMemoryReconcile,
   runPlotAIBuilder,
-  runMemoryCycle,
   runRememberThis,
   runSemanticPostTurnEvaluation,
   runStoryCardAIBuilder,
@@ -58,7 +58,7 @@ function mergeProviderConfig(adventure: Adventure, settings: RuntimeProviderSett
 export function applyResponseLengthHint(config: RuntimeProviderSettings, hint: number, hiddenReserveTokens = 0): RuntimeProviderSettings {
   const wordTarget = Number.isFinite(hint) ? Math.max(50, Math.min(500, Math.round(hint))) : 250;
   const visibleTokenCap = Math.ceil(wordTarget * 1.5) + 80;
-  const hiddenReserve = Math.max(0, Math.min(90, Math.ceil(hiddenReserveTokens * 0.25)));
+  const hiddenReserve = Math.max(0, Math.min(MEMORY_OUTPUT_RESERVE, Math.ceil(hiddenReserveTokens)));
   const lengthBoundedCap = visibleTokenCap + hiddenReserve;
   const configuredCap = Number.isFinite(config.maxOutputTokens) && config.maxOutputTokens > 0
     ? config.maxOutputTokens
@@ -67,10 +67,7 @@ export function applyResponseLengthHint(config: RuntimeProviderSettings, hint: n
 }
 
 function hiddenOutputReserveTokens(context: ContextBuildResult): number {
-  const payloadText = context.messages.map((message) => message.content).join("\n");
-  const thoughtExamples = payloadText.match(/<thought\s+name=/gi)?.length ?? 0;
-  const memoryTaggingReserve = payloadText.includes("[MEMORY TAGGING]") ? 120 : 0;
-  return thoughtExamples * 42 + memoryTaggingReserve;
+  return context.sections.some(s => s.items.some(i => i.id === ONE_PASS_MEMORY_ID)) ? MEMORY_OUTPUT_RESERVE : 0;
 }
 
 function correctionConfig(config: RuntimeProviderSettings, responseLengthHint: number): RuntimeProviderSettings {
@@ -174,6 +171,8 @@ export function useAdventureRuntime(
   const providerSettingsRef = useRef(providerSettings);
   const globalMemorySettingsRef = useRef(globalMemorySettings);
   const isSubmittingRef = useRef(false);
+  const semanticInFlight = useRef(new Set<string>());
+  const arcInFlight = useRef(new Set<string>());
   const queuedUpdatesRef = useRef<PendingAdventureUpdate[]>([]);
   const wasHiddenRef = useRef(false);
   const pendingRetryRef = useRef(false);
@@ -238,58 +237,46 @@ export function useAdventureRuntime(
   }
 
   function flushPendingBeforeContext(adventureState: Adventure): Adventure {
-    return adventureReducer(mergeQueuedUpdates(adventureState), { type: "FLUSH_PENDING_UPDATES" });
-  }
-
-  function checkMemoryCycle(adventureState: Adventure) {
-    const settings = globalMemorySettingsRef.current;
-    if (!settings.enabled) return;
-    const currentTurn = adventureState.activeState.turn;
-    const last = adventureState.activeState.lastMemoryCycleTurn;
-    if (last !== undefined && currentTurn - last < settings.everyNTurns) return;
-    void startMemoryCycle({ ...adventureState, memoryDetectionSettings: settings });
-  }
-
-  async function startMemoryCycle(adventureState: Adventure) {
-    try {
-      const result = await runMemoryCycle(adventureState, buildBackgroundConfig(adventureState, providerSettingsRef.current));
-      if (isSubmittingRef.current) {
-        queuePendingUpdate(result.actions, "memoryCycle");
-        return;
-      }
-      applyActionsAndPersist(result.actions);
-    } catch {
-      // silent — memory cycle is best-effort
-    }
+    const next = adventureReducer(mergeQueuedUpdates(adventureState), { type: "FLUSH_PENDING_UPDATES" });
+    return { ...next, memoryDetectionSettings: { ...globalMemorySettingsRef.current } };
   }
 
   async function startSemanticEvaluation(snapshot: Adventure) {
-    if (!snapshot.semanticEvaluationSettings.enabled) return;
+    if (!snapshot.semanticEvaluationSettings.enabled || semanticInFlight.current.has(snapshot.id)) return;
+    if (!snapshot.triggerRules.some(rule => rule.enabled && (rule.evaluationMode ?? "semantic") === "semantic")) return;
     const everyN = snapshot.semanticEvaluationSettings.semanticEvalEveryNTurns ?? 1;
     if (everyN === 0) return;
     const last = snapshot.activeState.lastSemanticEvalTurn;
     if (last !== undefined && snapshot.activeState.turn - last < everyN) return;
-    const result = await runSemanticPostTurnEvaluation(
-      snapshot,
-      mergeProviderConfig(snapshot, providerSettingsRef.current),
-    );
-    const stampAction: AdventureAction = { type: "SET_LAST_SEMANTIC_EVAL_TURN", turn: snapshot.activeState.turn };
-    const tokenAction: AdventureAction | undefined = result.tokenUsage
-      ? { type: "ACCUMULATE_BACKGROUND_TOKENS", promptTokens: result.tokenUsage.promptTokens, completionTokens: result.tokenUsage.completionTokens }
-      : undefined;
-    const allActions = [...result.actions, stampAction, ...(tokenAction ? [tokenAction] : [])];
-    if (isSubmittingRef.current) {
-      queuePendingUpdate(allActions, "semanticEvaluation");
-      return;
+    semanticInFlight.current.add(snapshot.id);
+    try {
+      const result = await runSemanticPostTurnEvaluation(
+        snapshot,
+        mergeProviderConfig(snapshot, providerSettingsRef.current),
+      );
+      if (adventureRef.current?.id !== snapshot.id) return;
+      const stampAction: AdventureAction = { type: "SET_LAST_SEMANTIC_EVAL_TURN", turn: snapshot.activeState.turn };
+      const tokenAction: AdventureAction | undefined = result.tokenUsage
+        ? { type: "ACCUMULATE_BACKGROUND_TOKENS", promptTokens: result.tokenUsage.promptTokens, completionTokens: result.tokenUsage.completionTokens }
+        : undefined;
+      const allActions = [...result.actions, stampAction, ...(tokenAction ? [tokenAction] : [])];
+      if (isSubmittingRef.current) {
+        queuePendingUpdate(allActions, "semanticEvaluation");
+        return;
+      }
+      applyActionsAndPersist(allActions);
+    } catch (error) {
+      if (adventureRef.current?.id === snapshot.id) setError(error instanceof Error ? error.message : "Custom rule evaluation failed.");
+    } finally {
+      semanticInFlight.current.delete(snapshot.id);
     }
-    applyActionsAndPersist(allActions);
   }
 
 
   const buildPreview = useCallback(() => {
     if (!adventure) return;
-    setContextResult(buildContext(adventure, { latestModelOutput: latestAssistantOutput(adventure) }));
-  }, [adventure, setContextResult]);
+    setContextResult(buildContext({ ...adventure, memoryDetectionSettings: globalMemorySettings }, { latestModelOutput: latestAssistantOutput(adventure) }));
+  }, [adventure, globalMemorySettings, setContextResult]);
 
   // When an arc reaches aftermath, draft next-arc directions once so the player can pick
   // where the story goes next without architecting it. Gated by arcContinuationOptions
@@ -302,9 +289,11 @@ export function useAdventureRuntime(
         c.arcContinuationOptions === undefined &&
         (c.arcThreadKeys?.length ?? 0) > 0,
     );
-    if (!arc) return;
+    if (!arc || arcInFlight.current.has(snapshot.id)) return;
+    arcInFlight.current.add(snapshot.id);
     try {
       const options = await generateArcContinuations(snapshot, activeProviderConfig, arc);
+      if (adventureRef.current?.id !== snapshot.id) return;
       if (arc.arcAutoContinue) {
         // Silent auto-continue: the Director picks the most convergent direction and seeds it
         // itself — no chooser, no spoiler. The new threat surfaces through play.
@@ -316,11 +305,13 @@ export function useAdventureRuntime(
       }
     } catch {
       // non-fatal — options stay ungenerated and we retry next turn
+    } finally {
+      arcInFlight.current.delete(snapshot.id);
     }
   }
 
   async function submitTurn(text: string, mode: InputMode = "story") {
-    if (!adventure || loading) return;
+    if (!adventure || loading || isSubmittingRef.current) return;
     isSubmittingRef.current = true;
     setLoading(true);
     setError(undefined);
@@ -366,7 +357,6 @@ export function useAdventureRuntime(
       isSubmittingRef.current = false;
       if (mode !== "comms") {
         void startSemanticEvaluation(next);
-          checkMemoryCycle(next);
         void checkArcContinuation(next);
       }
     } catch (providerError) {
@@ -397,7 +387,7 @@ export function useAdventureRuntime(
   }
 
   async function continueTurn() {
-    if (!adventure || loading) return;
+    if (!adventure || loading || isSubmittingRef.current) return;
     isSubmittingRef.current = true;
     setLoading(true);
     setError(undefined);
@@ -435,7 +425,6 @@ export function useAdventureRuntime(
       setSaveStatus("saved");
       isSubmittingRef.current = false;
       void startSemanticEvaluation(next);
-      checkMemoryCycle(next);
       void checkArcContinuation(next);
     } catch (providerError) {
       setError(providerError instanceof Error ? providerError.message : "Continue failed.");
@@ -449,7 +438,7 @@ export function useAdventureRuntime(
   }
 
   async function regenerateLastResponse() {
-    if (!adventure || loading) return;
+    if (!adventure || loading || isSubmittingRef.current) return;
     isSubmittingRef.current = true;
     setLoading(true);
     setError(undefined);

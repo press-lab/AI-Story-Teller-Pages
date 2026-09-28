@@ -444,6 +444,8 @@ export type MemoryProposalType =
 export type MemoryProposalStatus = "pending" | "approved" | "rejected" | "ignored";
 
 export interface MemoryProposal {
+  /** Consequential automatic changes require explicit review, regardless of generic auto-approval. */
+  requiresReview?: boolean;
   id: string;
   sourceTurnId: string;
   sourceText: string;

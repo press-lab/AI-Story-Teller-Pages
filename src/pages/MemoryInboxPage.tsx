@@ -255,6 +255,7 @@ function ProposalCard({ proposal, dispatch, onUpdate, onRegenerate }: ProposalCa
         </span>
         <span className="story-card-badges">
           <span className="badge badge-type">{Math.round(proposal.confidence * 100)}%</span>
+            {isPending && proposal.requiresReview && <span className="badge">Review required</span>}
           {!isPending && <span className="badge badge-inactive">{proposal.status}</span>}
           {proposal.suggestedTriggers.length > 0 && <span className="badge">{proposal.suggestedTriggers.length} keys</span>}
         </span>

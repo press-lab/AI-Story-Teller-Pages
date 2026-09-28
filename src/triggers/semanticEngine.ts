@@ -174,7 +174,7 @@ ${current || "(empty)"}
 
 Compare each existing fact with the most recent story events and explicit player corrections: identify changed facts, obsolete claims, and still-valid constraints. Hearing an explanation but doubting it means informed but unconvinced, not unaware. Arrival supersedes travel. Claims stay attributed; plans stay uncompleted. Decide whether this block is stale or incomplete as the story's CURRENT OPERATING TRUTH. If it is still accurate, respond with an empty string.
 
-If it needs updating, rewrite the FULL replacement Plot Essentials block. Keep it compact (about 80-140 words or 4-7 tight bullets). Include the current durable situation, active open tensions, current obligations, and major constraints that should shape every scene.
+If it needs updating, rewrite the FULL replacement Plot Essentials block. Keep it compact (about 80-140 words or 4-7 tight bullets). Preserve the overarching premise, central long-term conflict, and persistent story-wide constraints. Immediate threats belong in Active Pressure and ongoing storyline progress belongs in Current Arc.
 
 Do NOT append. Do NOT preserve stale facts just because they used to be true. Do NOT include temporary room position, momentary action, character emotions, or throwaway scene details.
 
@@ -278,7 +278,7 @@ function plotEssentialsDriftConditions(adventure: Adventure): SemanticCondition[
     .map((component) => ({
       id: `plotEssentialsDrift:${component.id}`,
       label: `Plot Essentials Drift: ${component.title}`,
-      condition: `when the current Plot Essentials block is stale, incomplete, or no longer describes the story's current operating truth after recent events. Do NOT fire for minor scene motion, temporary room state, or changes that only belong in Active Pressure, Current Arc, or a Story Card.`,
+      condition: `when the current Plot Essentials block is stale, incomplete, or no longer describes the story's overarching premise and persistent story-wide constraints after recent events. Do NOT fire for minor scene motion, temporary room state, or changes that only belong in Active Pressure, Current Arc, or a Story Card.`,
       sourceType: "component" as const,
       actionFactory: () => [{ type: "updateComponent" as const, componentId: component.id }],
     }));
@@ -1181,7 +1181,7 @@ ${PLOT_ESSENTIALS_BEST_PRACTICES}
 
 Rules:
 - Return exactly one proposal for the requested target: ${proposedType}.
-- Plot Essentials is the compact current operating truth. Write 4-7 tight bullets or short labeled lines as a full replacement, not a chronological log.
+- Plot Essentials is the compact overarching premise and persistent story-wide constraints. Write 4-7 tight bullets or short labeled lines as a full replacement, not a chronological log.
 - Active Pressure is one sentence naming the current external threat, obligation, deadline, or force pressing on the player character.
 - Do not store relationship trackers, character biographies, locations, secrets, completed events, or voice contracts in Plot Essentials. Those belong in Story Cards or Brains.
 - Remove resolved or outgoing facts from Plot Essentials. Only independently evidenced completed durable events qualify for separate historical Story Cards; removal alone is not evidence.
@@ -1580,7 +1580,7 @@ The target list was selected deterministically. Do not add targets. Do not inven
 Rules:
 - If the user provided a directive, it is authoritative for current continuity. If not, infer relevant memory updates from the recent entries.
 - Remove stale active pressure. Preserve true completed events as historical facts.
-- Plot Essentials: full compact replacement, 4-7 tight bullets or short lines, current operating truth only.
+- Plot Essentials: full compact replacement, 4-7 tight bullets or short lines, overarching premise and persistent story-wide constraints only.
 - Active Pressure: exactly one sentence naming the current external pressure.
 - Story Cards: full replacement content for that card. Use present tense for static/living current facts and past tense for historical/resolved facts.
 - Brain updates: return JSON with changed fields or thoughts only. Only update an existing listed Brain.

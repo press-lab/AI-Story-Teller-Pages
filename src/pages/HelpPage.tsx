@@ -251,8 +251,7 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
             accumulate without your involvement. If the log fills with noise, tighten the premise.
           </li>
           <li>
-            <strong>Plot Essentials ≠ Current Arc.</strong> PE holds the compact current operating truth and
-            always-on constraints. The arc holds the active conflict's running log and pacing gate.
+            <strong>Plot Essentials ≠ Current Arc.</strong> PE holds the overarching premise and persistent story-wide constraints. Active Pressure holds immediate external threats and obligations. The arc holds the active conflict's running log and pacing gate.
           </li>
           <li>
             <strong>Graduate when the arc resolves.</strong> When the arc has run its course, click
@@ -502,7 +501,7 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
           <dt>Brains</dt>
           <dd>Opt-in state for major characters only. AI may update a Brain only if it already exists.</dd>
           <dt>Plot Essentials</dt>
-          <dd>Tiny always-on current-state constraints.</dd>
+          <dd>Overarching premise, long-term conflict, and persistent story-wide constraints.</dd>
           <dt>Memory Suggestions</dt>
           <dd>Pending proposals. Nothing in the inbox becomes active context until approved.</dd>
         </dl>
@@ -543,7 +542,7 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
       <>
         <p>
           These defaults follow the BetterRepository authoring guide: use AI Instructions for behavior, Plot Essentials
-          for the current operating truth, and Story Cards for durable triggered memory. The executable copy of these
+          for the overarching premise, and Story Cards for durable triggered memory. The executable copy of these
           rules lives in <code>src/ai/authoringBestPractices.ts</code> so generators and docs stay aligned.
         </p>
         <dl>
@@ -555,9 +554,7 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
           </dd>
           <dt>Plot Essentials</dt>
           <dd>
-            The compact always-on current operating truth: what is happening now, open tensions, obligations, and major
-            constraints that should shape every scene. PE updates replace the full block. When old PE facts leave the
-            block, AIST turns them into pending historical Story Card proposals for review.
+            The overarching premise, central long-term conflict, and persistent story-wide constraints. PE rarely changes. Automatic suggestions require review; replaced text stays in component history.
           </dd>
           <dt>Story Cards</dt>
           <dd>
@@ -592,11 +589,11 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
           <dt>Mystery</dt>
           <dd>The current known question goes in Plot Essentials. Clues, suspects, secrets, and locations go on Story Cards.</dd>
           <dt>Faction politics</dt>
-          <dd>Plot Essentials names the current public pressure. Factions, leaders, alliances, leverage, and secrets go on cards.</dd>
+          <dd>Active Pressure names the current public pressure. Factions, leaders, alliances, leverage, and secrets go on cards.</dd>
           <dt>Romance drama</dt>
           <dd>Relationship pressure stays choice-driven. Living relationship cards and Brains carry evolving state instead of bloating PE.</dd>
           <dt>Survival / horror</dt>
-          <dd>Plot Essentials tracks the current threat and constraints. Story Cards hold threat rules, safe places, recurring dangers, and costs.</dd>
+          <dd>Active Pressure tracks the current external threat. Story Cards hold threat rules, safe places, recurring dangers, and costs.</dd>
         </dl>
         <p><strong>Prose mode is separate.</strong> Minimalist is fast and lean; novelistic is richer and slower; cinematic focuses on visible behavior and blocking; dialogue-heavy prioritizes distinct voices and social pressure.</p>
         <p><strong>Player control is separate.</strong> Strict mode never writes your character. Minor-actions mode may bridge tiny implied motions. Cinematic flow may write small player-character beats, but major choices stay yours.</p>
@@ -683,23 +680,23 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
     body: (
       <>
         <p>
-          Plot Essentials is an always-on context component for the story's current operating truth: what is happening now, open tensions, obligations, and major constraints that must shape every scene. It loads every turn and costs tokens every turn — keep it tight.
+          Plot Essentials is an always-on context component for the story's overarching premise, central long-term conflict, and persistent story-wide constraints. It loads every turn and costs tokens every turn — keep it tight.
         </p>
         <p><strong>What belongs:</strong></p>
         <ul>
-          <li>Current situation: the active story state the model must respect right now.</li>
-          <li>Open tensions and obligations: threats, promises, deadlines, or complications still shaping every scene.</li>
+          <li>The overarching premise: who the story follows and its enduring central conflict.</li>
+          <li>Long-term stakes that remain relevant across scenes and arcs. Put immediate threats and obligations in Active Pressure.</li>
           <li>Major constraints: power rules, public stakes, faction pressure, or canon limits that remain globally relevant.</li>
         </ul>
         <p><strong>What does NOT belong:</strong></p>
         <ul>
           <li>Current scene position or who is present — keep that in Recent Messages unless it becomes a durable constraint.</li>
           <li>Character emotional states or internal goals.</li>
-          <li>Temporary mission status that changes every few turns, unless it is the main current operating truth.</li>
+          <li>Temporary mission status that changes every few turns — use Current Arc or Active Pressure.</li>
           <li>Lore that only matters when a specific character or place comes up — use a Story Card instead.</li>
         </ul>
-        <p><strong>Format:</strong> 4-7 tight bullets or short labeled lines. PE updates replace the full block. When outgoing PE facts disappear from a replacement, AIST creates pending historical Story Card proposals so you can keep true history without bloating PE.</p>
-        <p><strong>Good PE entry:</strong> <code>• The warded threshold is open, House Vale is exploiting it tonight, and Seth must contain the breach before dawn.</code></p>
+        <p><strong>Format:</strong> 4-7 tight bullets or short labeled lines. PE updates replace the full block. Change PE only when its foundations change. Replaced text stays in component history; removal does not create an event card.</p>
+        <p><strong>Good PE entry:</strong> <code>• Seth is an exile whose unstable bond with the ward threatens both his freedom and the sanctuary he seeks.</code></p>
         <p><strong>Bad PE entry:</strong> <code>• Seth and Margo are currently standing near the threshold discussing the ward.</code> (scene state, not a permanent truth)</p>
       </>
     ),

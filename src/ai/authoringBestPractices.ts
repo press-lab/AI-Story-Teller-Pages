@@ -14,10 +14,10 @@ export const AI_INSTRUCTIONS_BEST_PRACTICES = `AI Instructions best practices:
 - Per-character voice belongs on that character's Story Card, not in AI Instructions.`;
 
 export const PLOT_ESSENTIALS_BEST_PRACTICES = `Plot Essentials best practices:
-- Plot Essentials are the compact current operating truth: what is happening now, the active story situation, open tensions, obligations, and major constraints that should shape every scene.
+- Plot Essentials hold the overarching premise, central long-term conflict, and persistent story-wide constraints. Immediate threats and obligations belong in Active Pressure; the ongoing storyline and pacing belong in Current Arc.
 - They are always-on context, so keep them short and non-redundant.
-- Replace the full block when the story drifts; do not append a chronological log.
-- Remove resolved or outgoing facts. The reducer will turn outgoing PE facts into pending historical Story Card proposals for review.
+- Change this block only when those foundations materially change. Preserve still-valid foundations; do not append a chronological log.
+- Replaced text remains in component history. Removing a fact is not evidence for a historical event card.
 - Do not include temporary room position, who is standing where, momentary emotions, or one-off scenery.
 - Put situational lore, character identity, relationships, secrets, recurring objects, locations, factions, and completed past events in Story Cards instead.`;
 

@@ -17,8 +17,10 @@ describe("applyResponseLengthHint", () => {
   });
 
   it("adds a bounded reserve for hidden thought and memory tags", () => {
-    expect(applyResponseLengthHint(baseConfig, 150, 240).maxOutputTokens).toBe(365);
-    expect(applyResponseLengthHint(baseConfig, 150, 999).maxOutputTokens).toBe(395);
+    expect(applyResponseLengthHint(baseConfig, 150, 240).maxOutputTokens).toBe(545);
+    expect(applyResponseLengthHint(baseConfig, 150, 999).maxOutputTokens).toBe(1304);
+    expect(applyResponseLengthHint(baseConfig, 150, 9999).maxOutputTokens).toBe(1705);
+    expect(applyResponseLengthHint({ ...baseConfig, maxOutputTokens: 500 }, 150, 1400).maxOutputTokens).toBe(500);
   });
 
   it("uses the same length cap when the provider has no usable cap", () => {

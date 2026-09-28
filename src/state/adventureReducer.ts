@@ -1182,7 +1182,7 @@ function applyCompanionMemoryProposals(
     const clean = sanitizeProposal(routedProposal(workingState, proposal));
     if (!clean) continue;
     const autoApprove = workingState.memoryAutoApprove?.[clean.proposedType as keyof typeof workingState.memoryAutoApprove] ?? false;
-    if (!autoApprove) {
+    if (!autoApprove || clean.requiresReview) {
       recorded.push(clean);
       continue;
     }
@@ -1615,7 +1615,7 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
         );
       if (duplicatesPending || duplicatesDismissed || duplicatesCard || duplicatesStoryCardContent || duplicatesExistingCardContent || duplicatesExistingTargetContent || duplicatesCurrentPressure) return state;
       const autoApprove = state.memoryAutoApprove?.[clean.proposedType as keyof typeof state.memoryAutoApprove] ?? false;
-      if (autoApprove) {
+      if (autoApprove && !clean.requiresReview) {
         const approved = updateMemoryProposal(clean, { status: "approved" });
         const applied = applyApprovedMemoryProposal(state, approved);
         if (clean.proposedType === "plotPressureUpdate") {
