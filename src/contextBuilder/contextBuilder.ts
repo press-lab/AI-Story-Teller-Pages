@@ -1,4 +1,5 @@
 import { selectEventMemories } from "../memory/eventMemory";
+import { PLOT_MEMORY_THRESHOLD } from "../ai/authoringBestPractices";
 import type {
   Adventure,
   BrainEntry,
@@ -312,6 +313,8 @@ After writing your response, append ONE self-closing <memory> tag if this turn c
 
 Qualifying categories:
 ${lines}
+
+${PLOT_MEMORY_THRESHOLD}
 
 FORMAT — include memoryMode:
 - static = always-true character/location/lore/technique facts; use present tense.

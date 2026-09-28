@@ -37,6 +37,11 @@ export const TRIGGER_BEST_PRACTICES = `Trigger best practices:
 - Prefer specific phrases, nicknames, object names, faction names, place names, case names, or consequences that uniquely identify the subject.
 - Avoid generic triggers such as "the team", "the agency", "current", "relationship", "status", "mission", or "event".`;
 
+export const PLOT_MEMORY_THRESHOLD = `Plot and relationship memory threshold:
+- Create a new plot card only for a lasting change in an obligation, alliance, relationship, secret, or consequential unresolved situation. Routine hospitality, casual invitations, flirting, repeated affection, and ordinary conversation do not by themselves qualify.
+- Prefer updating the existing subject over a sibling card. If the fact is already captured in canon or a proposal, omit it even when a different title would describe it.
+- A casual offer is not a binding pact. Preserve an explicitly accepted consequential commitment, but never promote a tentative plan into a completed event or obligation.`;
+
 export const ADVENTURE_GENERATION_BEST_PRACTICES = `${AI_INSTRUCTIONS_BEST_PRACTICES}
 
 ${PLOT_ESSENTIALS_BEST_PRACTICES}
