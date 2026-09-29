@@ -118,6 +118,19 @@ export async function detectStoryCardProposals(adventure: Adventure, providerCon
     ...adventure.storyCards.flatMap(c => [c.content, storyCardContextContent(c)]),
     ...considered.map(p => p.content),
   ];
+  // Keep the complete title inventory for duplicate avoidance, but only send
+  // detailed records for subjects named in the evidence. Local dedupe below
+  // still checks every card and proposal before anything is created.
+  const mentioned = (title: string) => title.trim().length >= 4
+    && excerpt.toLocaleLowerCase().includes(title.trim().toLocaleLowerCase());
+  const cardInventory = adventure.storyCards.map(c => ({
+    title: c.title,
+    ...(mentioned(c.title) ? { keys: c.keys, type: c.type, eventMemory: c.eventMemory, content: c.type === "event" ? c.content : undefined } : {}),
+  }));
+  const proposalInventory = considered.map(p => ({
+    title: p.title, status: p.status,
+    ...(mentioned(p.title) ? { content: p.content, eventMemory: p.eventMemory } : {}),
+  }));
   try {
     const response = await sendOpenAICompatibleChatCompletion({
       config: resolveBackgroundProviderConfig(adventure, providerConfig),
@@ -127,9 +140,9 @@ ${STORY_CARD_BEST_PRACTICES}
 ${TRIGGER_BEST_PRACTICES}
 ${PLOT_MEMORY_THRESHOLD}
 Return ONLY a JSON array, [] when nothing qualifies. Event items must additionally include the eventMemory object described above. Each item: {"title":"subject", "content":"concise grounded facts", "storyCardType":"character|location|lore|plot|event|custom", "memoryMode":"static|living|historical", "suggestedTriggers":["narrow phrase"], "rationale":"why durable", "evidenceMessageIds":["message id"]}. Cite only supplied recent message IDs.` },
-        ...memoryCanonMessages(adventure, excerpt, "Discover missing Story Cards"),
-        { role: "user", content: "Existing cards (including inactive): " + JSON.stringify(adventure.storyCards.map(c => ({ title: c.title, keys: c.keys, type: c.type, eventMemory: c.eventMemory, content: c.type === "event" ? c.content : undefined }))) },
-        { role: "user", content: "Previously considered Story Card proposals (including dismissed; omit duplicates): " + JSON.stringify(considered.map(p => ({ title: p.title, content: p.content, status: p.status, eventMemory: p.eventMemory }))) },
+        ...memoryCanonMessages(adventure, excerpt, "Discover missing Story Cards", true),
+        { role: "user", content: "Existing cards (including inactive): " + JSON.stringify(cardInventory) },
+        { role: "user", content: "Previously considered Story Card proposals (including dismissed; omit duplicates): " + JSON.stringify(proposalInventory) },
         { role: "user", content: "Recent story evidence:\n" + excerpt },
       ],
     });

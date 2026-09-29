@@ -42,6 +42,24 @@ describe("memory canon grounding", () => {
     for (const included of ["You are Seth Press", "Seth is the player character", "Seth is immune", "Vampires reflect normally"]) expect(text).toContain(included);
     for (const excluded of ["SECRET CLIMAX", "Unverified old log", "PRIVATE PLAN", "OBSOLETE RULE", "UNRELATED LORE", "DISABLED CHARACTER", "Julian is a rival bidder"]) expect(text).not.toContain(excluded);
   });
+  it("keeps discovery cards local to evidence while retaining protected facts and authored rules", () => {
+    const a = createDefaultAdventure();
+    a.components = [
+      makeComponent({ title: "Narration", type: "narrationRules", content: "CUSTOM PROSE RULE" }),
+      makeComponent({ title: "World", type: "aiInstructions", content: "Seattle vampires are secret." }),
+    ];
+    a.storyCards = [
+      makeStoryCard({ title: "Lucian", type: "character", content: "Lucian runs a club." }),
+      makeStoryCard({ title: "Edythe", type: "character", content: "Edythe knows Lucian." }),
+      makeStoryCard({ title: "Oath", content: "Protected continuity.", protected: true }),
+    ];
+    const text = memoryCanonMessages(a, "Lucian enters.", "Discover Edythe", true).map(m => m.content).join("\n");
+    expect(text).toContain("Lucian runs a club");
+    expect(text).toContain("Protected continuity");
+    expect(text).toContain("Seattle vampires are secret");
+    expect(text).toContain("CUSTOM PROSE RULE");
+    expect(text).not.toContain("Edythe knows Lucian");
+  });
   it("defaults arc updates to review while preserving saved explicit choices", () => {
     const a = createDefaultAdventure();
     expect(a.memoryAutoApprove.currentArcUpdate).toBe(false);
