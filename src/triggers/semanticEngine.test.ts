@@ -384,6 +384,7 @@ describe("runSemanticPostTurnEvaluation", () => {
       storyCards: [card],
       brains: [brain],
       semanticEvaluationSettings: { ...baseAdventure().semanticEvaluationSettings, requireApprovalForAutoUpdates: true },
+      memoryAutoApprove: { ...baseAdventure().memoryAutoApprove, brainUpdate: true },
       messages: [
         ...baseAdventure().messages,
         { id: "m3", role: "assistant" as const, content: "Margo seals the breach and realizes the gate is still failing.", createdAt: "2026-01-01T00:02:00.000Z" },
@@ -421,7 +422,8 @@ describe("runSemanticPostTurnEvaluation", () => {
       "storyCard:card-margo",
       "brain:brain-margo",
     ]);
-    expect(result.actions.filter((action) => action.type === "ADD_MEMORY_PROPOSAL")).toHaveLength(3);
+    expect(result.actions.filter((action) => action.type === "ADD_MEMORY_PROPOSAL")).toHaveLength(2);
+    expect(result.actions).toContainEqual(expect.objectContaining({ type: "APPLY_BRAIN_UPDATE", brainId: "brain-margo" }));
     expect(result.actions).toContainEqual(expect.objectContaining({
       type: "MARK_STORY_CARD_UPDATED",
       storyCardId: "card-margo",
@@ -432,7 +434,8 @@ describe("runSemanticPostTurnEvaluation", () => {
     const reduced = result.actions.reduce((next, action) => adventureReducer(next, action), adventure);
     expect(reduced.components.find((component) => component.id === "component-pressure")?.content).toBe("The breach is sealed, but the gate is still failing.");
     expect(reduced.activeState.memoryProposals.some((proposal) => proposal.proposedType === "storyCard" && proposal.targetId === "card-margo")).toBe(true);
-    expect(reduced.activeState.memoryProposals.some((proposal) => proposal.proposedType === "brainUpdate" && proposal.targetId === "brain-margo")).toBe(true);
+    expect(reduced.brains[0].thoughts.gate_failure).toContain("second plan");
+    expect(reduced.activeState.memoryProposals.some((proposal) => proposal.proposedType === "brainUpdate" && proposal.targetId === "brain-margo")).toBe(false);
   });
 });
 

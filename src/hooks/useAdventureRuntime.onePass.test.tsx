@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { act, cleanup, renderHook } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDefaultAdventure, defaultModelConfig, makeStoryCard, makeTriggerRule } from "../state/defaults";
@@ -66,7 +66,7 @@ describe("runtime one-pass call accounting", () => {
     expect(payload.messages.map(m => m.content).join("\n")).not.toContain("[ONE-PASS MEMORY]");
   });
 
-  it("never retries a malformed memory tail or counts it against visible story length", async () => {
+  it("preserves the story and starts the fallback cycle for a malformed memory tail", async () => {
     vi.mocked(sendOpenAICompatibleChatCompletion).mockResolvedValue({ content: `${story}<memory_updates>{"updates": [${"you agree ".repeat(300)}`, raw: {} });
     const { result } = setup();
     await act(async () => { await result.current.runtime.submitTurn("Mira explains."); });
@@ -88,7 +88,16 @@ describe("runtime one-pass call accounting", () => {
     expect(result.current.adventure?.storyCards[0].content).toBe("Mira is a scout.");
     const correction = vi.mocked(sendOpenAICompatibleChatCompletion).mock.calls[1][0];
     expect(correction.messages.map(m => m.content).join("\n")).not.toContain("<memory_updates>");
-    expect(runMemoryCycle).not.toHaveBeenCalled();
+    await waitFor(() => expect(runMemoryCycle).toHaveBeenCalledTimes(1));
+  });
+
+  it("falls back to the background memory cycle when the story model omits the memory envelope", async () => {
+    vi.mocked(sendOpenAICompatibleChatCompletion).mockResolvedValue({ content: story, raw: {} });
+    const { result } = setup();
+    await act(async () => { await result.current.runtime.submitTurn("Mira explains."); });
+    await waitFor(() => expect(runMemoryCycle).toHaveBeenCalledTimes(1));
+    expect(result.current.adventure?.messages.at(-1)?.content).toBe(story);
+    expect(result.current.adventure?.activeState.evaluationLog[0].errors[0]).toContain("Memory envelope missing");
   });
 
   it("blocks duplicate submissions before React has rendered loading state", async () => {

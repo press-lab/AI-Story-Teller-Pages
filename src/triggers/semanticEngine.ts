@@ -1926,9 +1926,19 @@ export async function runMemoryCycle(
   );
 
   const generationTasks = firedConditions.flatMap((firedCondition) =>
-    firedCondition.actionFactory(adventure).map((ta) => () =>
-      generatedActionsFor(forcePropose, providerConfig, ta, firedCondition.id, undefined, accum),
-    ),
+    firedCondition.actionFactory(adventure).map((ta) => () => {
+      const autoApprove = ta.type === "updateBrain" || ta.type === "appendBrain"
+        ? adventure.memoryAutoApprove.brainUpdate
+        : ta.type === "updateStoryCard"
+          ? adventure.memoryAutoApprove.storyCard
+          : ta.type === "updateComponentPressure"
+            ? adventure.memoryAutoApprove.plotPressureUpdate
+            : false;
+      const updateAdventure = autoApprove
+        ? { ...adventure, semanticEvaluationSettings: { ...adventure.semanticEvaluationSettings, requireApprovalForAutoUpdates: false } }
+        : forcePropose;
+      return generatedActionsFor(updateAdventure, providerConfig, ta, firedCondition.id, undefined, accum);
+    }),
   );
   const results = await runLimited(Math.max(1, adventure.semanticEvaluationSettings.maxParallelUpdateCalls), generationTasks);
 

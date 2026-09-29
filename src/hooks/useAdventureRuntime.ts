@@ -28,6 +28,7 @@ import {
   runManualPEComponentUpdate,
   runManualPlotEssentialsUpdate,
   runManualStoryCardsUpdate,
+  runMemoryCycle,
   runMemoryReconcile,
   runPlotAIBuilder,
   runRememberThis,
@@ -172,6 +173,7 @@ export function useAdventureRuntime(
   const globalMemorySettingsRef = useRef(globalMemorySettings);
   const isSubmittingRef = useRef(false);
   const semanticInFlight = useRef(new Set<string>());
+  const memoryFallbackInFlight = useRef(new Set<string>());
   const arcInFlight = useRef(new Set<string>());
   const queuedUpdatesRef = useRef<PendingAdventureUpdate[]>([]);
   const wasHiddenRef = useRef(false);
@@ -239,6 +241,34 @@ export function useAdventureRuntime(
   function flushPendingBeforeContext(adventureState: Adventure): Adventure {
     const next = adventureReducer(mergeQueuedUpdates(adventureState), { type: "FLUSH_PENDING_UPDATES" });
     return { ...next, memoryDetectionSettings: { ...globalMemorySettingsRef.current } };
+  }
+
+  async function startMemoryFallback(snapshot: Adventure) {
+    if (!snapshot.memoryDetectionSettings.enabled || memoryFallbackInFlight.current.has(snapshot.id)) return;
+    const latest = snapshot.activeState.evaluationLog[0];
+    const onePassFailed = latest?.actionsExecuted.includes("One-pass memory: no additional API call")
+      && latest.errors.some(message => /Memory envelope missing|Incomplete or oversized memory envelope|Invalid memory JSON/.test(message));
+    if (!onePassFailed) return;
+    const everyN = Math.max(1, snapshot.memoryDetectionSettings.everyNTurns ?? 1);
+    const last = snapshot.activeState.lastMemoryCycleTurn;
+    if (last !== undefined && snapshot.activeState.turn - last < everyN) return;
+
+    memoryFallbackInFlight.current.add(snapshot.id);
+    try {
+      const result = await runMemoryCycle(snapshot, buildBackgroundConfig(snapshot, providerSettingsRef.current));
+      if (adventureRef.current?.id !== snapshot.id) return;
+      if (isSubmittingRef.current) {
+        queuePendingUpdate(result.actions, "memoryCycle");
+        return;
+      }
+      applyActionsAndPersist(result.actions);
+    } catch (fallbackError) {
+      if (adventureRef.current?.id === snapshot.id) {
+        setError(fallbackError instanceof Error ? fallbackError.message : "Automatic memory fallback failed.");
+      }
+    } finally {
+      memoryFallbackInFlight.current.delete(snapshot.id);
+    }
   }
 
   async function startSemanticEvaluation(snapshot: Adventure) {
@@ -356,6 +386,7 @@ export function useAdventureRuntime(
       setSaveStatus("saved");
       isSubmittingRef.current = false;
       if (mode !== "comms") {
+        void startMemoryFallback(next);
         void startSemanticEvaluation(next);
         void checkArcContinuation(next);
       }
@@ -424,6 +455,7 @@ export function useAdventureRuntime(
       await saveAdventure(next);
       setSaveStatus("saved");
       isSubmittingRef.current = false;
+      void startMemoryFallback(next);
       void startSemanticEvaluation(next);
       void checkArcContinuation(next);
     } catch (providerError) {
@@ -477,6 +509,7 @@ export function useAdventureRuntime(
       await saveAdventure(next);
       setSaveStatus("saved");
       isSubmittingRef.current = false;
+      void startMemoryFallback(next);
       void startSemanticEvaluation(next);
     } catch (providerError) {
       setError(providerError instanceof Error ? providerError.message : "Regeneration failed.");
