@@ -32,7 +32,7 @@ The app is browser-only, local-first, IndexedDB-persisted, no backend. All LLM c
 
 ### Background (async, after turn — not blocking):
 - Semantic evaluation (`runSemanticPostTurnEvaluation`) every `semanticEvalEveryNTurns` turns
-- Routine memory detection/cycles are no longer scheduled. `memoryDetectionSettings.enabled` selects the one-pass instruction; legacy interval/content fields remain save-compatible but do not schedule calls.
+- `memoryDetectionSettings.enabled` selects the one-pass instruction. If the story model omits or corrupts the hidden memory envelope, the runtime falls back to the background memory cycle at the configured interval so automatic memory does not silently stop.
 - Arc continuation runs exceptionally after an arc reaches aftermath. Custom rule and arc requests are guarded against overlap.
 
 ---
