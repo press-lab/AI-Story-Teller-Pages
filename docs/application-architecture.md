@@ -73,13 +73,15 @@ Continue uses the same pipeline with a `[continue]` cue and no persisted user me
 | C2 | Current Story Arc | Active arc log and phase gated pacing instruction |
 | E | Components | General active or pinned world blocks |
 | F | Story Cards | Triggered, always included, or pinned durable facts |
-| G | Brains | Eligible character internal state |
+| G | Brains | Current, bounded private thoughts for eligible characters; legacy Brain state fields are excluded |
 | D | Author's Note | Tone and immediate author direction, placed late |
 | J | Next Output Bias | Short lived player steering |
 | M | Continuity Challenge | One turn correction instruction when active |
 | K | Recent Messages | Budgeted transcript window |
 
 The builder estimates tokens with `src/tokenizer/approximateTokenCount.ts` and drops eligible items according to `memoryPriorityMode` and budget flags. Protected items cannot be dropped; pinned items have priority but can be dropped unless protected. Exclusions explain whether an item was inactive, on cooldown, not triggered, or over budget. Pending Memory Inbox proposals are returned for inspection but never placed in the provider payload.
+
+Event memories are historical Story Cards with a separate deterministic recall policy. Recall matches relevant participants and cues, selects at most three event cards, and marks them as historical references rather than prompts to repeat the event.
 
 Rolling Summary, Scene State, quests, Auto Cards, and Immediate Momentum remain for compatibility with older saves; they are not default context sections. The Arc Director's break instruction is withheld until its reducer controlled phase reaches `break`.
 
