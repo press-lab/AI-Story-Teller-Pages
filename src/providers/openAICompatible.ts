@@ -278,11 +278,15 @@ async function sendAnthropicRequest(
   const content = raw.content?.find((c) => c.type === "text")?.text;
   if (content == null) throw new Error(`Provider returned no content. Body: ${rawText.slice(0, 300)}`);
 
+  // Anthropic reports input_tokens EXCLUDING cache reads/writes. Normalize to the OpenAI meaning
+  // (promptTokens = every input token, cacheReadTokens = the cached subset) so usage from both
+  // adapters is comparable and cache-hit rates are not overstated.
+  const promptTokens = (raw.usage?.input_tokens ?? 0) + (raw.usage?.cache_read_input_tokens ?? 0) + (raw.usage?.cache_creation_input_tokens ?? 0);
   const usage: ProviderUsage | undefined = raw.usage
     ? {
-        promptTokens: raw.usage.input_tokens ?? 0,
+        promptTokens,
         completionTokens: raw.usage.output_tokens ?? 0,
-        totalTokens: (raw.usage.input_tokens ?? 0) + (raw.usage.output_tokens ?? 0),
+        totalTokens: promptTokens + (raw.usage.output_tokens ?? 0),
         cacheReadTokens: raw.usage.cache_read_input_tokens,
         cacheCreationTokens: raw.usage.cache_creation_input_tokens,
       }

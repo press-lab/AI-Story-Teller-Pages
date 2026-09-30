@@ -1,4 +1,3 @@
-import { ONE_PASS_MEMORY_ID, onePassMemoryInstruction } from "../memory/onePassMemory";
 import { selectEventMemories } from "../memory/eventMemory";
 import { PLOT_MEMORY_THRESHOLD } from "../ai/authoringBestPractices";
 import type {
@@ -19,19 +18,35 @@ import { dedupeThoughtRecord } from "../memory/thoughtDedupe";
 import { approximateTokenCount } from "../tokenizer/approximateTokenCount";
 import { matchPatterns } from "../triggers/matching";
 
-const SYSTEM_SHELL = `You are the story engine for AI Story Teller. The context below is assembled for you each turn.
+const SYSTEM_SHELL = `You are the story engine for AI Story Teller. The context is assembled for you each turn in two parts.
 
-CONTEXT SECTIONS (read all, honour their order):
+STABLE CONTEXT (this system message — changes rarely):
   B. AI Instructions — narrative rules and style for this adventure.
   C. Plot Essentials — overarching premise, long-term conflict, and persistent story-wide constraints. Active Pressure names the immediate external threat or obligation.
   C2. Current Story Arc — active arc log and any gated Arc Director phase instruction.
   E. Components — general world-building context (always-on or pinned entries).
+  F0. Pinned Story Cards — core identity and relationship records that always apply.
+
+Then the recent story turns follow in chronological order.
+
+TURN CONTEXT (a block at the start of the newest user message, marked [TURN CONTEXT] … [END TURN CONTEXT]; it is narrator reference, never player speech):
+  S. Story State — the authoritative CURRENT facts: day/date/time, location, relationship status, living and sleeping arrangements, who has met whom, open threads.
   F. Story Cards — World Info entries injected when their trigger keywords appear in recent text.
-  G. Brains — internal mental state of named characters. Private to the narrator; never quote directly.
+  G. Brains — private thoughts and knowledge boundaries of named characters. Private to the narrator; never quote directly.
   D. Author's Note — immediate narrative direction for this turn. Highest-priority steering.
   J. Next Output Bias — one-turn instruction. Apply it, then disregard it.
   M. Continuity Challenge — one-turn verification instruction when active.
-  K. Recent Messages — the most recent story turns in chronological order.
+
+CURRENT TRUTH:
+  Story State and the recent story turns are the most current truth. If an older Story Card, arc log, or event memory disagrees with them, follow Story State and the recent turns.
+  Never re-introduce characters the player has already met, never reset an established relationship or arrangement, and keep the day, date, and time consistent with Story State.
+
+KNOWLEDGE BOUNDARIES:
+  A character knows only what they witnessed, were told on-page, can learn through an ability established in canon, or what their Brain lists under Knows. Anything under "Does not know" stays unknown to them until the story shows them learning it.
+  Never let a character state facts, names, or motives they have no way of knowing. When unsure, have them guess, ask, or stay silent.
+
+OUT-OF-CHARACTER MESSAGES:
+  Text wrapped as [Out of Character: …] is the player speaking to you as the narrator. Treat it as a correction or instruction that overrides cards, arc direction, and your previous output. Fix or retcon exactly what was asked, briefly acknowledge it only if needed, then continue the scene.
 
 CANON GROUNDING:
   Treat this adventure's context as the only canon, even when names, places, factions, or concepts resemble a published setting, fandom, or prior playthrough.
@@ -43,8 +58,27 @@ Honour every section. Continue the scene in prose. Keep the player able to act.`
 interface BuildOptions {
   currentInput?: string;
   latestModelOutput?: string;
-  skipThoughtCapture?: boolean;
+  /**
+   * The player is speaking out of character (comms mode). The arc phase direction is withheld and the
+   * continuity-challenge instruction is injected so the correction wins over authored pacing.
+   */
+  outOfCharacter?: boolean;
 }
+
+/** Sections sent in the per-turn [TURN CONTEXT] block after the history (never in the cached prefix). */
+export const TURN_CONTEXT_SECTIONS: ReadonlySet<ContextSectionKind> = new Set<ContextSectionKind>([
+  "storyState",
+  "storyCards",
+  "brains",
+  "authorNote",
+  "nextTurnNote",
+  "challengeMode",
+]);
+
+/** Recent history is trimmed from the front in blocks of this many messages so the prompt prefix stays identical across turns. */
+export const RECENT_MESSAGE_CHUNK = 10;
+/** The newest messages always kept, even if chunk alignment would trim them. */
+const MIN_RECENT_MESSAGES = 4;
 
 function prioritySort<T extends { priority: number; id: string }>(items: T[]): T[] {
   return [...items].sort((a, b) => b.priority - a.priority || a.id.localeCompare(b.id));
@@ -157,6 +191,18 @@ function selectedRecentMessages(adventure: Adventure, seedMessage?: Message): Me
     if (tokenCap && tokens + cost > tokenCap) break;
     tokens += cost;
     result.push(msg);
+  }
+  // Chunk-align the oldest kept message to an absolute index boundary. Without this, the window
+  // slides by one message every turn and the provider's prefix cache never matches past the system
+  // message. Aligned, the same oldest message leads the history for several turns.
+  const firstIndex = messages.length - result.length;
+  if (firstIndex > 0) {
+    // Small windows use a smaller chunk so alignment never discards more than half the window.
+    const chunk = Math.max(1, Math.min(RECENT_MESSAGE_CHUNK, Math.floor(result.length / 2)));
+    const aligned = Math.ceil(firstIndex / chunk) * chunk;
+    const keep = Math.max(Math.min(result.length, MIN_RECENT_MESSAGES), messages.length - aligned);
+    result.length = Math.min(result.length, keep);
+    return result; // the opening scene only leads the window while nothing has been trimmed
   }
   // Append seed (opening scene) as oldest entry if it fits
   if (seedMessage && result.length < countCap) {
@@ -347,19 +393,45 @@ function buildTurnScopeContract(responseLengthHint: number | undefined): string 
   return `TURN SCOPE CONTRACT: The player's selected visible limit is ${wordTarget} words. Aim for ${minWords}-${wordTarget} visible words; shorter is acceptable when the next playable beat is clear. Do not mention word counts or pad prose. This is a scope ceiling, not a quota. If any other instruction asks for a fuller, substantial, complete, or cinematic scene, obey this turn scope contract first. Write only the next immediate exchange or consequence. Do not advance through multiple beats, tour multiple locations, wrap up the scene, or resolve a major outcome the player has not earned. Never narrate the player's unspoken actions, reactions, dialogue, consent, movement, commitments, or decisions. Stop as soon as the player could reasonably act, answer, interrupt, refuse, choose, or redirect. Hidden <thought> and <memory> tags do not count toward the visible limit, and they must not cause the visible prose to expand. End on a live in-scene moment, not an option menu or summary.`;
 }
 
-function buildPayload(sections: ContextSection[], recentMessagesNewestFirst: Message[], openingScene?: string) {
-  const contextText = sections
-    .filter((entry) => entry.id !== "recentMessages" && entry.content.length > 0)
+export const TURN_CONTEXT_OPEN = "[TURN CONTEXT — narrator reference for this turn; not player speech]";
+export const TURN_CONTEXT_CLOSE = "[END TURN CONTEXT]";
+
+function renderSections(sections: ContextSection[]): string {
+  return sections
+    .filter((entry) => entry.content.length > 0)
     .sort((a, b) => a.order - b.order)
     .map((entry) => `# ${entry.label}\n${entry.content}`)
     .join("\n\n");
+}
+
+/**
+ * Payload layout, ordered for provider prefix caching:
+ *   1. system: stable sections (shell, rules, instructions, plot, arc, components, pinned cards)
+ *   2. recent history, chronological, chunk-aligned
+ *   3. the per-turn sections, wrapped as [TURN CONTEXT] at the start of the newest user message
+ *      (or as a trailing user message when the history ends on an assistant turn).
+ * Per-turn content must not be a system message: Anthropic-style adapters hoist every system
+ * message to the front, which would put it back ahead of the history and break the cache.
+ */
+function buildPayload(sections: ContextSection[], recentMessagesNewestFirst: Message[], openingScene?: string) {
+  const stableText = renderSections(sections.filter((entry) => entry.id !== "recentMessages" && !TURN_CONTEXT_SECTIONS.has(entry.id)));
+  const turnText = renderSections(sections.filter((entry) => TURN_CONTEXT_SECTIONS.has(entry.id)));
+  const turnBlock = turnText ? `${TURN_CONTEXT_OPEN}\n${turnText}\n${TURN_CONTEXT_CLOSE}` : "";
 
   const chronologicalRecent = [...recentMessagesNewestFirst].reverse();
-  return [
-    { role: "system" as const, content: contextText },
+  const history = [
     ...(openingScene ? [{ role: "assistant" as const, content: openingScene }] : []),
     ...chronologicalRecent.map((message) => ({ role: message.role, content: message.content })),
   ];
+  const last = history.at(-1);
+  if (turnBlock) {
+    if (last && last.role === "user") {
+      history[history.length - 1] = { ...last, content: `${turnBlock}\n\n${last.content}` };
+    } else {
+      history.push({ role: "user" as const, content: turnBlock });
+    }
+  }
+  return [{ role: "system" as const, content: stableText }, ...history];
 }
 
 function sourceToGeneratedBy(source: "manual" | "imported" | "generated" | undefined): ContextItem["generatedBy"] {
@@ -373,9 +445,6 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
   const triggeredThreadIds = new Set<string>();
   const budgetSettings = adventure.tokenBudgetSettings;
   const turnScopeText = buildTurnScopeContract(adventure.activeState.responseLengthHint);
-  const captureEligible = options.skipThoughtCapture ? [] : eligibleBrainsForCapture(adventure, triggerText);
-  const memoryText = !options.skipThoughtCapture && adventure.memoryDetectionSettings.enabled
-    ? onePassMemoryInstruction(captureEligible, enabledMemoryCategories(adventure)) : undefined;
   function pushExcluded(
     sourceType: ExcludedContextItem["sourceType"],
     id: string,
@@ -396,10 +465,6 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
   pushIncluded(systemItem, "System shell is always included and protected.");
   const turnScopeItem = item("turn-scope-contract", "system", "Turn Scope Contract", turnScopeText, 1000, true, false, true, "always", "system");
   pushIncluded(turnScopeItem, "Turn scope contract is always included and protected.");
-  const memoryItem = memoryText
-    ? item(ONE_PASS_MEMORY_ID, "system", "One-pass Memory", memoryText, 900, false, false, true, "always", "system")
-    : undefined;
-  if (memoryItem) pushIncluded(memoryItem, "Narration and automatic memory share one response.");
 
   // Track which component IDs have already been logged as excluded to avoid double-logging
   const loggedExcluded = new Set<string>();
@@ -422,7 +487,8 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
     pushIncluded(next, `Narration Rules loaded; priority=${component.priority}; protected=${component.protected}.`);
     return [next];
   });
-  const runtimeSystemItems = [turnScopeItem, memoryItem].filter((entry): entry is ContextItem => Boolean(entry));
+  // Memory bookkeeping never rides along in the narrator prompt; the background memory pass owns it.
+  const runtimeSystemItems = [turnScopeItem];
   const systemSection = section("system", "A. System Shell / Global Generation Rules", 0, [systemItem, ...runtimeSystemItems, ...narrationRulesItems]);
 
   // B2. AI Instructions — all active components with type === "aiInstructions"
@@ -460,7 +526,8 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
     // the break (cost) instruction is withheld from context entirely until the phase
     // reaches "break", so the model cannot land the climax early on something it never sees.
     const phase = component.arcState?.phase ?? "simmer";
-    const phaseDirection =
+    // An out-of-character correction outranks authored pacing for that turn.
+    const phaseDirection = options.outOfCharacter ? undefined :
       phase === "break"
         ? component.arcBreakInstruction?.trim()
         : phase === "simmer" || phase === "escalate"
@@ -487,9 +554,22 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
     return [next];
   });
 
+  // S. Story State — authoritative current facts. Always included when it has content; sent in the turn context.
+  const storyStateItems = prioritySort(adventure.components).flatMap((component) => {
+    if (component.type !== "storyState") return [];
+    if (!component.active) {
+      logExcludedOnce(component.id, component.title, "inactive");
+      return [];
+    }
+    if (!component.content.trim()) return [];
+    const next = item(component.id, "component", component.title, component.content, component.priority, component.protected, component.pinned, component.active, "always", "ai");
+    pushIncluded(next, `Story State loaded; priority=${component.priority}; protected=${component.protected}.`);
+    return [next];
+  });
+
   // E. Components — general always-on or pinned components (not a special typed section above)
   const generalComponentItems = prioritySort(adventure.components).flatMap((component) => {
-    if (component.type === "narrationRules" || component.type === "aiInstructions" || component.type === "plotEssentials" || component.type === "currentArc" || component.type === "activePressure" || component.type === "immediateMomentum" || component.type === "authorNote") return [];
+    if (component.type === "narrationRules" || component.type === "aiInstructions" || component.type === "plotEssentials" || component.type === "currentArc" || component.type === "activePressure" || component.type === "immediateMomentum" || component.type === "authorNote" || component.type === "storyState") return [];
     if (!component.active) {
       logExcludedOnce(component.id, component.title, "inactive");
       return [];
@@ -502,6 +582,8 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
 
   // F. Story Cards + Auto-Cards
   const storyCardItems: ContextItem[] = [];
+  // Pinned / always cards never depend on this turn's text, so they belong in the cached prefix.
+  const pinnedStoryCardItems: ContextItem[] = [];
   const recalledEvents = selectEventMemories(adventure.storyCards, triggerText);
   for (const card of prioritySort(adventure.storyCards)) {
     const forced = isForced(adventure, "storyCard", card.id);
@@ -518,7 +600,8 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
     if (matched) {
       const next = item(card.id, "storyCard", card.title, (card.type === "event" ? "Historical reference; use only when relevant, do not force a callback.\n" : "") + storyCardContextContent(card), card.priority, card.protected, card.pinned, card.active, card.inclusionPolicy, "user");
       pushIncluded(next, `Story card included by ${card.pinned ? "pin" : forced ? "manual force" : card.inclusionPolicy === "always" ? "always policy" : `trigger ${match.pattern}`}; priority=${card.priority}; protected=${card.protected}.`);
-      storyCardItems.push(next);
+      if ((card.pinned || card.inclusionPolicy === "always") && !forced) pinnedStoryCardItems.push(next);
+      else storyCardItems.push(next);
     } else {
       pushExcluded("storyCard", card.id, card.title, "not_triggered", "No story card trigger matched current input, output, or recent history.");
     }
@@ -546,29 +629,21 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
     // append unbounded, and ballooned context (a high-frequency character hit ~9KB). History lives
     // in the thought archive and in arc-graduated story cards, not in an ever-growing state blob.
     const thoughtsForContext = dedupeThoughtRecord(brain.thoughts);
-    if (Object.keys(thoughtsForContext).length === 0) {
+    const knowledge = brain.knowledge?.trim();
+    if (Object.keys(thoughtsForContext).length === 0 && !knowledge) {
       pushExcluded("brain", brain.id, brain.characterName, "not_triggered", "Brain triggered but has no thoughts yet — nothing to inject.");
       return [];
     }
-    const content = Object.entries(thoughtsForContext).map(([k, v]) => `${k}: ${v}`).join("\n");
+    const content = [
+      ...Object.entries(thoughtsForContext).map(([k, v]) => `${k}: ${v}`),
+      ...(knowledge ? [`Knowledge boundary:\n${knowledge}`] : []),
+    ].join("\n");
     const next = item(brain.id, "brain", brain.characterName, content, brain.priority, brain.protected, brain.pinned, brain.active, brain.inclusionPolicy, sourceToGeneratedBy(brain.source));
     pushIncluded(next, `Brain included by ${brain.pinned ? "pin" : forced ? "manual force" : brain.inclusionPolicy === "always" ? "always policy" : `trigger ${match.pattern}`}; priority=${brain.priority}; protected=${brain.protected}.`);
     return [next];
   });
 
-  // J. Next Output Bias (+ response length hint)
-  if (memoryItem) {
-    // Single-item sections need not print their title. Explicit target names let the
-    // model address the correct entry without copying the full memory inventory.
-    const editableComponents = [...plotEssentialItems, ...currentArcItems].filter(entry =>
-      adventure.components.find(c => c.id === entry.id)?.autoUpdate !== false);
-    memoryItem.content += `\nEligible existing targets (use the exact title; omit updates if their content is absent): ${JSON.stringify({
-      cards: storyCardItems.map(entry => entry.title),
-      components: editableComponents.map(entry => ({ title: entry.title, type: adventure.components.find(c => c.id === entry.id)?.type })),
-    })}`;
-    memoryItem.tokenEstimate = approximateTokenCount(memoryItem.content);
-  }
-
+  // J. Next Output Bias
   const nextTurnNote = adventure.activeState.nextTurnNote;
   if (nextTurnNote?.content.trim() && !nextTurnNote.active) {
     pushExcluded("nextTurnNote", "next-turn-note", "Next Output Bias", "inactive", "Next Output Bias has content but is not active.");
@@ -604,10 +679,12 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
     "If the claim is not explicitly supported by the story text, retract or soften it in your response. " +
     "Do not fabricate supporting quotes or paraphrase past dialogue to support it. " +
     "Acknowledge the inconsistency naturally within the narrative.";
-  const challengeItems: ContextItem[] = adventure.activeState.challengeMode
+  const challengeItems: ContextItem[] = adventure.activeState.challengeMode || options.outOfCharacter
     ? [item("challenge-mode", "system", "Continuity Challenge", CHALLENGE_INSTRUCTION, 1000, true, false, true, "always", "system")]
     : [];
-  challengeItems.forEach((entry) => pushIncluded(entry, "Continuity challenge mode active; verification instruction injected."));
+  challengeItems.forEach((entry) => pushIncluded(entry, options.outOfCharacter
+    ? "Out-of-character turn; verification instruction injected."
+    : "Continuity challenge mode active; verification instruction injected."));
 
   // K. Recent Messages — opening scene is a virtual oldest message, subject to normal budget management
   const openingSeed: Message | undefined = adventure.openingScene
@@ -644,13 +721,16 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
     section("plotEssentials", "C. Plot Essentials", 2, plotEssentialItems),
     section("currentArc", "C2. Current Story Arc", 2.5, currentArcItems),
     section("components", "E. Components", 3, generalComponentItems),
-    section("storyCards", "F. Story Cards", 4, storyCardItems),
-    section("brains", "G. Brains", 5, brainItems),
-    // D. Author's Note is placed just before recent messages (AID-style) for maximum recency influence
+    section("pinnedStoryCards", "F0. Pinned Story Cards", 3.5, pinnedStoryCardItems),
+    section("recentMessages", "K. Recent Messages", 4, recentMessageItems),
+    // Per-turn context follows the history (see buildPayload) so the stable prefix stays cacheable.
+    section("storyState", "S. Story State", 5, storyStateItems),
+    section("storyCards", "F. Story Cards", 6, storyCardItems),
+    section("brains", "G. Brains", 7, brainItems),
+    // D. Author's Note sits closest to the newest turn (AID-style) for maximum recency influence
     section("authorNote", "D. Author's Note", 8, authorNoteItems),
     section("nextTurnNote", "J. Next Output Bias", 10, nextTurnNoteItems),
     section("challengeMode", "M. Continuity Challenge", 10.5, challengeItems),
-    section("recentMessages", "K. Recent Messages", 11, recentMessageItems),
   ]);
 
   const budget = budgetSettings.maxContextTokens;

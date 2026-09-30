@@ -104,7 +104,7 @@ describe("Event Memories", () => {
     expect(selected.has("event-0")).toBe(false);
     expect(selected.has("event-1")).toBe(false);
     a.storyCards[2].pinned = true;
-    expect(buildContext(a, { currentInput: "Dinner" }).sections.find(s => s.id === "storyCards")?.items.some(i => i.id === "event-2")).toBe(true);
+    expect(buildContext(a, { currentInput: "Dinner" }).sections.find(s => s.id === "pinnedStoryCards")?.items.some(i => i.id === "event-2")).toBe(true);
   });
 
   it("blocks autonomous rewriting while retaining explicit editing", () => {

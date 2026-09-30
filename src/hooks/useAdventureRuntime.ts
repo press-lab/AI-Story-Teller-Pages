@@ -1,10 +1,9 @@
-import { ONE_PASS_MEMORY_ID, MEMORY_OUTPUT_RESERVE } from "../memory/onePassMemory";
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { buildContext } from "../contextBuilder/contextBuilder";
 import { saveAdventure } from "../db/adventureDb";
 import { scanEventMemories } from "../memory/eventMemoryScan";
 import { regenerateProposalContent } from "../memory/memoryDetection";
-import { runCompactMemoryFallback } from "../memory/compactMemoryFallback";
+import { runBackgroundMemoryPass } from "../memory/compactMemoryFallback";
 import { generateArcContinuations, generateArcDirector, generateArcFromHistory, generateBrainFromName as generateBrainEntry, generateComponentContent, pickConvergentContinuation } from "../ai/generators";
 import { PLOT_ESSENTIALS_BEST_PRACTICES } from "../ai/authoringBestPractices";
 import { runStoryCardAudit, type AuditRecommendation } from "../memory/storyCardAudit";
@@ -29,7 +28,6 @@ import {
   runManualPEComponentUpdate,
   runManualPlotEssentialsUpdate,
   runManualStoryCardsUpdate,
-  runMemoryCycle,
   runMemoryReconcile,
   runPlotAIBuilder,
   runRememberThis,
@@ -60,7 +58,7 @@ function mergeProviderConfig(adventure: Adventure, settings: RuntimeProviderSett
 export function applyResponseLengthHint(config: RuntimeProviderSettings, hint: number, hiddenReserveTokens = 0): RuntimeProviderSettings {
   const wordTarget = Number.isFinite(hint) ? Math.max(50, Math.min(500, Math.round(hint))) : 250;
   const visibleTokenCap = Math.ceil(wordTarget * 1.5) + 80;
-  const hiddenReserve = Math.max(0, Math.min(MEMORY_OUTPUT_RESERVE, Math.ceil(hiddenReserveTokens)));
+  const hiddenReserve = Math.max(0, Math.ceil(hiddenReserveTokens));
   const lengthBoundedCap = visibleTokenCap + hiddenReserve;
   const configuredCap = Number.isFinite(config.maxOutputTokens) && config.maxOutputTokens > 0
     ? config.maxOutputTokens
@@ -68,8 +66,9 @@ export function applyResponseLengthHint(config: RuntimeProviderSettings, hint: n
   return { ...config, maxOutputTokens: Math.min(configuredCap, lengthBoundedCap) };
 }
 
-function hiddenOutputReserveTokens(context: ContextBuildResult): number {
-  return context.sections.some(s => s.items.some(i => i.id === ONE_PASS_MEMORY_ID)) ? MEMORY_OUTPUT_RESERVE : 0;
+/** The narrator no longer writes hidden memory output, so no extra output budget is reserved. */
+function hiddenOutputReserveTokens(_context: ContextBuildResult): number {
+  return 0;
 }
 
 function correctionConfig(config: RuntimeProviderSettings, responseLengthHint: number): RuntimeProviderSettings {
@@ -244,12 +243,12 @@ export function useAdventureRuntime(
     return { ...next, memoryDetectionSettings: { ...globalMemorySettingsRef.current } };
   }
 
-  async function startMemoryFallback(snapshot: Adventure) {
+  /**
+   * The single automatic memory writer: one background call every `everyNTurns` story turns.
+   * It never cascades into the multi-call semantic memory cycle; a failed pass waits for the next slot.
+   */
+  async function startMemoryPass(snapshot: Adventure) {
     if (!snapshot.memoryDetectionSettings.enabled || memoryFallbackInFlight.current.has(snapshot.id)) return;
-    const latest = snapshot.activeState.evaluationLog[0];
-    const onePassFailed = latest?.actionsExecuted.includes("One-pass memory: no additional API call")
-      && latest.errors.some(message => /Memory envelope missing|Incomplete or oversized memory envelope|Invalid memory JSON/.test(message));
-    if (!onePassFailed) return;
     const everyN = Math.max(1, snapshot.memoryDetectionSettings.everyNTurns ?? 1);
     const last = snapshot.activeState.lastMemoryCycleTurn;
     if (last !== undefined && snapshot.activeState.turn - last < everyN) return;
@@ -257,24 +256,26 @@ export function useAdventureRuntime(
     memoryFallbackInFlight.current.add(snapshot.id);
     try {
       const config = buildBackgroundConfig(snapshot, providerSettingsRef.current);
-      const compact = await runCompactMemoryFallback(snapshot, config);
-      const compactUsage: AdventureAction = {
-        type: "ACCUMULATE_BACKGROUND_TOKENS",
-        promptTokens: compact.tokenUsage.promptTokens,
-        completionTokens: compact.tokenUsage.completionTokens,
-      };
-      const actions = compact.valid
-        ? [...compact.actions, { type: "SET_LAST_MEMORY_CYCLE_TURN" as const, turn: snapshot.activeState.turn }, compactUsage]
-        : [...(await runMemoryCycle(snapshot, config)).actions, compactUsage];
+      const pass = await runBackgroundMemoryPass(snapshot, config);
+      const actions: AdventureAction[] = [
+        ...pass.actions,
+        ...(pass.valid ? [] : [{ type: "LOG_EVALUATION_RESULT" as const, entry: {
+          id: createId("eval"), turn: snapshot.activeState.turn, createdAt: nowIso(), conditionsEvaluated: [],
+          conditionsFired: [], actionsExecuted: ["Background memory pass: one API call"], generatedContent: [],
+          errors: ["Background memory pass returned no usable JSON; it will run again at the next scheduled turn."],
+        } }]),
+        { type: "SET_LAST_MEMORY_CYCLE_TURN", turn: snapshot.activeState.turn },
+        { type: "ACCUMULATE_BACKGROUND_TOKENS", promptTokens: pass.tokenUsage.promptTokens, completionTokens: pass.tokenUsage.completionTokens },
+      ];
       if (adventureRef.current?.id !== snapshot.id) return;
       if (isSubmittingRef.current) {
         queuePendingUpdate(actions, "memoryCycle");
         return;
       }
       applyActionsAndPersist(actions);
-    } catch (fallbackError) {
+    } catch (passError) {
       if (adventureRef.current?.id === snapshot.id) {
-        setError(fallbackError instanceof Error ? fallbackError.message : "Automatic memory fallback failed.");
+        setError(passError instanceof Error ? passError.message : "Background memory pass failed.");
       }
     } finally {
       memoryFallbackInFlight.current.delete(snapshot.id);
@@ -396,7 +397,7 @@ export function useAdventureRuntime(
       setSaveStatus("saved");
       isSubmittingRef.current = false;
       if (mode !== "comms") {
-        void startMemoryFallback(next);
+        void startMemoryPass(next);
         void startSemanticEvaluation(next);
         void checkArcContinuation(next);
       }
@@ -465,7 +466,7 @@ export function useAdventureRuntime(
       await saveAdventure(next);
       setSaveStatus("saved");
       isSubmittingRef.current = false;
-      void startMemoryFallback(next);
+      void startMemoryPass(next);
       void startSemanticEvaluation(next);
       void checkArcContinuation(next);
     } catch (providerError) {
@@ -519,7 +520,7 @@ export function useAdventureRuntime(
       await saveAdventure(next);
       setSaveStatus("saved");
       isSubmittingRef.current = false;
-      void startMemoryFallback(next);
+      void startMemoryPass(next);
       void startSemanticEvaluation(next);
     } catch (providerError) {
       setError(providerError instanceof Error ? providerError.message : "Regeneration failed.");

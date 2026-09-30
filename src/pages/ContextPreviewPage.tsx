@@ -554,8 +554,8 @@ export function ContextPreviewPage({ adventure, dispatch, contextResult, onBuild
       <details className="panel">
         <summary>Provider Payload Preview</summary>
         <p className="muted" style={{ marginTop: "0.5rem" }}>
-          The exact JSON sent to the model. System message contains all non-empty sections;
-          recent messages follow as individual role/content pairs.
+          The exact JSON sent to the model. The system message holds the stable sections (cached prefix);
+          recent messages follow, and the per-turn sections lead the newest user message as a [TURN CONTEXT] block.
         </p>
         <pre>{JSON.stringify(result.messages, null, 2)}</pre>
       </details>

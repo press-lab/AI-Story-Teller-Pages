@@ -91,6 +91,7 @@ const COMPONENT_TYPE_LABELS: Record<ComponentType, string> = {
   immediateMomentum: "Immediate Momentum",
   authorNote: "Author's Note",
   memory: "Lore Block (legacy)",
+  storyState: "Story State",
   custom: "Custom",
 };
 const storyCardTypes: StoryCardType[] = ["character", "location", "lore", "plot", "event", "custom"];

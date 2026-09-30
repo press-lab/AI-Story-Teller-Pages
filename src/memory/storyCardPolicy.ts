@@ -217,3 +217,17 @@ export function storyCardContextContent(card: StoryCard): string {
   if (card.content.trim()) sections.push(`Notes:\n${card.content}`);
   return sections.join("\n\n");
 }
+
+/**
+ * Recall phrasings ("the night I stayed…", "when she said…", "my first night…") almost never appear
+ * literally in narration, so a card keyed on them never triggers. Triggers must be names or
+ * distinctive nouns that future story text will actually contain.
+ */
+export function isFirstPersonRecallTrigger(trigger: string): boolean {
+  const t = trigger.trim().toLowerCase().replace(/[’']/g, "'");
+  if (!t) return false;
+  if (/^(the|that) (night|day|time|morning|evening|afternoon|moment|first time|last time) (i|we|she|he|they|you)\b/.test(t)) return true;
+  if (/^(when|after|before|how|what|why) (i|we|she|he|they|you)\b/.test(t)) return true;
+  if (/^(my|our) /.test(t)) return true;
+  return /\b(i|me|my|i'm|i'd|i've)\b/.test(t) && t.split(/\s+/).length >= 3;
+}

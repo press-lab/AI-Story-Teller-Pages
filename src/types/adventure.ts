@@ -24,6 +24,7 @@ export type ComponentType =
   | "immediateMomentum"
   | "authorNote"
   | "memory"
+  | "storyState"
   | "custom";
 
 export type MemoryUpdateOperation = "create" | "replace" | "append" | "patch";
@@ -229,6 +230,12 @@ export interface BrainEntry {
   lastGeneratedUpdatePreview?: string;
   /** When true, thought tags captured from this character are appended visibly to the story output. */
   printThoughts?: boolean;
+  /**
+   * Knowledge boundary: short "Knows: … / Does not know: …" lines maintained by the background
+   * memory pass (full replacement, never appended). Injected with the brain so the narrator keeps
+   * the character inside what they actually witnessed or were told.
+   */
+  knowledge?: string;
   createdAt: ISODateString;
   updatedAt: ISODateString;
 }
@@ -438,6 +445,7 @@ export type MemoryProposalType =
   | "arcProposal"
   | "plotPressureUpdate"
   | "plotMomentumUpdate"
+  | "storyStateUpdate"
   | "summaryUpdate"
   | "ignore";
 
@@ -625,6 +633,8 @@ export interface MemoryAutoApproveSettings {
   plotMomentumUpdate: boolean;
   storyCard: boolean;
   brainUpdate: boolean;
+  /** Story State rewrites from the background memory pass. Default true: the block is only useful if it stays current. */
+  storyStateUpdate: boolean;
 }
 
 export interface AdventureThumbnailImage {
@@ -678,6 +688,8 @@ export type ContextSectionKind =
   | "nextTurnNote"    // J. Next Output Bias
   | "recentMessages"  // K. Recent Messages
   | "sceneState"      // L. Scene State — current location, characters, situation (deprecated)
+  | "pinnedStoryCards" // F0. Pinned / always Story Cards — stable prefix, cache-friendly
+  | "storyState"      // S. Story State — authoritative current facts, rewritten by the background memory pass
   | "challengeMode";  // M. Continuity Challenge — one-turn verification instruction
 
 export type ExcludedReason = "budget_exceeded" | "inactive" | "cooldown" | "not_triggered";
@@ -762,6 +774,8 @@ export type BrainPatch = {
   emotionalInterpretation?: string;
   recentDevelopments?: string;
   notes?: string;
+  /** Replaces the brain's knowledge-boundary text. Always applied as a replacement, never appended. */
+  knowledge?: string;
   thoughts?: Record<string, string | null>;
 };
 

@@ -260,6 +260,7 @@ const TYPE_LABELS: Record<ComponentType, string> = {
   immediateMomentum: "Immediate Momentum",
   authorNote: "Author's Note",
   memory: "Lore Block (legacy)",
+  storyState: "Story State",
   custom: "Custom",
 };
 
@@ -272,6 +273,7 @@ const TYPE_DESCRIPTIONS: Record<ComponentType, string> = {
   immediateMomentum: "Disabled legacy component. Immediate next-beat direction now belongs in Recent Messages or the one-turn Next Output Bias.",
   authorNote: "Near-context narrative direction — inserted just before Recent Messages for maximum influence on the next response. One per adventure. Most powerful mid-session correction tool: if a character is drifting too passive, too emotional, or too reactive, add a directive here before the next turn. 'Nix should have a project she is actively working on right now' resets the register immediately.",
   memory: "Legacy lore block. Move content to a Story Card with type Lore for triggered inclusion.",
+  storyState: "Authoritative current truth — day/date/time, location, relationship status, living arrangements, who the player has met, and open threads. Always included, near the end of context. Rewritten in full by the background memory pass every few turns (turn off Auto-update to freeze it). Edit it directly whenever the story gets a fact wrong.",
   custom: "A general-purpose context block. Configure inclusion policy, priority, and protection manually.",
 };
 

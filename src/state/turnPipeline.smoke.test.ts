@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { buildContext } from "../contextBuilder/contextBuilder";
+import { buildContext, TURN_CONTEXT_CLOSE, TURN_CONTEXT_SECTIONS } from "../contextBuilder/contextBuilder";
+import { memoryUpdateActions } from "../memory/onePassMemory";
 import { adventureReducer } from "./adventureReducer";
 import { createDefaultAdventure, makeBrain, makeComponent, makeStoryCard, makeTriggerRule } from "./defaults";
 import type { Adventure, AdventureAction, ChatMessage, ContextBuildResult } from "../types/adventure";
@@ -60,8 +61,9 @@ function sectionItemIds(result: ContextBuildResult, sectionId: string): string[]
 
 function expectContextPreviewMatchesProviderPayload(result: ContextBuildResult) {
   const systemPayload = result.messages[0].content;
+  const turnPayload = result.messages.slice(1).map((message) => message.content).join("\n");
   for (const section of result.sections.filter((entry) => entry.id !== "recentMessages" && entry.content.length > 0)) {
-    expect(systemPayload).toContain(section.content);
+    expect(TURN_CONTEXT_SECTIONS.has(section.id) ? turnPayload : systemPayload).toContain(section.content);
   }
 
   const recentItemsOldestFirst = [
@@ -69,8 +71,17 @@ function expectContextPreviewMatchesProviderPayload(result: ContextBuildResult) 
   ]
     .reverse()
     .map((item) => item.content);
-  // Runtime instructions are part of the system section; recent messages still follow in order.
-  expect(result.messages.slice(1, 1 + recentItemsOldestFirst.length).map((message) => message.content)).toEqual(recentItemsOldestFirst);
+  // Recent messages follow the system prefix in order; the newest user turn may carry the [TURN CONTEXT] block.
+  const strip = (content: string) => content.includes(TURN_CONTEXT_CLOSE) ? content.slice(content.indexOf(TURN_CONTEXT_CLOSE) + TURN_CONTEXT_CLOSE.length).trim() : content;
+  expect(result.messages.slice(1, 1 + recentItemsOldestFirst.length).map((message) => strip(message.content))).toEqual(recentItemsOldestFirst);
+}
+
+/** Runs background-pass updates against what a pass for this adventure would be shown. */
+function applyPass(adventure: Adventure, updates: unknown[], evidence: string[]): Adventure {
+  const context = buildContext(adventure, { currentInput: evidence.join("\n"), latestModelOutput: evidence.at(-1) });
+  const visibleIds = new Set(context.sections.flatMap((section) => section.items.map((item) => item.id)));
+  const actions = memoryUpdateActions(adventure, { visibleIds, eligibleThoughtTargets: adventure.brains.map((brain) => brain.characterName) }, updates, evidence, "pass-source", "Background memory pass: one API call");
+  return reduceAll(adventure, actions);
 }
 
 describe("full turn smoke path", () => {
@@ -249,7 +260,7 @@ describe("full turn smoke path", () => {
 
     const pinned = dispatch(quietAdventure, { type: "PIN_STORY_CARD", storyCardId: approvedCard!.id });
     const pinnedContext = buildContext(pinned, { currentInput: "I study the ceiling." });
-    expect(sectionItemIds(pinnedContext, "storyCards")).toContain(approvedCard?.id);
+    expect(sectionItemIds(pinnedContext, "pinnedStoryCards")).toContain(approvedCard?.id);
     expectContextPreviewMatchesProviderPayload(pinnedContext);
   });
 
@@ -341,39 +352,40 @@ describe("full turn smoke path", () => {
     expect(adventure.storyCards.some((card) => card.content.includes("west wall"))).toBe(false);
   });
 
-  it("routes an one-pass memory update to a living-card UPDATE when its subject already has a card", async () => {
+  it("routes a memory-pass card update to a living-card UPDATE when its subject already has a card", () => {
     let adventure = createDefaultAdventure("Tag Routing");
     adventure = dispatch(adventure, {
       type: "UPSERT_STORY_CARD",
       storyCard: makeStoryCard({ id: "card-couple", title: "Setu and Nyxa", content: "• Their bond is a court secret.", keys: ["Setu", "Nyxa"], memoryMode: "living", active: true }),
     });
+    const story = "They go public. The bond is now openly acknowledged at court.";
+    const next = applyPass(adventure, [{ kind: "card", target: "Setu and Nyxa", content: "The bond is now openly acknowledged at court.", evidence: story, reason: "Durable new knowledge" }], ["Setu announces it.", story]);
 
-    // Model emits a memory tag whose title matches the existing card → should become an update, not a sibling.
-    const provider = vi.fn(async () => ({
-      content: "They go public. The bond is now openly acknowledged at court.\n<memory_updates>{\"updates\":[{\"kind\":\"card\",\"target\":\"Setu and Nyxa\",\"content\":\"The bond is now openly acknowledged at court.\",\"evidence\":\"They go public. The bond is now openly acknowledged at court.\",\"reason\":\"Durable new knowledge\"}]}</memory_updates>",
-    }));
-
-    const result = await runTurnPipeline({
-      adventure,
-      text: "Setu announces it.",
-      userMessageId: "tag-user",
-      assistantMessageId: "tag-assistant",
-      createdAt: timestamp,
-      sendChatCompletion: provider,
-    });
-
-    const proposal = result.adventure.activeState.memoryProposals.find((p) => p.proposedType === "storyCard");
+    const proposal = next.activeState.memoryProposals.find((p) => p.proposedType === "storyCard");
     expect(proposal).toBeDefined();
     expect(proposal?.targetId).toBe("card-couple");
     expect(proposal?.appendContent).toBe(true);
     expect(proposal?.title).toBe("Setu and Nyxa");
     expect(proposal?.memoryMode).toBe("living");
-    // No sibling card was created, and the tag was stripped from the visible prose.
-    expect(result.adventure.storyCards.filter((c) => c.title === "Setu and Nyxa")).toHaveLength(1);
-    expect(result.responseContent).not.toContain("<memory");
+    expect(next.storyCards.filter((c) => c.title === "Setu and Nyxa")).toHaveLength(1);
   });
 
-  it("keeps static lore cards static when one-pass memory updates target them", async () => {
+  it("strips a stray memory envelope from narration without applying it", async () => {
+    let adventure = createDefaultAdventure("Stray envelope");
+    adventure = dispatch(adventure, {
+      type: "UPSERT_STORY_CARD",
+      storyCard: makeStoryCard({ id: "card-couple", title: "Setu and Nyxa", content: "• Their bond is a court secret.", keys: ["Setu", "Nyxa"], memoryMode: "living", active: true }),
+    });
+    const provider = vi.fn(async () => ({
+      content: "They go public.\n<memory_updates>{\"updates\":[{\"kind\":\"card\",\"target\":\"Setu and Nyxa\",\"content\":\"Public now.\",\"evidence\":\"They go public.\",\"reason\":\"x\"}]}</memory_updates>",
+    }));
+    const result = await runTurnPipeline({ adventure, text: "Setu announces it.", createdAt: timestamp, sendChatCompletion: provider });
+    expect(result.responseContent).toBe("They go public.");
+    expect(result.adventure.activeState.memoryProposals).toHaveLength(0);
+    expect(result.adventure.storyCards).toEqual(adventure.storyCards);
+  });
+
+  it("keeps static lore cards static when memory-pass updates target them", () => {
     let adventure = createDefaultAdventure("Static Tag Routing");
     adventure = dispatch(adventure, {
       type: "UPSERT_STORY_CARD",
@@ -387,32 +399,20 @@ describe("full turn smoke path", () => {
         active: true,
       }),
     });
+    const story = "A new signal pings. Red Ring controls the stolen dampener cores.";
+    const next = applyPass(adventure, [{ kind: "card", target: "Red Ring", content: "Red Ring controls the stolen dampener cores.", evidence: story, reason: "Durable new knowledge" }], ["The Red Ring signal changes.", story]);
 
-    const provider = vi.fn(async () => ({
-      content: "A new signal pings. Red Ring controls the stolen dampener cores.\n<memory_updates>{\"updates\":[{\"kind\":\"card\",\"target\":\"Red Ring\",\"content\":\"Red Ring controls the stolen dampener cores.\",\"evidence\":\"A new signal pings. Red Ring controls the stolen dampener cores.\",\"reason\":\"Durable new knowledge\"}]}</memory_updates>",
-    }));
-
-    const result = await runTurnPipeline({
-      adventure,
-      text: "The Red Ring signal changes.",
-      userMessageId: "static-tag-user",
-      assistantMessageId: "static-tag-assistant",
-      createdAt: timestamp,
-      sendChatCompletion: provider,
-    });
-
-    const proposal = result.adventure.activeState.memoryProposals.find((p) => p.proposedType === "storyCard");
+    const proposal = next.activeState.memoryProposals.find((p) => p.proposedType === "storyCard");
     expect(proposal).toMatchObject({
       title: "Red Ring",
       targetId: "card-red-ring",
       appendContent: true,
       memoryMode: "static",
     });
-    expect(result.adventure.storyCards.find((card) => card.id === "card-red-ring")?.memoryMode).toBe("static");
-    expect(result.responseContent).not.toContain("<memory");
+    expect(next.storyCards.find((card) => card.id === "card-red-ring")?.memoryMode).toBe("static");
   });
 
-  it("appends one-pass brain thoughts without replacing the existing thought log", async () => {
+  it("appends memory-pass brain thoughts without replacing the existing thought log", () => {
     let adventure = createDefaultAdventure("Thought Capture");
     adventure.memoryAutoApprove.brainUpdate = true;
     adventure = dispatch(adventure, {
@@ -426,27 +426,15 @@ describe("full turn smoke path", () => {
         inclusionPolicy: "always",
       }),
     });
+    const story = "Margo sees the ward answer Seth first.";
+    const next = applyPass(adventure, [{ kind: "thought", target: "Margo", content: "I saw the ward answer Seth before it answered me.", evidence: story, reason: "Durable new knowledge" }], ["Margo watches Seth test the ward.", story]);
 
-    const provider = vi.fn(async () => ({
-      content: "Margo sees the ward answer Seth first.\n<memory_updates>{\"updates\":[{\"kind\":\"thought\",\"target\":\"Margo\",\"content\":\"I saw the ward answer Seth before it answered me.\",\"evidence\":\"Margo sees the ward answer Seth first.\",\"reason\":\"Durable new knowledge\"}]}</memory_updates>",
-    }));
-
-    const result = await runTurnPipeline({
-      adventure,
-      text: "Margo watches Seth test the ward.",
-      userMessageId: "thought-user",
-      assistantMessageId: "thought-assistant",
-      createdAt: timestamp,
-      sendChatCompletion: provider,
-    });
-
-    const thoughts = result.adventure.brains.find((brain) => brain.id === "brain-margo")?.thoughts ?? {};
+    const thoughts = next.brains.find((brain) => brain.id === "brain-margo")?.thoughts ?? {};
     expect(thoughts.old_guard).toBe("0 → I am already watching the ward.");
     expect(Object.values(thoughts).some((value) => value.includes("ward answer Seth"))).toBe(true);
-    expect(result.responseContent).not.toContain("<thought");
   });
 
-  it("ignores one-pass brain thoughts that repeat an existing thought", async () => {
+  it("ignores memory-pass brain thoughts that repeat an existing thought", () => {
     let adventure = createDefaultAdventure("Thought Capture");
     adventure.memoryAutoApprove.brainUpdate = true;
     adventure = dispatch(adventure, {
@@ -461,25 +449,13 @@ describe("full turn smoke path", () => {
         inclusionPolicy: "always",
       }),
     });
+    const story = "Margo sees the ward answer Seth first.";
+    const next = applyPass(adventure, [{ kind: "thought", target: "Margo", content: "I saw the ward answer Seth before it answered me.", evidence: story, reason: "Durable new knowledge" }], [story]);
 
-    const provider = vi.fn(async () => ({
-      content: "Margo sees the ward answer Seth first.\n<memory_updates>{\"updates\":[{\"kind\":\"thought\",\"target\":\"Margo\",\"content\":\"I saw the ward answer Seth before it answered me.\",\"evidence\":\"Margo sees the ward answer Seth first.\",\"reason\":\"Durable new knowledge\"}]}</memory_updates>",
-    }));
-
-    const result = await runTurnPipeline({
-      adventure,
-      text: "Margo watches Seth test the ward.",
-      userMessageId: "thought-user",
-      assistantMessageId: "thought-assistant",
-      createdAt: timestamp,
-      sendChatCompletion: provider,
-    });
-
-    const brain = result.adventure.brains.find((entry) => entry.id === "brain-margo");
+    const brain = next.brains.find((entry) => entry.id === "brain-margo");
     expect(brain?.thoughts).toEqual({
       old_guard: "0 \u2192 I saw the ward answer Seth before it answered me.",
     });
-    expect(result.responseContent).toBe("Margo sees the ward answer Seth first.");
   });
 
   it("does not advance Arc Director pacing from pinned context unless the thread actually matched", async () => {
@@ -520,7 +496,7 @@ describe("full turn smoke path", () => {
       sendChatCompletion: vi.fn(async () => ({ content: "Dust moves in the light." })),
     });
 
-    expect(sectionItemIds(quiet.preProviderContext, "storyCards")).toContain("card-shroud");
+    expect(sectionItemIds(quiet.preProviderContext, "pinnedStoryCards")).toContain("card-shroud");
     expect(quiet.preProviderContext.triggeredThreadIds).not.toContain("card-shroud");
     let arc = quiet.adventure.components.find((component) => component.id === "component-arc");
     expect(arc?.arcState?.threadEngagement["card-shroud"] ?? 0).toBe(0);
@@ -539,7 +515,7 @@ describe("full turn smoke path", () => {
     expect(arc?.arcState?.threadEngagement["card-shroud"]).toBe(1);
   });
 
-  it("supports a silent continue cue while still processing one-pass memory updates", async () => {
+  it("supports a silent continue cue and strips stray memory output", async () => {
     let adventure = createDefaultAdventure("Silent Continue");
     adventure = dispatch(adventure, {
       type: "UPSERT_STORY_CARD",
@@ -550,7 +526,7 @@ describe("full turn smoke path", () => {
     const provider = vi.fn(async (messages: ChatMessage[]) => {
       capturedPayload = messages;
       return {
-        content: "They step into court. Their bond is now known by the council.\n<memory_updates>{\"updates\":[{\"kind\":\"card\",\"target\":\"Setu and Nyxa\",\"content\":\"Their bond is now known by the council.\",\"evidence\":\"They step into court. Their bond is now known by the council.\",\"reason\":\"Durable new knowledge\"}]}</memory_updates>",
+        content: "They step into court. Their bond is now known by the council.\n<memory_updates>{\"updates\":[]}</memory_updates>",
       };
     });
 
@@ -562,11 +538,11 @@ describe("full turn smoke path", () => {
       sendChatCompletion: provider,
     });
 
-    expect(capturedPayload?.at(-1)).toEqual({ role: "user", content: "[continue]" });
+    expect(capturedPayload?.at(-1)?.role).toBe("user");
+    expect(capturedPayload?.at(-1)?.content.endsWith("[continue]")).toBe(true);
+    expect(capturedPayload?.filter((message) => message.role === "user")).toHaveLength(1);
     expect(result.adventure.messages.map((message) => message.role)).toEqual(["assistant"]);
     expect(result.adventure.messages[0].content).not.toContain("<memory");
-    const proposal = result.adventure.activeState.memoryProposals.find((p) => p.proposedType === "storyCard");
-    expect(proposal).toMatchObject({ targetId: "card-couple", appendContent: true });
   });
 
   it("sends Next Output Bias in the provider payload and consumes it after one successful output", async () => {
@@ -590,10 +566,10 @@ describe("full turn smoke path", () => {
       sendChatCompletion: provider,
     });
 
-    expect(result.providerPayload[0].content).toContain("# J. Next Output Bias");
-    expect(result.providerPayload[0].content).toContain("Do not resolve the argument yet.");
+    expect(result.providerPayload.at(-1)?.content).toContain("# J. Next Output Bias");
+    expect(result.providerPayload.at(-1)?.content).toContain("Do not resolve the argument yet.");
     expect(result.preProviderContext.sections.find((section) => section.id === "nextTurnNote")?.items).toHaveLength(1);
     expect(result.adventure.activeState.nextTurnNote.content).toBe("");
-    expect(result.postTurnContext.messages[0].content).not.toContain("Do not resolve the argument yet.");
+    expect(result.postTurnContext.messages.map((message) => message.content).join("\n")).not.toContain("Do not resolve the argument yet.");
   });
 });

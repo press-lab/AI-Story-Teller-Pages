@@ -101,7 +101,25 @@ export const defaultMemoryAutoApproveSettings: MemoryAutoApproveSettings = {
   plotMomentumUpdate: false,
   storyCard: false,
   brainUpdate: false,
+  storyStateUpdate: true,
 };
+
+export const STORY_STATE_TITLE = "Story State";
+
+/** The always-included current-truth block. Empty until the background memory pass (or the player) fills it. */
+export function makeStoryStateComponent(): ComponentEntry {
+  return makeComponent({
+    title: STORY_STATE_TITLE,
+    type: "storyState",
+    content: "",
+    priority: 240,
+    active: true,
+    alwaysOn: true,
+    protected: true,
+    inclusionPolicy: "always",
+    autoUpdate: true,
+  });
+}
 
 export const defaultSystemTriggerSettings: SystemTriggerSettings = {
   enabled: true,
@@ -207,6 +225,7 @@ export function createDefaultAdventure(title = "Untitled Adventure"): Adventure 
         pinned: true,
       }),
       makeComponent({ title: "Active Pressure", type: "activePressure", content: "", priority: 245, active: true }),
+      makeStoryStateComponent(),
     ],
     storyCards: [],
     brains: [],
@@ -245,7 +264,7 @@ export function makeComponent(
 ): ComponentEntry {
   const timestamp = nowIso();
   const type = overrides.type ?? "custom";
-  const defaultProtected = type === "narrationRules" || type === "aiInstructions" || type === "plotEssentials" || type === "authorNote";
+  const defaultProtected = type === "narrationRules" || type === "aiInstructions" || type === "plotEssentials" || type === "authorNote" || type === "storyState";
   const alwaysOn = overrides.alwaysOn ?? false;
   return {
     id: overrides.id ?? createId("component"),
@@ -363,6 +382,7 @@ export function makeBrain(overrides: Partial<BrainEntry> & Pick<BrainEntry, "cha
     lastUpdatedAt: overrides.lastUpdatedAt,
     lastGeneratedUpdatePreview: overrides.lastGeneratedUpdatePreview,
     printThoughts: overrides.printThoughts ?? false,
+    ...(overrides.knowledge !== undefined ? { knowledge: overrides.knowledge } : {}),
     createdAt: overrides.createdAt ?? timestamp,
     updatedAt: overrides.updatedAt ?? timestamp,
   };
@@ -593,7 +613,7 @@ export function normalizeAdventure(adventure: Adventure): Adventure {
       // Deduplicate singleton types: keep the first occurrence of each singleton type.
       // This fixes adventures that were created with duplicate narrationRules (or other
       // singleton) components due to a bug in createAdventure merging baseline + setup.
-      const singletonTypes = new Set(["narrationRules", "aiInstructions", "plotEssentials", "authorNote", "currentArc"]);
+      const singletonTypes = new Set(["narrationRules", "aiInstructions", "plotEssentials", "authorNote", "currentArc", "storyState"]);
       const seenSingletons = new Set<string>();
       const deduped = normalized.filter((component) => {
         if (!singletonTypes.has(component.type)) return true;
@@ -602,9 +622,12 @@ export function normalizeAdventure(adventure: Adventure): Adventure {
         return true;
       });
       const hasActivePressure = deduped.some((c) => c.type === "activePressure");
+      const hasStoryState = deduped.some((c) => c.type === "storyState");
       return [
         ...deduped,
         ...(hasActivePressure ? [] : [makeComponent({ title: "Active Pressure", type: "activePressure", content: "", priority: 245, active: true })]),
+        // Older saves predate Story State; give them an empty one so the background pass can fill it.
+        ...(hasStoryState ? [] : [makeStoryStateComponent()]),
       ];
     })(),
     triggerRules: (adventure.triggerRules ?? []).map((rule) => ({

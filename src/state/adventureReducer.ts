@@ -731,7 +731,7 @@ function sanitizeProposal(proposal: MemoryProposal): MemoryProposal | null {
   if (proposal.proposedType === "brainUpdate" && content.startsWith("{")) {
     try {
       const parsed = JSON.parse(content) as Record<string, unknown>;
-      const stringFields = new Set(["currentState", "relationshipPressure", "emotionalInterpretation", "recentDevelopments", "notes"]);
+      const stringFields = new Set(["currentState", "relationshipPressure", "emotionalInterpretation", "recentDevelopments", "notes", "knowledge"]);
       const hasString = Object.entries(parsed).some(([k, v]) => stringFields.has(k) && typeof v === "string" && (v as string).trim());
       const hasThoughts = parsed.thoughts && typeof parsed.thoughts === "object" && !Array.isArray(parsed.thoughts) && Object.keys(parsed.thoughts as object).length > 0;
       if (!hasString && !hasThoughts) return null;
@@ -987,13 +987,21 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal)
         if (raw.thoughts && typeof raw.thoughts === "object" && !Array.isArray(raw.thoughts)) {
           patch.thoughts = raw.thoughts as Record<string, string | null>;
         }
+        // Knowledge boundaries are a current snapshot: replace, never append.
+        if (typeof raw.knowledge === "string") patch.knowledge = raw.knowledge;
         if (Object.keys(patch).length > 0) parsedPatch = patch;
       }
     } catch {
       // Not JSON — fall through to plain-string append
     }
+    const { knowledge: knowledgePatch, ...appendPatch } = parsedPatch ?? {};
+    const appended = parsedPatch && Object.keys(appendPatch).length > 0
+      ? applyBrainUpdate(existing, appendPatch, "append", state.activeState.turn, proposal.content.slice(0, 500))
+      : existing;
     const brain = parsedPatch
-      ? applyBrainUpdate(existing, parsedPatch, "append", state.activeState.turn, proposal.content.slice(0, 500))
+      ? (knowledgePatch !== undefined
+        ? applyBrainUpdate(appended, { knowledge: knowledgePatch }, "replace", state.activeState.turn, proposal.content.slice(0, 500))
+        : appended)
       : touch({
           ...existing,
           recentDevelopments: [existing.recentDevelopments, proposal.content].filter(Boolean).join("\n"),
@@ -1040,6 +1048,20 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal)
 
   if (proposal.proposedType === "plotMomentumUpdate") {
     return {};
+  }
+
+  if (proposal.proposedType === "storyStateUpdate") {
+    if (!proposal.content.trim()) return {};
+    const existing =
+      state.components.find((c) => c.id === proposal.targetId && c.type === "storyState") ??
+      state.components.find((c) => c.type === "storyState");
+    if (!existing) return {};
+    return {
+      components: upsertById(
+        state.components,
+        recordComponentMemoryUpdate(existing, { ...existing, content: proposal.content, lastAutoUpdateTurn: state.activeState.turn }, proposalMemoryMeta("replace")),
+      ),
+    };
   }
 
   if (proposal.proposedType === "plotPressureUpdate") {
@@ -1613,12 +1635,16 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
             (component.id === clean.targetId || !clean.targetId) &&
             normalizedReplacementContent(component.content) === normalizedReplacementContent(clean.content),
         );
-      if (duplicatesPending || duplicatesDismissed || duplicatesCard || duplicatesStoryCardContent || duplicatesExistingCardContent || duplicatesExistingTargetContent || duplicatesCurrentPressure) return state;
+      const duplicatesCurrentStoryState =
+        clean.proposedType === "storyStateUpdate" &&
+        state.components.some((component) => component.type === "storyState" && normalizedReplacementContent(component.content) === normalizedReplacementContent(clean.content));
+      if (duplicatesCurrentStoryState || duplicatesPending || duplicatesDismissed || duplicatesCard || duplicatesStoryCardContent || duplicatesExistingCardContent || duplicatesExistingTargetContent || duplicatesCurrentPressure) return state;
       const autoApprove = state.memoryAutoApprove?.[clean.proposedType as keyof typeof state.memoryAutoApprove] ?? false;
       if (autoApprove && !clean.requiresReview) {
         const approved = updateMemoryProposal(clean, { status: "approved" });
         const applied = applyApprovedMemoryProposal(state, approved);
-        if (clean.proposedType === "plotPressureUpdate") {
+        // Current-state replacements are frequent; keep them out of the proposal history.
+        if (clean.proposedType === "plotPressureUpdate" || clean.proposedType === "storyStateUpdate") {
           return touchAdventure(state, applied);
         }
         return touchAdventure(state, {

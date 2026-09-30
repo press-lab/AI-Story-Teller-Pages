@@ -1,4 +1,4 @@
-import { ONE_PASS_MEMORY_ID, onePassMemoryActions, parseOnePassMemory } from "../memory/onePassMemory";
+import { parseOnePassMemory } from "../memory/onePassMemory";
 import { buildContext, extractInlineThoughts } from "../contextBuilder/contextBuilder";
 import { runContinuityCheck, scanForRiskyClaims } from "../continuityLint";
 import { evaluateTriggerRules, type TriggerEvaluationEvent } from "../triggers/triggerEngine";
@@ -57,6 +57,13 @@ export function applyRuntimeEngines(adventure: Adventure, event: TriggerEvaluati
   return reduceActions(adventure, triggerResult.actions);
 }
 
+/** Adds a cue to the trailing user turn (e.g. the [TURN CONTEXT] block) instead of sending two user turns in a row. */
+export function appendUserCue(messages: ChatMessage[], cue: string): ChatMessage[] {
+  const last = messages.at(-1);
+  if (last && last.role === "user") return [...messages.slice(0, -1), { ...last, content: `${last.content}\n\n${cue}` }];
+  return [...messages, { role: "user" as const, content: cue }];
+}
+
 export function latestAssistantOutput(adventure: Adventure): string | undefined {
   return [...adventure.messages].reverse().find((message) => message.role === "assistant")?.content;
 }
@@ -86,7 +93,7 @@ export async function applyProviderResponse({
 }: ApplyProviderResponseOptions): Promise<{ adventure: Adventure; responseContent: string; continuityCorrected: boolean }> {
   let next = adventure;
 
-  // Extract inline thought tags and memory tags from the response before the player sees it.
+  // The narrator is no longer asked for memory output; strip any stray envelope or tags defensively.
   const memory = parseOnePassMemory(response.content);
   const { cleanContent: thoughtCleanContent } = extractInlineThoughts(memory.story);
   if (!thoughtCleanContent.trim()) throw new Error("The model returned no visible story. No memory was applied.");
@@ -109,22 +116,7 @@ export async function applyProviderResponse({
   }
 
   const messageId = assistantMessageId ?? createId("message");
-  const memoryEnabled = mode !== "comms" && next.memoryDetectionSettings.enabled
-    && preProviderContext.sections.some(s => s.items.some(i => i.id === ONE_PASS_MEMORY_ID));
-  if (memoryEnabled) {
-    // Never apply memory from a discarded draft after a continuity rewrite.
-    const actions = onePassMemoryActions(next, preProviderContext, continuityCorrected ? [] : memory.updates,
-      finalContent, messageId, continuityCorrected ? "Memory skipped after continuity correction." : memory.error);
-    const before = next;
-    next = reduceActions(next, actions);
-    const visibleThoughts = next.brains.filter(b => b.printThoughts).flatMap(b => {
-      const old = before.brains.find(previous => previous.id === b.id);
-      return Object.entries(b.thoughts).filter(([key, value]) => old?.thoughts[key] !== value)
-        .map(([, value]) => "*[" + b.characterName + "]: " + value + "*");
-    });
-    if (visibleThoughts.length) finalContent += "\n\n" + visibleThoughts.join("\n");
-  }
-
+  // Memory is written by the background memory pass (see compactMemoryFallback.ts), never inline.
 
   next = adventureReducer(next, {
     type: "ADD_MESSAGE",
@@ -182,12 +174,12 @@ export async function runTurnPipeline({
   }
 
   const preProviderContext = buildContext(next, {
-    skipThoughtCapture: mode === "comms",
+    outOfCharacter: mode === "comms",
     currentInput: currentInputForContext ?? (recordUserInput ? text : undefined),
     latestModelOutput: latestAssistantOutput(next),
   });
   const providerPayload = providerCue
-    ? [...preProviderContext.messages, { role: "user" as const, content: providerCue }]
+    ? appendUserCue(preProviderContext.messages, providerCue)
     : preProviderContext.messages;
   const response = await sendChatCompletion(providerPayload, next, preProviderContext);
 

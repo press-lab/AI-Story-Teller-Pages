@@ -273,10 +273,11 @@ describe("sendOpenAICompatibleChatCompletion", () => {
       { type: "text", text: "Stable context", cache_control: { type: "ephemeral" } },
     ]);
     expect(body.messages).toEqual([{ role: "user", content: "Continue." }]);
+    // Anthropic input_tokens exclude cache reads/writes; promptTokens is normalized to all input tokens.
     expect(result.usage).toEqual({
-      promptTokens: 100,
+      promptTokens: 200,
       completionTokens: 20,
-      totalTokens: 120,
+      totalTokens: 220,
       cacheReadTokens: 70,
       cacheCreationTokens: 30,
     });
