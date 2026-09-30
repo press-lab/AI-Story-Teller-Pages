@@ -68,6 +68,30 @@ describe("one-pass memory quality boundary", () => {
     expect(actions.map(action => action.type)).toContain("APPLY_BRAIN_UPDATE");
   });
 
+  it("keeps temporary character logistics out of a Story Card", () => {
+    const adventure = fixture();
+    adventure.storyCards[0].type = "character";
+    const scene = "Mira agreed to lunch at one o'clock and told Seth to bring the mug to the side door.";
+    const actions = onePassMemoryActions(adventure, buildContext(adventure), [{
+      kind: "card", target: "Mira", content: scene, evidence: scene,
+      reason: "The lunch plan will matter later.",
+    }], scene, "story-id");
+    expect(actions.map(action => action.type)).toEqual(["LOG_EVALUATION_RESULT"]);
+    expect(actions[0].type === "LOG_EVALUATION_RESULT" && actions[0].entry.errors[0]).toContain("temporary plan");
+  });
+
+  it("accepts a specific character thought beyond the old 45-word cap", () => {
+    const adventure = fixture();
+    const scene = "Mira says the duke has finally shared the sealed letter with her.";
+    const thought = "I can see why the duke waited until now to show me the sealed letter, but I still resent being the last person in the room to learn about it. I will ask him directly what changed his mind before I decide whether to trust the answer he gives me.";
+    const actions = onePassMemoryActions(adventure, buildContext(adventure, { currentInput: scene }), [{
+      kind: "thought", target: "Mira", content: thought, evidence: scene,
+      reason: "New private reaction and plan",
+    }], scene, "story-id");
+    expect(thought.split(/\s+/).length).toBeGreaterThan(45);
+    expect(actions.map(action => action.type)).toContain("APPLY_BRAIN_UPDATE");
+  });
+
   it.each([
     ["missing", story],
     ["truncated", `${story}<memory_updates>{"updates":[`],
