@@ -405,11 +405,9 @@ describe("full turn smoke path", () => {
     expect(proposal).toMatchObject({
       title: "Red Ring",
       targetId: "card-red-ring",
-      appendContent: false,
+      appendContent: true,
       memoryMode: "static",
     });
-    expect(proposal?.content).toContain("main enemy faction");
-    expect(proposal?.content).toContain("stolen dampener cores");
     expect(result.adventure.storyCards.find((card) => card.id === "card-red-ring")?.memoryMode).toBe("static");
     expect(result.responseContent).not.toContain("<memory");
   });
@@ -539,31 +537,6 @@ describe("full turn smoke path", () => {
     expect(matched.preProviderContext.triggeredThreadIds).toContain("card-shroud");
     arc = matched.adventure.components.find((component) => component.id === "component-arc");
     expect(arc?.arcState?.threadEngagement["card-shroud"]).toBe(1);
-  });
-
-  it("settles a manually armed break after six turns without pacing triggers", async () => {
-    let adventure = createDefaultAdventure("Manual Arc");
-    adventure = dispatch(adventure, {
-      type: "UPSERT_COMPONENT",
-      component: {
-        ...makeComponent({ id: "component-arc", title: "Current Arc", type: "currentArc", content: "A confrontation is underway.", active: true }),
-        arcThreadKeys: [],
-        arcState: { phase: "break", tier: 0, threadEngagement: {}, pendingBreak: false, brokeAtTurn: 0 },
-      },
-    });
-    adventure = { ...adventure, activeState: { ...adventure.activeState, turn: 6 } };
-
-    const result = await runTurnPipeline({
-      adventure,
-      text: "I wait for what comes next.",
-      userMessageId: "manual-arc-user",
-      assistantMessageId: "manual-arc-assistant",
-      createdAt: timestamp,
-      sendChatCompletion: vi.fn(async () => ({ content: "The room falls quiet." })),
-    });
-
-    expect(result.preProviderContext.triggeredThreadIds).toEqual([]);
-    expect(result.adventure.components.find((component) => component.id === "component-arc")?.arcState?.phase).toBe("aftermath");
   });
 
   it("supports a silent continue cue while still processing one-pass memory updates", async () => {

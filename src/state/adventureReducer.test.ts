@@ -597,9 +597,9 @@ describe("adventureReducer", () => {
       previous: null,
       next: {
         title: "Promise",
-        content: "Seth promised Margo he would return.",
+        content: "",
         compactKind: "promise",
-        coreFacts: undefined,
+        coreFacts: expect.arrayContaining(["Seth promised Margo he would return."]),
       },
     });
 
@@ -681,7 +681,7 @@ describe("adventureReducer", () => {
     expect(statusState.activeState.memoryProposals.find((proposal) => proposal.id === "proposal-ignore")?.status).toBe("ignored");
   });
 
-  it("replaces static Story Card content even when a proposal requests append", () => {
+  it("preserves static story card mode when approving an appended static proposal", () => {
     let state = baseAdventure();
     const redRing = makeStoryCard({
       id: "card-red-ring",
@@ -709,25 +709,10 @@ describe("adventureReducer", () => {
     state = reduce(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: "proposal-red-ring" });
 
     const updated = state.storyCards.find((card) => card.id === "card-red-ring");
-    expect(updated?.content).toBe("• Red Ring pressure now centers on stolen dampener cores.");
-    expect(updated?.memoryUpdateHistory?.[0]?.operation).toBe("replace");
+    expect(updated?.content).toContain("main enemy faction");
+    expect(updated?.content).toContain("stolen dampener cores");
     expect(updated?.memoryMode).toBe("static");
     expect((updated?.state ?? "").split(/\s+/)).not.toContain("living");
-  });
-
-  it("does not restore superseded guarded text during a static replacement", () => {
-    let state = baseAdventure();
-    state = reduce(state, { type: "UPSERT_STORY_CARD", storyCard: makeStoryCard({
-      id: "old-promise", title: "Old Promise", memoryMode: "static",
-      content: "Seth promised to return.", archivedFacts: "Seth promised to bring a coin.",
-    }) });
-    state = reduce(state, { type: "ADD_MEMORY_PROPOSAL", proposal: makeMemoryProposal({
-      id: "revised-promise", proposedType: "storyCard", targetId: "old-promise",
-      title: "Old Promise", memoryMode: "static", content: "Seth's promise was released.",
-      appendContent: true,
-    }) });
-    state = reduce(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: "revised-promise" });
-    expect(state.storyCards.find((card) => card.id === "old-promise")?.content).toBe("Seth's promise was released.");
   });
 
   it("creates a living child card instead of appending current state to a static character profile", () => {
@@ -1217,7 +1202,7 @@ describe("adventureReducer", () => {
     expect(state.activeState.memoryProposals.some((p) => p.id === "bad-arc")).toBe(false);
   });
 
-  it("living-card update: compact facts and new facts remain in Content without auto-protecting the card", () => {
+  it("living-card update: compact facts move into structured fields without auto-protecting the card", () => {
     const card = makeStoryCard({
       id: "card-living",
       title: "Setu and Nyxa",
@@ -1234,7 +1219,7 @@ describe("adventureReducer", () => {
       proposedType: "storyCard",
       title: "Setu and Nyxa",
       targetId: "card-living",
-      appendContent: false,
+      appendContent: true,
       content: "• Setu has now brought her into his private chambers.",
       suggestedTriggers: ["chambers"],
     });
@@ -1244,9 +1229,9 @@ describe("adventureReducer", () => {
     const merged = state.storyCards.find((c) => c.id === "card-living");
     expect(merged?.compactKind).toBe("secret");
     expect(merged?.compactStatus).toBe("active");
-    expect(merged?.content).toContain("Their bond was a court secret");
-    expect(merged?.content).toContain("private chambers");
-    expect(merged?.coreFacts ?? []).toEqual([]);
+    expect(merged?.coreFacts?.join("\n")).toContain("Their bond was a court secret");
+    expect([...(merged?.currentFacts ?? []), ...(merged?.recentDevelopments ?? [])].join("\n")).toContain("private chambers");
+    expect(merged?.content).not.toContain("court secret");
     expect(merged?.pinned).toBe(false);
     expect(merged?.protected).toBe(false);
     expect(state.storyCards.filter((c) => c.title === "Setu and Nyxa")).toHaveLength(1);
@@ -1256,7 +1241,7 @@ describe("adventureReducer", () => {
       operation: "append",
       proposalId: "proposal-card-update",
       previous: { content: expect.stringContaining("They spar as equals") },
-      next: { content: expect.stringContaining("private chambers") },
+      next: { coreFacts: expect.arrayContaining([expect.stringContaining("court secret")]) },
     });
   });
 
@@ -1294,22 +1279,6 @@ describe("adventureReducer", () => {
     expect(merged?.protected).toBe(false);
   });
 
-  it("keeps an existing living character profile intact when a new fact is appended", () => {
-    const profile = "• Voice: precise, dry, and reserved.\n• History: she has lived in Seattle for decades.";
-    let state = { ...baseAdventure(), storyCards: [makeStoryCard({
-      id: "edythe-profile", title: "Edythe", type: "character", memoryMode: "living",
-      content: profile, tokenBudget: 10, active: true,
-    })] };
-    state = reduce(state, { type: "ADD_MEMORY_PROPOSAL", proposal: makeMemoryProposal({
-      id: "profile-update", proposedType: "storyCard", title: "Edythe", targetId: "edythe-profile",
-      appendContent: true, content: "• She now trusts Seth with the house key.",
-    }) });
-    state = reduce(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: "profile-update" });
-    expect(state.storyCards[0].content).toContain(profile);
-    expect(state.storyCards[0].content).toContain("house key");
-    expect(state.storyCards[0].archivedFacts).toBeFalsy();
-  });
-
   it("story-card replacements preserve guarded compact facts from live content and archives", () => {
     const card = makeStoryCard({
       id: "card-jinx-pact",
@@ -1339,10 +1308,9 @@ describe("adventureReducer", () => {
 
     const updated = state.storyCards.find((c) => c.id === "card-jinx-pact");
     expect(updated?.compactKind).toBe("coverStory");
-    expect(updated?.content).toContain("secret pact");
-    expect(updated?.content).toContain("official cover story");
-    expect(updated?.content).toContain("Sump air filter");
-    expect(updated?.coreFacts ?? []).toEqual([]);
+    expect(updated?.coreFacts?.join("\n")).toContain("secret pact");
+    expect(updated?.coreFacts?.join("\n")).toContain("official cover story");
+    expect([...(updated?.currentFacts ?? []), ...(updated?.recentDevelopments ?? [])].join("\n")).toContain("Sump air filter");
     expect(updated?.pinned).toBe(false);
     expect(updated?.protected).toBe(false);
     expect(updated?.priority).toBeGreaterThanOrEqual(80);

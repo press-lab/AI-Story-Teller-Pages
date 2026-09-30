@@ -115,7 +115,7 @@ export async function detectStoryCardProposals(adventure: Adventure, providerCon
     .map(p => p.title.trim().toLocaleLowerCase()));
   const considered = adventure.activeState.memoryProposals.filter(p => p.proposedType === "storyCard");
   const capturedContent = [
-    ...adventure.storyCards.map(storyCardContextContent),
+    ...adventure.storyCards.flatMap(c => [c.content, storyCardContextContent(c)]),
     ...considered.map(p => p.content),
   ];
   // Keep the complete title inventory for duplicate avoidance, but only send

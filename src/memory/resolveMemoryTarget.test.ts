@@ -3,24 +3,6 @@ import { createDefaultAdventure, makeStoryCard } from "../state/defaults";
 import { resolveMemoryTarget, sanitizeStoryCardTriggers } from "./resolveMemoryTarget";
 
 describe("resolveMemoryTarget", () => {
-  it("routes existing living suggestions to append and static suggestions to replace", () => {
-    const adventure = {
-      ...createDefaultAdventure("Modes"),
-      storyCards: [
-        makeStoryCard({ id: "living", title: "Living Subject", memoryMode: "living", content: "Earlier fact." }),
-        makeStoryCard({ id: "static", title: "Static Subject", memoryMode: "static", content: "Earlier fact." }),
-      ],
-    };
-    expect(resolveMemoryTarget(adventure, {
-      proposedType: "storyCard", targetId: "living", title: "Living Subject",
-      content: "New fact.", appendContent: false, memoryMode: "living",
-    }).appendContent).toBe(true);
-    expect(resolveMemoryTarget(adventure, {
-      proposedType: "storyCard", targetId: "static", title: "Static Subject",
-      content: "Revised fact.", appendContent: true, memoryMode: "static",
-    }).appendContent).toBe(false);
-  });
-
   it("creates a living child card instead of appending current state to a static profile", () => {
     const adventure = {
       ...createDefaultAdventure("Routing"),

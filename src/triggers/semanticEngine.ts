@@ -26,7 +26,7 @@ import { backgroundProviderConfigIssue, resolveBackgroundProviderConfig } from "
 import { applyAIMemoryUpdate } from "../memory/applyAIMemoryUpdate";
 import { detectStoryCardProposals } from "../memory/memoryDetection";
 import { memoryCanonMessages } from "../memory/memoryCanon";
-import { isLivingStoryCard, resolveMemoryTarget } from "../memory/resolveMemoryTarget";
+import { resolveMemoryTarget } from "../memory/resolveMemoryTarget";
 import {
   PLOT_ESSENTIALS_BEST_PRACTICES,
   STORY_CARD_BEST_PRACTICES,
@@ -136,24 +136,22 @@ Keep all values verbatim and unchanged. Do not rewrite or summarize any entry.`;
 function storyCardPrompt(card: StoryCard): string {
   const modeInstruction =
     card.memoryMode === "living"
-      ? "This is a LIVING card. Return only new durable facts to APPEND to its current content. Do not repeat existing facts or return a rewritten full card. If a correction would require replacing an old fact, return NONE for this automatic update."
+      ? "This is a LIVING card: keep the content as the current state of this evolving subject. Preserve still-current facts, update changed facts, and remove or rewrite obsolete current-state claims."
       : card.memoryMode === "historical"
         ? "This is a HISTORICAL card: write past-tense facts about completed events or resolved beats. Do not make completed events sound current."
-        : "This is a STATIC card. Return a complete REPLACEMENT containing all still-valid facts plus supported changes. Write always-true character, location, lore, or technique facts in present tense.";
+        : "This is a STATIC card: write always-true character, location, lore, or technique facts in present tense.";
   return `You are updating a persistent world fact card titled '${card.title}'.
 ${modeInstruction}
-${card.memoryMode === "living"
-   ? "Use concise bullet points, one new fact per line. Include the subject name. Do not include temporary scene details."
-   : storyCardCreationGuidance(card.memoryMode)}
+${storyCardCreationGuidance(card.memoryMode)}
 
 Current content:
 ${storyCardContextContent(card)}
 
 Attribute each action, statement and message to its actual source. Do not identify an unknown sender as this character from an initial or a nearby mention. The player, narrator and named NPCs are separate people. Preserve this card's established identity.
 
-Based on what just happened, return an update only when a genuinely new durable fact or correction is supported. Otherwise return NONE. Format the content as concise bullet points, one per line, using the • character. Each bullet should be a single self-contained fact, trait, or rule.
+Based on what just happened, replace this card only when a genuinely new durable fact or correction is supported. Otherwise return NONE. Format the content as concise bullet points, one per line, using the • character. Each bullet should be a single self-contained fact, trait, or rule. Preserve all existing facts that are still true; update or remove only what has changed.
 
-For a STATIC character card with a VOICE CONTRACT section, keep that section after the bullets — preserve it verbatim unless the character's voice has genuinely shifted, in which case refine it in place (keep the Rhythm / Default move / Emotional defense / Never sounds like / Example lines shape). For a LIVING card, do not repeat the existing voice contract.
+If this is a character card with a VOICE CONTRACT section, keep that section after the bullets — preserve it verbatim unless the character's voice has genuinely shifted, in which case refine it in place (keep the Rhythm / Default move / Emotional defense / Never sounds like / Example lines shape).
 
 Do NOT include: current location, who is currently present in a scene, active mission status, next-step instructions, or momentary emotions. Only record facts that match this card's memory mode.
 
@@ -605,7 +603,7 @@ async function generatedActionsFor(
       if (!validation.changed) return { actions: [], error: validation.error };
       if (requireApproval) {
         const proposal = makeProposal(
-          { proposedType: "storyCard", title: card.title, content, suggestedTriggers: card.keys, targetId: card.id, appendContent: isLivingStoryCard(card), memoryMode: card.memoryMode, rationale: `Auto-update for story card "${card.title}".` },
+          { proposedType: "storyCard", title: card.title, content, suggestedTriggers: card.keys, targetId: card.id, appendContent: false, memoryMode: card.memoryMode, rationale: `Auto-update for story card "${card.title}".` },
           adventure,
         );
         return {
@@ -993,15 +991,13 @@ Builder focus:
 - Auto-update requested: ${request.autoUpdate === undefined ? "infer" : request.autoUpdate ? "yes" : "no"}
 
 ${storyCardIntentGuidance(request.intent)}
-${selectedCard && isLivingStoryCard(selectedCard)
-  ? "For this existing living card, return only new durable facts to append. Do not repeat or rewrite its current content."
-  : storyCardCreationGuidance(requestedMode)}
+${storyCardCreationGuidance(requestedMode)}
 
 Rules:
 - Return Memory Suggestions only. Do not claim anything is already approved.
 - If a selected card is provided, prefer updating that exact card unless the user's brief clearly describes a separate subject.
-- For an existing living card, set action "update", appendContent true, and return only new facts to append. Do not repeat or rewrite its current content.
-- For an existing static card, set action "update", appendContent false, and return the complete replacement including still-valid facts.
+- For selected-card polishing or fleshing out, set action "update" and appendContent false so the proposal replaces the card content after approval.
+- For a new fact from recent play that should merge into an existing living card, set action "update" and appendContent true.
 - For relationship cards, write the current dynamic in present tense. Include concrete pressure, leverage, attraction, trust, debt, rivalry, promise, or boundary.
 - For living cards, set memoryMode "living" and set autoUpdate true when the user asked for an evolving/current tracker.
 - Use narrow trigger keys. Relationship/subplot cards should not rely only on broad character names when those characters have their own cards.

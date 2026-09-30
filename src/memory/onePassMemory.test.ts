@@ -37,59 +37,10 @@ describe("one-pass memory quality boundary", () => {
     expect(result.adventure.storyCards).toHaveLength(1);
     expect(result.adventure.storyCards[0].content).toContain("scout");
     expect(result.adventure.storyCards[0].content).toContain("Silver");
-    expect(result.adventure.storyCards[0].memoryUpdateHistory?.[0]?.operation).toBe("replace");
     expect(result.adventure.activeState.memoryProposals[0]).toMatchObject({ sourceTurnId: "new-story", sourceText: update.evidence });
     expect(Object.values(result.adventure.brains[0].thoughts)).toEqual(expect.arrayContaining(["I distrust the duke.", expect.stringContaining("stop fearing")]));
     expect(result.adventure.components.find(c => c.id === "pressure")?.content).toBe("The tribute obligation has ended.");
     expect(result.adventure.components.find(c => c.id === "essentials")?.content).toBe(adventure.components[0].content);
-  });
-
-  it("appends a one-pass fact to a living card", () => {
-    const adventure = fixture();
-    adventure.storyCards[0].memoryMode = "living";
-    const actions = onePassMemoryActions(adventure, buildContext(adventure), [update], story, "story-id");
-    const result = actions.reduce(adventureReducer, adventure);
-    expect(result.storyCards[0].content).toContain("Mira is a scout.");
-    expect(result.storyCards[0].content).toContain("Silver burns Mira's skin.");
-    expect(result.storyCards[0].memoryUpdateHistory?.[0]?.operation).toBe("append");
-  });
-
-  it("accepts a thought from a continuing exchange that uses a pronoun", () => {
-    let adventure = fixture();
-    adventure = adventureReducer(adventure, { type: "ADD_MESSAGE", id: "prior-user", role: "user", content: "I ask Mira about the letter." });
-    adventure = adventureReducer(adventure, { type: "ADD_MESSAGE", id: "prior-story", role: "assistant", content: "Mira says she will read it." });
-    adventure = adventureReducer(adventure, { type: "ADD_MESSAGE", id: "player", role: "user", content: "I ask her what she found." });
-    adventure = adventureReducer(adventure, { type: "ADD_MESSAGE", id: "story", role: "assistant", content: "She realizes the duke lied about the tribute." });
-    const context = buildContext(adventure, { latestModelOutput: adventure.messages.at(-1)?.content });
-    const actions = onePassMemoryActions(adventure, context, [{
-      kind: "thought", target: "Mira", content: "I need to confront the duke about his lie.",
-      evidence: "She realizes the duke lied about the tribute.", reason: "New private plan",
-    }], adventure.messages.at(-1)!.content, "story", undefined, "Fallback", "I ask her what she found.");
-    expect(actions.map(action => action.type)).toContain("APPLY_BRAIN_UPDATE");
-  });
-
-  it("keeps temporary character logistics out of a Story Card", () => {
-    const adventure = fixture();
-    adventure.storyCards[0].type = "character";
-    const scene = "Mira agreed to lunch at one o'clock and told Seth to bring the mug to the side door.";
-    const actions = onePassMemoryActions(adventure, buildContext(adventure), [{
-      kind: "card", target: "Mira", content: scene, evidence: scene,
-      reason: "The lunch plan will matter later.",
-    }], scene, "story-id");
-    expect(actions.map(action => action.type)).toEqual(["LOG_EVALUATION_RESULT"]);
-    expect(actions[0].type === "LOG_EVALUATION_RESULT" && actions[0].entry.errors[0]).toContain("temporary plan");
-  });
-
-  it("accepts a specific character thought beyond the old 45-word cap", () => {
-    const adventure = fixture();
-    const scene = "Mira says the duke has finally shared the sealed letter with her.";
-    const thought = "I can see why the duke waited until now to show me the sealed letter, but I still resent being the last person in the room to learn about it. I will ask him directly what changed his mind before I decide whether to trust the answer he gives me.";
-    const actions = onePassMemoryActions(adventure, buildContext(adventure, { currentInput: scene }), [{
-      kind: "thought", target: "Mira", content: thought, evidence: scene,
-      reason: "New private reaction and plan",
-    }], scene, "story-id");
-    expect(thought.split(/\s+/).length).toBeGreaterThan(45);
-    expect(actions.map(action => action.type)).toContain("APPLY_BRAIN_UPDATE");
   });
 
   it.each([

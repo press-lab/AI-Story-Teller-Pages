@@ -44,15 +44,4 @@ describe("storyCardContextContent", () => {
 
     expect(storyCardContextContent(card)).toBe("Condensed pact context.");
   });
-
-  it("keeps newly created compact-card text in Content", () => {
-    const card = applyGuardedStoryCardPolicy(makeStoryCard({
-      title: "Seth's Promise", type: "plot", memoryMode: "living",
-      content: "Seth promised to return.",
-    }));
-    expect(card.content).toBe("Seth promised to return.");
-    expect(card.coreFacts ?? []).toEqual([]);
-    expect(card.currentFacts ?? []).toEqual([]);
-    expect(card.recentDevelopments ?? []).toEqual([]);
-  });
 });

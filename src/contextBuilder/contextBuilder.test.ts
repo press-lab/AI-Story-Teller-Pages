@@ -279,7 +279,7 @@ describe("buildContext", () => {
     expect(laterContext.sections.find((section) => section.id === "storyCards")?.items.map((item) => item.id)).not.toContain("card-opening");
   });
 
-  it("renders legacy structured story-card facts as one content field", () => {
+  it("renders structured compact story-card facts into context", () => {
     const pact = makeStoryCard({
       id: "card-pact",
       title: "Seth's Pact with Jinx",
@@ -296,10 +296,13 @@ describe("buildContext", () => {
     const result = buildContext(adventure);
     const content = result.sections.find((section) => section.id === "storyCards")?.items[0]?.content ?? "";
 
+    expect(content).toContain("Compact: pact (active)");
+    expect(content).toContain("Core facts:");
     expect(content).toContain("Jinx stops killing except in self-protection.");
+    expect(content).toContain("Current facts:");
     expect(content).toContain("official cover story");
+    expect(content).toContain("Recent developments:");
     expect(content).toContain("Sump air filter");
-    expect(content).not.toContain("Core facts:");
   });
 
   it("drops oldest recent messages before cutting other sections", () => {

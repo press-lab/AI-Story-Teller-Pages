@@ -179,11 +179,11 @@ export interface StoryCard {
   compactKind?: StoryCardCompactKind;
   /** Lifecycle for compact memory. Active/strained/broken compacts stay prominent; resolved/superseded compacts can age out. */
   compactStatus?: StoryCardCompactStatus;
-  /** Legacy compact facts, folded into content when a card is loaded or updated. */
+  /** Non-prunable compact terms. These are rendered before current/recent compact facts in context. */
   coreFacts?: string[];
-  /** Legacy compact facts, folded into content when a card is loaded or updated. */
+  /** Current operating facts for the compact. */
   currentFacts?: string[];
-  /** Legacy compact facts, folded into content when a card is loaded or updated. */
+  /** Recent compact developments. Budgeted lower than core/current facts. */
   recentDevelopments?: string[];
   /** Source turns that produced compact facts, when known. */
   sourceTurnIds?: string[];

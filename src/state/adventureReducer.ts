@@ -29,7 +29,6 @@ import { isLivingStoryCard, resolveMemoryTarget, sanitizeStoryCardTriggers } fro
 import {
   appendSourceTurnIds,
   applyGuardedStoryCardPolicy,
-  consolidateStoryCardContent,
   isGuardedStoryCardFact,
   isGuardedStoryCardMemory,
   normalizeStoryCardFact,
@@ -229,8 +228,8 @@ function arcTier(total: number, breakThreshold: number): number {
  */
 function advanceArcComponent(component: ComponentEntry, triggeredIds: string[], turn: number): ComponentEntry {
   const threadKeys = component.arcThreadKeys ?? [];
+  if (component.type !== "currentArc" || threadKeys.length === 0) return component;
   const state = component.arcState ?? emptyArcState();
-  if (component.type !== "currentArc" || (threadKeys.length === 0 && state.phase !== "break")) return component;
 
   // 1. Count engagement for any of this arc's threads triggered this turn.
   const triggered = new Set(triggeredIds);
@@ -245,7 +244,7 @@ function advanceArcComponent(component: ComponentEntry, triggeredIds: string[], 
 
   const { escalate, break: breakAt } = ARC_PACE_THRESHOLDS[component.arcPace ?? "medium"];
   const total = threadKeys.reduce((sum, key) => sum + (nextEngagement[key] ?? 0), 0);
-  const tier = threadKeys.length > 0 ? arcTier(total, breakAt) : state.tier;
+  const tier = arcTier(total, breakAt);
 
   let phase = state.phase;
   let pendingBreak = state.pendingBreak;
@@ -385,8 +384,6 @@ function mergeCardContentToBudget(
   guardedCard?: StoryCard,
 ): { content: string; archivedFacts: string } {
   const archivedFacts = splitCardFacts(archived);
-  const incomingFacts = splitCardFacts(newContent);
-  const incomingKeys = new Set(incomingFacts.map(normalizeStoryCardFact));
   const guardSource = guardedCard && isGuardedStoryCardMemory(guardedCard, newContent)
     ? { ...guardedCard, content: [guardedCard.content, newContent].filter(Boolean).join("\n") }
     : undefined;
@@ -405,11 +402,11 @@ function mergeCardContentToBudget(
       .forEach(addFact);
   }
   splitCardFacts(existingContent).forEach(addFact);
-  incomingFacts.forEach(addFact); // newest facts last
+  splitCardFacts(newContent).forEach(addFact); // newest facts last
   const total = (facts: string[]) => facts.reduce((sum, f) => sum + f.length, 0);
   while (kept.length > 1 && total(kept) > budget) {
     if (guardSource) {
-      const archiveIndex = kept.findIndex((fact) => !isGuardedStoryCardFact(guardSource, fact) && !incomingKeys.has(normalizeStoryCardFact(fact)));
+      const archiveIndex = kept.findIndex((fact) => !isGuardedStoryCardFact(guardSource, fact));
       if (archiveIndex < 0) break;
       if (archiveIndex > 0) {
         const [archivedFact] = kept.splice(archiveIndex, 1);
@@ -420,9 +417,7 @@ function mergeCardContentToBudget(
         continue;
       }
     }
-    const oldest = kept.findIndex((fact) => !incomingKeys.has(normalizeStoryCardFact(fact)));
-    if (oldest < 0) break;
-    archivedFacts.push(kept.splice(oldest, 1)[0]); // oldest prior fact → archive
+    archivedFacts.push(kept.shift()!); // oldest live fact → archive
   }
   return { content: kept.join("\n"), archivedFacts: archivedFacts.join("\n") };
 }
@@ -439,6 +434,15 @@ function appendCardContent(existingContent: string, newContent: string): string 
 
 function guardStoryCard(card: StoryCard): StoryCard {
   return applyGuardedStoryCardPolicy(restoreGuardedFactsToLiveContent(card));
+}
+
+function replacementContentWithGuardedFacts(existing: StoryCard, replacementContent: string): string {
+  const archivedFacts = [existing.archivedFacts, existing.content].filter(Boolean).join("\n");
+  return restoreGuardedFactsToLiveContent({
+    ...existing,
+    content: replacementContent,
+    archivedFacts,
+  }).content;
 }
 
 /**
@@ -620,11 +624,8 @@ function stripThink(text: string): string {
 
 function stripLeadingCardTitle(title: string, content: string): string {
   if (!title || !content) return content;
-  const lines = content.split(/\r?\n/);
-  const heading = lines[0].trim().replace(/^#{1,3}\s*/, "").replace(/^\*{1,2}|\*{1,2}$/g, "").replace(/:$/, "").trim();
-  return heading.toLocaleLowerCase() === title.trim().toLocaleLowerCase()
-    ? lines.slice(1).join("\n").trimStart()
-    : content;
+  const escaped = title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return content.replace(new RegExp(`^(?:#{1,3}\\s*|\\*{1,2})?${escaped}\\*{0,2}\\s*\\n?`, "i"), "").trimStart();
 }
 
 /**
@@ -871,11 +872,7 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal)
         const budget = preparedExisting.tokenBudget && preparedExisting.tokenBudget > 0
           ? preparedExisting.tokenBudget * 4
           : DEFAULT_CARD_CONTENT_BUDGET;
-        // A character profile is canonical identity/voice context. Appending a small fact must
-        // not evict its existing profile merely because the profile already exceeds this budget.
-        const merged = preparedExisting.type === "character"
-          ? { content: appendCardContent(preparedExisting.content, safeContent), archivedFacts: preparedExisting.archivedFacts ?? "" }
-          : mergeCardContentToBudget(preparedExisting.content, safeContent, preparedExisting.archivedFacts ?? "", budget, preparedExisting);
+        const merged = mergeCardContentToBudget(preparedExisting.content, safeContent, preparedExisting.archivedFacts ?? "", budget, preparedExisting);
         storyCard = recordStoryCardMemoryUpdate(
           existing,
           guardStoryCard({
@@ -917,10 +914,9 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal)
     } else if (existing) {
       storyCard = recordStoryCardMemoryUpdate(
         existing,
-        applyGuardedStoryCardPolicy({
+        guardStoryCard({
           ...existing,
-          content: safeContent,
-          coreFacts: [], currentFacts: [], recentDevelopments: [],
+          content: replacementContentWithGuardedFacts(existing, safeContent),
           // Merge, never overwrite, keys — a sparse update must not strip a card's aliases (which would
           // break alias-matching and let the card be duplicated again later).
           keys: Array.from(new Set([
@@ -1343,7 +1339,7 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
     case "REORDER_COMPONENT":
       return touchAdventure(state, { components: moveByPriority(state.components, action.componentId, action.direction) });
     case "UPSERT_STORY_CARD":
-      return touchAdventure(state, { storyCards: upsertById(state.storyCards, touch(consolidateStoryCardContent(action.storyCard))) });
+      return touchAdventure(state, { storyCards: upsertById(state.storyCards, touch(action.storyCard)) });
     case "DELETE_STORY_CARD":
       return touchAdventure(state, { storyCards: deleteById(state.storyCards, action.storyCardId) });
     case "ACTIVATE_STORY_CARD":
@@ -1358,8 +1354,7 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
       return touchAdventure(state, {
         storyCards: updateById(state.storyCards, action.storyCardId, (item) => {
           const next = mergePatch<StoryCard>(item, action.patch);
-          const unified = consolidateStoryCardContent(next);
-          return unified.type === "event" ? { ...unified, memoryMode: "historical", autoUpdate: false } : unified;
+          return next.type === "event" ? { ...next, memoryMode: "historical", autoUpdate: false } : next;
         }),
       });
     case "APPLY_STORY_CARD_UPDATE":
@@ -1368,29 +1363,13 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
       return touchAdventure(state, {
         storyCards: updateById(state.storyCards, action.storyCardId, (item) => {
           const stripped = action.content !== undefined ? stripLeadingCardTitle(item.title, action.content) : item.content;
-          const append = action.content !== undefined && isLivingStoryCard(item);
-          const prepared = append ? guardStoryCard(item) : item;
-          const merged = append
-            ? mergeCardContentToBudget(
-                prepared.content,
-                stripped,
-                prepared.archivedFacts ?? "",
-                prepared.tokenBudget && prepared.tokenBudget > 0 ? prepared.tokenBudget * 4 : DEFAULT_CARD_CONTENT_BUDGET,
-                prepared,
-              )
-            : undefined;
           const content = action.content !== undefined
-            ? merged?.content ?? stripped
+            ? replacementContentWithGuardedFacts(item, stripped)
             : stripped;
-          const applyPolicy = !append && action.content !== undefined ? applyGuardedStoryCardPolicy : guardStoryCard;
           return recordStoryCardMemoryUpdate(
             item,
-            applyPolicy({
-              ...prepared, ...action.patch, content,
-              ...(!append && action.content !== undefined ? { coreFacts: [], currentFacts: [], recentDevelopments: [] } : {}),
-              ...(merged ? { archivedFacts: merged.archivedFacts } : {}),
-            }),
-            { source: "aiMemoryUpdate", operation: action.content !== undefined ? append ? "append" : "replace" : "patch" },
+            guardStoryCard({ ...item, ...action.patch, content }),
+            { source: "aiMemoryUpdate", operation: action.content !== undefined ? "replace" : "patch" },
           );
         }),
       });

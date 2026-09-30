@@ -31,8 +31,6 @@ The Vite config uses `base: "./"` so the built app can be served from a GitHub P
 
 ## Architecture
 
-See [Application architecture](docs/application-architecture.md) for the current system map and turn flow.
-
 All adventure state mutations go through `src/state/adventureReducer.ts` using the full `AdventureAction` union from `src/types/adventure.ts`.
 
 IndexedDB stores adventures in `src/db/adventureDb.ts`. localStorage stores only small runtime settings, including API key and provider preferences. Exported adventure JSON strips API keys.

@@ -326,7 +326,8 @@ export function useAdventureRuntime(
       (c) =>
         c.type === "currentArc" &&
         c.arcState?.phase === "aftermath" &&
-        c.arcContinuationOptions === undefined,
+        c.arcContinuationOptions === undefined &&
+        (c.arcThreadKeys?.length ?? 0) > 0,
     );
     if (!arc || arcInFlight.current.has(snapshot.id)) return;
     arcInFlight.current.add(snapshot.id);

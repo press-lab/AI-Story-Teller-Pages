@@ -69,19 +69,6 @@ describe("applyAIMemoryUpdate", () => {
     });
   });
 
-  it("appends direct AI memory updates to living Story Cards", () => {
-    const card = makeStoryCard({ id: "living", title: "Living", memoryMode: "living", content: "Earlier fact." });
-    const adventure = { ...createDefaultAdventure("AI Bounds"), storyCards: [card] };
-    const result = applyAIMemoryUpdate(adventure, [
-      { type: "storyCardUpdate", storyCardId: "living", content: "New fact." },
-    ]);
-    const next = result.actions.reduce((state, action) => adventureReducer(state, action), adventure);
-
-    expect(next.storyCards[0].content).toContain("Earlier fact.");
-    expect(next.storyCards[0].content).toContain("New fact.");
-    expect(next.storyCards[0].memoryUpdateHistory?.[0]?.operation).toBe("append");
-  });
-
   it("stamps story cards when AI memory updates only card metadata", () => {
     const storyCard = makeStoryCard({ id: "card-joke", title: "Joke", content: "old", keys: ["old"] });
     const adventure = { ...createDefaultAdventure("AI Bounds"), storyCards: [storyCard] };

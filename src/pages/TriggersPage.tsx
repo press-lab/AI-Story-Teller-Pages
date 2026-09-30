@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { TriggerEvaluationMode, TriggerMatchType, TriggerSource } from "../types/adventure";
+import type { InlineMemoryCategory, TriggerEvaluationMode, TriggerMatchType, TriggerSource } from "../types/adventure";
 import { makeTriggerRule } from "../state/defaults";
 import type { AdventurePageProps } from "./pageTypes";
 import { CheckboxField, Field, JsonTextarea, NumberInput, UpdatedAtBadge, commaList, fromCommaList } from "./shared";
@@ -7,6 +7,21 @@ import { CheckboxField, Field, JsonTextarea, NumberInput, UpdatedAtBadge, commaL
 const sources: TriggerSource[] = ["input", "output", "both"];
 const matchTypes: TriggerMatchType[] = ["keyword", "phrase", "regex"];
 const evaluationModes: TriggerEvaluationMode[] = ["semantic", "keyword", "regex"];
+const quietMemoryCategories: Record<InlineMemoryCategory, boolean> = {
+  character_reveal: true,
+  world_fact: true,
+  relationship: false,
+  plot_beat: false,
+  status_change: false,
+};
+const balancedMemoryCategories: Record<InlineMemoryCategory, boolean> = {
+  character_reveal: true,
+  world_fact: true,
+  relationship: true,
+  plot_beat: true,
+  status_change: true,
+};
+
 export function TriggersPage({ adventure, dispatch }: AdventurePageProps) {
   const [flagKey, setFlagKey] = useState("");
   const [flagValue, setFlagValue] = useState("");
@@ -25,10 +40,6 @@ export function TriggersPage({ adventure, dispatch }: AdventurePageProps) {
     );
   });
   const enabledRuleCount = adventure.triggerRules.filter((rule) => rule.enabled).length;
-  const customEvaluationLog = adventure.activeState.evaluationLog.filter(entry =>
-    entry.conditionsEvaluated.some(condition => condition.sourceType === "triggerRule")
-    || entry.conditionsFired.some(id => id.startsWith("trigger:")),
-  );
 
   function createTrigger() {
     const triggerRule = makeTriggerRule({ name: "New Trigger" });
@@ -50,8 +61,8 @@ export function TriggersPage({ adventure, dispatch }: AdventurePageProps) {
     <section className="page editor-surface triggers-page">
       <div className="editor-page-summary">
         <p className="muted">
-          Custom Automations watch turns for conditions you author. They can update memory, plot state, or flags.
-          Automatic memory discovery and its approval controls are on the Memory page.
+          Automations watch turns for authored conditions, then update memory, plot state, flags, or review proposals.
+          Keep rules searchable and expand only the one you are editing.
         </p>
         <div className="editor-stat-row" aria-label="Automation counts">
           <span>{adventure.triggerRules.length} rules</span>
@@ -73,6 +84,64 @@ export function TriggersPage({ adventure, dispatch }: AdventurePageProps) {
         </button>
       </div>
 
+      <details className="panel editor-tools-panel" open>
+        <summary>System memory triggers</summary>
+        <p className="muted">
+          Inline story card detection runs without extra API calls. The model flags permanent story facts while writing
+          each response, then proposals go to Memory Suggestions for approval.
+        </p>
+        {(() => {
+          const st = adventure.systemTriggers;
+          const enabled = st.enabled !== false;
+          const categories: Array<{ key: InlineMemoryCategory; label: string; description: string }> = [
+            { key: "relationship", label: "Relationship Milestone", description: "First between characters, revealed preference, dynamic shift" },
+            { key: "world_fact", label: "World Fact", description: "New location, organization, rule, or permanent world detail" },
+            { key: "character_reveal", label: "Character Reveal", description: "Character discloses backstory, secret, or personal truth" },
+            { key: "plot_beat", label: "Plot Beat", description: "Alliance, betrayal, new threat, or permanent consequence sealed" },
+            { key: "status_change", label: "Status Change", description: "Rank, title, allegiance, or relationship status changes" },
+          ];
+          return (
+            <>
+              <CheckboxField
+                label="Enable system triggers"
+                checked={enabled}
+                onChange={(v) => dispatch({ type: "SET_SYSTEM_TRIGGER_SETTINGS", settings: { ...st, enabled: v } })}
+              />
+              <div className="toolbar">
+                <button
+                  type="button"
+                  onClick={() => dispatch({ type: "SET_SYSTEM_TRIGGER_SETTINGS", settings: { ...st, enabled: true, categories: quietMemoryCategories } })}
+                >
+                  Quiet entity-only
+                </button>
+                <button
+                  type="button"
+                  onClick={() => dispatch({ type: "SET_SYSTEM_TRIGGER_SETTINGS", settings: { ...st, enabled: true, categories: balancedMemoryCategories } })}
+                >
+                  Balanced story memory
+                </button>
+              </div>
+              <p className="muted">
+                Quiet tracks new characters and world facts. Balanced also tracks relationship, plot, and status milestones;
+                the prompt still asks for only the strongest durable memory tag per response.
+              </p>
+              <div className="grid two disabled-when-off" data-disabled={!enabled}>
+                {categories.map(({ key, label, description }) => (
+                  <div key={key}>
+                    <CheckboxField
+                      label={label}
+                      checked={st.categories[key] !== false}
+                      onChange={(v) => dispatch({ type: "SET_SYSTEM_TRIGGER_SETTINGS", settings: { ...st, categories: { ...st.categories, [key]: v } } })}
+                    />
+                    <p className="muted">{description}</p>
+                  </div>
+                ))}
+              </div>
+            </>
+          );
+        })()}
+      </details>
+
       <details className="panel editor-tools-panel">
         <summary>How automations work</summary>
         <p className="muted">
@@ -81,7 +150,7 @@ export function TriggersPage({ adventure, dispatch }: AdventurePageProps) {
         </p>
         <p className="muted">
           Actions can update Story Cards, Brains, Plot Essentials, state flags, or Memory Suggestion proposals. Use
-          Trigger History and the custom-rule evaluation log to see what fired and why.
+          Trigger History and Evaluation Log to see what fired and why.
         </p>
       </details>
 
@@ -243,9 +312,9 @@ export function TriggersPage({ adventure, dispatch }: AdventurePageProps) {
 
           {adventure.semanticEvaluationSettings.showLog && (
             <article className="panel">
-              <h3>Custom rule evaluation log</h3>
-              {customEvaluationLog.length === 0 && <p className="muted">No custom AI rule evaluations logged yet. Automatic memory activity appears on Memory.</p>}
-              {customEvaluationLog.slice(0, 20).map((entry) => (
+              <h3>Evaluation Log</h3>
+              {adventure.activeState.evaluationLog.length === 0 && <p className="muted">No semantic evaluations logged yet.</p>}
+              {adventure.activeState.evaluationLog.slice(0, 20).map((entry) => (
                 <details key={entry.id} className="log-entry">
                   <summary>
                     Turn {entry.turn}: {entry.conditionsFired.length} fired / {entry.conditionsEvaluated.length} evaluated

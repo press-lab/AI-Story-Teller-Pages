@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -69,22 +69,6 @@ describe("side menu page smoke coverage", () => {
     expect(screen.getByDisplayValue("Blazer, Blonde Blazer, Mandy")).toBeInTheDocument();
   });
 
-  it("edits Story Card memory through one Content field", () => {
-    const adventure = {
-      ...seedAdventure(),
-      storyCards: [makeStoryCard({ id: "margo", title: "Margo", type: "character", content: "Margo is an engineer." })],
-    };
-    renderWithAdventure((current, dispatch) => <StoryCardsPage adventure={current} dispatch={dispatch} />, adventure);
-
-    const content = screen.getByRole("textbox", { name: "Content" });
-    expect(content).toHaveValue("Margo is an engineer.");
-    expect(screen.queryByText("Core Facts")).not.toBeInTheDocument();
-    expect(screen.queryByText("Current Facts")).not.toBeInTheDocument();
-    expect(screen.queryByText("Recent Developments")).not.toBeInTheDocument();
-    fireEvent.change(content, { target: { value: "Margo is an engineer.\nShe runs the workshop." } });
-    expect(content).toHaveValue("Margo is an engineer.\nShe runs the workshop.");
-  });
-
   it("renders the Arc Director on a Current Arc component and the AI generators", async () => {
     const arcAdventure: Adventure = {
       ...seedAdventure(),
@@ -111,7 +95,7 @@ describe("side menu page smoke coverage", () => {
     expect(screen.getByRole("button", { name: "✨ Generate from name" })).toBeInTheDocument();
   });
 
-  it("allows manual Arc Director phases without pacing triggers", async () => {
+  it("shows when the Current Arc break has been manually armed", async () => {
     const user = userEvent.setup();
     const arcAdventure: Adventure = {
       ...seedAdventure(),
@@ -120,7 +104,7 @@ describe("side menu page smoke coverage", () => {
           title: "Current Story Arc",
           type: "currentArc",
           content: "The Red Ring tightens.",
-          arcThreadKeys: [],
+          arcThreadKeys: ["baddie"],
           arcBreakInstruction: "The baddie forces the confrontation.",
         }),
       ],
@@ -131,17 +115,10 @@ describe("side menu page smoke coverage", () => {
       arcAdventure,
     );
 
-    expect(screen.getByRole("button", { name: "Spring it now" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Move to aftermath" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Reset to simmer" })).toBeEnabled();
     await user.click(screen.getByRole("button", { name: "Spring it now" }));
 
     expect(screen.getByRole("button", { name: "Break armed" })).toBeDisabled();
     expect(screen.getByRole("status")).toHaveTextContent("Break armed for next output");
-    await user.click(screen.getByRole("button", { name: "Move to aftermath" }));
-    expect(screen.getByRole("button", { name: "Spring it now" })).toBeEnabled();
-    await user.click(screen.getByRole("button", { name: "Reset to simmer" }));
-    expect(screen.getByRole("status")).toHaveTextContent("Arc reset to simmer");
   });
 
   it("keeps Arc Director controls visible in the Play sidebar for an empty aftermath arc", async () => {
@@ -514,72 +491,6 @@ describe("side menu page smoke coverage", () => {
 
     await user.click(screen.getByRole("button", { name: "Approve" }));
     expect(screen.getByText(/· approved/i)).toBeInTheDocument();
-  });
-
-  it("shows automatic memory routing and keeps inline discovery controls on Memory", async () => {
-    const user = userEvent.setup();
-    renderWithAdventure((adventure, dispatch) => <MemoryInboxPage adventure={adventure} dispatch={dispatch} />);
-
-    expect(screen.getByText("Background Story Card discovery")).toBeInTheDocument();
-    expect(screen.getByText(/Background-discovered plot cards currently follow the general Story Cards switch/)).toBeInTheDocument();
-    expect(screen.getByText(/The advanced narrator filters below affect only new card suggestions/)).toBeInTheDocument();
-    const advanced = screen.getByText("Advanced: narrator new-card filters").closest("details");
-    expect(advanced).not.toHaveAttribute("open");
-    await user.click(screen.getByText("Advanced: narrator new-card filters"));
-    const inlineToggle = screen.getByRole("checkbox", { name: "Allow inline new-card discovery" });
-    expect(inlineToggle).toBeChecked();
-    await user.click(inlineToggle);
-    expect(inlineToggle).not.toBeChecked();
-    await user.click(screen.getByRole("button", { name: "Balanced story memory" }));
-    expect(inlineToggle).toBeChecked();
-    expect(screen.getByRole("checkbox", { name: "Plot Beat" })).toBeChecked();
-  });
-
-  it("lets readers expand the three automatic memory overview sections", async () => {
-    const user = userEvent.setup();
-    renderWithAdventure((adventure, dispatch) => <MemoryInboxPage adventure={adventure} dispatch={dispatch} />);
-
-    for (const title of ["How automatic memory flows", "Detection sources and requests", "Destinations and approval"]) {
-      const summary = screen.getByText(title);
-      const section = summary.closest("details");
-      expect(section).not.toHaveAttribute("open");
-      await user.click(summary);
-      expect(section).toHaveAttribute("open");
-    }
-
-    expect(screen.getByText("Background Story Card discovery")).toBeInTheDocument();
-    expect(screen.getAllByRole("checkbox", { name: "Auto-approve eligible updates" })).toHaveLength(5);
-  });
-
-  it("shows built-in memory evaluations on Memory instead of custom Automations", () => {
-    const base = seedAdventure();
-    const adventure: Adventure = {
-      ...base,
-      activeState: {
-        ...base.activeState,
-        evaluationLog: [
-          {
-            id: "memory-log", turn: 6, createdAt: timestamp,
-            conditionsEvaluated: [], conditionsFired: ["storyCardDiscovery"],
-            actionsExecuted: ["Story Card discovery: New plot card"], generatedContent: [], errors: [],
-          },
-          {
-            id: "custom-log", turn: 5, createdAt: timestamp,
-            conditionsEvaluated: [{ id: "trigger:rule-1", label: "Rule", condition: "A promise is made", sourceType: "triggerRule" }],
-            conditionsFired: ["trigger:rule-1"], actionsExecuted: ["Rule: updateStoryCard"], generatedContent: [], errors: [],
-          },
-        ],
-      },
-    };
-
-    render(<TriggersPage adventure={adventure} dispatch={() => undefined} />);
-    expect(screen.getByText("Custom rule evaluation log")).toBeInTheDocument();
-    expect(screen.queryByText(/Story Card discovery: New plot card/)).not.toBeInTheDocument();
-    cleanup();
-
-    render(<MemoryInboxPage adventure={adventure} dispatch={() => undefined} />);
-    expect(screen.getByText(/Turn 6: Story Card discovery: New plot card/)).toBeInTheDocument();
-    expect(screen.queryByText(/Rule: updateStoryCard/)).not.toBeInTheDocument();
   });
 
   it("allows Memory reconcile without a What changed value", async () => {

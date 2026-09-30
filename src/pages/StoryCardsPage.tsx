@@ -112,6 +112,17 @@ function cardFactLines(text: string | undefined): string[] {
     .filter(Boolean);
 }
 
+function factListText(facts: string[] | undefined): string {
+  return (facts ?? []).join("\n");
+}
+
+function factListFromText(text: string): string[] {
+  return text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
 function StoryCardFactHistory({
   card,
   onArchivedChange,
@@ -279,6 +290,9 @@ export function StoryCardsPage({
     const compactText = [
       card.compactKind,
       card.compactStatus,
+      ...(card.coreFacts ?? []),
+      ...(card.currentFacts ?? []),
+      ...(card.recentDevelopments ?? []),
       ...(card.sourceTurnIds ?? []),
     ].filter(Boolean).join(" ");
     return card.title.toLowerCase().includes(searchLower) ||
@@ -893,19 +907,12 @@ export function StoryCardsPage({
                   </details>
                   <section className="item-focus-section">
                     <div className="item-section-heading">
-                      <h4>Content</h4>
-                      <span className="muted">{cardFactLines(card.content).length} line{cardFactLines(card.content).length === 1 ? "" : "s"}</span>
+                      <div>
+                        <p className="eyebrow">compact memory</p>
+                        <h4>Structured compact facts</h4>
+                      </div>
+                      {card.compactKind && <span className="badge badge-priority">{card.compactStatus ?? "active"}</span>}
                     </div>
-                    <Field label="Content">
-                      <textarea
-                        rows={10}
-                        value={card.content}
-                        onChange={(event) => dispatch({ type: "UPDATE_STORY_CARD", storyCardId: card.id, patch: { content: event.target.value } })}
-                      />
-                    </Field>
-                  </section>
-                  <details className="item-secondary-details">
-                    <summary>Compact memory metadata</summary>
                     <div className="grid two">
                       <Field label="Compact Kind">
                         <select
@@ -944,6 +951,27 @@ export function StoryCardsPage({
                         </select>
                       </Field>
                     </div>
+                    <Field label="Core Facts">
+                      <textarea
+                        rows={4}
+                        value={factListText(card.coreFacts)}
+                        onChange={(event) => dispatch({ type: "UPDATE_STORY_CARD", storyCardId: card.id, patch: { coreFacts: factListFromText(event.target.value) } })}
+                      />
+                    </Field>
+                    <Field label="Current Facts">
+                      <textarea
+                        rows={3}
+                        value={factListText(card.currentFacts)}
+                        onChange={(event) => dispatch({ type: "UPDATE_STORY_CARD", storyCardId: card.id, patch: { currentFacts: factListFromText(event.target.value) } })}
+                      />
+                    </Field>
+                    <Field label="Recent Developments">
+                      <textarea
+                        rows={3}
+                        value={factListText(card.recentDevelopments)}
+                        onChange={(event) => dispatch({ type: "UPDATE_STORY_CARD", storyCardId: card.id, patch: { recentDevelopments: factListFromText(event.target.value) } })}
+                      />
+                    </Field>
                     {card.sourceTurnIds?.length ? (
                       <Field label="Source Turns">
                         <input
@@ -952,7 +980,23 @@ export function StoryCardsPage({
                         />
                       </Field>
                     ) : null}
-                  </details>
+                  </section>
+                  <section className="item-focus-section">
+                    <div className="item-section-heading">
+                      <div>
+                        <p className="eyebrow">live memory</p>
+                        <h4>Card text sent when triggered</h4>
+                      </div>
+                      <span className="muted">{cardFactLines(card.content).length} line{cardFactLines(card.content).length === 1 ? "" : "s"}</span>
+                    </div>
+                  <Field label="Content">
+                    <textarea
+                      rows={6}
+                      value={card.content}
+                      onChange={(event) => dispatch({ type: "UPDATE_STORY_CARD", storyCardId: card.id, patch: { content: event.target.value } })}
+                    />
+                  </Field>
+                  </section>
                   <StoryCardFactHistory
                     card={card}
                     onArchivedChange={(archivedFacts) =>
@@ -960,6 +1004,19 @@ export function StoryCardsPage({
                     }
                   />
                   <MemoryUpdateHistory history={card.memoryUpdateHistory} />
+                  {card.archivedFacts?.trim() && (
+                    <details className="editor-legacy-help">
+                      <summary className="muted">
+                        Archived facts ({card.archivedFacts.split("\n").filter((l) => l.trim()).length}) — superseded, kept on record, never sent to the AI
+                      </summary>
+                      <textarea
+                        rows={4}
+                        value={card.archivedFacts}
+                        onChange={(event) => dispatch({ type: "UPDATE_STORY_CARD", storyCardId: card.id, patch: { archivedFacts: event.target.value } })}
+                        style={{ marginTop: "0.5rem", opacity: 0.8 }}
+                      />
+                    </details>
+                  )}
                   <details className="brain-secondary-details item-secondary-details">
                     <summary>Context, automation, and ordering</summary>
                   <div className="grid four">

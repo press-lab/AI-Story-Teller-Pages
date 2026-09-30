@@ -139,10 +139,10 @@ export async function applyProviderResponse({
 
   next = applyRuntimeEngines(next, { source: "output", text: finalContent });
 
-  // Arc Director: count only matched Story Card / Brain ids, but tick the break timer
-  // on every turn even when no thread matches or the arc has no pacing triggers.
+  // Arc Director: count only Story Card / Brain ids whose trigger patterns matched turn text.
+  // Pinned or always-on context can be included without counting as engagement.
   const triggeredIds = preProviderContext.triggeredThreadIds;
-  if (advanceArcPacing) {
+  if (advanceArcPacing && triggeredIds.length > 0) {
     next = adventureReducer(next, { type: "ADVANCE_ARC_PACING", triggeredIds, turn: next.activeState.turn });
   }
 

@@ -196,10 +196,7 @@ export function resolveMemoryTarget(adventure: Adventure, draft: MemoryTargetDra
   const target = exactStoryCardTarget(adventure, draft, inferredMode);
   const targetMode = target ? (isLivingStoryCard(target) ? "living" : target.memoryMode) : undefined;
   const memoryMode = target ? (targetMode ?? inferredMode) : inferredMode;
-  // Existing cards decide how suggestions apply: living cards grow, static cards are rewritten.
-  const appendContent = target
-    ? isLivingStoryCard(target) ? true : targetMode === "static" ? false : (draft.appendContent ?? true)
-    : undefined;
+  const appendContent = target ? (draft.appendContent ?? true) : undefined;
   const title = target?.title ?? (blockedTarget ? childTitleFor(blockedTarget, draft, inferredMode) : draft.title);
   const suggestedTriggers = sanitizeStoryCardTriggers(adventure, title, draft.suggestedTriggers, target?.id, memoryMode);
   const rationale = [

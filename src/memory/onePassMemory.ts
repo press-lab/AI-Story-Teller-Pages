@@ -13,8 +13,8 @@ Write the requested narrative first, preserving its quality and visible word lim
 An empty updates array is normal. Never invent changes to fill it. Maximum 4 small updates and at most ONE new card per turn. No other thought/memory tags.
 Each update has: kind, target, content, evidence, reason. evidence is an EXACT quote from this turn's player input or your visible story, establishing the change. reason explains why it will matter beyond this scene. Do not treat a suggestion, possibility, or plan as an accomplished fact. Do not give absent characters knowledge they did not receive.
 Allowed kinds:
-- "thought": target is an eligible character name below; content is ONE new first-person internal reaction, belief, or private plan (max 80 words). Capture only if the character participated or learned something this turn. Never repeat existing thoughts or put generic world facts here.
-- "card": target is the EXACT title of an existing Story Card visible in context; content is only a NEW durable fact (max 70 words). The app appends it to living cards or includes existing facts in a full static-card replacement. Preserve identity and existing facts. Never overwrite or contradict canon; corrections need explicit review outside this automatic path. Omit already-known facts and rephrasings. A character's one-time lunch plan, meeting time, route, or errand is NOT a card fact; use a thought for their private reaction or plan when warranted.
+- "thought": target is an eligible character name below; content is ONE new first-person internal reaction, belief, or private plan (max 45 words). Capture only if the character participated or learned something this turn. Never repeat existing thoughts or put generic world facts here.
+- "card": target is the EXACT title of an existing Story Card visible in context; content is only a NEW durable fact (max 70 words) to append. Preserve identity and existing facts. Never overwrite or contradict canon; corrections need explicit review outside this automatic path. Omit already-known facts and rephrasings.
 - "newCard": target is a genuinely new recurring subject's name, content max 90 words. Also provide cardType (character, location, lore, custom, plot), memoryMode (static or living), triggers (1-3 narrow phrases), and category from: ${categories.join(", ") || "NONE (no new cards allowed)"}. Reuse existing subjects; never create sibling cards for a conversation, invitation, repeated affection, room movement, routine choice, or temporary mood. A plot card requires a consequential lasting obligation, alliance, betrayal, secret, or irreversible change; it will require review. Do not create event recap cards.
 - "pressure": target is the EXACT title of an active Active Pressure component; content is its full replacement, ONE sentence (max 45 words) identifying the external threat or obligation pressing on the player. Only when it materially changes or resolves; no cosmetic rewrites.
 - "arc": target is the EXACT title of the active Current Arc; content is one concise, completed development (max 45 words) directly relevant to its premise, to append to its log. Skip scene filler, repeated beats, possibilities, and future events. Never change the premise, phase, or pacing.
@@ -45,14 +45,6 @@ export function parseOnePassMemory(text: string): { story: string; updates: unkn
 const norm = (text: string) => text.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 const words = (text: string) => text.trim().split(/\s+/).length;
 
-/** A character's one-off schedule or route belongs to the scene, not their durable profile. */
-function isTemporaryCharacterPlan(content: string): boolean {
-  const normalized = norm(content);
-  const hasSchedule = /\b(lunch|dinner|meeting|appointment|calls?|o clock|minutes?|hours?|tomorrow|tonight)\b/.test(normalized);
-  const hasPlan = /\b(agreed|arranged|planned|scheduled|rescheduled|meet|bring|told|said|would|will|needed|need)\b/.test(normalized);
-  return hasSchedule && hasPlan;
-}
-
 /** Local structural/evidence checks, not a claim that a quote proves every inference. */
 export function onePassMemoryActions(adventure: Adventure, context: ContextBuildResult, updates: unknown[], story: string, sourceTurnId: string, error?: string, sourceLabel = "One-pass memory: no additional API call", playerInputOverride?: string): AdventureAction[] {
   const actions: AdventureAction[] = [];
@@ -73,7 +65,7 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
     const kind = u.kind as string, target = (u.target as string).trim(), content = (u.content as string).trim(), evidence = (u.evidence as string).trim();
     const quote = norm(evidence);
     if (quote.length < 12 || !evidenceSources.some(s => s.includes(quote))) { reject(`${target}: evidence is not in this turn`); continue; }
-    if (words(content) > (kind === "essentials" ? 180 : kind === "newCard" ? 90 : kind === "card" ? 70 : kind === "thought" ? 80 : 45)) { reject(`${target}: content exceeds limit`); continue; }
+    if (words(content) > (kind === "essentials" ? 180 : kind === "newCard" ? 90 : kind === "card" ? 70 : 45)) { reject(`${target}: content exceeds limit`); continue; }
     if (content.includes("<") || content.length > 4000 || target.length > 150 || (u.reason as string).length > 600) { reject(`${target}: invalid content`); continue; }
     const key = `${kind}:${norm(target)}`;
     if (seen.has(key)) { reject(`${target}: repeated target`); continue; }
@@ -91,12 +83,7 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
       const eligibleNames = instruction.split("Eligible thought targets: ")[1]?.split(".\n")[0] ?? "";
       if (!brain || !eligibleNames.includes(JSON.stringify(target)) || (brain.lastUpdatedTurn !== undefined && adventure.activeState.turn - brain.lastUpdatedTurn < (brain.autoUpdateCooldownTurns ?? 0))) { reject(`${target}: brain not eligible`); continue; }
       if (Object.keys(brain.thoughts ?? {}).length && !visibleIds.has(brain.id)) { reject(`${target}: brain context was omitted`); continue; }
-      const namedThisTurn = evidenceSources.some(s => s.includes(norm(target)));
-      const precedingExchange = adventure.messages.slice(-4, -2).map(message => norm(message.content)).join(" ");
-      const continuedReference = !namedThisTurn
-        && /\b(she|her|he|him|his|they|them)\b/.test(`${norm(playerInput)} ${norm(story)}`)
-        && precedingExchange.includes(norm(target));
-      if (!namedThisTurn && !continuedReference) { reject(`${target}: character absent from this turn`); continue; }
+      if (!evidenceSources.some(s => s.includes(norm(target)))) { reject(`${target}: character absent from this turn`); continue; }
       if (Object.values({ ...brain.archivedThoughts, ...brain.thoughts }).some(t => norm(t).includes(norm(content)))) continue;
       const patch = { thoughts: { [`${adventure.activeState.turn}_${sourceTurnId}`]: `${adventure.activeState.turn} → ${content}` } };
       const boundary = applyAIMemoryUpdate(adventure, [{ type: "brainPatch", brainId: brain.id, patch, mode: "append", turn: adventure.activeState.turn, preview: content }]);
@@ -112,14 +99,10 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
       const existing = matches[0];
       if (existing) {
         if (!existing.active || !visibleIds.has(existing.id) || existing.type === "event" || existing.memoryMode === "historical") { reject(`${target}: target not editable in this context`); continue; }
-        if (existing.type === "character" && isTemporaryCharacterPlan(content)) { reject(`${target}: temporary plan belongs in a thought or current scene`); continue; }
         if (norm(existing.content).includes(norm(content))) continue;
         proposal.title = existing.title;
         proposal.targetId = existing.id;
-        proposal.appendContent = existing.memoryMode === "living";
-        // The one-pass envelope contains only a new fact. A static proposal is a full
-        // replacement, so include the facts it must retain in the reviewable draft.
-        if (existing.memoryMode === "static") proposal.content = [existing.content.trim(), content].filter(Boolean).join("\n");
+        proposal.appendContent = true;
         proposal.memoryMode = existing.memoryMode;
         // Sensitive identity records and evolving plot state need review, even with generic auto-approval.
         proposal.requiresReview = existing.type === "plot" || existing.protected;
