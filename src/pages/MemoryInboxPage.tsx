@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { classifyMemory } from "../memory/classificationPolicy";
 import { resolveMemoryTarget } from "../memory/resolveMemoryTarget";
-import type { MemoryAutoApproveSettings, MemoryProposal, MemoryProposalType, MemoryReconcileRequest, StoryCardType } from "../types/adventure";
+import type { MemoryProposal, MemoryProposalType, MemoryReconcileRequest, StoryCardType } from "../types/adventure";
 import { createId, nowIso } from "../utils/id";
 import type { AdventurePageProps } from "./pageTypes";
 import { CheckboxField, Field, JsonTextarea, NumberInput, commaList, fromCommaList } from "./shared";
+import { AutomaticMemoryOverview, destinationName } from "./AutomaticMemoryOverview";
 
 const proposalTypes: MemoryProposalType[] = [
   "storyCard",
@@ -98,17 +99,11 @@ export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onR
     });
   }
 
-  const autoApprove = adventure.memoryAutoApprove;
-
-  function setAutoApprove(patch: Partial<MemoryAutoApproveSettings>) {
-    dispatch({ type: "SET_MEMORY_AUTO_APPROVE", settings: { ...autoApprove, ...patch } });
-  }
-
   return (
     <section className="page editor-surface memory-inbox-page">
       <div className="editor-page-summary">
         <p className="muted">
-          Review proposed memory writes before they become active story context. Event Memories always wait for your approval.
+          See how story facts are detected, where they go, and which changes need your review. Event Memories always wait for approval.
         </p>
         <div className="editor-stat-row" aria-label="Memory suggestion counts">
           <span>{totalPending} pending</span>
@@ -116,6 +111,8 @@ export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onR
           {searchLower && <span>{visibleProposals.length} shown</span>}
         </div>
       </div>
+
+      <AutomaticMemoryOverview adventure={adventure} dispatch={dispatch} />
 
       {onFindEventMemories && <div className="panel">
         <button type="button" disabled={loading || Boolean(eventScan)} onClick={async () => {
@@ -138,7 +135,7 @@ export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onR
       </div>
 
       <details className="panel editor-tools-panel">
-        <summary>Rules &amp; auto-approve</summary>
+        <summary>How to review suggestions</summary>
         <h3>Memory Suggestions</h3>
         <p className="muted">
           Memory Suggestions holds AI-proposed changes to your story data — new Story Cards, Character Self updates,
@@ -150,16 +147,6 @@ export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onR
           Be especially careful with Character Self and plot updates: approving emotional escalation or relationship milestones
           unchecked is how characters drift. Edit proposals before approving, or reject ones that pull the story somewhere you don't want.
         </p>
-        <div className="auto-approve-toggles">
-          <span className="auto-approve-label muted">Auto-approve:</span>
-          <CheckboxField label="Legacy Summary" checked={autoApprove.summaryUpdate} onChange={(v) => setAutoApprove({ summaryUpdate: v })} />
-          <CheckboxField label="Plot Essentials" checked={autoApprove.plotEssentialsUpdate} onChange={(v) => setAutoApprove({ plotEssentialsUpdate: v })} />
-          <CheckboxField label="Active Pressure" checked={autoApprove.plotPressureUpdate} onChange={(v) => setAutoApprove({ plotPressureUpdate: v })} />
-          <CheckboxField label="Current Arc" checked={autoApprove.currentArcUpdate} onChange={(v) => setAutoApprove({ currentArcUpdate: v })} />
-          <CheckboxField label="Arc Proposals" checked={autoApprove.arcProposal} onChange={(v) => setAutoApprove({ arcProposal: v })} />
-          <CheckboxField label="Story Cards" checked={autoApprove.storyCard} onChange={(v) => setAutoApprove({ storyCard: v })} />
-          <CheckboxField label="Characters" checked={autoApprove.brainUpdate} onChange={(v) => setAutoApprove({ brainUpdate: v })} />
-        </div>
       </details>
 
       <details className="panel">
@@ -263,6 +250,11 @@ function ProposalCard({ proposal, dispatch, onUpdate, onRegenerate }: ProposalCa
       </summary>
 
       <div className="proposal-card-body">
+        <p className="memory-trace">
+          Detection source not recorded → {destinationName(proposal)} → {proposal.status}
+          {proposal.status === "approved" ? " (approval method not recorded)" : ""}
+          {" → "}Context inclusion: check Context Preview
+        </p>
         <div className="panel-heading">
         <div className="suggestion-meta">
           <p className="eyebrow">

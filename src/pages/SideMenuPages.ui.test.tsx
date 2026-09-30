@@ -493,6 +493,21 @@ describe("side menu page smoke coverage", () => {
     expect(screen.getByText(/· approved/i)).toBeInTheDocument();
   });
 
+  it("shows automatic memory routing and keeps inline discovery controls on Memory", async () => {
+    const user = userEvent.setup();
+    renderWithAdventure((adventure, dispatch) => <MemoryInboxPage adventure={adventure} dispatch={dispatch} />);
+
+    expect(screen.getByText("Background Story Card discovery")).toBeInTheDocument();
+    expect(screen.getByText(/Background-discovered plot cards currently follow the general Story Cards switch/)).toBeInTheDocument();
+    const inlineToggle = screen.getByRole("checkbox", { name: "Allow inline new-card discovery" });
+    expect(inlineToggle).toBeChecked();
+    await user.click(inlineToggle);
+    expect(inlineToggle).not.toBeChecked();
+    await user.click(screen.getByRole("button", { name: "Balanced story memory" }));
+    expect(inlineToggle).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Plot Beat" })).toBeChecked();
+  });
+
   it("allows Memory reconcile without a What changed value", async () => {
     const user = userEvent.setup();
     const onReconcileMemory = vi.fn(async () => undefined);

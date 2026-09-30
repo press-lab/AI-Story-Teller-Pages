@@ -648,6 +648,16 @@ pre {
   grid-column: 1 / -1;
 }
 
+.memory-inbox-page > .automatic-memory-overview {
+  grid-column: 1 / -1;
+  order: 1;
+}
+
+.memory-inbox-page > .panel {
+  grid-column: 1 / -1;
+  order: 2;
+}
+
 .memory-inbox-page > details.panel {
   order: 2;
   align-self: start;
@@ -1235,6 +1245,56 @@ details.story-card-item:not([open]) > :not(summary) {
   border-top: 1px solid var(--border);
 }
 .auto-approve-label { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+
+.automatic-memory-overview {
+  display: grid;
+  gap: 12px;
+}
+
+.memory-flow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  font-weight: 600;
+}
+
+.memory-flow span { color: var(--muted); }
+
+.memory-mapping-list,
+.memory-destination-list {
+  display: grid;
+  gap: 8px;
+}
+
+.memory-mapping-list > div,
+.memory-destination {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.memory-mapping-list > div > span {
+  float: right;
+  color: var(--muted);
+  font-size: 0.85em;
+}
+
+.memory-mapping-list p,
+.memory-destination p { margin: 6px 0 0; }
+
+.memory-destination-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.memory-trace {
+  border-left: 2px solid var(--border);
+  padding-left: 10px;
+}
 
 .panel-heading {
   display: flex;

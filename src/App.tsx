@@ -95,7 +95,7 @@ const modalTitles: Partial<Record<TabId, string>> = {
   storyCards: "Story Cards",
   brains: "Characters",
   triggers: "Automations",
-  memoryInbox: "Memory Suggestions",
+  memoryInbox: "Automatic Memory",
   cloudSaves: "GitHub Saves",
   settings: "Settings",
   importExport: "Import / Export",

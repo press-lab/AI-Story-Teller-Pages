@@ -326,11 +326,10 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
           directly.
         </p>
         <p>
-          System memory triggers are the zero-cost inline memory tags the model can append after a response.
-          Use <strong>Quiet entity-only</strong> when you only want new characters and world facts. Use{" "}
-          <strong>Balanced story memory</strong> when you also want relationship milestones, plot beats, and
-          status changes to create Memory Suggestions. The prompt still asks for only the strongest durable
-          memory per response, and duplicate proposals are filtered by the reducer.
+          Automatic memory discovery and approval controls are on the Memory page. Its inline categories filter
+          new Story Card proposals in the narrator's response; they do not control background discovery or
+          updates to existing memory. The inline path uses the story request, while missing-output recovery and
+          background discovery can make additional requests.
         </p>
       </>
     ),
