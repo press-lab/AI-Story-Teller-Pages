@@ -39,7 +39,6 @@ function ArcDirector({
   const threadKeys = component.arcThreadKeys ?? [];
   const threadSet = new Set(threadKeys);
   const turn = adventure.activeState.turn;
-  const configured = threadKeys.length > 0;
   const totalEngagement = threadKeys.reduce((sum, key) => sum + (arc.threadEngagement[key] ?? 0), 0);
   const canCompleteArc = Boolean(component.arcPremise?.trim() || component.content.trim());
   const phaseStatus = arc.phase === "break"
@@ -215,33 +214,31 @@ function ArcDirector({
         />
       </Field>
 
-      {(configured || canCompleteArc || arcActionStatus || phaseStatus) && (
-        <div className="row" style={{ gap: "0.5rem", marginTop: "0.5rem" }}>
-          <button
-            type="button"
-            disabled={!configured || arc.phase === "break"}
-            onClick={() => setPhase("break")}
-            title="Force the climax now, regardless of pacing."
-          >
-            {arc.phase === "break" ? "Break armed" : "Spring it now"}
-          </button>
-          <button type="button" disabled={!configured} onClick={() => setPhase("aftermath")} title="Mark the arc resolved, without archiving it yet.">Move to aftermath</button>
-          <button
-            type="button"
-            disabled={!canCompleteArc}
-            onClick={completeArcToStoryCard}
-            title="Create a historical plot Story Card from this arc log, then clear Current Arc for the next arc."
-          >
-            {"Complete Arc -> Story Card"}
-          </button>
-          <button type="button" disabled={!configured} onClick={() => setPhase("simmer")} title="Reset pacing and start a fresh climb.">Reset to simmer</button>
-          {(arcActionStatus || phaseStatus) && (
-            <span className="badge badge-protected" role="status">
-              {arcActionStatus || phaseStatus}
-            </span>
-          )}
-        </div>
-      )}
+      <div className="row" style={{ gap: "0.5rem", marginTop: "0.5rem" }}>
+        <button
+          type="button"
+          disabled={arc.phase === "break"}
+          onClick={() => setPhase("break")}
+          title="Force the climax now, regardless of pacing."
+        >
+          {arc.phase === "break" ? "Break armed" : "Spring it now"}
+        </button>
+        <button type="button" onClick={() => setPhase("aftermath")} title="Mark the arc resolved, without archiving it yet.">Move to aftermath</button>
+        <button
+          type="button"
+          disabled={!canCompleteArc}
+          onClick={completeArcToStoryCard}
+          title="Create a historical plot Story Card from this arc log, then clear Current Arc for the next arc."
+        >
+          {"Complete Arc -> Story Card"}
+        </button>
+        <button type="button" onClick={() => setPhase("simmer")} title="Reset pacing and start a fresh climb.">Reset to simmer</button>
+        {(arcActionStatus || phaseStatus) && (
+          <span className="badge badge-protected" role="status">
+            {arcActionStatus || phaseStatus}
+          </span>
+        )}
+      </div>
     </div>
   );
 }

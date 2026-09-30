@@ -111,7 +111,7 @@ describe("side menu page smoke coverage", () => {
     expect(screen.getByRole("button", { name: "✨ Generate from name" })).toBeInTheDocument();
   });
 
-  it("shows when the Current Arc break has been manually armed", async () => {
+  it("allows manual Arc Director phases without pacing triggers", async () => {
     const user = userEvent.setup();
     const arcAdventure: Adventure = {
       ...seedAdventure(),
@@ -120,7 +120,7 @@ describe("side menu page smoke coverage", () => {
           title: "Current Story Arc",
           type: "currentArc",
           content: "The Red Ring tightens.",
-          arcThreadKeys: ["baddie"],
+          arcThreadKeys: [],
           arcBreakInstruction: "The baddie forces the confrontation.",
         }),
       ],
@@ -131,10 +131,17 @@ describe("side menu page smoke coverage", () => {
       arcAdventure,
     );
 
+    expect(screen.getByRole("button", { name: "Spring it now" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Move to aftermath" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Reset to simmer" })).toBeEnabled();
     await user.click(screen.getByRole("button", { name: "Spring it now" }));
 
     expect(screen.getByRole("button", { name: "Break armed" })).toBeDisabled();
     expect(screen.getByRole("status")).toHaveTextContent("Break armed for next output");
+    await user.click(screen.getByRole("button", { name: "Move to aftermath" }));
+    expect(screen.getByRole("button", { name: "Spring it now" })).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: "Reset to simmer" }));
+    expect(screen.getByRole("status")).toHaveTextContent("Arc reset to simmer");
   });
 
   it("keeps Arc Director controls visible in the Play sidebar for an empty aftermath arc", async () => {
