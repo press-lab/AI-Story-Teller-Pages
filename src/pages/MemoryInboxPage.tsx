@@ -299,6 +299,11 @@ function ProposalCard({ proposal, dispatch, onUpdate, onRegenerate }: ProposalCa
         </div>
       </div>
 
+      {proposal.proposedType === "storyCard" && proposal.targetId && (
+        <p className="muted">
+          On approval, this {proposal.memoryMode === "living" ? "appends to" : proposal.memoryMode === "static" ? "replaces" : proposal.appendContent ? "appends to" : "replaces"} the Story Card Content.
+        </p>
+      )}
       <textarea
         rows={5}
         value={proposal.content}

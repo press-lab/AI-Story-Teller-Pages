@@ -37,10 +37,21 @@ describe("one-pass memory quality boundary", () => {
     expect(result.adventure.storyCards).toHaveLength(1);
     expect(result.adventure.storyCards[0].content).toContain("scout");
     expect(result.adventure.storyCards[0].content).toContain("Silver");
+    expect(result.adventure.storyCards[0].memoryUpdateHistory?.[0]?.operation).toBe("replace");
     expect(result.adventure.activeState.memoryProposals[0]).toMatchObject({ sourceTurnId: "new-story", sourceText: update.evidence });
     expect(Object.values(result.adventure.brains[0].thoughts)).toEqual(expect.arrayContaining(["I distrust the duke.", expect.stringContaining("stop fearing")]));
     expect(result.adventure.components.find(c => c.id === "pressure")?.content).toBe("The tribute obligation has ended.");
     expect(result.adventure.components.find(c => c.id === "essentials")?.content).toBe(adventure.components[0].content);
+  });
+
+  it("appends a one-pass fact to a living card", () => {
+    const adventure = fixture();
+    adventure.storyCards[0].memoryMode = "living";
+    const actions = onePassMemoryActions(adventure, buildContext(adventure), [update], story, "story-id");
+    const result = actions.reduce(adventureReducer, adventure);
+    expect(result.storyCards[0].content).toContain("Mira is a scout.");
+    expect(result.storyCards[0].content).toContain("Silver burns Mira's skin.");
+    expect(result.storyCards[0].memoryUpdateHistory?.[0]?.operation).toBe("append");
   });
 
   it.each([

@@ -681,7 +681,7 @@ describe("adventureReducer", () => {
     expect(statusState.activeState.memoryProposals.find((proposal) => proposal.id === "proposal-ignore")?.status).toBe("ignored");
   });
 
-  it("preserves static story card mode when approving an appended static proposal", () => {
+  it("replaces static Story Card content even when a proposal requests append", () => {
     let state = baseAdventure();
     const redRing = makeStoryCard({
       id: "card-red-ring",
@@ -709,10 +709,25 @@ describe("adventureReducer", () => {
     state = reduce(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: "proposal-red-ring" });
 
     const updated = state.storyCards.find((card) => card.id === "card-red-ring");
-    expect(updated?.content).toContain("main enemy faction");
-    expect(updated?.content).toContain("stolen dampener cores");
+    expect(updated?.content).toBe("• Red Ring pressure now centers on stolen dampener cores.");
+    expect(updated?.memoryUpdateHistory?.[0]?.operation).toBe("replace");
     expect(updated?.memoryMode).toBe("static");
     expect((updated?.state ?? "").split(/\s+/)).not.toContain("living");
+  });
+
+  it("does not restore superseded guarded text during a static replacement", () => {
+    let state = baseAdventure();
+    state = reduce(state, { type: "UPSERT_STORY_CARD", storyCard: makeStoryCard({
+      id: "old-promise", title: "Old Promise", memoryMode: "static",
+      content: "Seth promised to return.", archivedFacts: "Seth promised to bring a coin.",
+    }) });
+    state = reduce(state, { type: "ADD_MEMORY_PROPOSAL", proposal: makeMemoryProposal({
+      id: "revised-promise", proposedType: "storyCard", targetId: "old-promise",
+      title: "Old Promise", memoryMode: "static", content: "Seth's promise was released.",
+      appendContent: true,
+    }) });
+    state = reduce(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: "revised-promise" });
+    expect(state.storyCards.find((card) => card.id === "old-promise")?.content).toBe("Seth's promise was released.");
   });
 
   it("creates a living child card instead of appending current state to a static character profile", () => {
@@ -1219,7 +1234,7 @@ describe("adventureReducer", () => {
       proposedType: "storyCard",
       title: "Setu and Nyxa",
       targetId: "card-living",
-      appendContent: true,
+      appendContent: false,
       content: "• Setu has now brought her into his private chambers.",
       suggestedTriggers: ["chambers"],
     });

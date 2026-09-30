@@ -405,9 +405,11 @@ describe("full turn smoke path", () => {
     expect(proposal).toMatchObject({
       title: "Red Ring",
       targetId: "card-red-ring",
-      appendContent: true,
+      appendContent: false,
       memoryMode: "static",
     });
+    expect(proposal?.content).toContain("main enemy faction");
+    expect(proposal?.content).toContain("stolen dampener cores");
     expect(result.adventure.storyCards.find((card) => card.id === "card-red-ring")?.memoryMode).toBe("static");
     expect(result.responseContent).not.toContain("<memory");
   });

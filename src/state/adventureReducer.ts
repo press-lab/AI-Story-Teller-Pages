@@ -441,15 +441,6 @@ function guardStoryCard(card: StoryCard): StoryCard {
   return applyGuardedStoryCardPolicy(restoreGuardedFactsToLiveContent(card));
 }
 
-function replacementContentWithGuardedFacts(existing: StoryCard, replacementContent: string): string {
-  const archivedFacts = [existing.archivedFacts, existing.content].filter(Boolean).join("\n");
-  return restoreGuardedFactsToLiveContent({
-    ...existing,
-    content: replacementContent,
-    archivedFacts,
-  }).content;
-}
-
 /**
  * Keep a brain's accumulating thought log bounded. While the total thought text
  * exceeds the budget, move the oldest entries (insertion order) to archivedThoughts.
@@ -629,8 +620,11 @@ function stripThink(text: string): string {
 
 function stripLeadingCardTitle(title: string, content: string): string {
   if (!title || !content) return content;
-  const escaped = title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return content.replace(new RegExp(`^(?:#{1,3}\\s*|\\*{1,2})?${escaped}\\*{0,2}\\s*\\n?`, "i"), "").trimStart();
+  const lines = content.split(/\r?\n/);
+  const heading = lines[0].trim().replace(/^#{1,3}\s*/, "").replace(/^\*{1,2}|\*{1,2}$/g, "").replace(/:$/, "").trim();
+  return heading.toLocaleLowerCase() === title.trim().toLocaleLowerCase()
+    ? lines.slice(1).join("\n").trimStart()
+    : content;
 }
 
 /**
@@ -919,9 +913,10 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal)
     } else if (existing) {
       storyCard = recordStoryCardMemoryUpdate(
         existing,
-        guardStoryCard({
+        applyGuardedStoryCardPolicy({
           ...existing,
-          content: replacementContentWithGuardedFacts(existing, safeContent),
+          content: safeContent,
+          coreFacts: [], currentFacts: [], recentDevelopments: [],
           // Merge, never overwrite, keys — a sparse update must not strip a card's aliases (which would
           // break alias-matching and let the card be duplicated again later).
           keys: Array.from(new Set([
@@ -1369,13 +1364,29 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
       return touchAdventure(state, {
         storyCards: updateById(state.storyCards, action.storyCardId, (item) => {
           const stripped = action.content !== undefined ? stripLeadingCardTitle(item.title, action.content) : item.content;
+          const append = action.content !== undefined && isLivingStoryCard(item);
+          const prepared = append ? guardStoryCard(item) : item;
+          const merged = append
+            ? mergeCardContentToBudget(
+                prepared.content,
+                stripped,
+                prepared.archivedFacts ?? "",
+                prepared.tokenBudget && prepared.tokenBudget > 0 ? prepared.tokenBudget * 4 : DEFAULT_CARD_CONTENT_BUDGET,
+                prepared,
+              )
+            : undefined;
           const content = action.content !== undefined
-            ? replacementContentWithGuardedFacts(item, stripped)
+            ? merged?.content ?? stripped
             : stripped;
+          const applyPolicy = !append && action.content !== undefined ? applyGuardedStoryCardPolicy : guardStoryCard;
           return recordStoryCardMemoryUpdate(
             item,
-            guardStoryCard({ ...item, ...action.patch, content }),
-            { source: "aiMemoryUpdate", operation: action.content !== undefined ? "replace" : "patch" },
+            applyPolicy({
+              ...prepared, ...action.patch, content,
+              ...(!append && action.content !== undefined ? { coreFacts: [], currentFacts: [], recentDevelopments: [] } : {}),
+              ...(merged ? { archivedFacts: merged.archivedFacts } : {}),
+            }),
+            { source: "aiMemoryUpdate", operation: action.content !== undefined ? append ? "append" : "replace" : "patch" },
           );
         }),
       });

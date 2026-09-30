@@ -14,7 +14,7 @@ An empty updates array is normal. Never invent changes to fill it. Maximum 4 sma
 Each update has: kind, target, content, evidence, reason. evidence is an EXACT quote from this turn's player input or your visible story, establishing the change. reason explains why it will matter beyond this scene. Do not treat a suggestion, possibility, or plan as an accomplished fact. Do not give absent characters knowledge they did not receive.
 Allowed kinds:
 - "thought": target is an eligible character name below; content is ONE new first-person internal reaction, belief, or private plan (max 45 words). Capture only if the character participated or learned something this turn. Never repeat existing thoughts or put generic world facts here.
-- "card": target is the EXACT title of an existing Story Card visible in context; content is only a NEW durable fact (max 70 words) to append. Preserve identity and existing facts. Never overwrite or contradict canon; corrections need explicit review outside this automatic path. Omit already-known facts and rephrasings.
+- "card": target is the EXACT title of an existing Story Card visible in context; content is only a NEW durable fact (max 70 words). The app appends it to living cards or includes existing facts in a full static-card replacement. Preserve identity and existing facts. Never overwrite or contradict canon; corrections need explicit review outside this automatic path. Omit already-known facts and rephrasings.
 - "newCard": target is a genuinely new recurring subject's name, content max 90 words. Also provide cardType (character, location, lore, custom, plot), memoryMode (static or living), triggers (1-3 narrow phrases), and category from: ${categories.join(", ") || "NONE (no new cards allowed)"}. Reuse existing subjects; never create sibling cards for a conversation, invitation, repeated affection, room movement, routine choice, or temporary mood. A plot card requires a consequential lasting obligation, alliance, betrayal, secret, or irreversible change; it will require review. Do not create event recap cards.
 - "pressure": target is the EXACT title of an active Active Pressure component; content is its full replacement, ONE sentence (max 45 words) identifying the external threat or obligation pressing on the player. Only when it materially changes or resolves; no cosmetic rewrites.
 - "arc": target is the EXACT title of the active Current Arc; content is one concise, completed development (max 45 words) directly relevant to its premise, to append to its log. Skip scene filler, repeated beats, possibilities, and future events. Never change the premise, phase, or pacing.
@@ -102,7 +102,10 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
         if (norm(existing.content).includes(norm(content))) continue;
         proposal.title = existing.title;
         proposal.targetId = existing.id;
-        proposal.appendContent = true;
+        proposal.appendContent = existing.memoryMode === "living";
+        // The one-pass envelope contains only a new fact. A static proposal is a full
+        // replacement, so include the facts it must retain in the reviewable draft.
+        if (existing.memoryMode === "static") proposal.content = [existing.content.trim(), content].filter(Boolean).join("\n");
         proposal.memoryMode = existing.memoryMode;
         // Sensitive identity records and evolving plot state need review, even with generic auto-approval.
         proposal.requiresReview = existing.type === "plot" || existing.protected;

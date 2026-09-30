@@ -163,6 +163,7 @@ describe("runSemanticPostTurnEvaluation", () => {
     const card = makeStoryCard({
       id: "card-margo",
       title: "Margo",
+      memoryMode: "living",
       content: "Margo is protective.",
       keys: ["Margo"],
       active: true,
@@ -180,10 +181,18 @@ describe("runSemanticPostTurnEvaluation", () => {
     mockProvider
       .mockResolvedValueOnce({ content: "[]", raw: {} })
       .mockResolvedValueOnce({ content: '["storyCard:card-margo"]', raw: {} })
-      .mockResolvedValueOnce({ content: "Margo is protective and now worried about Seth.", raw: {} });
+      .mockResolvedValueOnce({ content: "Margo keeps Seth's warning in mind.", raw: {} });
 
     const result = await runMemoryCycle(adventure, providerConfig);
 
+    const pending = result.actions.reduce((next, action) => adventureReducer(next, action), adventure);
+    expect(pending.activeState.memoryProposals[0]).toMatchObject({ targetId: "card-margo", appendContent: true });
+    const updated = adventureReducer(pending, {
+      type: "APPROVE_MEMORY_PROPOSAL", proposalId: pending.activeState.memoryProposals[0].id,
+    }).storyCards[0];
+    expect(updated.content).toContain("Margo is protective.");
+    expect(updated.content).toContain("Margo keeps Seth's warning in mind.");
+    expect(updated.memoryUpdateHistory?.[0]?.operation).toBe("append");
     expect(result.actions.some((action) => action.type === "ADD_MEMORY_PROPOSAL")).toBe(true);
     expect(result.actions).toContainEqual(expect.objectContaining({
       type: "MARK_STORY_CARD_UPDATED",
@@ -278,7 +287,7 @@ describe("runSemanticPostTurnEvaluation", () => {
     expect(reduced.storyCards[0].content).toBe("Old joke.");
     expect(reduced.storyCards[0].lastAutoUpdateTurn).toBe(5);
     const proposal = reduced.activeState.memoryProposals[0];
-    expect(proposal).toMatchObject({ proposedType: "storyCard", status: "pending", targetId: "card-joke" });
+    expect(proposal).toMatchObject({ proposedType: "storyCard", status: "pending", targetId: "card-joke", appendContent: false });
 
     const withPendingProposal = reduced;
     const rejected = adventureReducer(reduced, { type: "REJECT_MEMORY_PROPOSAL", proposalId: proposal.id });
