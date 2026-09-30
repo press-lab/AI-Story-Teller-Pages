@@ -79,14 +79,14 @@ export function AutomaticMemoryOverview({ adventure, dispatch }: AdventurePagePr
 
   return (
     <div className="automatic-memory-overview">
-      <div className="panel">
-        <h3>How automatic memory flows</h3>
+      <details className="panel editor-tools-panel">
+        <summary>How automatic memory flows</summary>
         <p className="memory-flow">Detected in a turn <span>→</span> Proposed destination <span>→</span> Review or auto-approve <span>→</span> Saved memory <span>→</span> Future context</p>
         <p className="muted">Pending suggestions do not enter story context. Saved Story Cards and components enter only when eligible under their context and token settings.</p>
-      </div>
+      </details>
 
-      <div className="panel">
-        <h3>Detection sources and requests</h3>
+      <details className="panel editor-tools-panel">
+        <summary>Detection sources and requests</summary>
         <div className="memory-mapping-list">
           <div><strong>Inline narrator memory</strong><span>{detectionOn ? "On · every story response" : "Off"}</span><p>Uses the story request and extra tokens; no separate request when its hidden output succeeds.</p></div>
           <div><strong>Missing-output recovery</strong><span>{detectionOn ? `On · at most once every ${Math.max(1, adventure.memoryDetectionSettings.everyNTurns ?? 1)} turn(s)` : "Off"}</span><p>Runs only after missing or invalid hidden output. One background request; an invalid result can start the older multi-request cycle.</p></div>
@@ -94,10 +94,10 @@ export function AutomaticMemoryOverview({ adventure, dispatch }: AdventurePagePr
           <div><strong>Custom Automation rules</strong><span>{semanticRules.length} enabled AI rule(s)</span><p>Semantic rules use background requests. Keyword and regex checks do not. Their rule editor and logs remain on Automations.</p></div>
         </div>
         <p className="muted">Cumulative background tokens recorded: {backgroundTokens.promptTokens.toLocaleString()} input, {backgroundTokens.completionTokens.toLocaleString()} output. Exact request counts and per-turn token use are not recorded; the activity below cannot estimate cost.</p>
-      </div>
+      </details>
 
-      <div className="panel">
-        <h3>Destinations and approval</h3>
+      <details className="panel editor-tools-panel">
+        <summary>Destinations and approval</summary>
         <p>The advanced narrator filters below affect only new card suggestions in the story response. They do not control card types or background discovery.</p>
         <p className="muted">Counts below describe saved suggestion history, not how often a memory was sent to the model. A required-review proposal waits even when auto-approve is on.</p>
         <div className="memory-destination-list">
@@ -126,7 +126,7 @@ export function AutomaticMemoryOverview({ adventure, dispatch }: AdventurePagePr
             <CheckboxField label="Legacy Summary" checked={autoApprove.summaryUpdate} onChange={summaryUpdate => setAutoApprove({ summaryUpdate })} />
           </div>
         </details>
-      </div>
+      </details>
 
       <details className="panel editor-tools-panel">
         <summary>Advanced: narrator new-card filters</summary>

@@ -528,6 +528,22 @@ describe("side menu page smoke coverage", () => {
     expect(screen.getByRole("checkbox", { name: "Plot Beat" })).toBeChecked();
   });
 
+  it("lets readers expand the three automatic memory overview sections", async () => {
+    const user = userEvent.setup();
+    renderWithAdventure((adventure, dispatch) => <MemoryInboxPage adventure={adventure} dispatch={dispatch} />);
+
+    for (const title of ["How automatic memory flows", "Detection sources and requests", "Destinations and approval"]) {
+      const summary = screen.getByText(title);
+      const section = summary.closest("details");
+      expect(section).not.toHaveAttribute("open");
+      await user.click(summary);
+      expect(section).toHaveAttribute("open");
+    }
+
+    expect(screen.getByText("Background Story Card discovery")).toBeInTheDocument();
+    expect(screen.getAllByRole("checkbox", { name: "Auto-approve eligible updates" })).toHaveLength(5);
+  });
+
   it("shows built-in memory evaluations on Memory instead of custom Automations", () => {
     const base = seedAdventure();
     const adventure: Adventure = {
