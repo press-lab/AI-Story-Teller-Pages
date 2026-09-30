@@ -229,8 +229,8 @@ function arcTier(total: number, breakThreshold: number): number {
  */
 function advanceArcComponent(component: ComponentEntry, triggeredIds: string[], turn: number): ComponentEntry {
   const threadKeys = component.arcThreadKeys ?? [];
-  if (component.type !== "currentArc" || threadKeys.length === 0) return component;
   const state = component.arcState ?? emptyArcState();
+  if (component.type !== "currentArc" || (threadKeys.length === 0 && state.phase !== "break")) return component;
 
   // 1. Count engagement for any of this arc's threads triggered this turn.
   const triggered = new Set(triggeredIds);
@@ -245,7 +245,7 @@ function advanceArcComponent(component: ComponentEntry, triggeredIds: string[], 
 
   const { escalate, break: breakAt } = ARC_PACE_THRESHOLDS[component.arcPace ?? "medium"];
   const total = threadKeys.reduce((sum, key) => sum + (nextEngagement[key] ?? 0), 0);
-  const tier = arcTier(total, breakAt);
+  const tier = threadKeys.length > 0 ? arcTier(total, breakAt) : state.tier;
 
   let phase = state.phase;
   let pendingBreak = state.pendingBreak;
