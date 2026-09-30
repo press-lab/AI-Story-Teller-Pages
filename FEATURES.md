@@ -33,7 +33,7 @@ The app is browser-only, local-first, IndexedDB-persisted, no backend. All LLM c
 Out-of-character (comms) turns build context with `outOfCharacter: true`: arc phase direction is withheld and the Continuity Challenge instruction is injected. With the preset option "Use reasoning on out-of-character corrections (DeepSeek only)", comms turns also send `thinking: enabled` with a larger output reserve.
 
 ### Background (async, after turn — not blocking):
-- **Background memory pass** (`memory/compactMemoryFallback.ts` → `runBackgroundMemoryPass`): the single automatic memory writer. One JSON-mode call every `memoryDetectionSettings.everyNTurns` story turns (never after comms turns) reads the last `2N + 2` messages (min 6, max 16, so every message since the previous pass for N ≤ 7; `memoryPassWindow`) plus related canon and returns Story State, character thoughts, knowledge boundaries, card, pressure, arc and essentials updates. A failed pass is logged and waits for the next slot; it never escalates into the multi-call `runMemoryCycle`. `everyNTurns` is set in Settings → Automatic memory ("Update memory every N story turns"); the default is `1`, so out of the box the pass runs after every story turn. Its suggestions follow the per-type auto-approve toggles; Story State rewrites are reviewed by default.
+- **Background memory pass** (`memory/compactMemoryFallback.ts` → `runBackgroundMemoryPass`): the single automatic memory writer. One JSON-mode call every `memoryDetectionSettings.everyNTurns` story turns (never after comms turns) reads every message since the previous pass plus the two before it (`memoryPassWindow`, marker `activeState.lastMemoryPassMessageId`; at least 6 messages, 2N + 2 when there is no marker yet, capped at max(60, 2N + 2) only for catch-up after a long pause) plus related canon and returns Story State, character thoughts, knowledge boundaries, card, pressure, arc and essentials updates. A failed pass is logged and waits for the next slot; it never escalates into the multi-call `runMemoryCycle`. `everyNTurns` is set in Settings → Automatic memory ("Update memory every N story turns"); the default is `3` for new installs; a value already saved in the browser is kept. Its suggestions follow the per-type auto-approve toggles; Story State rewrites are reviewed by default.
 - Semantic evaluation (`runSemanticPostTurnEvaluation`) every `semanticEvalEveryNTurns` turns, only when the user configured semantic trigger rules
 - Arc continuation runs exceptionally after an arc reaches aftermath. Custom rule and arc requests are guarded against overlap.
 
@@ -185,7 +185,7 @@ Brains track named character inner state as a keyed thought record. The primary 
 - `updateCondition` — LLM condition string for semantic engine trigger
 - `updateMode` — `replace` or `append`
 - `condenseThreshold` — if total thoughts text exceeds this (default 1600 chars), auto-condense pass runs
-- `printThoughts` — legacy toggle from inline thought capture. Still shown on the Characters page, but it has no effect now that the narrator does not emit thoughts.
+- `printThoughts` — legacy field from inline thought capture. Kept on the type so old saves load; no UI and no effect.
 - `anchorText` (character anchor) — immutable voice/behavioral defaults injected into brain update prompts to prevent personality drift
 
 ### Triggering for context inclusion:
@@ -310,7 +310,7 @@ Post-generation correction. `scanForRiskyClaims()` checks every assistant respon
 
 Per-adventure setting (`adventure.systemTriggers`) with five opt-out categories: `relationship`, `world_fact`, `character_reveal`, `plot_beat`, `status_change`. It no longer injects anything into the narrator prompt. The enabled categories are passed to the background memory pass, which may propose at most one new Story Card per pass and only in an enabled category. With the setting off, the pass proposes no new cards (updates to existing cards still work).
 
-History: this used to inject a `[MEMORY TAGGING]` instruction asking the narrator to emit `<memory>` tags. `buildMemoryTagInstruction` still exists in `contextBuilder.ts` but has no callers.
+History: this used to inject a `[MEMORY TAGGING]` instruction asking the narrator to emit `<memory>` tags. That builder and the matching `[CHARACTER THOUGHT CAPTURE]` builder have been removed. The Turn Scope Contract no longer mentions hidden tags either.
 
 ---
 

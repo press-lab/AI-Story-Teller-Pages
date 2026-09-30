@@ -252,7 +252,7 @@ export function useAdventureRuntime(
    */
   async function startMemoryPass(snapshot: Adventure) {
     if (!snapshot.memoryDetectionSettings.enabled || memoryFallbackInFlight.current.has(snapshot.id)) return;
-    const everyN = Math.max(1, snapshot.memoryDetectionSettings.everyNTurns ?? 1);
+    const everyN = Math.max(1, snapshot.memoryDetectionSettings.everyNTurns ?? 3);
     const last = snapshot.activeState.lastMemoryCycleTurn;
     if (last !== undefined && snapshot.activeState.turn - last < everyN) return;
 
@@ -267,7 +267,7 @@ export function useAdventureRuntime(
           conditionsFired: [], actionsExecuted: ["Background memory pass: one API call"], generatedContent: [],
           errors: ["Background memory pass returned no usable JSON; it will run again at the next scheduled turn."],
         } }]),
-        { type: "SET_LAST_MEMORY_CYCLE_TURN", turn: snapshot.activeState.turn },
+        { type: "SET_LAST_MEMORY_CYCLE_TURN", turn: snapshot.activeState.turn, messageId: snapshot.messages.at(-1)?.id },
         { type: "ACCUMULATE_BACKGROUND_TOKENS", promptTokens: pass.tokenUsage.promptTokens, completionTokens: pass.tokenUsage.completionTokens },
       ];
       if (adventureRef.current?.id !== snapshot.id) return;

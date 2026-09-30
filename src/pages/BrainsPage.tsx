@@ -595,11 +595,6 @@ export function BrainsPage({ adventure, dispatch, loading, onUpdateBrainNow, onA
                   checked={brain.protected}
                   onChange={(checked) => dispatch({ type: "UPDATE_BRAIN", brainId: brain.id, patch: { protected: checked } })}
                 />
-                <CheckboxField
-                  label="Print thoughts in story"
-                  checked={!!brain.printThoughts}
-                  onChange={(checked) => dispatch({ type: "UPDATE_BRAIN", brainId: brain.id, patch: { printThoughts: checked } })}
-                />
                 <Field label="Update Mode">
                   <select
                     value={brain.updateMode}

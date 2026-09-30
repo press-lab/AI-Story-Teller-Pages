@@ -597,6 +597,8 @@ export interface ActiveState {
   challengeMode: boolean;
   /** Turn number when the memory cycle last ran for this adventure. */
   lastMemoryCycleTurn?: number;
+  /** Id of the newest message the background memory pass had seen; the next pass reads everything after it. */
+  lastMemoryPassMessageId?: string;
   /** Turn number when semantic evaluation last ran. */
   lastSemanticEvalTurn?: number;
   /** Turn number when scene state last ran. */
@@ -863,7 +865,7 @@ export type AdventureAction =
   | { type: "QUEUE_PENDING_UPDATE"; update: PendingAdventureUpdate }
   | { type: "FLUSH_PENDING_UPDATES" }
   | { type: "SET_CHALLENGE_MODE" }
-  | { type: "SET_LAST_MEMORY_CYCLE_TURN"; turn: number }
+  | { type: "SET_LAST_MEMORY_CYCLE_TURN"; turn: number; messageId?: string }
   | { type: "SET_LAST_SEMANTIC_EVAL_TURN"; turn: number }
   | { type: "SET_LAST_SCENE_STATE_TURN"; turn: number }
   | { type: "RESET_RUNTIME_STATE" }

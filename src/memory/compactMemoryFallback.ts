@@ -22,11 +22,26 @@ export interface BackgroundMemoryPassResult {
   valid: boolean;
 }
 
-/** Messages the pass may quote as evidence: everything since roughly the previous pass, with overlap. */
+/**
+ * Safety ceiling for the pass window. Passes that run on schedule stay under it; it only bites after
+ * automatic memory was paused for a long stretch, so one catch-up pass cannot overflow the model's context.
+ */
+export const MEMORY_PASS_MAX_MESSAGES = 60;
+
+/**
+ * Messages the pass may quote as evidence: every message since the previous pass plus the last two it
+ * already saw, for continuity. Without a marker (first pass, older saves) it falls back to 2N + 2.
+ * Never fewer than 6, never more than max(60, 2N + 2).
+ */
 export function memoryPassWindow(adventure: Adventure) {
-  const everyN = Math.max(1, adventure.memoryDetectionSettings.everyNTurns ?? 1);
-  const count = Math.min(16, Math.max(6, everyN * 2 + 2));
-  return adventure.messages.slice(-count);
+  const everyN = Math.max(1, adventure.memoryDetectionSettings.everyNTurns ?? 3);
+  const scheduled = everyN * 2 + 2;
+  const messages = adventure.messages;
+  const markerId = adventure.activeState.lastMemoryPassMessageId;
+  const markerIndex = markerId ? messages.findIndex(message => message.id === markerId) : -1;
+  const sincePass = markerIndex >= 0 ? messages.length - Math.max(0, markerIndex - 1) : scheduled;
+  const count = Math.min(Math.max(6, sincePass), Math.max(MEMORY_PASS_MAX_MESSAGES, scheduled));
+  return messages.slice(-count);
 }
 
 export async function runBackgroundMemoryPass(

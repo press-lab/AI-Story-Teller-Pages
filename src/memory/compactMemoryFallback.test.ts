@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createDefaultAdventure, defaultModelConfig, makeBrain, makeComponent, makeStoryCard } from "../state/defaults";
 import { adventureReducer } from "../state/adventureReducer";
 import { sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
-import { MEMORY_PASS_LABEL, memoryPassWindow, runBackgroundMemoryPass } from "./compactMemoryFallback";
+import { MEMORY_PASS_LABEL, MEMORY_PASS_MAX_MESSAGES, memoryPassWindow, runBackgroundMemoryPass } from "./compactMemoryFallback";
 
 vi.mock("../providers/openAICompatible", () => ({ sendOpenAICompatibleChatCompletion: vi.fn() }));
 
@@ -69,6 +69,39 @@ describe("background memory pass", () => {
   it("reads a window covering every turn since the previous pass", () => {
     const adventure = adventureAfterTurns();
     expect(memoryPassWindow(adventure).map(m => m.id)).toEqual(["p1", "s1", "p2", "s2"]);
+  });
+
+  function adventureWithMessages(count: number, everyNTurns: number, markerIndex?: number) {
+    let adventure = createDefaultAdventure("Window");
+    adventure.memoryDetectionSettings = { ...adventure.memoryDetectionSettings, enabled: true, everyNTurns };
+    for (let i = 0; i < count; i += 1) {
+      adventure = adventureReducer(adventure, { type: "ADD_MESSAGE", id: `m${i}`, role: i % 2 === 0 ? "user" : "assistant", content: `message ${i}` });
+    }
+    if (markerIndex !== undefined) {
+      adventure = adventureReducer(adventure, { type: "SET_LAST_MEMORY_CYCLE_TURN", turn: 1, messageId: `m${markerIndex}` });
+    }
+    return adventure;
+  }
+
+  it("reads every message since the previous pass even when N is above 7", () => {
+    // N = 10: the previous pass saw m9; 20 new messages follow. The old 16-message cap dropped the oldest.
+    const window = memoryPassWindow(adventureWithMessages(30, 10, 9));
+    expect(window[0].id).toBe("m8");
+    expect(window.at(-1)?.id).toBe("m29");
+    expect(window).toHaveLength(22);
+  });
+
+  it("falls back to 2N + 2 messages without a marker, with no 16-message cap", () => {
+    expect(memoryPassWindow(adventureWithMessages(40, 10))).toHaveLength(22);
+  });
+
+  it("caps a catch-up pass after a long pause so one call cannot overflow context", () => {
+    expect(memoryPassWindow(adventureWithMessages(200, 3, 1))).toHaveLength(MEMORY_PASS_MAX_MESSAGES);
+  });
+
+  it("records the marker the next pass reads from", () => {
+    const adventure = adventureWithMessages(4, 3, 3);
+    expect(adventure.activeState.lastMemoryPassMessageId).toBe("m3");
   });
 
   it("reports an invalid response without falling back to the multi-call cycle", async () => {

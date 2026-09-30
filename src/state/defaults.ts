@@ -89,7 +89,7 @@ export const defaultSemanticEvaluationSettings: SemanticEvaluationSettings = {
 export const defaultMemoryDetectionSettings: MemoryDetectionSettings = {
   enabled: true,
   generateContent: true,
-  everyNTurns: 1,
+  everyNTurns: 3,
 };
 
 export const defaultMemoryAutoApproveSettings: MemoryAutoApproveSettings = {
@@ -561,6 +561,7 @@ export function normalizeAdventure(adventure: Adventure): Adventure {
       backgroundTokenUsage: adventure.activeState?.backgroundTokenUsage ?? { promptTokens: 0, completionTokens: 0 },
       challengeMode: adventure.activeState?.challengeMode ?? false,
       lastMemoryCycleTurn: adventure.activeState?.lastMemoryCycleTurn,
+      lastMemoryPassMessageId: adventure.activeState?.lastMemoryPassMessageId,
       lastSemanticEvalTurn: adventure.activeState?.lastSemanticEvalTurn,
       lastSceneStateTurn: adventure.activeState?.lastSceneStateTurn,
     },

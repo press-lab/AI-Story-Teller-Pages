@@ -1321,7 +1321,11 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
       });
     case "SET_LAST_MEMORY_CYCLE_TURN":
       return touchAdventure(state, {
-        activeState: { ...state.activeState, lastMemoryCycleTurn: action.turn },
+        activeState: {
+          ...state.activeState,
+          lastMemoryCycleTurn: action.turn,
+          ...(action.messageId ? { lastMemoryPassMessageId: action.messageId } : {}),
+        },
       });
     case "SET_LAST_SEMANTIC_EVAL_TURN":
       return touchAdventure(state, {

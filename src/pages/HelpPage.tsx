@@ -367,7 +367,7 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
         <p>
           Settings stores tiny app preferences in localStorage, including provider API key, selected model,
           and dark mode. <strong>Automatic memory</strong> turns the background memory pass on or off and sets
-          how often it runs (every N story turns; default 1, meaning one extra background call per turn).
+          how often it runs (every N story turns; default 3). Each pass reads every message since the previous one.
           Adventure-specific settings control token budgets, semantic evaluation, auto-approve toggles, and the
           background provider.
         </p>

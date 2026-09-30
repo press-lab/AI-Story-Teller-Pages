@@ -2,7 +2,7 @@
 
 > **Status:** History (design record) · **Audience:** contributors · **Verified against:** `e768262`
 >
-> The top section describes the current design. Since it was written: Story State rewrites are reviewed by default (`e768262`), and the pass cadence is exposed as Settings → Automatic memory → "Update memory every N story turns" (default 1). Everything below "Memory maintenance keeps the narrator's model" describes the legacy `runMemoryCycle` and inline memory tagging, which normal play no longer uses.
+> The top section describes the current design. Since it was written: Story State rewrites are reviewed by default (`e768262`), and the pass cadence is exposed as Settings → Automatic memory → "Update memory every N story turns" (default 3); each pass reads every message since the previous one. Everything below "Memory maintenance keeps the narrator's model" describes the legacy `runMemoryCycle` and inline memory tagging, which normal play no longer uses.
 
 ## 2026-09-30 redesign (from the Seattle Hunger playthrough)
 

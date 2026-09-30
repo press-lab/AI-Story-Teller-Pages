@@ -3,7 +3,7 @@ import type { Adventure, MemoryPriorityMode, TokenBudgetSettings } from "../type
 import { createDefaultAdventure, defaultNarrationRulesContent, makeBrain, makeComponent, makeStoryCard } from "../state/defaults";
 import { approximateTokenCount } from "../tokenizer/approximateTokenCount";
 import { goldenAdventure, makeMemoryProposal } from "../test/goldenAdventure";
-import { buildContext, buildMemoryTagInstruction, extractInlineThoughts, TURN_CONTEXT_CLOSE, TURN_CONTEXT_OPEN, TURN_CONTEXT_SECTIONS } from "./contextBuilder";
+import { buildContext, extractInlineThoughts, TURN_CONTEXT_CLOSE, TURN_CONTEXT_OPEN, TURN_CONTEXT_SECTIONS } from "./contextBuilder";
 
 function adventureForContext(): Adventure {
   const always = makeComponent({ title: "Always", content: "Always component", alwaysOn: true, active: true, priority: 100 });
@@ -986,14 +986,5 @@ describe("buildContext", () => {
 
     expect(result.cleanContent).toBe("You don't say anything as you travel. The silence is comfortable.");
     expect(result.memoryTags).toEqual([]);
-  });
-
-  it("asks inline memory tagging to capture durable updates to existing subjects", () => {
-    const instruction = buildMemoryTagInstruction(["relationship", "plot_beat"], ["Setu and Nyxa"]);
-
-    expect(instruction).toContain("durable new fact or meaningful update");
-    expect(instruction).toContain("REUSE that card's EXACT title");
-    expect(instruction).toContain("Worth tagging");
-    expect(instruction).toContain("one-off banter");
   });
 });

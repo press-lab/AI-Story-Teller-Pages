@@ -16,7 +16,7 @@ Master switch for the background memory pass. On by default.
 
 ### Update memory every N story turns
 
-How often the pass runs. The default is **1**, which means one extra background call after every story turn. Raising it to 3–5 cuts that cost proportionally, at the price of memory lagging a few turns behind. Each pass reads the last `2N + 2` messages (at least 6, at most 16), so up to N = 7 it covers every message since the previous pass. **Above 7, turns between passes are not read.** A failed pass waits for the next scheduled turn instead of retrying.
+How often the pass runs. The default is **3** (one background call every three story turns). 1 gives the freshest memory at one extra call per turn; higher values cost less but memory lags further behind. At any N, each pass reads every message since the previous one, plus two for continuity, so no turns are skipped. The only limit is a catch-up ceiling of 60 messages (or 2N + 2, if larger) after automatic memory has been off for a while. A value already saved in your browser is kept, including the old default of 1, so check this field if you want 3. A failed pass waits for the next scheduled turn instead of retrying.
 
 ---
 

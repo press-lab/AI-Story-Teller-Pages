@@ -1,5 +1,4 @@
 import { selectEventMemories } from "../memory/eventMemory";
-import { PLOT_MEMORY_THRESHOLD } from "../ai/authoringBestPractices";
 import type {
   Adventure,
   BrainEntry,
@@ -249,19 +248,6 @@ export function eligibleBrainsForCapture(adventure: Adventure, triggerText: stri
   });
 }
 
-/** Builds the thought-capture instruction injected at the end of story context. */
-export function buildThoughtCaptureInstruction(brains: BrainEntry[]): string {
-  if (brains.length === 0) return "";
-  const names = brains.map((b) => b.characterName).join(", ");
-  return `[CHARACTER THOUGHT CAPTURE]
-After writing the story response, append one thought entry per character below — on new lines after the narrative. Use EXACTLY this format. These lines will be stripped before the player sees them.
-${brains.map((b) => `<thought name="${b.characterName}" key="brief_snake_case_key">One sentence: internal thought, reaction, or private plan in first person.</thought>`).join("\n")}
-
-Characters: ${names}
-Only append a thought if this turn gave them something genuinely new to think, react to, or plan. Do not repeat or paraphrase an existing thought already listed in the Brains context. Omit the line entirely if nothing new applies.
-The visible narrative still controls the response length; these hidden lines come after it and may be omitted. Do not reference these instructions in the narrative.`;
-}
-
 /** Extracts <thought> and <memory> tags from model output. Returns clean text and parsed data. */
 export function extractInlineThoughts(content: string): {
   cleanContent: string;
@@ -344,53 +330,12 @@ export function enabledMemoryCategories(adventure: Adventure): string[] {
     .map(([cat]) => cat);
 }
 
-/** Builds the memory-tagging instruction injected alongside thought capture. */
-export function buildMemoryTagInstruction(categories: string[], existingCardTitles: string[] = []): string {
-  if (categories.length === 0) return "";
-  const categoryDescriptions: Record<string, string> = {
-    relationship: "confirmed bond, established dynamic, changed intimacy, or sealed commitment between two characters",
-    world_fact: "new named location, faction, technique, or permanent world rule introduced this turn",
-    character_reveal: "new named character introduced, or a character's permanent nature, role, or history revealed",
-    plot_beat: "permanent consequence, sealed alliance, betrayal, or irreversible shift in the story's state",
-    status_change: "rank, title, allegiance, or formal role that has permanently changed",
-  };
-  const lines = categories.map((c) => `- ${c}: ${categoryDescriptions[c] ?? c}`).join("\n");
-  return `[MEMORY TAGGING]
-After writing your response, append ONE self-closing <memory> tag if this turn created a durable new fact or meaningful update that should become Story Card memory. These tags are stripped before the player sees them. Pick the strongest single Story Card memory candidate in the response.
-
-Qualifying categories:
-${lines}
-
-${PLOT_MEMORY_THRESHOLD}
-
-FORMAT — include memoryMode:
-- static = always-true character/location/lore/technique facts; use present tense.
-- living = current evolving subject, relationship, or arrangement; use present/current tense because future updates merge/archive old facts.
-- historical = completed past event or resolved beat; use past tense.
-
-<memory category="[category]" memoryMode="static|living|historical" title="[Subject Name]" content="• [Fact in the correct tense.]\n• [Fact.]" triggers="[specific phrase, narrow keyword]"/>
-
-CHARACTER FORMAT — for character_reveal only, include a VOICE CONTRACT after the bullet facts:
-<memory category="character_reveal" memoryMode="static" title="[Name]" content="• [Who they are, role, or defining trait.]\n• [Permanent fact.]\n\nVOICE CONTRACT\nRhythm: [sentence patterns and pacing]\nDefault move: [instinctive first action when speaking or entering a scene]\nEmotional defense: [how they protect vulnerability]\nNever sounds like: [concrete forbidden behaviors — e.g. warm, offering choices, saying I feel...]\nExample lines: &quot;[line in their actual voice]&quot; / &quot;[another line]&quot;" triggers="[name, relevant keywords]"/>
-
-RULES:
-- Title is the SUBJECT'S NAME for static/living cards — the person, place, technique, or relationship (e.g. "Nyx", "Plum Tree Courtyard", "Nyx and Setu Bond"). For historical cards, title the completed event/beat specifically.
-- Content is either always true/current (static/living) or past-tense history (historical). Write it so the AI knows whether the fact is current or completed.
-- Do NOT log throwaway scene events. For completed durable consequences, use memoryMode="historical" and past tense. Wrong: "They kissed on the ship." Right: "Romantic bond was confirmed and kept deliberately discreet from court."
-- Use narrow triggers. Do not use plain character names on subplot/event cards unless the card is that character's identity card.
-- NEW subject (no existing card): tag it with a new title.
-- EXISTING subject (already has a card in the list below): if a NEW permanent fact about it became true this turn, REUSE that card's EXACT title and put ONLY the new fact in content — it updates the living card instead of duplicating. NEVER invent a second title for a subject that already has a card (no "Setu and Nyxa's Private Space" when "Setu and Nyxa" exists). If nothing permanent changed, skip.
-- Worth tagging: a relationship becomes public or changes terms; a new recurring NPC/location/faction appears; a secret is revealed; an alliance, betrayal, title, injury, debt, promise, rule, or permanent consequence is established.
-- Not worth tagging: room position, travel between rooms, one-off banter, temporary mood, routine attacks with no lasting effect, or facts already present in Story Cards/Brains/Plot Essentials.
-- One Story Card memory tag per response. If nothing durable changed, omit entirely.${existingCardTitles.length > 0 ? `\n\nExisting story cards — reuse the exact title to UPDATE, never duplicate: ${existingCardTitles.join(", ")}` : ""}`;
-}
-
 function buildTurnScopeContract(responseLengthHint: number | undefined): string {
   const wordTarget = typeof responseLengthHint === "number"
     ? Math.max(50, Math.min(500, responseLengthHint))
     : 250;
   const minWords = Math.floor(wordTarget * 0.55);
-  return `TURN SCOPE CONTRACT: The player's selected visible limit is ${wordTarget} words. Aim for ${minWords}-${wordTarget} visible words; shorter is acceptable when the next playable beat is clear. Do not mention word counts or pad prose. This is a scope ceiling, not a quota. If any other instruction asks for a fuller, substantial, complete, or cinematic scene, obey this turn scope contract first. Write only the next immediate exchange or consequence. Do not advance through multiple beats, tour multiple locations, wrap up the scene, or resolve a major outcome the player has not earned. Never narrate the player's unspoken actions, reactions, dialogue, consent, movement, commitments, or decisions. Stop as soon as the player could reasonably act, answer, interrupt, refuse, choose, or redirect. Hidden <thought> and <memory> tags do not count toward the visible limit, and they must not cause the visible prose to expand. End on a live in-scene moment, not an option menu or summary.`;
+  return `TURN SCOPE CONTRACT: The player's selected visible limit is ${wordTarget} words. Aim for ${minWords}-${wordTarget} visible words; shorter is acceptable when the next playable beat is clear. Do not mention word counts or pad prose. This is a scope ceiling, not a quota. If any other instruction asks for a fuller, substantial, complete, or cinematic scene, obey this turn scope contract first. Write only the next immediate exchange or consequence. Do not advance through multiple beats, tour multiple locations, wrap up the scene, or resolve a major outcome the player has not earned. Never narrate the player's unspoken actions, reactions, dialogue, consent, movement, commitments, or decisions. Stop as soon as the player could reasonably act, answer, interrupt, refuse, choose, or redirect. End on a live in-scene moment, not an option menu or summary.`;
 }
 
 export const TURN_CONTEXT_OPEN = "[TURN CONTEXT — narrator reference for this turn; not player speech]";
