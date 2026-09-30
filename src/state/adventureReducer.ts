@@ -29,6 +29,7 @@ import { isLivingStoryCard, resolveMemoryTarget, sanitizeStoryCardTriggers } fro
 import {
   appendSourceTurnIds,
   applyGuardedStoryCardPolicy,
+  consolidateStoryCardContent,
   isGuardedStoryCardFact,
   isGuardedStoryCardMemory,
   normalizeStoryCardFact,
@@ -384,6 +385,8 @@ function mergeCardContentToBudget(
   guardedCard?: StoryCard,
 ): { content: string; archivedFacts: string } {
   const archivedFacts = splitCardFacts(archived);
+  const incomingFacts = splitCardFacts(newContent);
+  const incomingKeys = new Set(incomingFacts.map(normalizeStoryCardFact));
   const guardSource = guardedCard && isGuardedStoryCardMemory(guardedCard, newContent)
     ? { ...guardedCard, content: [guardedCard.content, newContent].filter(Boolean).join("\n") }
     : undefined;
@@ -402,11 +405,11 @@ function mergeCardContentToBudget(
       .forEach(addFact);
   }
   splitCardFacts(existingContent).forEach(addFact);
-  splitCardFacts(newContent).forEach(addFact); // newest facts last
+  incomingFacts.forEach(addFact); // newest facts last
   const total = (facts: string[]) => facts.reduce((sum, f) => sum + f.length, 0);
   while (kept.length > 1 && total(kept) > budget) {
     if (guardSource) {
-      const archiveIndex = kept.findIndex((fact) => !isGuardedStoryCardFact(guardSource, fact));
+      const archiveIndex = kept.findIndex((fact) => !isGuardedStoryCardFact(guardSource, fact) && !incomingKeys.has(normalizeStoryCardFact(fact)));
       if (archiveIndex < 0) break;
       if (archiveIndex > 0) {
         const [archivedFact] = kept.splice(archiveIndex, 1);
@@ -417,7 +420,9 @@ function mergeCardContentToBudget(
         continue;
       }
     }
-    archivedFacts.push(kept.shift()!); // oldest live fact → archive
+    const oldest = kept.findIndex((fact) => !incomingKeys.has(normalizeStoryCardFact(fact)));
+    if (oldest < 0) break;
+    archivedFacts.push(kept.splice(oldest, 1)[0]); // oldest prior fact → archive
   }
   return { content: kept.join("\n"), archivedFacts: archivedFacts.join("\n") };
 }
@@ -1339,7 +1344,7 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
     case "REORDER_COMPONENT":
       return touchAdventure(state, { components: moveByPriority(state.components, action.componentId, action.direction) });
     case "UPSERT_STORY_CARD":
-      return touchAdventure(state, { storyCards: upsertById(state.storyCards, touch(action.storyCard)) });
+      return touchAdventure(state, { storyCards: upsertById(state.storyCards, touch(consolidateStoryCardContent(action.storyCard))) });
     case "DELETE_STORY_CARD":
       return touchAdventure(state, { storyCards: deleteById(state.storyCards, action.storyCardId) });
     case "ACTIVATE_STORY_CARD":
@@ -1354,7 +1359,8 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
       return touchAdventure(state, {
         storyCards: updateById(state.storyCards, action.storyCardId, (item) => {
           const next = mergePatch<StoryCard>(item, action.patch);
-          return next.type === "event" ? { ...next, memoryMode: "historical", autoUpdate: false } : next;
+          const unified = consolidateStoryCardContent(next);
+          return unified.type === "event" ? { ...unified, memoryMode: "historical", autoUpdate: false } : unified;
         }),
       });
     case "APPLY_STORY_CARD_UPDATE":

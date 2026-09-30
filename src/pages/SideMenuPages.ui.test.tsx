@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -67,6 +67,22 @@ describe("side menu page smoke coverage", () => {
     expect(screen.getByDisplayValue("New Character")).toBeInTheDocument();
     await user.type(screen.getByLabelText("Additional Triggers / Aliases"), "Blazer, Blonde Blazer, Mandy");
     expect(screen.getByDisplayValue("Blazer, Blonde Blazer, Mandy")).toBeInTheDocument();
+  });
+
+  it("edits Story Card memory through one Content field", () => {
+    const adventure = {
+      ...seedAdventure(),
+      storyCards: [makeStoryCard({ id: "margo", title: "Margo", type: "character", content: "Margo is an engineer." })],
+    };
+    renderWithAdventure((current, dispatch) => <StoryCardsPage adventure={current} dispatch={dispatch} />, adventure);
+
+    const content = screen.getByRole("textbox", { name: "Content" });
+    expect(content).toHaveValue("Margo is an engineer.");
+    expect(screen.queryByText("Core Facts")).not.toBeInTheDocument();
+    expect(screen.queryByText("Current Facts")).not.toBeInTheDocument();
+    expect(screen.queryByText("Recent Developments")).not.toBeInTheDocument();
+    fireEvent.change(content, { target: { value: "Margo is an engineer.\nShe runs the workshop." } });
+    expect(content).toHaveValue("Margo is an engineer.\nShe runs the workshop.");
   });
 
   it("renders the Arc Director on a Current Arc component and the AI generators", async () => {

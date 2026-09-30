@@ -16,7 +16,7 @@ import type {
   ProviderRequestThrottle,
 } from "../types/adventure";
 import { dedupeBrainThoughts } from "../memory/thoughtDedupe";
-import { applyGuardedStoryCardPolicy, restoreGuardedFactsToLiveContent } from "../memory/storyCardPolicy";
+import { applyGuardedStoryCardPolicy, consolidateStoryCardContent, restoreGuardedFactsToLiveContent } from "../memory/storyCardPolicy";
 import { createId, nowIso } from "../utils/id";
 
 export const defaultTokenBudgetSettings: TokenBudgetSettings = {
@@ -456,7 +456,7 @@ function normalizeStoryCardEntry(card: StoryCard, migrateGuardedFacts: boolean):
   };
   return migrateGuardedFacts
     ? applyGuardedStoryCardPolicy(restoreGuardedFactsToLiveContent(normalized))
-    : normalized;
+    : consolidateStoryCardContent(normalized);
 }
 
 function persistedProviderConfig(config: ProviderConfig | undefined): Partial<ProviderConfig> {

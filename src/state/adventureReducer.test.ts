@@ -597,9 +597,9 @@ describe("adventureReducer", () => {
       previous: null,
       next: {
         title: "Promise",
-        content: "",
+        content: "Seth promised Margo he would return.",
         compactKind: "promise",
-        coreFacts: expect.arrayContaining(["Seth promised Margo he would return."]),
+        coreFacts: undefined,
       },
     });
 
@@ -1202,7 +1202,7 @@ describe("adventureReducer", () => {
     expect(state.activeState.memoryProposals.some((p) => p.id === "bad-arc")).toBe(false);
   });
 
-  it("living-card update: compact facts move into structured fields without auto-protecting the card", () => {
+  it("living-card update: compact facts and new facts remain in Content without auto-protecting the card", () => {
     const card = makeStoryCard({
       id: "card-living",
       title: "Setu and Nyxa",
@@ -1229,9 +1229,9 @@ describe("adventureReducer", () => {
     const merged = state.storyCards.find((c) => c.id === "card-living");
     expect(merged?.compactKind).toBe("secret");
     expect(merged?.compactStatus).toBe("active");
-    expect(merged?.coreFacts?.join("\n")).toContain("Their bond was a court secret");
-    expect([...(merged?.currentFacts ?? []), ...(merged?.recentDevelopments ?? [])].join("\n")).toContain("private chambers");
-    expect(merged?.content).not.toContain("court secret");
+    expect(merged?.content).toContain("Their bond was a court secret");
+    expect(merged?.content).toContain("private chambers");
+    expect(merged?.coreFacts ?? []).toEqual([]);
     expect(merged?.pinned).toBe(false);
     expect(merged?.protected).toBe(false);
     expect(state.storyCards.filter((c) => c.title === "Setu and Nyxa")).toHaveLength(1);
@@ -1241,7 +1241,7 @@ describe("adventureReducer", () => {
       operation: "append",
       proposalId: "proposal-card-update",
       previous: { content: expect.stringContaining("They spar as equals") },
-      next: { coreFacts: expect.arrayContaining([expect.stringContaining("court secret")]) },
+      next: { content: expect.stringContaining("private chambers") },
     });
   });
 
@@ -1308,9 +1308,10 @@ describe("adventureReducer", () => {
 
     const updated = state.storyCards.find((c) => c.id === "card-jinx-pact");
     expect(updated?.compactKind).toBe("coverStory");
-    expect(updated?.coreFacts?.join("\n")).toContain("secret pact");
-    expect(updated?.coreFacts?.join("\n")).toContain("official cover story");
-    expect([...(updated?.currentFacts ?? []), ...(updated?.recentDevelopments ?? [])].join("\n")).toContain("Sump air filter");
+    expect(updated?.content).toContain("secret pact");
+    expect(updated?.content).toContain("official cover story");
+    expect(updated?.content).toContain("Sump air filter");
+    expect(updated?.coreFacts ?? []).toEqual([]);
     expect(updated?.pinned).toBe(false);
     expect(updated?.protected).toBe(false);
     expect(updated?.priority).toBeGreaterThanOrEqual(80);
