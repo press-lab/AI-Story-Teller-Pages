@@ -508,6 +508,37 @@ describe("side menu page smoke coverage", () => {
     expect(screen.getByRole("checkbox", { name: "Plot Beat" })).toBeChecked();
   });
 
+  it("shows built-in memory evaluations on Memory instead of custom Automations", () => {
+    const base = seedAdventure();
+    const adventure: Adventure = {
+      ...base,
+      activeState: {
+        ...base.activeState,
+        evaluationLog: [
+          {
+            id: "memory-log", turn: 6, createdAt: timestamp,
+            conditionsEvaluated: [], conditionsFired: ["storyCardDiscovery"],
+            actionsExecuted: ["Story Card discovery: New plot card"], generatedContent: [], errors: [],
+          },
+          {
+            id: "custom-log", turn: 5, createdAt: timestamp,
+            conditionsEvaluated: [{ id: "trigger:rule-1", label: "Rule", condition: "A promise is made", sourceType: "triggerRule" }],
+            conditionsFired: ["trigger:rule-1"], actionsExecuted: ["Rule: updateStoryCard"], generatedContent: [], errors: [],
+          },
+        ],
+      },
+    };
+
+    render(<TriggersPage adventure={adventure} dispatch={() => undefined} />);
+    expect(screen.getByText("Custom rule evaluation log")).toBeInTheDocument();
+    expect(screen.queryByText(/Story Card discovery: New plot card/)).not.toBeInTheDocument();
+    cleanup();
+
+    render(<MemoryInboxPage adventure={adventure} dispatch={() => undefined} />);
+    expect(screen.getByText(/Turn 6: Story Card discovery: New plot card/)).toBeInTheDocument();
+    expect(screen.queryByText(/Rule: updateStoryCard/)).not.toBeInTheDocument();
+  });
+
   it("allows Memory reconcile without a What changed value", async () => {
     const user = userEvent.setup();
     const onReconcileMemory = vi.fn(async () => undefined);

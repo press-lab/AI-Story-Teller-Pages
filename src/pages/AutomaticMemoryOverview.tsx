@@ -67,9 +67,9 @@ export function AutomaticMemoryOverview({ adventure, dispatch }: AdventurePagePr
   const detectionOn = adventure.memoryDetectionSettings.enabled;
   const semanticRules = adventure.triggerRules.filter(rule => rule.enabled && (rule.evaluationMode ?? "semantic") === "semantic");
   const memoryLogs = adventure.activeState.evaluationLog.filter(entry =>
-    entry.actionsExecuted.some(action => /memory|story card discovery|thought|proposed/i.test(action))
-    || entry.errors.some(error => /memory envelope/i.test(error)),
-  ).slice(0, 8);
+    !entry.conditionsEvaluated.some(condition => condition.sourceType === "triggerRule")
+    && !entry.conditionsFired.some(id => id.startsWith("trigger:")),
+  ).slice(0, 20);
   const recentProposals = [...proposals].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 5);
   const backgroundTokens = adventure.activeState.backgroundTokenUsage;
 
@@ -159,11 +159,17 @@ export function AutomaticMemoryOverview({ adventure, dispatch }: AdventurePagePr
         <p className="muted">Evaluation logs show outcomes, but do not store exact request counts. Suggestion records do not reliably store their detection source, approval method, or per-item context inclusion.</p>
         {memoryLogs.length === 0 && <p className="muted">No memory evaluation logs retained.</p>}
         {memoryLogs.map(entry => (
-          <div className="log-entry" key={entry.id}>
-            <strong>Turn {entry.turn}</strong>
-            <p>{entry.actionsExecuted.join(" · ") || "No memory change"}</p>
-            {entry.errors.length > 0 && <p className="muted">{entry.errors.join(" · ")}</p>}
-          </div>
+          <details className="log-entry" key={entry.id}>
+            <summary>Turn {entry.turn}: {entry.actionsExecuted.join(" · ") || "No memory change"}</summary>
+            <p className="muted">Created {new Date(entry.createdAt).toLocaleString()}</p>
+            {entry.errors.length > 0 && <p>{entry.errors.join(" · ")}</p>}
+            <h4>Fired conditions</h4>
+            <pre>{JSON.stringify(entry.conditionsFired, null, 2)}</pre>
+            <h4>Generated content</h4>
+            <pre>{JSON.stringify(entry.generatedContent, null, 2)}</pre>
+            <h4>Conditions evaluated</h4>
+            <pre>{JSON.stringify(entry.conditionsEvaluated, null, 2)}</pre>
+          </details>
         ))}
         <h4>Latest suggestions</h4>
         {recentProposals.length === 0 && <p className="muted">No suggestions recorded yet.</p>}

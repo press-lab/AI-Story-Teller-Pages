@@ -25,6 +25,10 @@ export function TriggersPage({ adventure, dispatch }: AdventurePageProps) {
     );
   });
   const enabledRuleCount = adventure.triggerRules.filter((rule) => rule.enabled).length;
+  const customEvaluationLog = adventure.activeState.evaluationLog.filter(entry =>
+    entry.conditionsEvaluated.some(condition => condition.sourceType === "triggerRule")
+    || entry.conditionsFired.some(id => id.startsWith("trigger:")),
+  );
 
   function createTrigger() {
     const triggerRule = makeTriggerRule({ name: "New Trigger" });
@@ -77,7 +81,7 @@ export function TriggersPage({ adventure, dispatch }: AdventurePageProps) {
         </p>
         <p className="muted">
           Actions can update Story Cards, Brains, Plot Essentials, state flags, or Memory Suggestion proposals. Use
-          Trigger History and Evaluation Log to see what fired and why.
+          Trigger History and the custom-rule evaluation log to see what fired and why.
         </p>
       </details>
 
@@ -239,9 +243,9 @@ export function TriggersPage({ adventure, dispatch }: AdventurePageProps) {
 
           {adventure.semanticEvaluationSettings.showLog && (
             <article className="panel">
-              <h3>Evaluation Log</h3>
-              {adventure.activeState.evaluationLog.length === 0 && <p className="muted">No semantic evaluations logged yet.</p>}
-              {adventure.activeState.evaluationLog.slice(0, 20).map((entry) => (
+              <h3>Custom rule evaluation log</h3>
+              {customEvaluationLog.length === 0 && <p className="muted">No custom AI rule evaluations logged yet. Automatic memory activity appears on Memory.</p>}
+              {customEvaluationLog.slice(0, 20).map((entry) => (
                 <details key={entry.id} className="log-entry">
                   <summary>
                     Turn {entry.turn}: {entry.conditionsFired.length} fired / {entry.conditionsEvaluated.length} evaluated
