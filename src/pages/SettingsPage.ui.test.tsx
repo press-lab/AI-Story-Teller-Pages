@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -57,7 +57,7 @@ describe("SettingsPage API throttle controls", () => {
     render(<StatefulSettingsPage />);
 
     await user.click(screen.getByRole("button", { name: /Test Model/ }));
-    await user.click(screen.getByLabelText("Enable prompt caching / sticky sessions"));
+    await user.click(screen.getByLabelText("Reuse repeated prompt text when the provider supports it"));
 
     expect(onProviderPresetsChange).toHaveBeenLastCalledWith(
       expect.arrayContaining([
@@ -183,5 +183,51 @@ describe("SettingsPage API throttle controls", () => {
         }),
       ]),
     );
+  });
+});
+
+describe("Settings cleanup", () => {
+  afterEach(() => cleanup());
+
+  it("hides retired controls and keeps the live recent-message token limit editable", async () => {
+    const user = userEvent.setup();
+    const dispatch = vi.fn<(action: AdventureAction) => void>();
+    render(
+      <SettingsPage
+        adventure={createDefaultAdventure("Settings cleanup")}
+        dispatch={dispatch}
+        providerPresets={[makePreset()]}
+        activePresetId="preset-test"
+        onProviderPresetsChange={vi.fn()}
+        onSelectPreset={vi.fn()}
+        uiPreferences={{ ...defaultUiPreferences, showAdvancedSettings: true }}
+        onUiPreferencesChange={vi.fn()}
+        globalAdventureSettings={{
+          ...defaultGlobalAdventureSettings,
+          memoryDetectionSettings: { ...defaultGlobalAdventureSettings.memoryDetectionSettings, enabled: false },
+        }}
+        onGlobalAdventureSettingsChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByLabelText("Story Cards")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Allow system to truncate rolling summary (legacy)")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Auto-summarize in background (legacy)")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Scene state every N turns (0 = manual only)")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Section Budgets JSON")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Legacy Summary")).not.toBeInTheDocument();
+    expect(screen.getAllByLabelText("Let the narrator suggest memories while writing")).toHaveLength(1);
+
+    await user.click(screen.getByRole("button", { name: /Test Model/ }));
+    expect(screen.queryByLabelText("Provider Name")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Separate API key for background work (this session only)")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Token limit for recent story messages"), { target: { value: "1800" } });
+    expect(dispatch).toHaveBeenLastCalledWith(expect.objectContaining({
+      type: "SET_TOKEN_BUDGET_SETTINGS",
+      settings: expect.objectContaining({
+        sectionBudgets: expect.objectContaining({ recentMessages: 1800 }),
+      }),
+    }));
   });
 });

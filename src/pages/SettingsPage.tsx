@@ -13,7 +13,7 @@ import type {
 } from "../types/adventure";
 import type { GlobalAdventureSettings, ProviderPreset, RuntimeProviderSettings, UiPreferences } from "./pageTypes";
 import { defaultUiPreferences } from "./pageTypes";
-import { CheckboxField, Field, JsonTextarea, NumberInput } from "./shared";
+import { CheckboxField, Field, NumberInput } from "./shared";
 import {
   lightTokenBudgetPreset,
   defaultTokenBudgetSettings,
@@ -160,22 +160,23 @@ export function SettingsPage({
     memoryAutoApprove: adventure.memoryAutoApprove,
   } : globalAdventureSettings;
   const activeModelLabel = activePreset?.label || activePreset?.model || "No model";
-  const backgroundStatus = activeSettings.semanticEvaluationSettings.enabled
-    ? `every ${activeSettings.semanticEvaluationSettings.semanticEvalEveryNTurns ?? 1} turns`
+  const ruleInterval = activeSettings.semanticEvaluationSettings.semanticEvalEveryNTurns ?? 1;
+  const backgroundStatus = activeSettings.semanticEvaluationSettings.enabled && ruleInterval > 0
+    ? `every ${ruleInterval} turn${ruleInterval === 1 ? "" : "s"}`
     : "off";
 
   return (
     <section className="page editor-surface settings-page">
       <div className="editor-page-summary">
         <p className="muted">
-          App-wide controls for reading comfort, model routing, background cost, memory detection, and sync.
-          The common controls stay first; advanced controls stay grouped below.
+          Choose how the app looks, which model tells the story, and how story memory is handled.
+          Appearance, model presets, and GitHub apply on this device. Context, custom rules, and approval choices change the open adventure, or become defaults for new adventures. The narrator memory switch applies to every adventure.
         </p>
         <div className="editor-stat-row" aria-label="Settings summary">
           <span>{uiPreferences.density}</span>
           <span>{uiPreferences.darkMode ? "dark" : "light"}</span>
           <span>{activeModelLabel}</span>
-          <span>background {backgroundStatus}</span>
+          <span>AI rules {backgroundStatus}</span>
           {advanced && <span>advanced</span>}
         </div>
       </div>
@@ -184,10 +185,10 @@ export function SettingsPage({
 
         {/* ── Interface ─────────────────────────────── */}
         <article className="panel settings-card settings-interface-panel">
-          <h3>Interface</h3>
+          <h3>Reading and appearance</h3>
           <CheckboxField label="Dark mode" checked={uiPreferences.darkMode} onChange={(darkMode) => updateUi({ darkMode })} />
           <div className="grid two">
-            <Field label="Dark mode text color">
+            <Field label="Text color in dark mode">
               <input
                 type="color"
                 value={uiPreferences.darkModeTextColor || defaultUiPreferences.darkModeTextColor}
@@ -200,7 +201,7 @@ export function SettingsPage({
               </button>
             </Field>
           </div>
-          <Field label="Density">
+          <Field label="Spacing">
             <select
               value={uiPreferences.density}
               onChange={(e) => updateUi({ density: e.target.value as "compact" | "comfortable" })}
@@ -210,13 +211,13 @@ export function SettingsPage({
             </select>
           </Field>
           <div className="grid two">
-            <Field label="Story text size (px)">
+            <Field label="Story text size">
               <NumberInput min={12} max={24} value={uiPreferences.storyFontSize} onChange={(storyFontSize) => updateUi({ storyFontSize })} />
             </Field>
-            <Field label="Story box width (px)">
+            <Field label="Story reading width">
               <NumberInput min={520} max={1800} value={uiPreferences.storyContentWidth} onChange={(storyContentWidth) => updateUi({ storyContentWidth })} />
             </Field>
-            <Field label="Story box position">
+            <Field label="Story position">
               <select
                 value={uiPreferences.storyContentAlign}
                 onChange={(e) => updateUi({ storyContentAlign: e.target.value as UiPreferences["storyContentAlign"] })}
@@ -226,15 +227,16 @@ export function SettingsPage({
                 <option value="right">Right</option>
               </select>
             </Field>
-            <Field label="Max content width (px)">
+            <Field label="Width of menus and editors">
               <NumberInput min={600} max={1800} value={uiPreferences.maxContentWidth} onChange={(maxContentWidth) => updateUi({ maxContentWidth })} />
             </Field>
           </div>
           <CheckboxField
-            label="Show token estimates in play"
+            label="Show estimated model usage while playing"
             checked={uiPreferences.showTokenEstimates}
             onChange={(showTokenEstimates) => updateUi({ showTokenEstimates })}
           />
+          <p className="muted">Reading width and text size change the story display on this device. They do not change the words sent to the model.</p>
           <CheckboxField
             label="Show advanced settings"
             checked={uiPreferences.showAdvancedSettings}
@@ -276,18 +278,13 @@ export function SettingsPage({
                 </div>
                 {isExpanded && (
                   <div className="preset-item-form">
-                    <div className="grid two">
-                      <Field label="Label">
-                        <input value={preset.label} onChange={(e) => updatePreset(preset.id, { label: e.target.value })} />
-                      </Field>
-                      <Field label="Provider Name">
-                        <input value={preset.name} onChange={(e) => updatePreset(preset.id, { name: e.target.value })} />
-                      </Field>
-                    </div>
-                    <Field label="Base URL">
+                    <Field label="Name shown in the app">
+                      <input value={preset.label} onChange={(e) => updatePreset(preset.id, { label: e.target.value })} />
+                    </Field>
+                    <Field label="Provider API address">
                       <input value={preset.baseUrl} onChange={(e) => updatePreset(preset.id, { baseUrl: e.target.value })} />
                     </Field>
-                    <Field label="Model">
+                    <Field label="Model ID">
                       <input value={preset.model} onChange={(e) => updatePreset(preset.id, { model: e.target.value })} />
                     </Field>
                     <Field label="API Key">
@@ -298,34 +295,34 @@ export function SettingsPage({
                         placeholder="Stored only in localStorage"
                       />
                     </Field>
-                    <div className="grid two">
-                      <Field label="Temperature">
+                    <p className="muted">Enter the API address, model ID, and key supplied by your model provider. The key stays in this browser and is not included in adventure saves.</p>
+                    {advanced && <div className="grid two">
+                      <Field label="Writing variety (temperature)">
                         <NumberInput value={preset.temperature} onChange={(temperature) => updatePreset(preset.id, { temperature })} />
                       </Field>
-                      <Field label="Max Output Tokens">
+                      <Field label="Maximum response tokens">
                         <NumberInput min={1} value={preset.maxOutputTokens} onChange={(maxOutputTokens) => updatePreset(preset.id, { maxOutputTokens })} />
                       </Field>
-                      <Field label="Top P (nucleus; 1 = off)">
+                      <Field label="Word choice variety (Top P; 1 = off)">
                         <NumberInput min={0} max={1} value={preset.topP ?? 1} onChange={(topP) => updatePreset(preset.id, { topP })} />
                       </Field>
-                      <Field label="Top K (0 = off; unsupported on DeepSeek)">
+                      <Field label="Word choice limit (Top K; 0 = off)">
                         <NumberInput min={0} value={preset.topK ?? 0} onChange={(topK) => updatePreset(preset.id, { topK: topK || undefined })} />
                       </Field>
-                      <Field label="Presence Penalty (reduces looping; 0–2)">
+                      <Field label="Encourage new topics (presence penalty; 0–2)">
                         <NumberInput min={0} value={preset.presencePenalty ?? 0} onChange={(presencePenalty) => updatePreset(preset.id, { presencePenalty })} />
                       </Field>
-                      <Field label="Frequency Penalty (0–2)">
+                      <Field label="Reduce repeated words (frequency penalty; 0–2)">
                         <NumberInput min={0} value={preset.frequencyPenalty ?? 0} onChange={(frequencyPenalty) => updatePreset(preset.id, { frequencyPenalty })} />
                       </Field>
-                    </div>
-                    <p className="muted" style={{ fontSize: "0.8em", margin: "0.25rem 0 0" }}>
-                      Storytelling profile (AID-style): Temp ~0.7, Top P 0.95, Presence ~0.8. Lower temp + a presence
-                      penalty keeps prose coherent without looping. Top K only works on providers that support it.
-                    </p>
+                    </div>}
+                    {advanced && <p className="muted" style={{ fontSize: "0.8em", margin: "0.25rem 0 0" }}>
+                      These model options change how varied the writing can be. The story length control in Play may set a lower response limit than Maximum response tokens. Some providers ignore unsupported options.
+                    </p>}
                     {advanced && (
                       <>
                         <CheckboxField
-                          label="Enable prompt caching / sticky sessions"
+                          label="Reuse repeated prompt text when the provider supports it"
                           checked={preset.promptCaching ?? false}
                           onChange={(promptCaching) => updatePreset(preset.id, { promptCaching })}
                         />
@@ -348,7 +345,8 @@ export function SettingsPage({
                           OpenRouter's default already weighs lower price with uptime. Lowest price disables that
                           load balancing; use latency or throughput if the model is feeling slow.
                         </p>
-                        <h4>API Throttle</h4>
+                        <h4>Request limits</h4>
+                        <p className="muted">Space out model requests if your provider has a rate limit. This also slows background AI tasks.</p>
                         <CheckboxField
                           label="Enable API request throttle"
                           checked={preset.requestThrottle?.enabled ?? fallbackThrottle.enabled}
@@ -378,49 +376,49 @@ export function SettingsPage({
               </div>
             );
           })}
-          <p className="muted" style={{ marginTop: "0.5rem" }}>API keys are not written to adventure JSON or IndexedDB saves.</p>
+          <p className="muted" style={{ marginTop: "0.5rem" }}>Each model preset is saved on this device. API keys are not written to adventure saves.</p>
         </article>
 
         <article className="panel settings-card settings-section-full">
-          <h3>Automatic memory</h3>
-          <CheckboxField label="Remember while narrating (one pass)" checked={globalAdventureSettings.memoryDetectionSettings.enabled} onChange={(enabled) => updateMemoryDetection({ enabled })} />
-          <p className="muted">Story and small memory updates share one response. Unchanged memory needs no update. Routine memory checks no longer make separate API calls. Explicit custom rules, continuity corrections, and next-arc generation can still use additional calls.</p>
+          <h3>Remember story details</h3>
+          <CheckboxField label="Let the narrator suggest memories while writing" checked={globalAdventureSettings.memoryDetectionSettings.enabled} onChange={(enabled) => updateMemoryDetection({ enabled })} />
+          <p className="muted">Applies to every adventure on this device. The narrator can include small, evidence-based memory updates with a story response. Some changes wait in Memory Suggestions for your review. If an update is missing or unreadable, a separate recovery request may run. Custom AI rules and continuity checks can also make extra requests.</p>
         </article>
         {/* ── Context Budget (advanced) ─────────────── */}
         {advanced && (
           <article className="panel settings-card settings-section-full" style={{ gridColumn: "1 / -1" }}>
-            <h3>Context Budget</h3>
+            <h3>What the model remembers each turn</h3>
             <div className="toolbar" style={{ marginBottom: "0.75rem" }}>
               <button type="button" title="8k tokens, 15 messages, tight section budgets" onClick={() => updateBudget(lightTokenBudgetPreset)}>Light</button>
               <button type="button" title="16k tokens, 40 messages — balanced default" onClick={() => updateBudget(defaultTokenBudgetSettings)}>Normal</button>
               <button type="button" title="32k tokens, 80 messages, large section budgets — maximum context" onClick={() => updateBudget(heavyTokenBudgetPreset)}>Heavy</button>
             </div>
             <div className="grid two">
-              <Field label="Max Context Tokens">
+              <Field label="Total prompt token limit">
                 <NumberInput
                   min={512}
                   value={activeSettings.tokenBudgetSettings.maxContextTokens}
                   onChange={(value) => updateBudget({ maxContextTokens: value })}
                 />
               </Field>
-              <Field label="Max Recent Messages">
+              <Field label="Maximum recent messages">
                 <NumberInput
                   min={0}
                   value={activeSettings.tokenBudgetSettings.maxRecentMessages}
                   onChange={(value) => updateBudget({ maxRecentMessages: value })}
                 />
               </Field>
-              <Field label="Memory Priority Mode">
+              <Field label="What to trim first when the prompt is full">
                 <select
                   value={activeSettings.tokenBudgetSettings.memoryPriorityMode}
                   onChange={(e) => updateBudget({ memoryPriorityMode: e.target.value as MemoryPriorityMode })}
                 >
-                  <option value="userLocked">userLocked</option>
-                  <option value="systemSuggested">systemSuggested</option>
-                  <option value="hybrid">hybrid</option>
+                  <option value="userLocked">Older messages first</option>
+                  <option value="systemSuggested">Lowest priority details first</option>
+                  <option value="hybrid">Suggested details, then older messages</option>
                 </select>
               </Field>
-              <Field label="Trigger Recent Message Window">
+              <Field label="Recent messages checked for Story Card and character matches">
                 <NumberInput
                   min={0}
                   value={activeSettings.tokenBudgetSettings.recentMessageWindow}
@@ -428,74 +426,52 @@ export function SettingsPage({
                 />
               </Field>
             </div>
+            <p className="muted">Light, Normal, and Heavy set starting limits. Larger limits can cost more and may exceed what your model accepts.</p>
             <div className="grid two" style={{ marginTop: "0.5rem" }}>
               <div>
                 <CheckboxField
-                  label="Allow system to prioritize memory"
+                  label="Let the app choose which memory to keep when space is tight"
                   checked={activeSettings.tokenBudgetSettings.allowSystemToPrioritizeMemory}
                   onChange={(allowSystemToPrioritizeMemory) => updateBudget({ allowSystemToPrioritizeMemory })}
                 />
                 <CheckboxField
-                  label="Allow system to drop unpinned triggered cards"
+                  label="Allow unpinned Story Cards to be left out when space is tight"
                   checked={activeSettings.tokenBudgetSettings.allowSystemToDropUnpinnedTriggeredCards}
                   onChange={(allowSystemToDropUnpinnedTriggeredCards) => updateBudget({ allowSystemToDropUnpinnedTriggeredCards })}
                 />
-                <CheckboxField
-                  label="Allow system to truncate rolling summary (legacy)"
-                  checked={activeSettings.tokenBudgetSettings.allowSystemToTruncateSummary}
-                  onChange={(allowSystemToTruncateSummary) => updateBudget({ allowSystemToTruncateSummary })}
-                />
               </div>
-              <div>
-                <CheckboxField
-                  label="Auto-summarize in background (legacy)"
-                  checked={activeSettings.tokenBudgetSettings.autoSummarize ?? true}
-                  onChange={(autoSummarize) => updateBudget({ autoSummarize })}
+              <Field label="Token limit for recent story messages">
+                <NumberInput
+                  min={0}
+                  value={activeSettings.tokenBudgetSettings.sectionBudgets.recentMessages ?? 3000}
+                  onChange={(recentMessages) => updateBudget({ sectionBudgets: { ...activeSettings.tokenBudgetSettings.sectionBudgets, recentMessages } })}
                 />
-                <Field label="Auto-summarize every N turns (legacy)">
-                  <NumberInput
-                    min={5}
-                    value={activeSettings.tokenBudgetSettings.autoSummarizeEveryNTurns ?? 20}
-                    onChange={(autoSummarizeEveryNTurns) => updateBudget({ autoSummarizeEveryNTurns })}
-                  />
-                </Field>
-                <Field label="Scene state every N turns (0 = manual only)">
-                  <NumberInput
-                    min={0}
-                    value={activeSettings.tokenBudgetSettings.autoSceneStateEveryNTurns ?? 1}
-                    onChange={(autoSceneStateEveryNTurns) => updateBudget({ autoSceneStateEveryNTurns })}
-                  />
-                </Field>
-                <Field label="Section Budgets JSON">
-                  <JsonTextarea
-                    value={activeSettings.tokenBudgetSettings.sectionBudgets}
-                    onValidChange={(sectionBudgets) => updateBudget({ sectionBudgets })}
-                  />
-                </Field>
-              </div>
+              </Field>
             </div>
+            <p className="muted">The model sees selected story details and recent messages, not the full Chronicle. Protected details stay in the prompt. Pinned details get priority but may still be left out to fit the limit.</p>
           </article>
         )}
 
         {/* ── LLM Evaluation (advanced) ─────────────── */}
         {advanced && (
           <article className="panel settings-card">
-            <h3>LLM Evaluation</h3>
-            <Field label="Evaluation Model Override">
+            <h3>Background AI and custom rules</h3>
+            <p className="muted">Continuity checks, memory recovery, and custom AI rules can make extra model requests. Custom rules run after turns only when you have created them on the Automations page and enabled them below.</p>
+            <Field label="Alternative model ID on the active API (optional)">
               <input
                 value={activeSettings.semanticEvaluationSettings.evaluationModel}
                 placeholder={activePreset?.model ?? ""}
                 onChange={(e) => updateSemanticSettings({ evaluationModel: e.target.value })}
               />
             </Field>
-            <Field label="Messages Included In Evaluation">
+            <Field label="Recent messages used for background checks">
               <NumberInput
                 min={1}
                 value={activeSettings.semanticEvaluationSettings.messagesIncluded}
                 onChange={(messagesIncluded) => updateSemanticSettings({ messagesIncluded })}
               />
             </Field>
-            <Field label="Semantic eval every N turns (0 = disabled, 1 = every turn)">
+            <Field label="Check rules every number of turns (0 = never)">
               <NumberInput
                 min={0}
                 value={activeSettings.semanticEvaluationSettings.semanticEvalEveryNTurns ?? 1}
@@ -503,16 +479,16 @@ export function SettingsPage({
               />
             </Field>
             <CheckboxField
-              label="Enable semantic triggers"
+              label="Run custom AI rules after turns"
               checked={activeSettings.semanticEvaluationSettings.enabled}
               onChange={(enabled) => updateSemanticSettings({ enabled })}
             />
             <CheckboxField
-              label="Show evaluation log on Automations page"
+              label="Show AI rule decisions on the Automations page"
               checked={activeSettings.semanticEvaluationSettings.showLog}
               onChange={(showLog) => updateSemanticSettings({ showLog })}
             />
-            <Field label="Max Parallel Update Calls">
+            <Field label="Maximum background updates at once">
               <NumberInput
                 min={1}
                 value={activeSettings.semanticEvaluationSettings.maxParallelUpdateCalls}
@@ -520,17 +496,17 @@ export function SettingsPage({
               />
             </Field>
             <CheckboxField
-              label="Review updates from custom semantic rules"
+              label="Ask before saving changes made by custom AI rules"
               checked={activeSettings.semanticEvaluationSettings.requireApprovalForAutoUpdates ?? true}
               onChange={(requireApprovalForAutoUpdates) => updateSemanticSettings({ requireApprovalForAutoUpdates })}
             />
             <p className="muted">
-              When on, updates from custom semantic rules go to Memory Suggestions. Automatic one-pass memory uses the per-type approval controls below.
+              When on, changes made by custom AI rules appear in Memory Suggestions for review. The memory controls below govern routine story memory.
             </p>
-            <h4>Background Provider</h4>
+            <h4>Background model connection</h4>
             <p className="muted">
-              Route background tasks (evaluation, brain updates, story card updates, and plot updates) through a
-              separate provider. Leave blank to use the active preset for all tasks.
+              Optional: send background AI work to a different API address and model. Leave both blank to use the active model.
+              Background requests use the active model's API key unless you enter a separate key below. A separate key works for this session only; it is not saved with the adventure.
             </p>
             <Field label="Base URL">
               <input
@@ -547,11 +523,10 @@ export function SettingsPage({
                 }
               />
             </Field>
-            <Field label="API Key">
+            <Field label="Separate API key for background work (this session only)">
               <input
                 type="password"
                 value={activeSettings.semanticEvaluationSettings.backgroundProviderConfig?.apiKey ?? ""}
-                placeholder="gsk_..."
                 onChange={(e) =>
                   updateSemanticSettings({
                     backgroundProviderConfig: {
@@ -585,33 +560,23 @@ export function SettingsPage({
         {/* ── Memory Detection (advanced) ───────────── */}
         {advanced && (
           <article className="panel settings-card">
-            <h3>Memory Detection</h3>
+            <h3>Which memory changes need review?</h3>
             <p className="muted">
               The narrator returns evidenced memory suggestions with the story. Local checks reject malformed, duplicate, or unsupported updates without another API call.
             </p>
-            <CheckboxField
-              label="Remember while narrating"
-              checked={globalAdventureSettings.memoryDetectionSettings.enabled}
-              onChange={(enabled) => updateMemoryDetection({ enabled })}
-            />
-            {globalAdventureSettings.memoryDetectionSettings.enabled && (
-              <>
-                <div className="auto-approve-toggles">
-                  <span className="auto-approve-label muted">Auto-approve:</span>
-                  <CheckboxField label="Legacy Summary" checked={activeSettings.memoryAutoApprove.summaryUpdate} onChange={(summaryUpdate) => updateMemoryAutoApprove({ summaryUpdate })} />
-                  <CheckboxField label="Plot Essentials" checked={activeSettings.memoryAutoApprove.plotEssentialsUpdate} onChange={(plotEssentialsUpdate) => updateMemoryAutoApprove({ plotEssentialsUpdate })} />
-                  <CheckboxField label="Active Pressure" checked={activeSettings.memoryAutoApprove.plotPressureUpdate} onChange={(plotPressureUpdate) => updateMemoryAutoApprove({ plotPressureUpdate })} />
-                  <CheckboxField label="Current Arc (off: review generated events before they become canon)" checked={activeSettings.memoryAutoApprove.currentArcUpdate} onChange={(currentArcUpdate) => updateMemoryAutoApprove({ currentArcUpdate })} />
-                  <CheckboxField label="Arc Proposals" checked={activeSettings.memoryAutoApprove.arcProposal} onChange={(arcProposal) => updateMemoryAutoApprove({ arcProposal })} />
-                  <CheckboxField label="Story Cards" checked={activeSettings.memoryAutoApprove.storyCard} onChange={(storyCard) => updateMemoryAutoApprove({ storyCard })} />
-                  <CheckboxField label="Characters" checked={activeSettings.memoryAutoApprove.brainUpdate} onChange={(brainUpdate) => updateMemoryAutoApprove({ brainUpdate })} />
-                </div>
-                <p className="muted">
-                  These toggles apply to Memory Suggestions created by automatic detection, manual builders,
-                  and one-pass memory. One-pass Plot Essentials, plot cards, and protected-card changes always require review. Plot Essentials holds the overarching story; Active Pressure holds immediate external stakes; Current Arc holds the ongoing storyline and pacing.
-                </p>
-              </>
-            )}
+            <p className="muted">These choices apply to the open adventure, or to new adventures when none is open. They also affect suggestions created by manual tools, even when narrator memory is off. When a switch is off, suggestions of that type wait for you in Memory Suggestions.</p>
+            <div className="auto-approve-toggles">
+              <span className="auto-approve-label muted">Auto-approve:</span>
+              <CheckboxField label="Plot Essentials" checked={activeSettings.memoryAutoApprove.plotEssentialsUpdate} onChange={(plotEssentialsUpdate) => updateMemoryAutoApprove({ plotEssentialsUpdate })} />
+              <CheckboxField label="Active Pressure" checked={activeSettings.memoryAutoApprove.plotPressureUpdate} onChange={(plotPressureUpdate) => updateMemoryAutoApprove({ plotPressureUpdate })} />
+              <CheckboxField label="Current Arc developments" checked={activeSettings.memoryAutoApprove.currentArcUpdate} onChange={(currentArcUpdate) => updateMemoryAutoApprove({ currentArcUpdate })} />
+              <CheckboxField label="New arc suggestions from story history" checked={activeSettings.memoryAutoApprove.arcProposal} onChange={(arcProposal) => updateMemoryAutoApprove({ arcProposal })} />
+              <CheckboxField label="Story Cards" checked={activeSettings.memoryAutoApprove.storyCard} onChange={(storyCard) => updateMemoryAutoApprove({ storyCard })} />
+              <CheckboxField label="Character memory (thoughts during narration)" checked={activeSettings.memoryAutoApprove.brainUpdate} onChange={(brainUpdate) => updateMemoryAutoApprove({ brainUpdate })} />
+            </div>
+            <p className="muted">
+              Story Cards preserve lasting facts; Character thoughts hold private reactions; Active Pressure is the immediate outside threat; Current Arc tracks the ongoing storyline. Plot Essentials changes the story's foundations and always needs review when suggested during narration. Plot cards and protected Story Cards also always need review.
+            </p>
           </article>
         )}
 
@@ -621,9 +586,9 @@ export function SettingsPage({
             <div className="panel-heading">
               <div>
                 <p className="eyebrow">Personal Cloud Sync</p>
-                <h3>Switch between phone and computer</h3>
+                <h3>Move adventures between devices</h3>
                 <p className="muted">
-                  Sync all local adventures through a private GitHub repo. Token is stored only in localStorage.
+                  Copy adventures between devices using a GitHub repository. Use a private repository for personal stories. The GitHub token stays in this browser, not in adventure saves.
                 </p>
               </div>
             </div>
@@ -637,14 +602,14 @@ export function SettingsPage({
                   placeholder="Fine-grained token with repo contents access"
                 />
               </Field>
-              <Field label="Owner / username">
+              <Field label="GitHub owner or username">
                 <input
                   value={cloudSyncSettings.owner}
                   onChange={(e) => updateCloudSync({ owner: e.target.value })}
                   placeholder="Leave blank to use token owner"
                 />
               </Field>
-              <Field label="Private repo">
+              <Field label="GitHub repository name">
                 <input
                   value={cloudSyncSettings.repo}
                   onChange={(e) => updateCloudSync({ repo: e.target.value })}
@@ -682,7 +647,7 @@ export function SettingsPage({
               {cloudSyncStatus && <span className="status-pill">{cloudSyncStatus}</span>}
             </div>
             <p className="notice">
-              Sync merges by adventure ID and keeps the newest <code>updatedAt</code> copy. It does not sync provider API keys.
+              Pull combines this device's adventures with GitHub; Push uploads the combined library. For the same adventure, the more recently changed copy wins. Model API keys are never included.
             </p>
           </article>
         )}
