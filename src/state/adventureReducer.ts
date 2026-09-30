@@ -1592,7 +1592,8 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
         p.proposedType === clean.proposedType &&
         normalizeProposalTitle(p.title) === normTitle &&
         (p.targetId ?? "") === (clean.targetId ?? "");
-      const duplicatesPending = state.activeState.memoryProposals.some((p) => p.status === "pending" && matchesTarget(p));
+      const duplicatesPending = clean.proposedType !== "storyStateUpdate"
+        && state.activeState.memoryProposals.some((p) => p.status === "pending" && matchesTarget(p));
       // A dismissed new-card suggestion should not come back every turn. Targeted updates are
       // different: a Brain or Story Card keeps evolving, so rejecting one revision must not mute
       // every later revision for that target. Only suppress a targeted update when its content is
@@ -1602,9 +1603,12 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
           (p.status === "rejected" || p.status === "ignored") &&
           matchesTarget(p) &&
           (
-            !clean.targetId ||
-            contentLooksDuplicate(p.content, clean.content) ||
-            normalizedReplacementContent(p.content) === normalizedReplacementContent(clean.content)
+            clean.proposedType === "storyStateUpdate"
+              // A Story State rewrite legitimately resembles earlier ones; only an identical dismissed one is suppressed.
+              ? normalizedReplacementContent(p.content) === normalizedReplacementContent(clean.content)
+              : !clean.targetId ||
+                contentLooksDuplicate(p.content, clean.content) ||
+                normalizedReplacementContent(p.content) === normalizedReplacementContent(clean.content)
           )
         );
       const duplicatesCard =
@@ -1639,26 +1643,33 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
         clean.proposedType === "storyStateUpdate" &&
         state.components.some((component) => component.type === "storyState" && normalizedReplacementContent(component.content) === normalizedReplacementContent(clean.content));
       if (duplicatesCurrentStoryState || duplicatesPending || duplicatesDismissed || duplicatesCard || duplicatesStoryCardContent || duplicatesExistingCardContent || duplicatesExistingTargetContent || duplicatesCurrentPressure) return state;
+      // Story State is a full snapshot: a newer suggestion supersedes any older pending one.
+      const existingProposals = clean.proposedType === "storyStateUpdate"
+        ? state.activeState.memoryProposals.map((proposal) =>
+            proposal.proposedType === "storyStateUpdate" && proposal.status === "pending"
+              ? updateMemoryProposal(proposal, { status: "ignored", rationale: `${proposal.rationale} Superseded by a newer Story State suggestion.` })
+              : proposal,
+          )
+        : state.activeState.memoryProposals;
       const autoApprove = state.memoryAutoApprove?.[clean.proposedType as keyof typeof state.memoryAutoApprove] ?? false;
       if (autoApprove && !clean.requiresReview) {
         const approved = updateMemoryProposal(clean, { status: "approved" });
         const applied = applyApprovedMemoryProposal(state, approved);
-        // Current-state replacements are frequent; keep them out of the proposal history.
-        if (clean.proposedType === "plotPressureUpdate" || clean.proposedType === "storyStateUpdate") {
+        if (clean.proposedType === "plotPressureUpdate") {
           return touchAdventure(state, applied);
         }
         return touchAdventure(state, {
           ...applied,
           activeState: {
             ...state.activeState,
-            memoryProposals: [approved, ...state.activeState.memoryProposals],
+            memoryProposals: [approved, ...existingProposals],
           },
         });
       }
       return touchAdventure(state, {
         activeState: {
           ...state.activeState,
-          memoryProposals: [clean, ...state.activeState.memoryProposals],
+          memoryProposals: [clean, ...existingProposals],
         },
       });
     }

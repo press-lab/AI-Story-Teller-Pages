@@ -33,3 +33,22 @@ describe("normalizeAdventure", () => {
     expect(card?.protected).toBe(false);
   });
 });
+
+describe("Story State review routing", () => {
+  it("adds Story State to older saves and routes its updates through Memory Suggestions once", () => {
+    const legacy = createDefaultAdventure("Legacy");
+    const older = {
+      ...legacy,
+      components: legacy.components.filter((component) => component.type !== "storyState"),
+      memoryAutoApprove: { ...legacy.memoryAutoApprove, storyStateUpdate: true },
+      activeState: { ...legacy.activeState, stateFlags: {} },
+    };
+    const normalized = normalizeAdventure(older);
+    expect(normalized.components.filter((component) => component.type === "storyState")).toHaveLength(1);
+    expect(normalized.memoryAutoApprove.storyStateUpdate).toBe(false);
+
+    // Once migrated, the player's own choice sticks.
+    const optedIn = normalizeAdventure({ ...normalized, memoryAutoApprove: { ...normalized.memoryAutoApprove, storyStateUpdate: true } });
+    expect(optedIn.memoryAutoApprove.storyStateUpdate).toBe(true);
+  });
+});

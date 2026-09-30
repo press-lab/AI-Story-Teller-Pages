@@ -13,6 +13,7 @@ const proposalTypes: MemoryProposalType[] = [
   "currentArcUpdate",
   "arcProposal",
   "plotPressureUpdate",
+  "storyStateUpdate",
   "plotMomentumUpdate",
   "summaryUpdate",
   "ignore",
@@ -141,8 +142,9 @@ export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onR
         <summary>Rules &amp; auto-approve</summary>
         <h3>Memory Suggestions</h3>
         <p className="muted">
-          Memory Suggestions holds AI-proposed changes to your story data — new Story Cards, Character Self updates,
-          Plot Essentials rewrites, Active Pressure updates, and legacy Summary changes. The AI generates these automatically after turns or when
+          Memory Suggestions holds AI-proposed changes to your story data — Story State rewrites, new Story Cards, Character Self updates
+          (thoughts and knowledge boundaries), Plot Essentials rewrites, Active Pressure updates, and legacy Summary changes.
+          A newer Story State suggestion replaces an older one that is still pending. The AI generates these automatically after turns or when
           you use <strong>Remember This</strong>. Review each proposal and <strong>Approve</strong> to apply it,
           <strong> Reject</strong> to dismiss it cleanly, or <strong>Ignore</strong> to remove it from view without applying.
           You can edit the content before approving.
@@ -159,6 +161,7 @@ export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onR
           <CheckboxField label="Arc Proposals" checked={autoApprove.arcProposal} onChange={(v) => setAutoApprove({ arcProposal: v })} />
           <CheckboxField label="Story Cards" checked={autoApprove.storyCard} onChange={(v) => setAutoApprove({ storyCard: v })} />
           <CheckboxField label="Characters" checked={autoApprove.brainUpdate} onChange={(v) => setAutoApprove({ brainUpdate: v })} />
+          <CheckboxField label="Story State" checked={autoApprove.storyStateUpdate} onChange={(v) => setAutoApprove({ storyStateUpdate: v })} />
         </div>
       </details>
 

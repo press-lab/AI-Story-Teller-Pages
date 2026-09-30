@@ -101,7 +101,7 @@ export const defaultMemoryAutoApproveSettings: MemoryAutoApproveSettings = {
   plotMomentumUpdate: false,
   storyCard: false,
   brainUpdate: false,
-  storyStateUpdate: true,
+  storyStateUpdate: false,
 };
 
 export const STORY_STATE_TITLE = "Story State";
@@ -548,6 +548,7 @@ export function normalizeAdventure(adventure: Adventure): Adventure {
         brainsAppendMigrated: true,
         guardedStoryCardsMigrated: true,
         compactStoryCardsMigrated: true,
+        storyStateReviewMigrated: true,
       },
       triggerLog: adventure.activeState?.triggerLog ?? [],
       forceIncludeNextTurn: adventure.activeState?.forceIncludeNextTurn ?? [],
@@ -641,6 +642,9 @@ export function normalizeAdventure(adventure: Adventure): Adventure {
       ...defaultMemoryAutoApproveSettings,
       ...(adventure.memoryAutoApprove ?? {}),
       plotMomentumUpdate: false,
+      // Story State briefly shipped auto-approved. Route it through Memory Suggestions once for
+      // saves normalized before that change; afterwards the player's own toggle is kept.
+      ...(adventure.activeState?.stateFlags?.storyStateReviewMigrated ? {} : { storyStateUpdate: false }),
     },
     memoryDetectionSettings: {
       ...defaultMemoryDetectionSettings,

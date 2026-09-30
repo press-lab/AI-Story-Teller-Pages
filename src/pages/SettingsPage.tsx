@@ -392,8 +392,15 @@ export function SettingsPage({
 
         <article className="panel settings-card settings-section-full">
           <h3>Automatic memory</h3>
-          <CheckboxField label="Remember while narrating (one pass)" checked={globalAdventureSettings.memoryDetectionSettings.enabled} onChange={(enabled) => updateMemoryDetection({ enabled })} />
-          <p className="muted">Story and small memory updates share one response. Unchanged memory needs no update. Routine memory checks no longer make separate API calls. Explicit custom rules, continuity corrections, and next-arc generation can still use additional calls.</p>
+          <CheckboxField label="Automatic memory" checked={globalAdventureSettings.memoryDetectionSettings.enabled} onChange={(enabled) => updateMemoryDetection({ enabled })} />
+          <Field label="Update memory every N story turns">
+            <NumberInput
+              min={1}
+              value={globalAdventureSettings.memoryDetectionSettings.everyNTurns ?? 3}
+              onChange={(value) => updateMemoryDetection({ everyNTurns: Math.max(1, Math.round(value || 1)) })}
+            />
+          </Field>
+          <p className="muted">The narrator only writes the story. Every N story turns, one background call reads the turns since the last update and suggests Story State, character thought and knowledge, Story Card, and plot updates. Suggestions follow the auto-approve toggles in Memory Suggestions; anything not auto-approved waits there for review. Out-of-character turns never trigger it.</p>
         </article>
         {/* ── Context Budget (advanced) ─────────────── */}
         {advanced && (
@@ -534,7 +541,7 @@ export function SettingsPage({
               onChange={(requireApprovalForAutoUpdates) => updateSemanticSettings({ requireApprovalForAutoUpdates })}
             />
             <p className="muted">
-              When on, updates from custom semantic rules go to Memory Suggestions. Automatic one-pass memory uses the per-type approval controls below.
+              When on, updates from custom semantic rules go to Memory Suggestions. The background memory pass uses the per-type approval controls below.
             </p>
             <h4>Background Provider</h4>
             <p className="muted">
@@ -596,10 +603,10 @@ export function SettingsPage({
           <article className="panel settings-card">
             <h3>Memory Detection</h3>
             <p className="muted">
-              The narrator returns evidenced memory suggestions with the story. Local checks reject malformed, duplicate, or unsupported updates without another API call.
+              One background call every few story turns suggests memory updates grounded in quotes from recent play. Local checks reject malformed, duplicate, or unsupported updates.
             </p>
             <CheckboxField
-              label="Remember while narrating"
+              label="Automatic memory"
               checked={globalAdventureSettings.memoryDetectionSettings.enabled}
               onChange={(enabled) => updateMemoryDetection({ enabled })}
             />
@@ -614,10 +621,11 @@ export function SettingsPage({
                   <CheckboxField label="Arc Proposals" checked={activeSettings.memoryAutoApprove.arcProposal} onChange={(arcProposal) => updateMemoryAutoApprove({ arcProposal })} />
                   <CheckboxField label="Story Cards" checked={activeSettings.memoryAutoApprove.storyCard} onChange={(storyCard) => updateMemoryAutoApprove({ storyCard })} />
                   <CheckboxField label="Characters" checked={activeSettings.memoryAutoApprove.brainUpdate} onChange={(brainUpdate) => updateMemoryAutoApprove({ brainUpdate })} />
+                  <CheckboxField label="Story State" checked={activeSettings.memoryAutoApprove.storyStateUpdate} onChange={(storyStateUpdate) => updateMemoryAutoApprove({ storyStateUpdate })} />
                 </div>
                 <p className="muted">
-                  These toggles apply to Memory Suggestions created by automatic detection, manual builders,
-                  and one-pass memory. One-pass Plot Essentials, plot cards, and protected-card changes always require review. Plot Essentials holds the overarching story; Active Pressure holds immediate external stakes; Current Arc holds the ongoing storyline and pacing.
+                  These toggles apply to Memory Suggestions created by the background memory pass and manual builders.
+                  Plot Essentials, plot cards, and protected-card changes always require review. Plot Essentials holds the overarching story; Active Pressure holds immediate external stakes; Current Arc holds the ongoing storyline and pacing.
                 </p>
               </>
             )}

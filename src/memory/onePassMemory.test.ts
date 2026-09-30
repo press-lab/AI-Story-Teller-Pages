@@ -73,8 +73,9 @@ describe("narrator output", () => {
 });
 
 describe("background memory pass updates", () => {
-  it("applies cards, thoughts, pressure and Story State grounded in the recent turns", () => {
+  it("applies cards, thoughts, pressure and an auto-approved Story State grounded in the recent turns", () => {
     const adventure = fixture();
+    adventure.memoryAutoApprove.storyStateUpdate = true;
     const state = "Day/Time: Monday night.\nLocation: Mira's tent.\nRelationships: Mira distrusts the duke.\nArrangements: none.\nHas met: the duke.\nOpen threads: the silver curse.";
     const next = apply(adventure, [
       update,
@@ -88,8 +89,25 @@ describe("background memory pass updates", () => {
     expect(next.components.find(c => c.id === "pressure")?.content).toBe("The tribute obligation has ended.");
     expect(next.components.find(c => c.id === "state")?.content).toBe(state);
     expect(next.components.find(c => c.id === "essentials")?.content).toBe(adventure.components[0].content);
-    // Story State rewrites are frequent; they do not pile up in the Memory Inbox history.
-    expect(next.activeState.memoryProposals.some(p => p.proposedType === "storyStateUpdate")).toBe(false);
+    expect(next.activeState.memoryProposals.find(p => p.proposedType === "storyStateUpdate")?.status).toBe("approved");
+  });
+
+  it("routes Story State through Memory Suggestions by default and keeps only the newest pending rewrite", () => {
+    const adventure = fixture();
+    expect(adventure.memoryAutoApprove.storyStateUpdate).toBe(false);
+    const stateUpdate = (content: string) => ({ kind: "state", target: "Story State", content, evidence: "The duke has ended the tribute demand.", reason: "Current truth" });
+    let next = apply(adventure, [stateUpdate("Day/Time: Monday night.")]).reduce(adventureReducer, adventure);
+    expect(next.components.find(c => c.id === "state")?.content).toBe("");
+    expect(next.activeState.memoryProposals.filter(p => p.proposedType === "storyStateUpdate" && p.status === "pending")).toHaveLength(1);
+
+    next = apply(next, [stateUpdate("Day/Time: Tuesday morning.")]).reduce(adventureReducer, next);
+    const stateProposals = next.activeState.memoryProposals.filter(p => p.proposedType === "storyStateUpdate");
+    expect(stateProposals.filter(p => p.status === "pending").map(p => p.content)).toEqual(["Day/Time: Tuesday morning."]);
+    expect(stateProposals.find(p => p.content === "Day/Time: Monday night.")?.status).toBe("ignored");
+
+    const pending = stateProposals.find(p => p.status === "pending")!;
+    const approved = adventureReducer(next, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: pending.id });
+    expect(approved.components.find(c => c.id === "state")?.content).toBe("Day/Time: Tuesday morning.");
   });
 
   it("accepts evidence from any message in the pass window, not just the latest reply", () => {

@@ -273,7 +273,7 @@ const TYPE_DESCRIPTIONS: Record<ComponentType, string> = {
   immediateMomentum: "Disabled legacy component. Immediate next-beat direction now belongs in Recent Messages or the one-turn Next Output Bias.",
   authorNote: "Near-context narrative direction — inserted just before Recent Messages for maximum influence on the next response. One per adventure. Most powerful mid-session correction tool: if a character is drifting too passive, too emotional, or too reactive, add a directive here before the next turn. 'Nix should have a project she is actively working on right now' resets the register immediately.",
   memory: "Legacy lore block. Move content to a Story Card with type Lore for triggered inclusion.",
-  storyState: "Authoritative current truth — day/date/time, location, relationship status, living arrangements, who the player has met, and open threads. Always included, near the end of context. Rewritten in full by the background memory pass every few turns (turn off Auto-update to freeze it). Edit it directly whenever the story gets a fact wrong.",
+  storyState: "Authoritative current truth — day/date/time, location, relationship status, living arrangements, who the player has met, and open threads. Always included, near the end of context. Every few turns the background memory pass suggests a full rewrite in Memory Suggestions (auto-approve it under Story State if you prefer). Turn off suggestions below to freeze it. Edit it directly whenever the story gets a fact wrong.",
   custom: "A general-purpose context block. Configure inclusion policy, priority, and protection manually.",
 };
 
@@ -845,6 +845,18 @@ export function ComponentsPage({ adventure, dispatch, loading, onSuggestPlotUpda
               )}
               <details className="brain-secondary-details item-secondary-details">
                 <summary>Automation, context settings, and actions</summary>
+              {component.type === "storyState" && (
+                <div className="grid two">
+                  <CheckboxField
+                    label="Background memory pass suggests Story State updates"
+                    checked={component.autoUpdate !== false}
+                    onChange={(autoUpdate) => dispatch({ type: "UPDATE_COMPONENT", componentId: component.id, patch: { autoUpdate } })}
+                  />
+                  <Field label="Last updated (turn)">
+                    <input value={component.lastAutoUpdateTurn ?? "Never"} readOnly />
+                  </Field>
+                </div>
+              )}
               {(component.type === "plotEssentials" || component.type === "activePressure" || component.type === "currentArc") && (
                 <div className="grid two">
                   {component.type === "plotEssentials" && (

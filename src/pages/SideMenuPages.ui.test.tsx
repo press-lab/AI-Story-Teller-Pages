@@ -398,6 +398,7 @@ describe("side menu page smoke coverage", () => {
     expect(titles).toEqual(["Story State", "Plot Essentials"]);
     const group = screen.getByText("Current Story State").closest("details, section, div");
     expect(group).toBeTruthy();
+    expect(screen.getByLabelText("Background memory pass suggests Story State updates")).toBeChecked();
   });
 
   it("edits visible current and archived brain thoughts inline", async () => {

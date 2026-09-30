@@ -95,7 +95,7 @@ When total exceeds `maxContextTokens`, items are dropped in priority order:
 | `activePressure` | No* | C | Yes (replace) | One-sentence current external threat or obligation. Auto-updated, auto-approved by default. |
 | `immediateMomentum` | No | — | No | Disabled legacy type. Not generated, auto-updated, or assembled into context. |
 | `authorNote` | Yes | D (near-context) | No | Immediate narrative correction. One per adventure. Most powerful short-term tool. |
-| `storyState` | Yes | S (turn context) | Yes (replace) | Authoritative current truth: day/time, location, relationships, arrangements, who has met whom, open threads. Protected, always included when non-empty. Rewritten in full by the background memory pass (`storyStateUpdate`, auto-approved by default); turn off Auto-update to freeze it. Added empty to older saves on load. |
+| `storyState` | Yes | S (turn context) | Yes (replace, reviewed) | Authoritative current truth: day/time, location, relationships, arrangements, who has met whom, open threads. Protected, always included when non-empty. The background memory pass suggests full rewrites (`storyStateUpdate`) in Memory Suggestions; a newer pending suggestion supersedes an older one. Auto-approve is off by default ("Story State" toggle). The block's "Background memory pass suggests Story State updates" switch freezes it. Added empty to older saves on load. |
 | `memory` | No | — | No | **Legacy.** Migrate content to Story Cards (type: Lore). |
 | `custom` | No | E (if always-on/pinned) | No | General purpose. Configure inclusion policy, priority, protection manually. |
 
@@ -206,7 +206,7 @@ All AI-generated content suggestions pass through Memory Proposals before becomi
 |---|---|---|---|
 | `storyCard` | Background memory pass, story card audit, "Remember This" | Off | Upsert story card; a living-card update with `replaces` supersedes that fact |
 | `brainUpdate` | Background memory pass, semantic engine | Off | Apply BrainPatch (thoughts appended, `knowledge` replaced) |
-| `storyStateUpdate` | Background memory pass | **On** | Replace Story State content (not kept in proposal history when auto-approved) |
+| `storyStateUpdate` | Background memory pass | Off | Replace Story State content; a newer pending suggestion marks the older one ignored |
 | `plotEssentialsUpdate` | Semantic engine, "Suggest Updates" | Off | Append to PE component |
 | `currentArcUpdate` | Semantic engine (updateComponentArc) | **On** | Append to arc component |
 | `plotPressureUpdate` | Semantic engine (updateComponentPressure) | **On** | Replace activePressure content |

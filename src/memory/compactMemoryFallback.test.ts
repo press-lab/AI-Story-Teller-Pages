@@ -12,7 +12,7 @@ const config = { ...defaultModelConfig, baseUrl: "https://example.com/v1", model
 function adventureAfterTurns() {
   let adventure = createDefaultAdventure("Background memory");
   adventure.memoryDetectionSettings = { ...adventure.memoryDetectionSettings, enabled: true, everyNTurns: 3 };
-  adventure.memoryAutoApprove = { ...adventure.memoryAutoApprove, brainUpdate: true, storyCard: true };
+  adventure.memoryAutoApprove = { ...adventure.memoryAutoApprove, brainUpdate: true, storyCard: true, storyStateUpdate: true };
   adventure.storyCards = [
     makeStoryCard({ id: "lucian", title: "Lucian", type: "character", content: "Lucian runs a private club.", pinned: true }),
     ...Array.from({ length: 40 }, (_, i) => makeStoryCard({ id: `noise-${i}`, title: `Unrelated Card ${i}`, content: "noise", keys: [`noise ${i}`] })),
