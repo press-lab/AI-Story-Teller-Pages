@@ -54,6 +54,20 @@ describe("one-pass memory quality boundary", () => {
     expect(result.storyCards[0].memoryUpdateHistory?.[0]?.operation).toBe("append");
   });
 
+  it("accepts a thought from a continuing exchange that uses a pronoun", () => {
+    let adventure = fixture();
+    adventure = adventureReducer(adventure, { type: "ADD_MESSAGE", id: "prior-user", role: "user", content: "I ask Mira about the letter." });
+    adventure = adventureReducer(adventure, { type: "ADD_MESSAGE", id: "prior-story", role: "assistant", content: "Mira says she will read it." });
+    adventure = adventureReducer(adventure, { type: "ADD_MESSAGE", id: "player", role: "user", content: "I ask her what she found." });
+    adventure = adventureReducer(adventure, { type: "ADD_MESSAGE", id: "story", role: "assistant", content: "She realizes the duke lied about the tribute." });
+    const context = buildContext(adventure, { latestModelOutput: adventure.messages.at(-1)?.content });
+    const actions = onePassMemoryActions(adventure, context, [{
+      kind: "thought", target: "Mira", content: "I need to confront the duke about his lie.",
+      evidence: "She realizes the duke lied about the tribute.", reason: "New private plan",
+    }], adventure.messages.at(-1)!.content, "story", undefined, "Fallback", "I ask her what she found.");
+    expect(actions.map(action => action.type)).toContain("APPLY_BRAIN_UPDATE");
+  });
+
   it.each([
     ["missing", story],
     ["truncated", `${story}<memory_updates>{"updates":[`],

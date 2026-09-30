@@ -871,7 +871,11 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal)
         const budget = preparedExisting.tokenBudget && preparedExisting.tokenBudget > 0
           ? preparedExisting.tokenBudget * 4
           : DEFAULT_CARD_CONTENT_BUDGET;
-        const merged = mergeCardContentToBudget(preparedExisting.content, safeContent, preparedExisting.archivedFacts ?? "", budget, preparedExisting);
+        // A character profile is canonical identity/voice context. Appending a small fact must
+        // not evict its existing profile merely because the profile already exceeds this budget.
+        const merged = preparedExisting.type === "character"
+          ? { content: appendCardContent(preparedExisting.content, safeContent), archivedFacts: preparedExisting.archivedFacts ?? "" }
+          : mergeCardContentToBudget(preparedExisting.content, safeContent, preparedExisting.archivedFacts ?? "", budget, preparedExisting);
         storyCard = recordStoryCardMemoryUpdate(
           existing,
           guardStoryCard({

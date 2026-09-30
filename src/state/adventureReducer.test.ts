@@ -1294,6 +1294,22 @@ describe("adventureReducer", () => {
     expect(merged?.protected).toBe(false);
   });
 
+  it("keeps an existing living character profile intact when a new fact is appended", () => {
+    const profile = "• Voice: precise, dry, and reserved.\n• History: she has lived in Seattle for decades.";
+    let state = { ...baseAdventure(), storyCards: [makeStoryCard({
+      id: "edythe-profile", title: "Edythe", type: "character", memoryMode: "living",
+      content: profile, tokenBudget: 10, active: true,
+    })] };
+    state = reduce(state, { type: "ADD_MEMORY_PROPOSAL", proposal: makeMemoryProposal({
+      id: "profile-update", proposedType: "storyCard", title: "Edythe", targetId: "edythe-profile",
+      appendContent: true, content: "• She now trusts Seth with the house key.",
+    }) });
+    state = reduce(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: "profile-update" });
+    expect(state.storyCards[0].content).toContain(profile);
+    expect(state.storyCards[0].content).toContain("house key");
+    expect(state.storyCards[0].archivedFacts).toBeFalsy();
+  });
+
   it("story-card replacements preserve guarded compact facts from live content and archives", () => {
     const card = makeStoryCard({
       id: "card-jinx-pact",

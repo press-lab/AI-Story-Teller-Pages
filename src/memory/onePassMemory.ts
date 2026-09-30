@@ -83,7 +83,12 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
       const eligibleNames = instruction.split("Eligible thought targets: ")[1]?.split(".\n")[0] ?? "";
       if (!brain || !eligibleNames.includes(JSON.stringify(target)) || (brain.lastUpdatedTurn !== undefined && adventure.activeState.turn - brain.lastUpdatedTurn < (brain.autoUpdateCooldownTurns ?? 0))) { reject(`${target}: brain not eligible`); continue; }
       if (Object.keys(brain.thoughts ?? {}).length && !visibleIds.has(brain.id)) { reject(`${target}: brain context was omitted`); continue; }
-      if (!evidenceSources.some(s => s.includes(norm(target)))) { reject(`${target}: character absent from this turn`); continue; }
+      const namedThisTurn = evidenceSources.some(s => s.includes(norm(target)));
+      const precedingExchange = adventure.messages.slice(-4, -2).map(message => norm(message.content)).join(" ");
+      const continuedReference = !namedThisTurn
+        && /\b(she|her|he|him|his|they|them)\b/.test(`${norm(playerInput)} ${norm(story)}`)
+        && precedingExchange.includes(norm(target));
+      if (!namedThisTurn && !continuedReference) { reject(`${target}: character absent from this turn`); continue; }
       if (Object.values({ ...brain.archivedThoughts, ...brain.thoughts }).some(t => norm(t).includes(norm(content)))) continue;
       const patch = { thoughts: { [`${adventure.activeState.turn}_${sourceTurnId}`]: `${adventure.activeState.turn} → ${content}` } };
       const boundary = applyAIMemoryUpdate(adventure, [{ type: "brainPatch", brainId: brain.id, patch, mode: "append", turn: adventure.activeState.turn, preview: content }]);
