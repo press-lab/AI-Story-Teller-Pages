@@ -1,7 +1,0 @@
-node_modules
-dist
-.env
-.DS_Store
-*.local
-*.tsbuildinfo
-.codex-firefox-profile-test/
