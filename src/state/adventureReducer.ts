@@ -23,7 +23,7 @@ import type {
   StoryCard,
   TriggerRule,
 } from "../types/adventure";
-import { activeTokenBudgetSettings, defaultArcState, defaultNextTurnNote, makeComponent, makeStoryCard } from "./defaults";
+import { defaultArcState, defaultNextTurnNote, makeComponent, makeStoryCard } from "./defaults";
 import { createId, nowIso } from "../utils/id";
 import { isLivingStoryCard, resolveMemoryTarget, sanitizeStoryCardTriggers } from "../memory/resolveMemoryTarget";
 import {
@@ -141,13 +141,18 @@ function recordStoryCardMemoryUpdate(
 }
 
 function touchAdventure(state: Adventure, patch: Partial<Adventure>): Adventure {
-  return { ...state, ...patch, updatedAt: nowIso() };
-}
-
-function mayAutoApproveProposal(state: Adventure, proposal: MemoryProposal): boolean {
-  if (proposal.requiresReview || proposal.proposedType === "plotEssentialsUpdate" || proposal.proposedType === "arcProposal"
-    || proposal.proposedType === "summaryUpdate" || proposal.proposedType === "plotMomentumUpdate") return false;
-  return state.memoryAutoApprove?.[proposal.proposedType as keyof typeof state.memoryAutoApprove] ?? false;
+  const next = { ...state, ...patch, updatedAt: nowIso() };
+  const summarizedIndex = next.rollingSummary.lastSummarizedMessageIndex;
+  if (summarizedIndex !== undefined && summarizedIndex > next.messages.length) {
+    return {
+      ...next,
+      rollingSummary: {
+        ...next.rollingSummary,
+        lastSummarizedMessageIndex: next.messages.length,
+      },
+    };
+  }
+  return next;
 }
 
 function upsertById<T extends { id: string }>(items: T[], item: T): T[] {
@@ -709,7 +714,8 @@ function sanitizeProposal(proposal: MemoryProposal): MemoryProposal | null {
     ? Math.max(0, Math.round(proposal.autoUpdateCooldownTurns ?? 0))
     : undefined;
 
-  // Legacy proposals remain readable in old saves; approval below keeps them inert.
+  // summaryUpdate with blank content would immediately overwrite the real summary — hard drop
+  if (proposal.proposedType === "summaryUpdate" && !content) return null;
 
   // arcProposal: content must be JSON carrying a non-empty premise, or the seed is meaningless
   if (proposal.proposedType === "arcProposal") {
@@ -1032,6 +1038,10 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal)
     return { components: upsertById(state.components, component) };
   }
 
+  if (proposal.proposedType === "plotMomentumUpdate") {
+    return {};
+  }
+
   if (proposal.proposedType === "plotPressureUpdate") {
     if (!proposal.content.trim()) return {};
     const componentType = "activePressure";
@@ -1149,6 +1159,13 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal)
     return { components: upsertById(state.components, seededArc), storyCards };
   }
 
+  if (proposal.proposedType === "summaryUpdate") {
+    if (!proposal.content.trim()) return {};
+    const existing = state.rollingSummary.content.trim();
+    const content = (proposal.appendContent && existing) ? `${existing}\n\n${proposal.content}` : proposal.content;
+    return { rollingSummary: { content, updatedAt: nowIso() } };
+  }
+
   return {};
 }
 
@@ -1164,7 +1181,8 @@ function applyCompanionMemoryProposals(
   for (const proposal of proposals) {
     const clean = sanitizeProposal(routedProposal(workingState, proposal));
     if (!clean) continue;
-    if (!mayAutoApproveProposal(workingState, clean)) {
+    const autoApprove = workingState.memoryAutoApprove?.[clean.proposedType as keyof typeof workingState.memoryAutoApprove] ?? false;
+    if (!autoApprove || clean.requiresReview) {
       recorded.push(clean);
       continue;
     }
@@ -1286,6 +1304,10 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
     case "SET_LAST_SEMANTIC_EVAL_TURN":
       return touchAdventure(state, {
         activeState: { ...state.activeState, lastSemanticEvalTurn: action.turn },
+      });
+    case "SET_LAST_SCENE_STATE_TURN":
+      return touchAdventure(state, {
+        activeState: { ...state.activeState, lastSceneStateTurn: action.turn },
       });
     case "UPSERT_COMPONENT":
       return touchAdventure(state, { components: upsertById(state.components, touch(action.component)) });
@@ -1592,7 +1614,8 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
             normalizedReplacementContent(component.content) === normalizedReplacementContent(clean.content),
         );
       if (duplicatesPending || duplicatesDismissed || duplicatesCard || duplicatesStoryCardContent || duplicatesExistingCardContent || duplicatesExistingTargetContent || duplicatesCurrentPressure) return state;
-      if (mayAutoApproveProposal(state, clean)) {
+      const autoApprove = state.memoryAutoApprove?.[clean.proposedType as keyof typeof state.memoryAutoApprove] ?? false;
+      if (autoApprove && !clean.requiresReview) {
         const approved = updateMemoryProposal(clean, { status: "approved" });
         const applied = applyApprovedMemoryProposal(state, approved);
         if (clean.proposedType === "plotPressureUpdate") {
@@ -1625,7 +1648,6 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
     case "APPROVE_MEMORY_PROPOSAL": {
       const existing = state.activeState.memoryProposals.find((proposal) => proposal.id === action.proposalId);
       if (!existing) return state;
-      if (existing.proposedType === "summaryUpdate" || existing.proposedType === "plotMomentumUpdate") return state;
       const proposal = sanitizeProposal(routedProposal(state, proposalWithEdits(existing, action.editedProposal)));
       if (!proposal) return state;
       const approved = updateMemoryProposal(proposal, { status: "approved" });
@@ -1658,8 +1680,20 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
           ),
         },
       });
+    case "UPDATE_ROLLING_SUMMARY":
+      return touchAdventure(state, {
+        rollingSummary: {
+          content: action.content,
+          updatedAt: nowIso(),
+          lastSummarizedMessageIndex: action.lastSummarizedMessageIndex ?? state.rollingSummary.lastSummarizedMessageIndex,
+        },
+      });
+    case "UPDATE_SCENE_STATE":
+      return touchAdventure(state, {
+        sceneState: { content: action.content, updatedAt: nowIso() },
+      });
     case "SET_TOKEN_BUDGET_SETTINGS":
-      return touchAdventure(state, { tokenBudgetSettings: activeTokenBudgetSettings(action.settings) });
+      return touchAdventure(state, { tokenBudgetSettings: action.settings });
     case "SET_SYSTEM_TRIGGER_SETTINGS":
       return touchAdventure(state, { systemTriggers: action.settings });
     case "SET_MODEL_CONFIG":
@@ -1667,10 +1701,7 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
     case "SET_SEMANTIC_EVALUATION_SETTINGS":
       return touchAdventure(state, { semanticEvaluationSettings: action.settings });
     case "SET_MEMORY_AUTO_APPROVE":
-      return touchAdventure(state, { memoryAutoApprove: {
-        ...action.settings, summaryUpdate: false, plotMomentumUpdate: false,
-        plotEssentialsUpdate: false, arcProposal: false,
-      } });
+      return touchAdventure(state, { memoryAutoApprove: action.settings });
     case "SET_MEMORY_DETECTION_SETTINGS":
       return touchAdventure(state, { memoryDetectionSettings: action.settings });
     case "SET_STATE_FLAG":
@@ -1756,6 +1787,7 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
     case "RESET_RUNTIME_STATE":
       return touchAdventure(state, {
         messages: [],
+        rollingSummary: { content: "", updatedAt: nowIso() },
         activeState: {
           ...state.activeState,
           turn: 0,

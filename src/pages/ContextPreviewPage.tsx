@@ -32,7 +32,7 @@ function detectDuplicateContent(sections: ContextSection[]): DuplicateWarning[] 
 }
 
 function canCondense(sourceType: ContextItem["sourceType"]): boolean {
-  return sourceType === "storyCard" || sourceType === "component";
+  return sourceType === "storyCard" || sourceType === "component" || sourceType === "summary";
 }
 
 function contextItemKeepScore(item: ContextItem): number {
@@ -211,6 +211,9 @@ export function ContextPreviewPage({ adventure, dispatch, contextResult, onBuild
         break;
       case "component":
         dispatch({ type: "UPDATE_COMPONENT", componentId: item.id, patch: { content } });
+        break;
+      case "summary":
+        dispatch({ type: "UPDATE_ROLLING_SUMMARY", content });
         break;
     }
     setPreferLivePreview(true);

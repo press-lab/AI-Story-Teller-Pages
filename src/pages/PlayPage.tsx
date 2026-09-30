@@ -158,10 +158,12 @@ export function PlayPage({
   const budgetDropped = contextResult?.excludedItems.filter((i) => i.reason === "budget_exceeded") ?? [];
   const droppedMessages = budgetDropped.filter((i) => i.sourceType === "message").length;
   const droppedCards = budgetDropped.filter((i) => i.sourceType === "storyCard").length;
+  const summaryTruncated = budgetDropped.some((i) => i.sourceType === "summary");
   const totalDropped = budgetDropped.length;
   const trimTooltip = [
     droppedMessages > 0 && `${droppedMessages} story turn${droppedMessages !== 1 ? "s" : ""} dropped`,
     droppedCards > 0 && `${droppedCards} story card${droppedCards !== 1 ? "s" : ""} dropped`,
+    summaryTruncated && "summary truncated",
   ].filter(Boolean).join(" · ");
 
   function updateToolkitWidth(next: number) {

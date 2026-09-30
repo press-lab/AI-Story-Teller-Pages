@@ -1,8 +1,6 @@
 import { useState } from "react";
 import type { InlineMemoryCategory, TriggerEvaluationMode, TriggerMatchType, TriggerSource } from "../types/adventure";
 import { makeTriggerRule } from "../state/defaults";
-import { isRunnableSemanticRule } from "../triggers/semanticRules";
-import { isUsableProviderBaseUrl } from "../providers/backgroundProvider";
 import type { AdventurePageProps } from "./pageTypes";
 import { CheckboxField, Field, JsonTextarea, NumberInput, UpdatedAtBadge, commaList, fromCommaList } from "./shared";
 
@@ -42,14 +40,6 @@ export function TriggersPage({ adventure, dispatch }: AdventurePageProps) {
     );
   });
   const enabledRuleCount = adventure.triggerRules.filter((rule) => rule.enabled).length;
-  const semanticRuleCount = adventure.triggerRules.filter(isRunnableSemanticRule).length;
-  const semanticSettings = adventure.semanticEvaluationSettings;
-  const semanticStatus = semanticRuleCount === 0 ? "No semantic automations active"
-    : !semanticSettings.enabled || (semanticSettings.semanticEvalEveryNTurns ?? 1) === 0 ? "Semantic automations paused"
-      : `Background evaluation every ${semanticSettings.semanticEvalEveryNTurns ?? 1} turns`;
-  function updateSemanticSettings(patch: Partial<typeof semanticSettings>) {
-    dispatch({ type: "SET_SEMANTIC_EVALUATION_SETTINGS", settings: { ...semanticSettings, ...patch } });
-  }
 
   function createTrigger() {
     const triggerRule = makeTriggerRule({ name: "New Trigger" });
@@ -77,33 +67,10 @@ export function TriggersPage({ adventure, dispatch }: AdventurePageProps) {
         <div className="editor-stat-row" aria-label="Automation counts">
           <span>{adventure.triggerRules.length} rules</span>
           <span>{enabledRuleCount} enabled</span>
-          <span>{semanticStatus}</span>
           <span>{adventure.activeState.triggerLog.length} fired</span>
           {searchLower && <span>{visibleRules.length} shown</span>}
         </div>
       </div>
-
-      <details className="panel editor-tools-panel">
-        <summary>Semantic Automation settings</summary>
-        <p className="muted">{semanticStatus}. Cadence schedules custom semantic rules. The model override applies when background work uses the story provider; the message window and parallel call limit also affect manual or fallback background memory work. One-pass narration does not use this cadence.</p>
-        <CheckboxField label="Enable semantic automations" checked={semanticSettings.enabled} onChange={(enabled) => updateSemanticSettings({ enabled })} />
-        <div className="grid two">
-          {!isUsableProviderBaseUrl(semanticSettings.backgroundProviderConfig?.baseUrl) && <Field label="Evaluation model override on story provider">
-            <input value={semanticSettings.evaluationModel} onChange={(event) => updateSemanticSettings({ evaluationModel: event.target.value })} />
-          </Field>}
-          <Field label="Background memory message window">
-            <NumberInput min={1} value={semanticSettings.messagesIncluded} onChange={(messagesIncluded) => updateSemanticSettings({ messagesIncluded })} />
-          </Field>
-          <Field label="Evaluate every N turns (0 = paused)">
-            <NumberInput min={0} value={semanticSettings.semanticEvalEveryNTurns ?? 1} onChange={(semanticEvalEveryNTurns) => updateSemanticSettings({ semanticEvalEveryNTurns })} />
-          </Field>
-          <Field label="Max parallel background update calls">
-            <NumberInput min={1} value={semanticSettings.maxParallelUpdateCalls} onChange={(maxParallelUpdateCalls) => updateSemanticSettings({ maxParallelUpdateCalls })} />
-          </Field>
-        </div>
-        <CheckboxField label="Show evaluation log" checked={semanticSettings.showLog} onChange={(showLog) => updateSemanticSettings({ showLog })} />
-        <CheckboxField label="Review updates from custom semantic rules" checked={semanticSettings.requireApprovalForAutoUpdates ?? true} onChange={(requireApprovalForAutoUpdates) => updateSemanticSettings({ requireApprovalForAutoUpdates })} />
-      </details>
 
       <div className="editor-command-bar triggers-command-bar">
         <input
@@ -318,8 +285,6 @@ export function TriggersPage({ adventure, dispatch }: AdventurePageProps) {
                   <Field label="Actions JSON">
                     <JsonTextarea value={rule.actions} onValidChange={(actions) => dispatch({ type: "UPDATE_TRIGGER_RULE", triggerRuleId: rule.id, patch: { actions } })} rows={8} />
                   </Field>
-                  {rule.actions.some((action) => action.type === "updateSummary" || action.type === "updateComponentMomentum") &&
-                    <p className="muted">Legacy Summary and Immediate Momentum actions are ignored. Update this rule to use an active memory target.</p>}
                   <p className="muted">Last fired turn: {rule.lastFiredTurn ?? "never"}</p>
                   <button type="button" className="danger" onClick={() => dispatch({ type: "DELETE_TRIGGER_RULE", triggerRuleId: rule.id })}>
                     Delete

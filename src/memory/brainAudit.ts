@@ -2,7 +2,6 @@ import type { Adventure, BrainEntry, Message, ProviderConfig } from "../types/ad
 import { sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
 import { dedupeBrainThoughts } from "./thoughtDedupe";
 import { lastNTurns } from "./storyCardAudit";
-import { activeStoryCanon } from "./auditContext";
 
 export type BrainAuditAction = "edit" | "delete" | "create";
 export type BrainAuditDecision = "pending" | "approved" | "rejected";
@@ -218,7 +217,7 @@ function deterministicRecommendations(brains: BrainEntry[]): BrainAuditRecommend
   return results;
 }
 
-function buildPrompt(brains: BrainEntry[], storyCanon: string, recentStory: string, thoughtReviewWindow: number): string {
+function buildPrompt(brains: BrainEntry[], rollingSummary: string, recentStory: string, thoughtReviewWindow: number): string {
   const brainList = brains
     .map((brain) => {
       const thoughts = recentThoughtsForReview(brain, thoughtReviewWindow);
@@ -240,8 +239,8 @@ archivedThoughts: ${archivedCount}`;
 BRAINS UNDER REVIEW:
 ${brainList || "(none)"}
 
-ACTIVE STORY CANON:
-${storyCanon || "(none)"}
+STORY SO FAR (summary):
+${rollingSummary || "(none)"}
 
 RECENT STORY:
 ${recentStory || "(none)"}
@@ -357,7 +356,7 @@ export async function runBrainAudit(
   let llmRecs: BrainAuditRecommendation[] = [];
   if (llmBrains.length > 0) {
     const config = resolvedProviderConfig(adventure, providerConfig);
-    const prompt = buildPrompt(llmBrains, activeStoryCanon(adventure), formatMessages(recentMessages), reviewWindow);
+    const prompt = buildPrompt(llmBrains, adventure.rollingSummary.content, formatMessages(recentMessages), reviewWindow);
     try {
       const response = await sendOpenAICompatibleChatCompletion({
         config,

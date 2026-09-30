@@ -20,7 +20,7 @@ function setup(enabled = true, customRule = false) {
   const initial = createDefaultAdventure("Call accounting");
   initial.memoryDetectionSettings = { ...initial.memoryDetectionSettings, enabled: !enabled }; // deliberately stale saved settings
   initial.memoryAutoApprove = { ...initial.memoryAutoApprove, storyCard: true };
-  if (customRule) initial.triggerRules.push(makeTriggerRule({ name: "Explicit custom rule", condition: "When Mira learns something", evaluationMode: "semantic", actions: [{ type: "activateComponent", componentId: "active-pressure" }] }));
+  if (customRule) initial.triggerRules.push(makeTriggerRule({ name: "Explicit custom rule", condition: "When Mira learns something", evaluationMode: "semantic" }));
   initial.storyCards = [makeStoryCard({ id: "mira", title: "Mira", content: "Mira is a scout.", active: true, pinned: true, protected: false })];
   const globalMemory: MemoryDetectionSettings = { enabled, everyNTurns: 3, generateContent: true };
   return renderHook(() => {

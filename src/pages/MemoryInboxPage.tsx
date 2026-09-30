@@ -13,6 +13,8 @@ const proposalTypes: MemoryProposalType[] = [
   "currentArcUpdate",
   "arcProposal",
   "plotPressureUpdate",
+  "plotMomentumUpdate",
+  "summaryUpdate",
   "ignore",
 ];
 const storyCardTypes: StoryCardType[] = ["character", "location", "lore", "plot", "event", "custom"];
@@ -140,7 +142,7 @@ export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onR
         <h3>Memory Suggestions</h3>
         <p className="muted">
           Memory Suggestions holds AI-proposed changes to your story data — new Story Cards, Character Self updates,
-          Plot Essentials rewrites, and Active Pressure updates. The AI generates these automatically after turns or when
+          Plot Essentials rewrites, Active Pressure updates, and legacy Summary changes. The AI generates these automatically after turns or when
           you use <strong>Remember This</strong>. Review each proposal and <strong>Approve</strong> to apply it,
           <strong> Reject</strong> to dismiss it cleanly, or <strong>Ignore</strong> to remove it from view without applying.
           You can edit the content before approving.
@@ -150,11 +152,13 @@ export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onR
         </p>
         <div className="auto-approve-toggles">
           <span className="auto-approve-label muted">Auto-approve:</span>
+          <CheckboxField label="Legacy Summary" checked={autoApprove.summaryUpdate} onChange={(v) => setAutoApprove({ summaryUpdate: v })} />
+          <CheckboxField label="Plot Essentials" checked={autoApprove.plotEssentialsUpdate} onChange={(v) => setAutoApprove({ plotEssentialsUpdate: v })} />
           <CheckboxField label="Active Pressure" checked={autoApprove.plotPressureUpdate} onChange={(v) => setAutoApprove({ plotPressureUpdate: v })} />
           <CheckboxField label="Current Arc" checked={autoApprove.currentArcUpdate} onChange={(v) => setAutoApprove({ currentArcUpdate: v })} />
+          <CheckboxField label="Arc Proposals" checked={autoApprove.arcProposal} onChange={(v) => setAutoApprove({ arcProposal: v })} />
           <CheckboxField label="Story Cards" checked={autoApprove.storyCard} onChange={(v) => setAutoApprove({ storyCard: v })} />
-          <CheckboxField label="Character / Brain updates" checked={autoApprove.brainUpdate} onChange={(v) => setAutoApprove({ brainUpdate: v })} />
-          <p className="muted">Plot Essentials and new Arc proposals always require review.</p>
+          <CheckboxField label="Characters" checked={autoApprove.brainUpdate} onChange={(v) => setAutoApprove({ brainUpdate: v })} />
         </div>
       </details>
 
@@ -232,7 +236,6 @@ interface ProposalCardProps {
 
 function ProposalCard({ proposal, dispatch, onUpdate, onRegenerate }: ProposalCardProps) {
   const isPending = proposal.status === "pending";
-  const isDeprecated = proposal.proposedType === "summaryUpdate" || proposal.proposedType === "plotMomentumUpdate";
   const [regenerating, setRegenerating] = useState(false);
 
   async function handleRegenerate() {
@@ -273,15 +276,15 @@ function ProposalCard({ proposal, dispatch, onUpdate, onRegenerate }: ProposalCa
           />
         </div>
         <div className="row">
-          {!isDeprecated && <button
+          <button
             type="button"
             onClick={() => dispatch({ type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id })}
           >
             Approve
-          </button>}
+          </button>
           {isPending && (
             <>
-              {onRegenerate && !isDeprecated && (
+              {onRegenerate && (
                 <button type="button" disabled={regenerating} onClick={handleRegenerate}>
                   {regenerating ? "…" : "Regenerate"}
                 </button>
@@ -338,7 +341,6 @@ function ProposalCard({ proposal, dispatch, onUpdate, onRegenerate }: ProposalCa
               onChange={(event) => onUpdate(proposal, { proposedType: event.target.value as MemoryProposalType })}
               disabled={!isPending}
             >
-              {isDeprecated && <option value={proposal.proposedType}>{proposal.proposedType} (deprecated)</option>}
               {proposalTypes.map((type) => (
                 <option key={type} value={type}>
                   {type}

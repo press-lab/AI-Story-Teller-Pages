@@ -4,7 +4,6 @@ import { backgroundProviderConfigIssue, resolveBackgroundProviderConfig } from "
 import { STORY_CARD_BEST_PRACTICES, TRIGGER_BEST_PRACTICES } from "../ai/authoringBestPractices";
 import { cleanupWordSet, dedupeStringList, dedupeTextLines } from "./deterministicCleanup";
 import { storyCardContextContent } from "./storyCardPolicy";
-import { activeStoryCanon } from "./auditContext";
 
 export type AuditAction = "edit" | "delete" | "create";
 export type AuditDecision = "pending" | "approved" | "rejected";
@@ -149,10 +148,10 @@ function detectDuplicateContentLines(cards: StoryCard[]): AuditRecommendation[] 
   });
 }
 
-function detectZeroFrequency(cards: StoryCard[], recentMessages: Message[], storyCanon: string): AuditRecommendation[] {
+function detectZeroFrequency(cards: StoryCard[], recentMessages: Message[], rollingSummary: string): AuditRecommendation[] {
   const corpus = [
     ...recentMessages.filter((m) => m.role !== "system").map((m) => m.content),
-    storyCanon,
+    rollingSummary,
   ].join(" ").toLowerCase();
 
   return cards
@@ -217,7 +216,7 @@ function detectTriggerKeyCleanup(cards: StoryCard[]): AuditRecommendation[] {
     });
 }
 
-function buildPrompt(cards: StoryCard[], storyCanon: string, recentStory: string): string {
+function buildPrompt(cards: StoryCard[], rollingSummary: string, recentStory: string): string {
   const cardList = cards
     .map((c) => `[${c.id}] "${c.title}" (${c.type}, ${c.memoryMode}) keys: ${c.keys.join(", ") || "(title trigger only)"}\n${storyCardContextContent(c).slice(0, 2200)}`)
     .join("\n\n---\n\n");
@@ -229,8 +228,8 @@ ${TRIGGER_BEST_PRACTICES}
 STORY CARDS UNDER REVIEW:
 ${cardList || "(none)"}
 
-ACTIVE STORY CANON:
-${storyCanon || "(none)"}
+STORY SO FAR (summary):
+${rollingSummary || "(none)"}
 
 RECENT STORY:
 ${recentStory || "(none)"}
@@ -326,13 +325,13 @@ export async function runStoryCardAudit(
   options: StoryCardAuditOptions = {},
 ): Promise<AuditRecommendation[]> {
   const recentMessages = lastNTurns(adventure.messages, nTurns);
-  const storyCanon = activeStoryCanon(adventure);
+  const summary = adventure.rollingSummary.content;
 
   // Deterministic pass — free, runs first
   const detRedundant = detectRedundant(adventure.storyCards);
   const detNoKeys = detectNoKeys(adventure.storyCards);
   const detTiny = detectTinyContent(adventure.storyCards);
-  const detFreq = detectZeroFrequency(adventure.storyCards, adventure.messages, storyCanon);
+  const detFreq = detectZeroFrequency(adventure.storyCards, recentMessages, summary);
   const detDuplicateLines = detectDuplicateContentLines(adventure.storyCards);
   const detTriggerKeys = detectTriggerKeyCleanup(adventure.storyCards);
   const detRecs = [...detRedundant, ...detNoKeys, ...detTiny, ...detFreq, ...detDuplicateLines, ...detTriggerKeys];
@@ -356,7 +355,7 @@ export async function runStoryCardAudit(
   if (llmCards.length > 0) {
     const config = resolvedProviderConfig(adventure, providerConfig);
     const recentStory = formatMessages(recentMessages);
-    const prompt = buildPrompt(llmCards, storyCanon, recentStory);
+    const prompt = buildPrompt(llmCards, summary, recentStory);
 
     try {
       const response = await sendOpenAICompatibleChatCompletion({
