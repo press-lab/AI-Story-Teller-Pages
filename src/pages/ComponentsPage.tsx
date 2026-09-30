@@ -360,7 +360,7 @@ const PLOT_GROUP_DEFINITIONS: Array<{
     id: "current-state",
     title: "Current Story State",
     description: "What is true right now and what pressure is active.",
-    types: ["plotEssentials", "activePressure", "currentArc"],
+    types: ["storyState", "plotEssentials", "activePressure", "currentArc"],
   },
 ];
 
@@ -493,7 +493,10 @@ export function ComponentsPage({ adventure, dispatch, loading, onSuggestPlotUpda
   const groupedComponentIds = new Set<string>();
   const componentGroups = PLOT_GROUP_DEFINITIONS
     .map((group) => {
-      const components = visibleComponents.filter((component) => group.types.includes(component.type));
+      // Within a group, list types in the group's declared order (Story State first), then by priority.
+      const components = visibleComponents
+        .filter((component) => group.types.includes(component.type))
+        .sort((a, b) => group.types.indexOf(a.type) - group.types.indexOf(b.type));
       components.forEach((component) => groupedComponentIds.add(component.id));
       return { ...group, components };
     })

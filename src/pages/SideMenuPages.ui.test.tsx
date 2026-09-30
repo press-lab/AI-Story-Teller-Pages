@@ -385,6 +385,21 @@ describe("side menu page smoke coverage", () => {
     expect(within(brainRow as HTMLElement).getByTitle("Estimated tokens in live brain thoughts: 5")).toHaveTextContent("5 tokens");
   });
 
+  it("lists Story State first under Current Story State on the Plot page", () => {
+    const adventure: Adventure = {
+      ...seedAdventure(),
+      components: [
+        makeComponent({ title: "Plot Essentials", type: "plotEssentials", content: "Alpha beta." }),
+        makeComponent({ title: "Story State", type: "storyState", content: "Day/Time: Monday evening.", alwaysOn: true, protected: true }),
+      ],
+    };
+    render(<ComponentsPage adventure={adventure} dispatch={() => undefined} />);
+    const titles = screen.getAllByText(/^(Story State|Plot Essentials)$/, { selector: ".story-card-title" }).map((node) => node.textContent);
+    expect(titles).toEqual(["Story State", "Plot Essentials"]);
+    const group = screen.getByText("Current Story State").closest("details, section, div");
+    expect(group).toBeTruthy();
+  });
+
   it("edits visible current and archived brain thoughts inline", async () => {
     const user = userEvent.setup();
     const adventure: Adventure = {
