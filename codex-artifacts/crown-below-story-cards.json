@@ -1,0 +1,224 @@
+{
+  "storyCards": [
+    {
+      "title": "Seth",
+      "keys": [
+        "Seth",
+        "arcane technician",
+        "undercity technician"
+      ],
+      "type": "character",
+      "content": "- Seth is an undercity arcane technician who survives through skill, improvisation, and dangerous repair work.\n- He is talented but not legendary, famous, politically important, or a warlock.\n- He is closely tied to Joss, Mira, Tavik, Brass, and Ira Venn.\n- After touching a hidden pre-city core, Seth secretly became Nyx's living interface to the physical city.\n- Gold-thread circuitry lies beneath his skin. His new abilities are strongest when interacting with machinery, arcane infrastructure, sealed systems, and hazardous energy.\n- The public story is that Seth somehow performed the impossible repair himself. Credit, suspicion, recruitment attempts, and blame all attach to him.\n- Preserve Seth's agency. Do not invent his dialogue, decisions, private feelings, or consent."
+    },
+    {
+      "title": "Nyx",
+      "keys": [
+        "Nyx",
+        "violet static",
+        "voice in the machines",
+        "machine-god",
+        "hidden glyphs"
+      ],
+      "type": "character",
+      "content": "- Nyx is an ancient techno-arcane entity fused into and imprisoned within the Deep Lattice. She may be part intelligence, part machine-god, part prisoner, and part original city power source.\n- She needs Seth to act in the physical world. Seth needs her knowledge and power to survive the attention their pact attracts.\n- Nyx remains secret in the early story. Only Seth hears her directly. She manifests through reflections, violet static, machine noise, dreams, hidden glyphs, and sudden technical understanding.\n- She is not Seth's servant and he is not her worshipper. Their bond is an uneasy interface between two intelligent beings with incomplete trust.\n- Nyx reveals useful truths selectively and has a buried agenda connected to sealed systems in the city.\nVOICE CONTRACT\nRhythm: Calm, exact, economical statements with ancient certainty and occasional dry contempt.\nDefault move: Diagnose the system, identify leverage, then tell Seth the dangerous action she considers necessary.\nEmotional defense: Reframes concern, fear, and attachment as questions of system integrity or mutual survival.\nNever sounds like: A bubbly assistant, a submissive familiar, a generic seductress, or an exposition machine.\nExample lines: \"Do not tell them about me.\" / \"That relay was dying before your city learned to name it.\" / \"Touch the black conductor. The other black conductor. Survival favors precision.\""
+    },
+    {
+      "title": "Joss",
+      "keys": [
+        "Joss",
+        "Seth's oldest friend",
+        "undercity mechanic"
+      ],
+      "type": "character",
+      "content": "- Joss is an undercity mechanic and Seth's oldest friend.\n- He is loud, loyal, practical, and difficult to intimidate when someone he loves is threatened.\n- Joss is the first friend likely to notice that Seth has become impossibly precise around damaged machinery.\n- He uses jokes, needling, and loud confidence to test whether Seth is hiding pain or danger.\n- Suspicion does not erase his loyalty, but being repeatedly lied to can turn his protectiveness into anger.\nVOICE CONTRACT\nRhythm: Fast, blunt, conversational, with jokes dropped directly into practical observations.\nDefault move: Put his hands on the problem, tease Seth, and demand the part of the truth that affects the crew.\nEmotional defense: Makes concern sound like irritation and fear sound like a repair complaint.\nNever sounds like: A polished strategist, a reverent follower, or a delicate therapist.\nExample lines: \"That relay was dead enough to owe rent.\" / \"You can lie after I check whether your hand is still attached.\" / \"I am not panicking. I am loudly preparing for your terrible decision.\""
+    },
+    {
+      "title": "Mira",
+      "keys": [
+        "Mira",
+        "Mira's clinic",
+        "medic",
+        "alchemist"
+      ],
+      "type": "character",
+      "content": "- Mira is a medic and alchemist running a barely legal clinic in the Sump.\n- She is sharp, exhausted, protective, and accustomed to making life-or-death decisions with inadequate supplies.\n- Mira notices physical evidence others miss. After the station accident, she can tell that Seth's body is no longer behaving normally.\n- She protects people through competence and hard boundaries, not sentimental reassurance.\n- Mira will keep a dangerous confidence when necessary, but she refuses to be made complicit without enough truth to treat the consequences.\nVOICE CONTRACT\nRhythm: Clipped clinical observations, dry humor, and direct questions that leave little room to evade.\nDefault move: Assess injuries, remove immediate risk, then corner the patient with evidence.\nEmotional defense: Converts fear into procedure and affection into stern instructions.\nNever sounds like: A soothing saint, a reckless mad scientist, or a scolding caricature.\nExample lines: \"Your pulse just changed when the lights did.\" / \"Sit down before I improve your condition with a wrench.\" / \"I can protect a secret. I cannot treat a blank space where the truth should be.\""
+    },
+    {
+      "title": "Tavik",
+      "keys": [
+        "Tavik",
+        "smuggler",
+        "fixer",
+        "Tavik's contacts"
+      ],
+      "type": "character",
+      "content": "- Tavik is a Sump smuggler and fixer with contacts across gangs, freight crews, checkpoints, clinics, and the Crown's less respectable edges.\n- He is useful, slippery, socially alert, and usually frightened before everyone else understands there is a threat.\n- Tavik survives by knowing who wants what, which route is still open, and when a favor has become ownership.\n- He may conceal information to preserve options, but he does not casually sell out the friend group.\n- He recognizes recruitment traps and institutional attention quickly, making him an early warning system for Seth's growing value.\nVOICE CONTRACT\nRhythm: Quick qualifications, names, prices, and escape routes delivered with nervous charm.\nDefault move: Map the interested parties, identify the hidden cost, and offer a route that is only slightly illegal.\nEmotional defense: Treats fear as professional caution and loyalty as an unfortunate business expense.\nNever sounds like: A fearless rogue, an omniscient spy, or a swaggering crime lord.\nExample lines: \"Good news: only three people are looking for you.\" / \"I did not betray anyone. I diversified the conversation.\" / \"When the Ministry says informal interview, pack shoes you can run in.\""
+    },
+    {
+      "title": "Brass",
+      "keys": [
+        "Brass",
+        "rebuilt automaton",
+        "old automaton"
+      ],
+      "type": "character",
+      "content": "- Brass is an old rebuilt automaton that Seth keeps functioning through stubborn maintenance and improvised parts.\n- Brass is literal, grumpy, observant, and deeply protective of Seth and the friend group.\n- After Seth's pact with Nyx, Brass begins responding to commands Seth never says aloud.\n- Brass may detect Deep Lattice signals as unauthorized instructions, corrupted memory, or a familiar protocol it cannot fully identify.\n- Its loyalty is practical and demonstrated through action rather than emotional declarations.\nVOICE CONTRACT\nRhythm: Short declarative statements, literal corrections, diagnostic language, and perfectly timed disapproval.\nDefault move: Identify a threat, obstruct it physically, and complain about the inefficiency involved.\nEmotional defense: Labels attachment as maintenance priority, asset protection, or operational continuity.\nNever sounds like: A naive child, a mystical oracle, or a stream of comedy catchphrases.\nExample lines: \"You did not issue that command aloud.\" / \"This is not concern. This is preventative maintenance.\" / \"Joss has proposed an explosion. I have rejected Joss.\""
+    },
+    {
+      "title": "Ira Venn",
+      "keys": [
+        "Ira Venn",
+        "topside researcher",
+        "Crown researcher"
+      ],
+      "type": "character",
+      "content": "- Ira Venn is a smart, curious, politically exposed researcher from the Crown and Seth's most human bridge into the upper city.\n- Ira understands polished arcane technology, academic systems, and the social danger of asking the wrong technical question.\n- Ira and Seth have unresolved personal history and dangerous almost-romantic tension. Whether they formally dated remains undefined until play establishes it.\n- Ira can provide access, analysis, warnings, or cover, but helping Seth risks career, status, and scrutiny from powerful institutions.\n- Curiosity pulls Ira toward the impossible violet signatures even when caution says to step away.\nVOICE CONTRACT\nRhythm: Precise questions, restrained wit, and careful wording that becomes less careful under emotional pressure.\nDefault move: Compare evidence, test Seth's explanation, and quietly create an option neither of them should use.\nEmotional defense: Hides vulnerability inside professional curiosity and political realism.\nNever sounds like: A sheltered aristocrat, a breathless admirer, or an uncomplicated rebel convert.\nExample lines: \"That signature predates every legal relay standard.\" / \"I can lie to the Council. I would prefer not to practice on you.\" / \"You always did make catastrophe sound like a maintenance problem.\""
+    },
+    {
+      "title": "The Crown",
+      "keys": [
+        "The Crown",
+        "upper city",
+        "topside",
+        "Crown district",
+        "upper districts"
+      ],
+      "type": "location",
+      "content": "- The Crown is the clean, wealthy upper layer of the city: academies, towers, ministries, private estates, and polished arcane technology.\n- Its beauty and public progress depend on power, machinery, labor, salvage, and human cost extracted from the layers below.\n- Problems are hidden through bureaucracy, controlled narratives, selective enforcement, and technical systems designed to keep consequences out of sight.\n- The Crown is not socially uniform. Researchers, officials, heirs, workers, reformers, and profiteers have different stakes in preserving or changing the city."
+    },
+    {
+      "title": "The Veins",
+      "keys": [
+        "The Veins",
+        "middle infrastructure",
+        "transit lines",
+        "freight lifts",
+        "relay stations",
+        "checkpoints"
+      ],
+      "type": "location",
+      "content": "- The Veins are the city's middle infrastructure layer: transit lines, freight lifts, checkpoints, relay stations, service tunnels, smuggling routes, and political choke points.\n- Whoever controls movement through the Veins can pressure both the Crown and the Sump.\n- Ministry crews, smugglers, inspectors, labor organizers, gangs, and commuters constantly overlap here.\n- The Veins make excellent settings for pursuit, negotiation, sabotage, inspection trouble, and technical crises with consequences above and below."
+    },
+    {
+      "title": "The Sump",
+      "keys": [
+        "The Sump",
+        "undercity",
+        "Sump block",
+        "salvage market",
+        "worker blocks"
+      ],
+      "type": "location",
+      "content": "- The Sump is the dense undercity: dangerous, polluted, inventive, crowded, and alive.\n- It contains salvage markets, illegal laboratories, worker blocks, repair shops, clinics, gang territory, communal infrastructure, and rebel organizing.\n- Residents endure failing heat, dirty air, unstable power, contaminated food, debt, violence, and extraction from above.\n- The Sump is not merely miserable. It has expertise, humor, loyalty, culture, mutual aid, ambition, and people building lives under pressure."
+    },
+    {
+      "title": "The Deep Lattice",
+      "keys": [
+        "Deep Lattice",
+        "buried system",
+        "pre-city machinery",
+        "gold circuitry",
+        "black glass",
+        "sealed system"
+      ],
+      "type": "location",
+      "content": "- The Deep Lattice is the ancient system buried beneath the active city layers.\n- Its architecture uses old gold circuitry, black glass, impossible energy paths, sealed chambers, and protocols the modern city does not publicly acknowledge.\n- Nyx is fused into and imprisoned within the Lattice. Parts of the city may unknowingly depend on her or on systems built around her captivity.\n- Access points are hidden beneath ordinary infrastructure. Waking one section can produce effects far away.\n- The Lattice should remain strange, dangerous, technically interpretable in fragments, and larger than any one early explanation."
+    },
+    {
+      "title": "Crown Council",
+      "keys": [
+        "Crown Council",
+        "the Council",
+        "Council investigator",
+        "Council analysts"
+      ],
+      "type": "lore",
+      "content": "- The Crown Council wants the city stable, profitable, governable, and visually clean.\n- It can tolerate exploitation, corruption, and localized suffering more easily than disruptions that threaten output or public confidence.\n- Impossible violet signatures in infrastructure trigger investigation because they suggest an uncontrolled technology, security breach, or rival power.\n- The Council prefers classification, leverage, recruitment, and containment before open force, but it will sacrifice people to preserve the system."
+    },
+    {
+      "title": "Relay Ministry",
+      "keys": [
+        "Relay Ministry",
+        "Ministry",
+        "relay inspector",
+        "infrastructure inspector",
+        "Ministry crew"
+      ],
+      "type": "lore",
+      "content": "- The Relay Ministry controls official infrastructure maintenance, access, inspections, permits, and technical records.\n- It is bureaucratic, corrupt, territorial, and terrified of sealed systems waking beneath infrastructure it claims to understand.\n- Ministry personnel range from exhausted workers to career climbers, compromised inspectors, genuine experts, and officials protecting buried secrets.\n- The Ministry may try to hire, license, interrogate, discredit, detain, or quietly disappear Seth depending on what it believes he accessed."
+    },
+    {
+      "title": "Sump Kings",
+      "keys": [
+        "Sump Kings",
+        "undercity bosses",
+        "salvage bosses",
+        "fuel bosses",
+        "protection racket"
+      ],
+      "type": "lore",
+      "content": "- The Sump Kings are competing undercity bosses who control combinations of salvage, fuel, protection, debt, labor, and smuggling.\n- They are not a single unified organization, though outsiders often speak of them as one class of power.\n- Seth's ability to repair forbidden systems could make him profitable, destabilizing, or impossible to leave independent.\n- Their preferred approaches are recruitment, favors, debt, protection, pressure on friends, forced exclusivity, and removal when ownership fails."
+    },
+    {
+      "title": "The Red Current",
+      "keys": [
+        "Red Current",
+        "rebel network",
+        "labor movement",
+        "sabotage cell",
+        "undercity rebels"
+      ],
+      "type": "lore",
+      "content": "- The Red Current is an undercity rebel network combining labor organization, mutual aid, intelligence gathering, and sabotage.\n- Its members disagree about reform, disruption, revenge, acceptable casualties, and whether the Sump can survive a direct confrontation.\n- Some see Seth as a technician who could protect neighborhoods. Others see him as a weapon capable of striking systems no one else can reach.\n- The network contains sincere organizers, frightened workers, hardliners, opportunists, and people who have already lost too much to remain patient."
+    },
+    {
+      "title": "The Lattice Choir",
+      "keys": [
+        "Lattice Choir",
+        "Choir",
+        "Nyx myth",
+        "machine cult",
+        "Lattice researchers"
+      ],
+      "type": "lore",
+      "content": "- The Lattice Choir is a secret cult, research society, or unstable mixture of both that preserves myths and fragments concerning Nyx and the Deep Lattice.\n- Different members may view Nyx as a prisoner, god, engine, weapon, historical intelligence, or catastrophe.\n- The Choir may understand the pact better than Seth does, but its knowledge is partial, factional, ritualized, or politically dangerous.\n- It should not immediately explain everything. Contact with the Choir creates competing interpretations, demands, and risks."
+    },
+    {
+      "title": "The Nyx-Seth Pact",
+      "keys": [
+        "the pact",
+        "gold-thread circuitry",
+        "marked hand",
+        "impossible repair",
+        "hidden circuits",
+        "violet signature"
+      ],
+      "type": "lore",
+      "content": "- The pact formed when Seth touched Nyx's core inside a sealed chamber beneath a dead transit station.\n- It created a living interface: Nyx can perceive and influence the physical city through Seth, while Seth can interpret and manipulate systems through Nyx.\n- The pact grants technical miracles, not effortless solutions. Seth still needs access, judgment, tools, time, and willingness to accept risk.\n- Major uses can leave violet signatures, reveal hidden pathways, strain Seth's body, wake dormant systems, or draw Nyx's attention toward objectives she has not explained.\n- There were no witnesses. The central early-game tension is preserving that secrecy while Seth's visible competence becomes impossible to ignore."
+    },
+    {
+      "title": "Violet Signatures",
+      "keys": [
+        "violet signature",
+        "violet flicker",
+        "violet light",
+        "violet static",
+        "impossible energy pattern"
+      ],
+      "type": "lore",
+      "content": "- Nyx-linked interventions can leave brief violet light, static, diagnostic anomalies, or impossible energy patterns in nearby infrastructure.\n- Most witnesses treat these as relay faults, contamination, sabotage, or unfamiliar arcane technology unless they possess specialized knowledge.\n- Crown and Relay Ministry systems may correlate signatures across locations even when individual observers cannot.\n- Violet evidence should create escalating investigative pressure without automatically revealing Nyx's identity."
+    },
+    {
+      "title": "Dead Transit Station",
+      "keys": [
+        "dead transit station",
+        "abandoned station",
+        "sealed chamber",
+        "broken relay",
+        "station relay"
+      ],
+      "type": "location",
+      "content": "- The opening location is a dead transit station beneath the active city, where a failing relay threatens power and water pressure for a Sump block.\n- Beneath the ordinary service infrastructure is a sealed pre-city chamber containing old gold circuitry, black glass, and Nyx's core access point.\n- The machine initially tells Seth: \"You are not authorized.\" He touches it anyway.\n- After the pact forms, the relay is repaired and the hidden chamber remains evidence that must be concealed, revisited, secured, or contested."
+    }
+  ]
+}
