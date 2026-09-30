@@ -96,35 +96,9 @@ export function AutomaticMemoryOverview({ adventure, dispatch }: AdventurePagePr
         <p className="muted">Cumulative background tokens recorded: {backgroundTokens.promptTokens.toLocaleString()} input, {backgroundTokens.completionTokens.toLocaleString()} output. Exact request counts and per-turn token use are not recorded; the activity below cannot estimate cost.</p>
       </div>
 
-      <details className="panel editor-tools-panel" open>
-        <summary>Inline discovery of new Story Cards</summary>
-        <p className="muted">These categories filter only <strong>new cards proposed in the narrator's hidden output</strong>. They do not switch off existing-card updates, Character thoughts, Plot Essentials, Active Pressure, or background discovery.</p>
-        <CheckboxField
-          label="Allow inline new-card discovery"
-          checked={systemTriggers.enabled !== false}
-          onChange={enabled => dispatch({ type: "SET_SYSTEM_TRIGGER_SETTINGS", settings: { ...systemTriggers, enabled } })}
-        />
-        <div className="toolbar">
-          <button type="button" onClick={() => dispatch({ type: "SET_SYSTEM_TRIGGER_SETTINGS", settings: { ...systemTriggers, enabled: true, categories: quietCategories } })}>Quiet entity-only</button>
-          <button type="button" onClick={() => dispatch({ type: "SET_SYSTEM_TRIGGER_SETTINGS", settings: { ...systemTriggers, enabled: true, categories: balancedCategories } })}>Balanced story memory</button>
-        </div>
-        <p className="muted">Quiet allows character and world facts. Balanced also allows relationship, plot, and status categories. The narrator can propose at most one new card in a response; the category does not fix its destination subtype.</p>
-        <div className="grid two disabled-when-off" data-disabled={systemTriggers.enabled === false}>
-          {categories.map(({ key, label, description }) => (
-            <div key={key}>
-              <CheckboxField
-                label={label}
-                checked={systemTriggers.categories[key] !== false}
-                onChange={enabled => dispatch({ type: "SET_SYSTEM_TRIGGER_SETTINGS", settings: { ...systemTriggers, categories: { ...systemTriggers.categories, [key]: enabled } } })}
-              />
-              <p className="muted">{description}</p>
-            </div>
-          ))}
-        </div>
-      </details>
-
       <div className="panel">
         <h3>Destinations and approval</h3>
+        <p>The advanced narrator filters below affect only new card suggestions in the story response. They do not control card types or background discovery.</p>
         <p className="muted">Counts below describe saved suggestion history, not how often a memory was sent to the model. A required-review proposal waits even when auto-approve is on.</p>
         <div className="memory-destination-list">
           {destinations.map(destination => {
@@ -153,6 +127,33 @@ export function AutomaticMemoryOverview({ adventure, dispatch }: AdventurePagePr
           </div>
         </details>
       </div>
+
+      <details className="panel editor-tools-panel">
+        <summary>Advanced: narrator new-card filters</summary>
+        <p className="muted">These categories filter only <strong>new cards proposed in the narrator's hidden output</strong>. They do not switch off existing-card updates, Character thoughts, Plot Essentials, Active Pressure, or background discovery.</p>
+        <CheckboxField
+          label="Allow inline new-card discovery"
+          checked={systemTriggers.enabled !== false}
+          onChange={enabled => dispatch({ type: "SET_SYSTEM_TRIGGER_SETTINGS", settings: { ...systemTriggers, enabled } })}
+        />
+        <div className="toolbar">
+          <button type="button" onClick={() => dispatch({ type: "SET_SYSTEM_TRIGGER_SETTINGS", settings: { ...systemTriggers, enabled: true, categories: quietCategories } })}>Quiet entity-only</button>
+          <button type="button" onClick={() => dispatch({ type: "SET_SYSTEM_TRIGGER_SETTINGS", settings: { ...systemTriggers, enabled: true, categories: balancedCategories } })}>Balanced story memory</button>
+        </div>
+        <p className="muted">Quiet allows character and world facts. Balanced also allows relationship, plot, and status categories. The narrator can propose at most one new card in a response; the category does not fix its destination subtype.</p>
+        <div className="grid two disabled-when-off" data-disabled={systemTriggers.enabled === false}>
+          {categories.map(({ key, label, description }) => (
+            <div key={key}>
+              <CheckboxField
+                label={label}
+                checked={systemTriggers.categories[key] !== false}
+                onChange={enabled => dispatch({ type: "SET_SYSTEM_TRIGGER_SETTINGS", settings: { ...systemTriggers, categories: { ...systemTriggers.categories, [key]: enabled } } })}
+              />
+              <p className="muted">{description}</p>
+            </div>
+          ))}
+        </div>
+      </details>
 
       <details className="panel editor-tools-panel">
         <summary>Recent memory activity and trace</summary>

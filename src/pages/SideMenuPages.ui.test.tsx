@@ -515,6 +515,10 @@ describe("side menu page smoke coverage", () => {
 
     expect(screen.getByText("Background Story Card discovery")).toBeInTheDocument();
     expect(screen.getByText(/Background-discovered plot cards currently follow the general Story Cards switch/)).toBeInTheDocument();
+    expect(screen.getByText(/The advanced narrator filters below affect only new card suggestions/)).toBeInTheDocument();
+    const advanced = screen.getByText("Advanced: narrator new-card filters").closest("details");
+    expect(advanced).not.toHaveAttribute("open");
+    await user.click(screen.getByText("Advanced: narrator new-card filters"));
     const inlineToggle = screen.getByRole("checkbox", { name: "Allow inline new-card discovery" });
     expect(inlineToggle).toBeChecked();
     await user.click(inlineToggle);
