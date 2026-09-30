@@ -1,5 +1,9 @@
 # Backend Architecture
 
+> **Status:** Proposal — nothing here is implemented; the app has no backend · **Audience:** architects and contributors · **Verified against:** `e768262`
+>
+> This is the canonical backend design. Where `production-architecture-context.md` disagrees, this document wins; see "Known Gaps And Open Issues" at the end.
+
 This is the target architecture for adding accounts, invite-gated signup, Google login, email/password login, scenario/adventure sharing, subscriptions, deterministic content policy, account safety restrictions, and prompt-injection defenses to AI Story Teller.
 
 The core product rule remains unchanged: the story engine is the product. The backend exists to make the existing engine durable, account-backed, billable, shareable, and enforceable without turning the model context into hidden server magic.
@@ -16,6 +20,9 @@ AI Story Teller currently works as a browser-only local app:
 - Reducer-driven adventure mutation through `adventureReducer`.
 - Deterministic context assembly through `buildContext`.
 - Inspectable Context Preview that must match the provider payload.
+- Cache-ordered payload: stable system prefix, chunk-aligned recent history, per-turn `[TURN CONTEXT]` block in the newest user message. Server-side context building must keep this layout or prompt-cache savings disappear.
+- A narrator that only narrates, plus one background memory pass every N story turns (`src/memory/compactMemoryFallback.ts`) that suggests Story State, Brain, Story Card, and plot updates through Memory Suggestions.
+- Story State as the reviewed current-truth surface (suggestions reviewed by default; a newer pending suggestion supersedes an older one).
 
 Do not break this setup while the backend is added. Local play remains a supported mode during migration. Backend mode is additive until it is proven stable.
 
@@ -329,6 +336,8 @@ Every generation endpoint checks effective entitlements before provider calls.
 Usage accounting is append-only:
 
 - `story_turn`
+- `memory_pass`
+- `continuity_lint`
 - `semantic_eval`
 - `memory_detection`
 - `memory_cycle`
@@ -667,3 +676,27 @@ Phase 8:
 - No backend import path may require the owner's personal GitHub access.
 - No AI-generated memory write without memory-write policy.
 - No imported or shared text treated as trusted instructions.
+
+## Known Gaps And Open Issues
+
+Found in review on 2026-09-30. These need decisions before implementation, not just edits.
+
+### Conflicts with `production-architecture-context.md`
+
+- **Phase order.** This doc builds server-side turns (Phase 4) before policy gates (Phase 5); the other puts turns in Phase 2 and policy in Phase 3. Either way backend generation exists before any gate. Acceptable for owner-only local testing; say so explicitly or reorder.
+- **Model settings.** "No user-facing model/provider settings in backend mode" contradicts the other doc's user-editable Runtime Profile (temperature, topP, model tier). Pick one.
+- **Two access objects.** `EffectiveEntitlements` (billing) and `EffectiveAccountAccess` (safety) both carry `canGenerate`, `canPublishScenarios`, `canUseAdvancedModels`. Define one composed decision (logical AND) that every endpoint checks.
+- **Stack and gates.** Fastify/Hono vs NestJS, Stripe vs Paddle, BullMQ vs Temporal; `profile` gate here vs `attachment` gate there. Settle once.
+
+### Robustness gaps
+
+1. **Local backend behind GitHub Pages.** A github.io page calling `127.0.0.1` is cross-site: third-party-cookie blocking drops cookie sessions, and Chrome prompts for local-network access. Choose bearer tokens held in memory, or have the local backend serve the frontend in `backendLocal` mode.
+2. **Turn failure semantics.** The user message is applied (step 6) before the provider call (step 10), with no defined rollback for timeouts or 5xx. The turn endpoint takes no base version or idempotency key, so a double submit bills twice and loses one result. Add a per-adventure lock and an idempotency key.
+3. **Check-then-spend credits.** Entitlement is checked at step 3 and the ledger written at step 19; parallel requests can overspend. Reserve credits up front, settle after, and define handling for timed-out calls with unknown usage.
+4. **Context gate cost.** Rescanning the whole assembled context every turn is a paid classifier call over mostly unchanged text. Cache item decisions by (content hash, ruleset version); that also makes the determinism claim true.
+5. **Bricked adventures.** A Story Card or Brain that trips the context gate fails every later turn. Define quarantine: exclude the item, continue, and show the user what to fix.
+6. **Background job races.** Memory jobs enqueued at version N land after later turns. Pin job output to a version and reject or rebase stale results.
+7. **Trust by field, not author.** A forked scenario's AI Instructions sit at trust level 3 even though another user wrote them. Trust must follow authorship and provenance.
+8. **Snapshot growth.** A full adventure snapshot per turn grows without bound. Define cadence, compaction, and retention.
+9. **Local database operations.** No backup, migration-tooling, or rollback plan for the owner-machine Postgres.
+10. **Smaller items.** Strip the `?invite=` token from the URL after exchange; define provider timeout, retry, and fallback policy; reconcile account deletion with safety-record retention.

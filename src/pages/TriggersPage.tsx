@@ -87,8 +87,9 @@ export function TriggersPage({ adventure, dispatch }: AdventurePageProps) {
       <details className="panel editor-tools-panel" open>
         <summary>System memory triggers</summary>
         <p className="muted">
-          Inline story card detection runs without extra API calls. The model flags permanent story facts while writing
-          each response, then proposals go to Memory Suggestions for approval.
+          These categories decide which new Story Cards the background memory pass may suggest. It suggests at most one
+          new card per pass, only in an enabled category, and it goes to Memory Suggestions for approval. With system
+          triggers off, the pass still updates existing cards but suggests no new ones.
         </p>
         {(() => {
           const st = adventure.systemTriggers;
@@ -122,8 +123,8 @@ export function TriggersPage({ adventure, dispatch }: AdventurePageProps) {
                 </button>
               </div>
               <p className="muted">
-                Quiet tracks new characters and world facts. Balanced also tracks relationship, plot, and status milestones;
-                the prompt still asks for only the strongest durable memory tag per response.
+                Quiet tracks new characters and world facts. Balanced also tracks relationship, plot, and status milestones.
+                Either way the pass suggests at most one new card at a time.
               </p>
               <div className="grid two disabled-when-off" data-disabled={!enabled}>
                 {categories.map(({ key, label, description }) => (

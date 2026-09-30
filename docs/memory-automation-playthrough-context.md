@@ -1,5 +1,9 @@
 # Memory Automation Playthrough Context
 
+> **Status:** History (incident record, July 2026) · **Audience:** contributors · **Verified against:** `e768262`
+>
+> **Superseded in part:** compact cards are no longer pinned automatically. See `memory-cost-quality.md` → "Pins and existing saves". The rest of the compact-card policy still applies.
+
 This note captures the Arcane playthrough audit from the `Arcane-After-the-Rocket(2).json` export and the deterministic memory changes made afterward.
 
 ## Playthrough Diagnosis

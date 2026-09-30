@@ -1,5 +1,9 @@
 # Production Architecture Context
 
+> **Status:** Proposal — nothing here is implemented; the app has no backend · **Audience:** architects and contributors · **Verified against:** `e768262`
+>
+> Companion to `backend-architecture.md`, which is canonical where the two disagree. Its "Known Gaps And Open Issues" section lists the conflicts. Still useful here and not duplicated there: the `PolicyDecision` shape, profile models, logging/observability events, retention defaults, security requirements, and open product decisions.
+
 This document is an architect-facing handoff for taking AI Story Teller from a browser-only local tool to a production service with accounts, subscriptions, server-side model calls, hard deterministic content regulation, profiles, logging, and support operations.
 
 It is intentionally full-stack. It describes what should exist, what must remain true from the current app, and where the production boundaries should be drawn.

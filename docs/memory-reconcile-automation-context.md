@@ -1,5 +1,9 @@
 # Memory Reconcile Automation Context
 
+> **Status:** History (July 2026) · **Audience:** contributors · **Verified against:** `e768262`
+>
+> Check Recent Entries still exists on the Memory page. Automatic memory is now the background memory pass (see `FEATURES.md` §1); this note predates it.
+
 This note captures the July 2026 update prompted by the Arcane play save where resolved plot threads, especially Ambessa and broad Jinx-collaboration pressure, kept reappearing because active memory surfaces still described them as live.
 
 ## Problem

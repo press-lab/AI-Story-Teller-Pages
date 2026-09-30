@@ -1,5 +1,9 @@
 # Background memory cost and quality
 
+> **Status:** History (design record) · **Audience:** contributors · **Verified against:** `e768262`
+>
+> The top section describes the current design. Since it was written: Story State rewrites are reviewed by default (`e768262`), and the pass cadence is exposed as Settings → Automatic memory → "Update memory every N story turns" (default 1). Everything below "Memory maintenance keeps the narrator's model" describes the legacy `runMemoryCycle` and inline memory tagging, which normal play no longer uses.
+
 ## 2026-09-30 redesign (from the Seattle Hunger playthrough)
 
 Evidence from a 911-turn save: background memory used ~15.5M prompt tokens against ~10M
@@ -21,6 +25,8 @@ Changes:
 Targets to watch in play: out-of-character corrections at or below ~3 per 100 turns, and
 most story-call input served from cache. These are observations to make, not guarantees.
 
+
+## Legacy: memory-cycle optimizations (pre-2026-09-30)
 
 Memory maintenance keeps the narrator's model, context budget, response length,
 and cadence settings unchanged. The optimization is in background reference

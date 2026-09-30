@@ -1,5 +1,18 @@
 # AI Story Teller Agent Guide
 
+> **Status:** Canonical (rules and invariants) · **Audience:** contributors and agents · **Verified against:** `e768262`
+
+## Documentation Map
+
+- `AGENTS.md` (this file): rules, invariants, and the finish workflow. Wins any conflict with other docs.
+- `FEATURES.md`: how every system behaves today — section order, memory surfaces, proposal types, turn loop.
+- `README.md`: setup, deploy, and a short overview. It links here instead of repeating the contract.
+- `docs/README.md`: index of every other doc with its status (Guide, History, Proposal, Reference) and a UI-label ↔ code-name glossary.
+- `src/pages/HelpPage.tsx`: the in-app Documentation page. User-facing; keep it consistent with `FEATURES.md`.
+- `.claude/agents/aist-workspace.md`: Pages vs Saves repo routing and save-file mechanics.
+
+Docs under `docs/` marked History or Proposal describe past incidents or unbuilt designs. Do not treat them as current behavior.
+
 ## Architecture
 
 This is a browser-only React + TypeScript + Vite app. There is no backend. Adventure data is persisted in IndexedDB through `src/db/adventureDb.ts`. Tiny user configuration, including the runtime API key, is stored in localStorage through `src/hooks/useLocalStorage.ts`.
@@ -41,7 +54,7 @@ Do not directly mutate adventure objects in components, trigger engines, importe
 - Rolling Summary and Scene State are retained on the adventure object for save-compat but are no longer emitted as their own assembled sections (see `FEATURES.md` §18). Quest state is not part of the default section assembly.
 - Protected means non-droppable during token truncation. Pinned means prioritized, not automatically non-droppable.
 - Only the system shell and user-marked protected context are absolutely non-droppable.
-- Budget cuts are controlled by `memoryPriorityMode`, `allowSystemToPrioritizeMemory`, `allowSystemToDropUnpinnedTriggeredCards`, and `allowSystemToTruncateSummary`.
+- Budget cuts are controlled by `memoryPriorityMode`, `allowSystemToPrioritizeMemory`, and `allowSystemToDropUnpinnedTriggeredCards`. `allowSystemToTruncateSummary` is legacy: Rolling Summary is not assembled into context.
 - In `userLocked`, drop older recent messages before memory when possible. In `systemSuggested`, the lowest scored unprotected item may drop first. In `hybrid`, system-suggested memory can drop before user-locked context.
 - Log excluded context items with `budget_exceeded`, `inactive`, `cooldown`, or `not_triggered`.
 - Log context build decisions for inclusion, exclusion, truncation, and ordering. Include `generatedBy` in ordering decisions.
@@ -49,7 +62,7 @@ Do not directly mutate adventure objects in components, trigger engines, importe
 - Context Preview must match the provider payload returned by `buildContext`. Empty sections are excluded from the payload but always present in `result.sections`.
 - `ContextBuildResult.pendingProposals` exposes pending Memory Proposals for the UI. These are never included in the model payload.
 - AI-generated memory updates must go through `src/memory/applyAIMemoryUpdate.ts` and then through reducer actions.
-- AI may update BrainEntry fields (thoughts, knowledge boundary) only when the BrainEntry already exists, StoryCard content/triggers/state, Plot Essentials component content, the one-sentence Active Pressure component through the `plotPressureUpdate` path only, and the Story State component through the `storyStateUpdate` path only (full replacement, respects the component's Auto-update toggle).
+- AI may update BrainEntry fields (thoughts, knowledge boundary) only when the BrainEntry already exists, StoryCard content/triggers/state, Plot Essentials component content, the one-sentence Active Pressure component through the `plotPressureUpdate` path only, and the Story State component through the `storyStateUpdate` path only (full replacement; skipped when the block's "Background memory pass suggests Story State updates" switch — `autoUpdate` — is off).
 - AI must not mutate AI Instructions, Author's Note, provider config, trigger definitions, quest definitions, raw imports, or the system shell.
 - Memory Inbox proposals live in `activeState.memoryProposals`; approving/rejecting/ignoring proposals must go through reducer actions.
 - Do not add silent stubs. If a feature is incomplete, label it clearly in both code and UI.
@@ -125,6 +138,7 @@ The Arc Director makes an antagonist's arc climb and *break* on its own, configu
 After any completed scoped code or documentation change, do not stop at a summary. Finish by:
 
 1. Run the relevant validation commands, including the full Validation set below when feasible.
+1b. If the change alters behavior described in `FEATURES.md`, this file, `README.md`, or the in-app Help page, update those docs in the same commit.
 2. Check `git status --short` and stage only the files changed for the scoped task.
 3. Commit the scoped work.
 4. Push the current branch to its tracked remote.

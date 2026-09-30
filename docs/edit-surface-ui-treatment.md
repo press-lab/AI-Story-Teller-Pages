@@ -1,5 +1,7 @@
 # Edit Surface UI Treatment
 
+> **Status:** Guide (UI conventions) · **Audience:** contributors · **Verified against:** `e768262`
+
 This app wants two things that usually fight each other: every authoring control should stay available, but the screen should feel calm enough to scan. The current treatment resolves that by making list views behave like directories and reserving full visual weight for the thing the user is actively editing.
 
 ## Principles
@@ -14,7 +16,7 @@ This app wants two things that usually fight each other: every authoring control
 
 ## Current Application
 
-- Plot groups components into Core Story Contract, Current Story State, and Extra World Blocks.
+- Plot groups components into Core Story Contract, Current Story State, and Extra World Blocks. Current Story State lists Story State first, then Plot Essentials, Active Pressure, and Current Arc; within a group, items follow the group's declared type order, then priority.
 - Story Cards use dense rows that surface title, type/status, trigger keys, and a content preview before opening the full editor.
 - Characters use cast rows that surface name, aliases, thought count, and latest active thought before opening the full editor.
 - Memory Suggestions, Automation, Chronicle, Context, Saves, Import / Export, and Settings should follow the same page-summary plus grouped-work pattern.

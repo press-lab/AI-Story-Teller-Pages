@@ -1,5 +1,7 @@
 # User Taste Profile for AIST/AID
 
+> **Status:** Reference (personal taste profile for scenario work) · **Audience:** agents building or tuning scenarios · Not app behavior.
+
 Last updated: 2026-06-30
 
 Use this as repo-local context when reviewing, building, or tuning AI Story Teller scenarios for Seth. This profile is based on a read of the supplied AI Dungeon zipped saves from `C:\Users\sethp\Documents\AID Saves\` and the latest on-disk saves per story in `C:\Users\sethp\Documents\GitHub\AI-Stoyer-Teller-Saves\sync\saves\`, plus Seth's correction that forced spy/paperwork arcs are not a favorite.

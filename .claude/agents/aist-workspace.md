@@ -89,6 +89,7 @@ The top-level `adventure` keys include `id, title, openingScene, createdAt, upda
 
 ## Pages repo workflow (summary; its AGENTS.md is authoritative)
 
+- Docs: `AGENTS.md` → "Documentation Map" says which doc is canonical for what; `docs/README.md` indexes the rest with a status per file (History and Proposal docs are not current behavior).
 - Validate with `npm.cmd test`, `npm.cmd run build`, and `npm.cmd run smoke:prod` (Windows shell, hence `npm.cmd`). Dev server: `npm.cmd run dev` on port 5173.
 - A push to `main` triggers `.github/workflows/deploy.yml`, which builds `dist/` and deploys to GitHub Pages. `vite.config.ts` uses `base: "./"` for the project-path URL.
 - Finish every scoped change by running the validation, staging only the files you touched, committing, and pushing, then report the full commit hash. Call out unrelated dirty files instead of committing them.
