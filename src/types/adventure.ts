@@ -343,6 +343,11 @@ export interface ProviderConfig {
   sessionId?: string;
   /** OpenRouter-only provider routing preference. Empty/undefined keeps OpenRouter's balanced default. */
   openRouterProviderSort?: OpenRouterProviderSort;
+  /**
+   * DeepSeek only: turn on the model's reasoning mode for out-of-character (comms) turns, where the
+   * narrator must reconcile a correction with continuity. Story turns keep reasoning off.
+   */
+  reasoningForCorrections?: boolean;
 }
 
 export interface ProviderRequestThrottle {

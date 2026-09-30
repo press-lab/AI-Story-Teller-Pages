@@ -9,14 +9,17 @@ import { sendOpenAICompatibleChatCompletion } from "../providers/openAICompatibl
 import { runMemoryCycle, runSemanticPostTurnEvaluation } from "../triggers/semanticEngine";
 
 vi.mock("../db/adventureDb", () => ({ saveAdventure: vi.fn(async () => undefined) }));
-vi.mock("../providers/openAICompatible", () => ({ sendOpenAICompatibleChatCompletion: vi.fn() }));
+vi.mock("../providers/openAICompatible", async importOriginal => ({
+  ...await importOriginal<typeof import("../providers/openAICompatible")>(),
+  sendOpenAICompatibleChatCompletion: vi.fn(),
+}));
 vi.mock("../triggers/semanticEngine", async importOriginal => ({
   ...await importOriginal<typeof import("../triggers/semanticEngine")>(),
   runMemoryCycle: vi.fn(async () => ({ actions: [] })),
   runSemanticPostTurnEvaluation: vi.fn(),
 }));
 
-function setup(enabled = true, customRule = false) {
+function setup(enabled = true, customRule = false, providerOverrides: Partial<typeof defaultModelConfig> = {}) {
   const initial = createDefaultAdventure("Call accounting");
   initial.memoryDetectionSettings = { ...initial.memoryDetectionSettings, enabled: !enabled }; // deliberately stale saved settings
   initial.memoryAutoApprove = { ...initial.memoryAutoApprove, storyCard: true };
@@ -25,7 +28,7 @@ function setup(enabled = true, customRule = false) {
   const globalMemory: MemoryDetectionSettings = { enabled, everyNTurns: 3, generateContent: true };
   return renderHook(() => {
     const [adventure, setAdventure] = useState<Adventure | undefined>(initial);
-    const runtime = useAdventureRuntime(adventure, setAdventure, { ...defaultModelConfig, apiKey: "test" }, vi.fn(), vi.fn(), vi.fn(), async () => undefined, globalMemory);
+    const runtime = useAdventureRuntime(adventure, setAdventure, { ...defaultModelConfig, ...providerOverrides, apiKey: "test" }, vi.fn(), vi.fn(), vi.fn(), async () => undefined, globalMemory);
     return { runtime, adventure };
   });
 }
@@ -80,6 +83,16 @@ describe("runtime call accounting: narrator plus scheduled background memory pas
     await act(async () => { await result.current.runtime.submitTurn("[Out of Character: tomorrow is Tuesday]", "comms"); });
     expect(storyCalls()).toHaveLength(1);
     expect(memoryCalls()).toHaveLength(0);
+  });
+
+  it("turns on DeepSeek reasoning only for out-of-character corrections when enabled", async () => {
+    const { result } = setup(true, false, { baseUrl: "https://api.deepseek.com/anthropic", reasoningForCorrections: true });
+    await act(async () => { await result.current.runtime.submitTurn("[Out of Character: tomorrow is Tuesday]", "comms"); });
+    await act(async () => { await result.current.runtime.submitTurn("I nod."); });
+    const [ooc, story] = storyCalls().map(([options]) => options);
+    expect(ooc.thinking).toBe("enabled");
+    expect(ooc.config.maxOutputTokens).toBeGreaterThan(story.config.maxOutputTokens);
+    expect(story.thinking).toBeUndefined();
   });
 
   it("logs an invalid memory pass and never escalates to the multi-call cycle", async () => {

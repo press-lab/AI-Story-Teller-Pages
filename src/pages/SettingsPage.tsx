@@ -329,6 +329,15 @@ export function SettingsPage({
                           checked={preset.promptCaching ?? false}
                           onChange={(promptCaching) => updatePreset(preset.id, { promptCaching })}
                         />
+                        <CheckboxField
+                          label="Use reasoning on out-of-character corrections (DeepSeek only)"
+                          checked={preset.reasoningForCorrections ?? false}
+                          onChange={(reasoningForCorrections) => updatePreset(preset.id, { reasoningForCorrections })}
+                        />
+                        <p className="muted" style={{ fontSize: "0.8em", margin: "0.25rem 0 0" }}>
+                          When you send an [Out of Character] correction, the model thinks before rewriting. Costs extra output
+                          tokens on those turns only; story turns keep reasoning off.
+                        </p>
                         <Field label="OpenRouter routing preference">
                           <select
                             value={preset.openRouterProviderSort ?? ""}

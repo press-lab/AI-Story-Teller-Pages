@@ -1,5 +1,5 @@
 import type { Adventure, MemoryProposalType, StoryCard, StoryCardMemoryMode } from "../types/adventure";
-import { isGuardedStoryCardMemory } from "./storyCardPolicy";
+import { isFirstPersonRecallTrigger, isGuardedStoryCardMemory } from "./storyCardPolicy";
 
 export interface MemoryTargetDraft {
   proposedType: MemoryProposalType;
@@ -167,6 +167,8 @@ export function sanitizeStoryCardTriggers(
     if (!norm || norm === titleNorm) continue;
     if (seen.has(norm)) continue;
     if (isWeakTrigger(norm)) continue;
+    // Recall phrasings never appear in narration; event memories keep them as recall cues instead.
+    if (memoryMode !== "historical" && isFirstPersonRecallTrigger(clean)) continue;
     if ((memoryMode === "living" || memoryMode === "historical") && triggerBelongsToCharacterCard(adventure, norm, targetId)) continue;
     if (triggerBelongsToOtherCard(adventure, norm, targetId)) continue;
     seen.add(norm);

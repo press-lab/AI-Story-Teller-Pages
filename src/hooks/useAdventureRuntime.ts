@@ -9,7 +9,7 @@ import { PLOT_ESSENTIALS_BEST_PRACTICES } from "../ai/authoringBestPractices";
 import { runStoryCardAudit, type AuditRecommendation } from "../memory/storyCardAudit";
 import { runComponentAudit, type ComponentAuditRecommendation } from "../memory/componentAudit";
 import { runBrainAudit, type BrainAuditRecommendation } from "../memory/brainAudit";
-import { sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
+import { isNativeDeepSeekProvider, sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
 import { resolveBackgroundProviderConfig } from "../providers/backgroundProvider";
 import { adventureReducer } from "../state/adventureReducer";
 import {
@@ -65,6 +65,9 @@ export function applyResponseLengthHint(config: RuntimeProviderSettings, hint: n
     : lengthBoundedCap;
   return { ...config, maxOutputTokens: Math.min(configuredCap, lengthBoundedCap) };
 }
+
+/** Extra output budget for DeepSeek reasoning on out-of-character correction turns. */
+export const CORRECTION_REASONING_RESERVE = 2500;
 
 /** The narrator no longer writes hidden memory output, so no extra output budget is reserved. */
 function hiddenOutputReserveTokens(_context: ContextBuildResult): number {
@@ -379,7 +382,15 @@ export function useAdventureRuntime(
             hiddenOutputReserveTokens(context),
           );
           if (mode === "comms") {
-            return sendOpenAICompatibleChatCompletion({ messages, config: storyConfig });
+            const reasoning = Boolean(storyConfig.reasoningForCorrections) && isNativeDeepSeekProvider(storyConfig);
+            return sendOpenAICompatibleChatCompletion({
+              messages,
+              // Reasoning tokens count as output, so give them room beyond the visible length cap.
+              config: reasoning
+                ? applyResponseLengthHint(mergeProviderConfig(snapshot, providerSettings), snapshot.activeState.responseLengthHint, CORRECTION_REASONING_RESERVE)
+                : storyConfig,
+              ...(reasoning ? { thinking: "enabled" as const } : {}),
+            });
           }
           return sendStoryCompletionWithGuard({
             messages,

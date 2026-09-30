@@ -18,10 +18,15 @@ export async function scanEventMemories(
     onProgress("Reading messages " + (start + 1) + "–" + Math.min(start + 24, messages.length) + " of " + messages.length + "; " + found + " suggestions added.");
     const result = await detectStoryCardProposals(snapshot, config, { messages: messages.slice(start, start + 24), eventsOnly: true });
     if (result.errors.length) throw new Error(result.errors.join(" "));
-    const next = result.actions.reduce(adventureReducer, snapshot);
+    // Count the scan's spend with the other background calls so the usage totals are honest.
+    const actions: AdventureAction[] = [
+      ...result.actions,
+      { type: "ACCUMULATE_BACKGROUND_TOKENS", promptTokens: result.tokenUsage.promptTokens, completionTokens: result.tokenUsage.completionTokens },
+    ];
+    const next = actions.reduce(adventureReducer, snapshot);
     found += next.activeState.memoryProposals.length - snapshot.activeState.memoryProposals.length;
     snapshot = next;
-    onActions(result.actions);
+    onActions(actions);
   }
   onProgress((signal.aborted ? "Stopped" : "Finished") + ": " + found + " Event Memory suggestions added for review.");
   return found;

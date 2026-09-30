@@ -5,7 +5,7 @@ import { buildContext } from "../contextBuilder/contextBuilder";
 import { applyAIMemoryUpdate } from "./applyAIMemoryUpdate";
 import { detectStoryCardProposals } from "./memoryDetection";
 import { scanEventMemories } from "./eventMemoryScan";
-import { sameEventMemory, selectEventMemories } from "./eventMemory";
+import { MAX_EVENT_RECALL, sameEventMemory, selectEventMemories } from "./eventMemory";
 import type { MemoryProposal } from "../types/adventure";
 vi.mock("../providers/openAICompatible", () => ({ isNativeDeepSeekProvider: () => false, sendOpenAICompatibleChatCompletion: vi.fn() }));
 import { sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
@@ -97,7 +97,8 @@ describe("Event Memories", () => {
   it("caps automatic recall and respects inactive/manual cards and explicit pins", () => {
     const a = seed(); a.messages = [];
     a.storyCards = Array.from({ length: 6 }, (_, i) => makeStoryCard({ ...eventCard(), id: "event-" + i }));
-    expect(selectEventMemories(a.storyCards, "Edythe remembers our first meeting").size).toBe(3);
+    expect(selectEventMemories(a.storyCards, "Edythe remembers our first meeting").size).toBe(MAX_EVENT_RECALL);
+    expect(MAX_EVENT_RECALL).toBe(2);
     a.storyCards[0].active = false;
     a.storyCards[1].inclusionPolicy = "manual";
     const selected = selectEventMemories(a.storyCards, "Edythe remembers our first meeting");
@@ -105,6 +106,17 @@ describe("Event Memories", () => {
     expect(selected.has("event-1")).toBe(false);
     a.storyCards[2].pinned = true;
     expect(buildContext(a, { currentInput: "Dinner" }).sections.find(s => s.id === "pinnedStoryCards")?.items.some(i => i.id === "event-2")).toBe(true);
+  });
+
+  it("recalls an event from a participant plus its distinctive nouns when the recall cue is first-person phrasing", () => {
+    const piano = makeStoryCard({
+      id: "piano", title: "Seth Finds Edythe Playing Piano at Night", type: "event", memoryMode: "historical", content: "Seth followed the music and found Edythe at the piano.",
+      keys: ["when I found her at the piano"],
+      eventMemory: { kind: "sharedExperience", participants: ["Edythe", "Seth"], recallCues: ["the night I found Edythe playing piano"], sourceMessageIds: ["m1"] },
+    });
+    expect(selectEventMemories([piano], "Edythe sits down at the piano again and starts playing.").has("piano")).toBe(true);
+    expect(selectEventMemories([piano], "Edythe checks the car.").has("piano")).toBe(false);
+    expect(selectEventMemories([piano], "Someone is playing piano downstairs.").has("piano")).toBe(false);
   });
 
   it("blocks autonomous rewriting while retaining explicit editing", () => {

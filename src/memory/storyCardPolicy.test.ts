@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createDefaultAdventure, makeStoryCard, normalizeAdventure } from "../state/defaults";
-import { applyGuardedStoryCardPolicy, storyCardContextContent } from "./storyCardPolicy";
+import { applyGuardedStoryCardPolicy, isFirstPersonRecallTrigger, storyCardContextContent } from "./storyCardPolicy";
 import { adventureReducer } from "../state/adventureReducer";
 import { buildContext } from "../contextBuilder/contextBuilder";
 
@@ -43,5 +43,20 @@ describe("storyCardContextContent", () => {
     });
 
     expect(storyCardContextContent(card)).toBe("Condensed pact context.");
+  });
+});
+
+describe("first-person recall triggers", () => {
+  it.each([
+    ["the night I stayed in her room", true],
+    ["when she said I'd sleep on the floor", true],
+    ["my first night in the guest room", true],
+    ["what I told Carine", true],
+    ["Edythe's room", false],
+    ["Cullen House", false],
+    ["the piano", false],
+    ["Carine", false],
+  ])("%s → %s", (trigger, expected) => {
+    expect(isFirstPersonRecallTrigger(trigger)).toBe(expected);
   });
 });
