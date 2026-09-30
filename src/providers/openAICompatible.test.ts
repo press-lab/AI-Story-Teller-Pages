@@ -4,6 +4,7 @@ import {
   resetProviderThrottleForTests,
   sendOpenAICompatibleChatCompletion,
 } from "./openAICompatible";
+import { subscribeProviderUsage, type ProviderUsageEvent } from "./usage";
 import type { ProviderConfig } from "../types/adventure";
 
 const config: ProviderConfig = {
@@ -243,6 +244,30 @@ describe("sendOpenAICompatibleChatCompletion", () => {
       cacheReadTokens: 80,
       cacheCreationTokens: 40,
     });
+  });
+
+  it("reads DeepSeek prompt_cache_hit_tokens as cache reads", async () => {
+    mockFetch(200, {
+      choices: [{ message: { content: "ok" } }],
+      usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120, prompt_cache_hit_tokens: 64, prompt_cache_miss_tokens: 36 },
+    });
+    const result = await sendOpenAICompatibleChatCompletion({ messages: [{ role: "user", content: "Hi" }], config: { ...config, baseUrl: "https://api.deepseek.com" } });
+    expect(result.usage?.cacheReadTokens).toBe(64);
+  });
+
+  it("reports every billed response to usage listeners, including ones with no usable content", async () => {
+    const events: ProviderUsageEvent[] = [];
+    const unsubscribe = subscribeProviderUsage((event) => events.push(event));
+    try {
+      mockFetch(200, { choices: [{ message: {} }], usage: { prompt_tokens: 50, completion_tokens: 5, total_tokens: 55 } });
+      await expect(sendOpenAICompatibleChatCompletion({
+        messages: [{ role: "user", content: "Hi" }],
+        config: { ...config, sessionId: "ai-story-teller:adv-test" },
+      })).rejects.toThrow("no content");
+      expect(events).toEqual([{ sessionId: "ai-story-teller:adv-test", usage: { promptTokens: 50, completionTokens: 5, totalTokens: 55 } }]);
+    } finally {
+      unsubscribe();
+    }
   });
 
   it("uses Anthropic system cache blocks and reports cache usage", async () => {

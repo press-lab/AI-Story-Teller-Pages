@@ -11,6 +11,7 @@ import { runComponentAudit, type ComponentAuditRecommendation } from "../memory/
 import { runBrainAudit, type BrainAuditRecommendation } from "../memory/brainAudit";
 import { isNativeDeepSeekProvider, sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
 import { resolveBackgroundProviderConfig } from "../providers/backgroundProvider";
+import { adventureIdFromSessionId, combineProviderUsage, sessionIdForAdventure, subscribeProviderUsage } from "../providers/usage";
 import { adventureReducer } from "../state/adventureReducer";
 import {
   applyProviderResponse,
@@ -51,7 +52,7 @@ import { createId, nowIso } from "../utils/id";
 import type { RuntimeProviderSettings } from "../pages/pageTypes";
 
 function mergeProviderConfig(adventure: Adventure, settings: RuntimeProviderSettings): RuntimeProviderSettings {
-  const sessionId = `ai-story-teller:${adventure.id}`.slice(0, 256);
+  const sessionId = sessionIdForAdventure(adventure.id);
   return { ...adventure.modelConfig, ...settings, apiKey: settings.apiKey, sessionId };
 }
 
@@ -89,24 +90,12 @@ function correctionConfig(config: RuntimeProviderSettings, responseLengthHint: n
   return { ...bounded, maxOutputTokens: Math.min(bounded.maxOutputTokens, correctionCap) };
 }
 
-export function combineProviderUsage(...usages: Array<ProviderUsage | undefined>): ProviderUsage | undefined {
-  const present = usages.filter((usage): usage is ProviderUsage => usage !== undefined);
-  if (present.length === 0) return undefined;
-  const promptTokens = present.reduce((sum, usage) => sum + usage.promptTokens, 0);
-  const completionTokens = present.reduce((sum, usage) => sum + usage.completionTokens, 0);
-  const totalTokens = present.reduce(
-    (sum, usage) => sum + (usage.totalTokens || usage.promptTokens + usage.completionTokens),
-    0,
-  );
-  const cacheRead = present.reduce((sum, usage) => sum + (usage.cacheReadTokens ?? 0), 0);
-  const cacheWrite = present.reduce((sum, usage) => sum + (usage.cacheCreationTokens ?? 0), 0);
-  return {
-    promptTokens,
-    completionTokens,
-    totalTokens,
-    ...(present.some((usage) => usage.cacheReadTokens !== undefined) ? { cacheReadTokens: cacheRead } : {}),
-    ...(present.some((usage) => usage.cacheCreationTokens !== undefined) ? { cacheCreationTokens: cacheWrite } : {}),
-  };
+export { combineProviderUsage };
+
+/** Background token counts as a usage object, for attaching to the entry that triggered them. */
+function backgroundUsage(tokens: { promptTokens: number; completionTokens: number } | undefined): ProviderUsage | undefined {
+  if (!tokens || (tokens.promptTokens === 0 && tokens.completionTokens === 0)) return undefined;
+  return { ...tokens, totalTokens: tokens.promptTokens + tokens.completionTokens };
 }
 
 async function sendStoryCompletionWithGuard({
@@ -182,6 +171,10 @@ export function useAdventureRuntime(
   const wasHiddenRef = useRef(false);
   const pendingRetryRef = useRef(false);
   const continueTurnRef = useRef<(() => Promise<void>) | undefined>(undefined);
+  // Provider usage reported since the last write, keyed by adventure id. Folded into the adventure's
+  // lifetime spendTotal at the next persist, so no call is ever counted twice or dropped mid-turn.
+  const unrecordedSpendRef = useRef(new Map<string, ProviderUsage>());
+  const spendFlushTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => { adventureRef.current = adventure; }, [adventure]);
   useEffect(() => { providerSettingsRef.current = providerSettings; }, [providerSettings]);
@@ -202,15 +195,44 @@ export function useAdventureRuntime(
     return () => document.removeEventListener("visibilitychange", onVisibilityChange);
   }, []);
 
+  useEffect(() => {
+    // Every provider call lands here once. Calls made during a turn wait for the turn to finish and
+    // are merged into its result; anything else (background passes, manual tools) is written shortly after.
+    const unsubscribe = subscribeProviderUsage(({ sessionId, usage }) => {
+      const adventureId = adventureIdFromSessionId(sessionId);
+      if (!adventureId) return;
+      const pending = unrecordedSpendRef.current;
+      pending.set(adventureId, combineProviderUsage(pending.get(adventureId), usage)!);
+      scheduleSpendFlush();
+    });
+    return () => {
+      unsubscribe();
+      if (spendFlushTimerRef.current !== undefined) clearTimeout(spendFlushTimerRef.current);
+      spendFlushTimerRef.current = undefined;
+    };
+    // scheduleSpendFlush reads only refs, so the first render's copy stays correct.
+  }, []);
+
   const activeProviderConfig = useMemo(
     () => adventure ? mergeProviderConfig(adventure, providerSettings) : providerSettings,
     [adventure, providerSettings],
   );
 
+  /** Remove and return unrecorded spend for an adventure as a RECORD_SPEND action. */
+  function takeSpendActions(adventureId: string | undefined): AdventureAction[] {
+    if (!adventureId) return [];
+    const usage = unrecordedSpendRef.current.get(adventureId);
+    if (!usage) return [];
+    unrecordedSpendRef.current.delete(adventureId);
+    return [{ type: "RECORD_SPEND", usage }];
+  }
+
   const applyActionsAndPersist = useCallback((actions: AdventureAction[]) => {
+    // Mid-turn, the turn's own result will overwrite React state; leave spend for the turn to merge.
+    const spendActions = isSubmittingRef.current ? [] : takeSpendActions(adventureRef.current?.id);
     setAdventure((current) => {
       if (!current) return current;
-      const next = reduceActions(current, actions);
+      const next = reduceActions(current, [...spendActions, ...actions]);
       adventureRef.current = next;
       void saveAdventure(next).then(() => {
         setSaveStatus("saved");
@@ -219,6 +241,23 @@ export function useAdventureRuntime(
       return next;
     });
   }, [setAdventure, setSaveStatus, refreshAdventures]);
+  const applyActionsAndPersistRef = useRef(applyActionsAndPersist);
+  applyActionsAndPersistRef.current = applyActionsAndPersist;
+
+  /**
+   * Write unrecorded spend soon, unless a turn is running (the turn merges it into its own result).
+   * Also called when a turn ends, to catch spend from a turn that failed after a billed call.
+   * Reads only refs, so a stale closure is safe.
+   */
+  function scheduleSpendFlush() {
+    if (spendFlushTimerRef.current !== undefined) return;
+    spendFlushTimerRef.current = setTimeout(() => {
+      spendFlushTimerRef.current = undefined;
+      if (isSubmittingRef.current) return;
+      const id = adventureRef.current?.id;
+      if (id && unrecordedSpendRef.current.has(id)) applyActionsAndPersistRef.current([]);
+    }, 250);
+  }
 
   function queuePendingUpdate(actions: AdventureAction[], source: PendingAdventureUpdate["source"]) {
     const update: PendingAdventureUpdate = {
@@ -232,8 +271,8 @@ export function useAdventureRuntime(
   }
 
   function mergeQueuedUpdates(adventureState: Adventure): Adventure {
-    if (queuedUpdatesRef.current.length === 0) return adventureState;
-    let next = adventureState;
+    let next = reduceActions(adventureState, takeSpendActions(adventureState.id));
+    if (queuedUpdatesRef.current.length === 0) return next;
     for (const update of queuedUpdatesRef.current) {
       next = adventureReducer(next, { type: "QUEUE_PENDING_UPDATE", update });
     }
@@ -244,6 +283,16 @@ export function useAdventureRuntime(
   function flushPendingBeforeContext(adventureState: Adventure): Adventure {
     const next = adventureReducer(mergeQueuedUpdates(adventureState), { type: "FLUSH_PENDING_UPDATES" });
     return { ...next, memoryDetectionSettings: { ...globalMemorySettingsRef.current } };
+  }
+
+  /** Attribute a background pass to the story entry whose turn triggered it. */
+  function entryBackgroundUsageActions(
+    snapshot: Adventure,
+    tokens: { promptTokens: number; completionTokens: number } | undefined,
+  ): AdventureAction[] {
+    const usage = backgroundUsage(tokens);
+    const entry = [...snapshot.messages].reverse().find((message) => message.role === "assistant");
+    return usage && entry ? [{ type: "ADD_MESSAGE_BACKGROUND_USAGE", messageId: entry.id, usage }] : [];
   }
 
   /**
@@ -269,6 +318,7 @@ export function useAdventureRuntime(
         } }]),
         { type: "SET_LAST_MEMORY_CYCLE_TURN", turn: snapshot.activeState.turn, messageId: snapshot.messages.at(-1)?.id },
         { type: "ACCUMULATE_BACKGROUND_TOKENS", promptTokens: pass.tokenUsage.promptTokens, completionTokens: pass.tokenUsage.completionTokens },
+        ...entryBackgroundUsageActions(snapshot, pass.tokenUsage),
       ];
       if (adventureRef.current?.id !== snapshot.id) return;
       if (isSubmittingRef.current) {
@@ -303,7 +353,7 @@ export function useAdventureRuntime(
       const tokenAction: AdventureAction | undefined = result.tokenUsage
         ? { type: "ACCUMULATE_BACKGROUND_TOKENS", promptTokens: result.tokenUsage.promptTokens, completionTokens: result.tokenUsage.completionTokens }
         : undefined;
-      const allActions = [...result.actions, stampAction, ...(tokenAction ? [tokenAction] : [])];
+      const allActions = [...result.actions, stampAction, ...(tokenAction ? [tokenAction] : []), ...entryBackgroundUsageActions(snapshot, result.tokenUsage)];
       if (isSubmittingRef.current) {
         queuePendingUpdate(allActions, "semanticEvaluation");
         return;
@@ -435,6 +485,7 @@ export function useAdventureRuntime(
     } finally {
       setLoading(false);
       isSubmittingRef.current = false;
+      scheduleSpendFlush();
       void refreshAdventures();
     }
   }
@@ -445,8 +496,9 @@ export function useAdventureRuntime(
     setLoading(true);
     setError(undefined);
 
+    // Built outside the try so a failed continue keeps flushed updates and recorded spend.
+    const base = flushPendingBeforeContext(adventure);
     try {
-      const base = flushPendingBeforeContext(adventure);
       const result = await runTurnPipeline({
         adventure: base,
         text: "[continue]",
@@ -482,11 +534,12 @@ export function useAdventureRuntime(
       void checkArcContinuation(next);
     } catch (providerError) {
       setError(providerError instanceof Error ? providerError.message : "Continue failed.");
-      setAdventure(adventure);
-      await saveAdventure(adventure);
+      setAdventure(base);
+      await saveAdventure(base);
     } finally {
       setLoading(false);
       isSubmittingRef.current = false;
+      scheduleSpendFlush();
       void refreshAdventures();
     }
   }
@@ -539,6 +592,7 @@ export function useAdventureRuntime(
     } finally {
       setLoading(false);
       isSubmittingRef.current = false;
+      scheduleSpendFlush();
     }
   }
 

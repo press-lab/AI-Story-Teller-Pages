@@ -1,4 +1,4 @@
-import type { Adventure, ProviderConfig } from "./types/adventure";
+import type { Adventure, ProviderConfig, ProviderUsage } from "./types/adventure";
 import { sendOpenAICompatibleChatCompletion } from "./providers/openAICompatible";
 
 interface RiskyPattern {
@@ -39,7 +39,7 @@ export async function runContinuityCheck(
   providerConfig: ProviderConfig,
   responseText: string,
   accum?: { promptTokens: number; completionTokens: number },
-): Promise<{ correctedText?: string }> {
+): Promise<{ correctedText?: string; usage?: ProviderUsage }> {
   const recentMessages = adventure.messages.slice(-8);
   const transcriptText = recentMessages
     .map((m) => `${m.role === "assistant" ? "Story" : "Player"}: ${m.content}`)
@@ -71,8 +71,8 @@ export async function runContinuityCheck(
       accum.completionTokens += response.usage.completionTokens ?? 0;
     }
     const raw = response.content.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
-    if (!raw || raw === "null") return {};
-    return { correctedText: raw };
+    if (!raw || raw === "null") return { usage: response.usage };
+    return { correctedText: raw, usage: response.usage };
   } catch {
     return {};
   }

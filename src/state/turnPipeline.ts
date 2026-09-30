@@ -12,6 +12,7 @@ import type {
   ProviderUsage,
 } from "../types/adventure";
 import { createId } from "../utils/id";
+import { combineProviderUsage } from "../providers/usage";
 import { adventureReducer } from "./adventureReducer";
 
 export interface MockableProviderResponse {
@@ -101,18 +102,17 @@ export async function applyProviderResponse({
 
   // Continuity lint: scan for risky claims and, if found, run a targeted LLM check.
   // Uses only the last 8 messages as context to keep tokens low.
+  // The check is part of producing this entry, so its usage belongs on the entry, not in background.
   let finalContent = thoughtCleanContent;
   let continuityCorrected = false;
+  let entryUsage = response.usage;
   if (mode !== "comms" && providerConfig && scanForRiskyClaims(rawContentForLint)) {
-    const lintAccum = { promptTokens: 0, completionTokens: 0 };
-    const lintResult = await runContinuityCheck(next, providerConfig, rawContentForLint, lintAccum);
+    const lintResult = await runContinuityCheck(next, providerConfig, rawContentForLint);
     if (lintResult.correctedText) {
       finalContent = lintResult.correctedText;
       continuityCorrected = true;
     }
-    if (lintAccum.promptTokens > 0 || lintAccum.completionTokens > 0) {
-      next = adventureReducer(next, { type: "ACCUMULATE_BACKGROUND_TOKENS", ...lintAccum });
-    }
+    entryUsage = combineProviderUsage(entryUsage, lintResult.usage);
   }
 
   const messageId = assistantMessageId ?? createId("message");
@@ -125,7 +125,7 @@ export async function applyProviderResponse({
     inputMode: undefined,
     id: messageId,
     createdAt,
-    usage: response.usage,
+    usage: entryUsage,
   });
   next = adventureReducer(next, { type: "CONSUME_NEXT_TURN_NOTE" });
 

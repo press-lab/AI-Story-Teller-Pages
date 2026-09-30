@@ -14,7 +14,10 @@ import type {
   TokenBudgetSettings,
   TriggerRule,
   ProviderRequestThrottle,
+  Message,
+  ProviderUsage,
 } from "../types/adventure";
+import { combineProviderUsage } from "../providers/usage";
 import { dedupeBrainThoughts } from "../memory/thoughtDedupe";
 import { applyGuardedStoryCardPolicy, restoreGuardedFactsToLiveContent } from "../memory/storyCardPolicy";
 import { createId, nowIso } from "../utils/id";
@@ -144,6 +147,21 @@ export function defaultNextTurnNote(): NextTurnNote {
     priority: 85,
     expiresAfterUse: true,
   };
+}
+
+/**
+ * Saves from before lifetime spend tracking: start the ledger from what the adventure still
+ * remembers (per-entry usage plus background totals). Spend on entries that were already
+ * regenerated or erased is gone, so this is a floor, not an exact history.
+ */
+function seedSpendTotal(
+  messages: Message[],
+  background: { promptTokens: number; completionTokens: number } | undefined,
+): ProviderUsage | undefined {
+  const bg = background && (background.promptTokens > 0 || background.completionTokens > 0)
+    ? { ...background, totalTokens: background.promptTokens + background.completionTokens }
+    : undefined;
+  return combineProviderUsage(...messages.map((message) => message.usage), bg);
 }
 
 function clampSummaryIndex(index: number | undefined, messageCount: number): number | undefined {
@@ -559,6 +577,7 @@ export function normalizeAdventure(adventure: Adventure): Adventure {
         : adventure.activeState?.responseLengthHint === "long" ? 175
         : 150,
       backgroundTokenUsage: adventure.activeState?.backgroundTokenUsage ?? { promptTokens: 0, completionTokens: 0 },
+      spendTotal: adventure.activeState?.spendTotal ?? seedSpendTotal(messages, adventure.activeState?.backgroundTokenUsage),
       challengeMode: adventure.activeState?.challengeMode ?? false,
       lastMemoryCycleTurn: adventure.activeState?.lastMemoryCycleTurn,
       lastMemoryPassMessageId: adventure.activeState?.lastMemoryPassMessageId,

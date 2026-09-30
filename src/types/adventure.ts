@@ -11,7 +11,10 @@ export interface Message {
   role: MessageRole;
   content: string;
   inputMode?: InputMode;
+  /** Every call that produced this entry: story call, length/agency rewrite, and continuity check. */
   usage?: ProviderUsage;
+  /** Background calls this entry triggered (memory pass, rule evaluation). Can land after the next turn starts. */
+  backgroundUsage?: ProviderUsage;
   createdAt: ISODateString;
 }
 
@@ -593,6 +596,11 @@ export interface ActiveState {
   responseLengthHint: ResponseLengthHint;
   /** Cumulative token usage for background calls (brain updates, evaluation, summary, scene state). */
   backgroundTokenUsage: { promptTokens: number; completionTokens: number };
+  /**
+   * Lifetime spend: every provider call billed to this adventure, counted once at the provider.
+   * Includes discarded regenerations, failed rewrites, and manual AI tools. Never decreases.
+   */
+  spendTotal?: ProviderUsage;
   /** Set when the player's input matches a continuity challenge phrase. Consumed after one turn. */
   challengeMode: boolean;
   /** Turn number when the memory cycle last ran for this adventure. */
@@ -859,6 +867,8 @@ export type AdventureAction =
   | { type: "SET_STATE_FLAG"; key: string; value: string | number | boolean }
   | { type: "SET_RESPONSE_LENGTH_HINT"; hint: number }
   | { type: "ACCUMULATE_BACKGROUND_TOKENS"; promptTokens: number; completionTokens: number }
+  | { type: "RECORD_SPEND"; usage: ProviderUsage }
+  | { type: "ADD_MESSAGE_BACKGROUND_USAGE"; messageId: string; usage: ProviderUsage }
   | { type: "SET_NEXT_TURN_NOTE"; note: Partial<NextTurnNote> }
   | { type: "CLEAR_NEXT_TURN_NOTE" }
   | { type: "CONSUME_NEXT_TURN_NOTE" }

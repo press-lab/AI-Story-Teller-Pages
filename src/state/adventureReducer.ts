@@ -25,6 +25,7 @@ import type {
 } from "../types/adventure";
 import { defaultArcState, defaultNextTurnNote, makeComponent, makeStoryCard } from "./defaults";
 import { createId, nowIso } from "../utils/id";
+import { combineProviderUsage } from "../providers/usage";
 import { isLivingStoryCard, resolveMemoryTarget, sanitizeStoryCardTriggers } from "../memory/resolveMemoryTarget";
 import {
   appendSourceTurnIds,
@@ -1766,6 +1767,25 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
           },
         },
       });
+    case "RECORD_SPEND":
+      return touchAdventure(state, {
+        activeState: {
+          ...state.activeState,
+          spendTotal: combineProviderUsage(state.activeState.spendTotal, action.usage),
+        },
+      });
+    case "ADD_MESSAGE_BACKGROUND_USAGE": {
+      // Not a story edit: skip undo history. A message that was since erased or regenerated is a no-op;
+      // the spend is still in spendTotal.
+      if (!state.messages.some((message) => message.id === action.messageId)) return state;
+      return touchAdventure(state, {
+        messages: state.messages.map((message) =>
+          message.id === action.messageId
+            ? { ...message, backgroundUsage: combineProviderUsage(message.backgroundUsage, action.usage) }
+            : message,
+        ),
+      });
+    }
     case "SET_NEXT_TURN_NOTE": {
       const timestamp = nowIso();
       return touchAdventure(state, {

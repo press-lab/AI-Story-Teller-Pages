@@ -7,6 +7,7 @@ import type { Adventure, MemoryDetectionSettings } from "../types/adventure";
 import { useAdventureRuntime } from "./useAdventureRuntime";
 import { sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
 import { runMemoryCycle, runSemanticPostTurnEvaluation } from "../triggers/semanticEngine";
+import { reportProviderUsage } from "../providers/usage";
 
 vi.mock("../db/adventureDb", () => ({ saveAdventure: vi.fn(async () => undefined) }));
 vi.mock("../providers/openAICompatible", async importOriginal => ({
@@ -147,5 +148,32 @@ describe("runtime call accounting: narrator plus scheduled background memory pas
     await act(async () => { await result.current.runtime.continueTurn(); });
     expect(runSemanticPostTurnEvaluation).toHaveBeenCalledTimes(1);
     await act(async () => { resolve({ actions: [], logEntry: { id: "eval", turn: 1, createdAt: "2026-09-28", conditionsEvaluated: [], conditionsFired: [], generatedContent: [], actionsExecuted: [], errors: [] } }); });
+  });
+
+  it("keeps entry, background, and lifetime usage separate and complete", async () => {
+    const usageFor = (promptTokens: number, completionTokens: number) => ({ promptTokens, completionTokens, totalTokens: promptTokens + completionTokens });
+    vi.mocked(sendOpenAICompatibleChatCompletion).mockImplementation(async ({ messages, config, responseFormat }) => {
+      const isLint = messages.some(m => m.content.includes("continuity checker"));
+      const [content, usage] = responseFormat === "json_object"
+        ? ['{"updates":[]}', usageFor(1500, 90)]
+        : isLint
+          ? ["null", usageFor(400, 10)]
+          : ["The deadline is tonight. Mira waits by the gate.", usageFor(2000, 140)];
+      reportProviderUsage(config, usage); // what the real adapter does for every billed call
+      return { content, raw: {}, usage };
+    });
+    const { result } = setup();
+    await act(async () => { await result.current.runtime.submitTurn("Mira explains."); });
+    const firstEntry = result.current.adventure!.messages.at(-1)!;
+    // Entry = story call + continuity check; the memory pass is attributed separately.
+    expect(firstEntry.usage).toMatchObject({ promptTokens: 2400, completionTokens: 150 });
+    await waitFor(() => expect(result.current.adventure?.messages.at(-1)?.backgroundUsage).toMatchObject({ promptTokens: 1500, completionTokens: 90 }));
+
+    // Regenerating discards the first entry, but not what it cost.
+    await act(async () => { await result.current.runtime.regenerateLastResponse(); });
+    expect(result.current.adventure?.messages.at(-1)?.id).not.toBe(firstEntry.id);
+    expect(result.current.adventure?.messages.at(-1)?.usage).toMatchObject({ promptTokens: 2400, completionTokens: 150 });
+    await waitFor(() => expect(result.current.adventure?.activeState.spendTotal).toMatchObject({ promptTokens: 6300, completionTokens: 390 }));
+    expect(sendOpenAICompatibleChatCompletion).toHaveBeenCalledTimes(5);
   });
 });

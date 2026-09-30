@@ -88,7 +88,7 @@ npm.cmd run test:live   # optional, uses .env.test.local`}</pre>
     title: "Play",
     category: "Side Menu",
     summary: "The focused story screen for taking turns and editing the transcript.",
-    tags: ["play", "turn", "continue", "retry", "undo", "redo"],
+    tags: ["play", "turn", "continue", "retry", "undo", "redo", "tokens", "usage", "spend"],
     body: (
       <>
         <p>
@@ -98,6 +98,13 @@ npm.cmd run test:live   # optional, uses .env.test.local`}</pre>
         <p>
           Transcript entries are editable inline. Changes go through the reducer and persist with the
           adventure.
+        </p>
+        <p>
+          The small line under each generated entry shows token usage. <code>in / out</code> is everything it
+          took to write that entry, including any rewrite or continuity check. <code>bg</code> is the memory pass
+          or rule evaluation that turn triggered, which runs afterward. <code>total</code>, on the newest entry,
+          is everything this adventure has spent, including retries you threw away and manual AI tools. Hover
+          any number for the breakdown.
         </p>
       </>
     ),

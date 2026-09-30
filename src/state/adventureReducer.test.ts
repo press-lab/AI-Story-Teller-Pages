@@ -81,6 +81,8 @@ const testedActionTypes = [
   "SET_LAST_SCENE_STATE_TURN",
   "RESET_RUNTIME_STATE",
   "ACCUMULATE_BACKGROUND_TOKENS",
+  "RECORD_SPEND",
+  "ADD_MESSAGE_BACKGROUND_USAGE",
   "SET_AUTO_SAVE_SETTINGS",
   "MARK_COMPONENT_UPDATED",
   "ADVANCE_ARC_PACING",
@@ -1756,5 +1758,24 @@ describe("adventureReducer", () => {
     state = reduce(state, { type: "SET_ARC_PHASE", componentId: arc.id, phase: "simmer", turn: 15 });
     expect(get().arcState?.threadEngagement).toEqual({});
     expect(get().arcState?.tier).toBe(0);
+  });
+
+  it("keeps a lifetime spend total that survives erasing the entry that spent it", () => {
+    let state = baseAdventure();
+    state = reduce(state, { type: "RECORD_SPEND", usage: { promptTokens: 1000, completionTokens: 100, totalTokens: 1100, cacheReadTokens: 800 } });
+    state = reduce(state, { type: "RECORD_SPEND", usage: { promptTokens: 500, completionTokens: 50, totalTokens: 550 } });
+    state = reduce(state, { type: "REMOVE_LAST_ASSISTANT_MESSAGE" });
+    expect(state.activeState.spendTotal).toEqual({ promptTokens: 1500, completionTokens: 150, totalTokens: 1650, cacheReadTokens: 800 });
+  });
+
+  it("attributes background usage to its entry without touching undo history", () => {
+    let state = baseAdventure();
+    const undoDepth = state.activeState.storyUndoStack.length;
+    const usage = { promptTokens: 300, completionTokens: 30, totalTokens: 330 };
+    state = reduce(state, { type: "ADD_MESSAGE_BACKGROUND_USAGE", messageId: "msg-assistant", usage });
+    state = reduce(state, { type: "ADD_MESSAGE_BACKGROUND_USAGE", messageId: "msg-assistant", usage });
+    expect(state.messages.find((m) => m.id === "msg-assistant")?.backgroundUsage).toEqual({ promptTokens: 600, completionTokens: 60, totalTokens: 660 });
+    expect(state.activeState.storyUndoStack.length).toBe(undoDepth);
+    expect(reduce(state, { type: "ADD_MESSAGE_BACKGROUND_USAGE", messageId: "gone", usage })).toBe(state);
   });
 });

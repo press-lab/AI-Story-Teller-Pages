@@ -37,6 +37,16 @@ Out-of-character (comms) turns build context with `outOfCharacter: true`: arc ph
 - Semantic evaluation (`runSemanticPostTurnEvaluation`) every `semanticEvalEveryNTurns` turns, only when the user configured semantic trigger rules
 - Arc continuation runs exceptionally after an arc reaches aftermath. Custom rule and arc requests are guarded against overlap.
 
+### Token usage accounting
+**Files:** `providers/usage.ts`, `hooks/useAdventureRuntime.ts`, `pages/PlayPage.tsx`
+
+One turn can make several provider calls, so the Play usage line under each entry has three separate numbers:
+- `in / out / cache / write` — `Message.usage`: every call that produced that entry (story call, the length/agency rewrite from `sendStoryCompletionWithGuard`, and the Continuity Lint check). Prompt counts include cached tokens; `cache` and `write` are the cached subset.
+- `bg ↑ ↓` — `Message.backgroundUsage` (`ADD_MESSAGE_BACKGROUND_USAGE`): the memory pass and semantic evaluation that entry's turn triggered. If a pass finishes while the next turn is running it is queued and appears when that turn's pending updates flush.
+- `total ↑ ↓` (newest entry only) — `activeState.spendTotal` (`RECORD_SPEND`): lifetime spend. The provider adapter reports every billed response through `reportProviderUsage` (keyed by the adventure's session id) before checking its content, so this includes regenerations that were discarded, failed rewrites, erased entries, arc continuation, and manual AI tools. The runtime buffers reports and folds them into the adventure at the end of a turn, or ~250 ms later when no turn is running, so a call is never counted twice or lost to a turn overwriting state. Saves from before this counter existed are seeded from surviving `Message.usage` plus `backgroundTokenUsage`, which is a floor.
+
+`activeState.backgroundTokenUsage` remains the cumulative automatic-background total shown in Context Preview (`bg`). Continuity Lint is counted on the entry, not in background. DeepSeek cache hits are read from `prompt_cache_hit_tokens`.
+
 ---
 
 ## 2. Context Builder
@@ -300,7 +310,7 @@ When player input matches any challenge phrase ("I don't remember that", "that d
 ### Continuity Lint
 **File:** `continuityLint.ts`
 
-Post-generation correction. `scanForRiskyClaims()` checks every assistant response for risky patterns (promises, quotes, relationship changes, deadlines, presence claims). If any match, `runContinuityCheck()` sends last 8 messages + response to the background LLM and asks it to rewrite only the unsupported sentences. Result replaces `response.content` before it's stored. The LLM check runs only when `scanForRiskyClaims()` matches, only on non-comms turns, and only when a provider is available; otherwise it costs nothing.
+Post-generation correction. `scanForRiskyClaims()` checks every assistant response for risky patterns (promises, quotes, relationship changes, deadlines, presence claims). If any match, `runContinuityCheck()` sends last 8 messages + response to the background LLM and asks it to rewrite only the unsupported sentences. Result replaces `response.content` before it's stored, and the check's tokens are added to that entry's usage. The LLM check runs only when `scanForRiskyClaims()` matches, only on non-comms turns, and only when a provider is available; otherwise it costs nothing.
 
 ---
 

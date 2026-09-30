@@ -171,6 +171,7 @@ export function ContextPreviewPage({ adventure, dispatch, contextResult, onBuild
   const bgIn = bgUsage?.promptTokens ?? 0;
   const bgOut = bgUsage?.completionTokens ?? 0;
   const hasBgUsage = bgIn > 0 || bgOut > 0;
+  const spendTotal = adventure.activeState?.spendTotal;
 
   const nonEmptySections = result.sections.filter((s) => s.items.length > 0);
   const allItems = result.sections.flatMap((s) => s.items);
@@ -300,13 +301,15 @@ export function ContextPreviewPage({ adventure, dispatch, contextResult, onBuild
         <span className="muted token-metrics">
           <span title="Estimated tokens in current context">{result.totalEstimatedTokens.toLocaleString()} est</span>
           <span className="token-metrics-sep">·</span>
-          <span title="Total prompt tokens sent to story model across all turns">story {hasActualUsage ? `${totalActualIn.toLocaleString()}↑ ${totalActualOut.toLocaleString()}↓` : "—"}</span>
+          <span title="Tokens for the story entries still in this adventure: story calls, rewrites, and continuity checks">story {hasActualUsage ? `${totalActualIn.toLocaleString()}↑ ${totalActualOut.toLocaleString()}↓` : "—"}</span>
           <span className="token-metrics-sep">·</span>
           <span title="Prompt tokens sent on the last story turn">last {lastSentTokens != null ? lastSentTokens.toLocaleString() : "—"}</span>
           <span className="token-metrics-sep">·</span>
           <span title="Average prompt tokens per story turn">avg {avgSentTokens != null ? avgSentTokens.toLocaleString() : "—"}</span>
           <span className="token-metrics-sep">·</span>
-          <span title="Total tokens used by background AI calls (brain updates, story card updates, plot updates, triggers)">bg {hasBgUsage ? `${bgIn.toLocaleString()}↑ ${bgOut.toLocaleString()}↓` : "—"}</span>
+          <span title="Tokens used by automatic background calls (memory pass, rule evaluation, event scan)">bg {hasBgUsage ? `${bgIn.toLocaleString()}↑ ${bgOut.toLocaleString()}↓` : "—"}</span>
+          <span className="token-metrics-sep">·</span>
+          <span title="Every call billed to this adventure, including discarded regenerations and manual AI tools">total {spendTotal ? `${spendTotal.promptTokens.toLocaleString()}↑ ${spendTotal.completionTokens.toLocaleString()}↓` : "—"}</span>
           <span className="token-metrics-sep">·</span>
           <span title="Prompt-cache tokens reported by the provider across story turns">cache {totalCacheRead > 0 || totalCacheWrite > 0 ? `${totalCacheRead.toLocaleString()} read ${totalCacheWrite.toLocaleString()} write` : "—"}</span>
         </span>

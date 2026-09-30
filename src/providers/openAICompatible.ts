@@ -1,4 +1,5 @@
 import type { ChatMessage, ProviderConfig, ProviderRequestThrottle, ProviderUsage } from "../types/adventure";
+import { reportProviderUsage } from "./usage";
 
 type CacheBlock = { type: "text"; text: string; cache_control?: { type: "ephemeral" } };
 type CacheableContent = string | CacheBlock[];
@@ -187,7 +188,7 @@ async function sendOpenAIRequest(
   }
 
   const rawText = await response.text().catch(() => "");
-  let raw: { error?: { message?: string }; choices?: Array<{ message?: { content?: string } }>; usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number; prompt_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number } } };
+  let raw: { error?: { message?: string }; choices?: Array<{ message?: { content?: string } }>; usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number; prompt_cache_hit_tokens?: number; prompt_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number } } };
   try {
     raw = JSON.parse(rawText) as typeof raw;
   } catch {
@@ -199,18 +200,22 @@ async function sendOpenAIRequest(
     throw new Error(`Provider error ${response.status} (${endpoint}): ${detail}`);
   }
 
-  const content = raw.choices?.[0]?.message?.content;
-  if (content == null) throw new Error(`Provider returned no content. Body: ${rawText.slice(0, 300)}`);
-
+  // prompt_tokens already includes cached tokens on OpenAI-style APIs. Cache hits are reported as
+  // prompt_tokens_details.cached_tokens (OpenAI/OpenRouter) or prompt_cache_hit_tokens (DeepSeek).
   const usage: ProviderUsage | undefined = raw.usage
     ? {
         promptTokens: raw.usage.prompt_tokens ?? 0,
         completionTokens: raw.usage.completion_tokens ?? 0,
         totalTokens: raw.usage.total_tokens ?? 0,
-        cacheReadTokens: raw.usage.cache_read_input_tokens ?? raw.usage.prompt_tokens_details?.cached_tokens,
+        cacheReadTokens: raw.usage.cache_read_input_tokens ?? raw.usage.prompt_tokens_details?.cached_tokens ?? raw.usage.prompt_cache_hit_tokens,
         cacheCreationTokens: raw.usage.cache_creation_input_tokens ?? raw.usage.prompt_tokens_details?.cache_write_tokens,
       }
     : undefined;
+  // Report before validating content: an empty or unusable reply is still billed.
+  reportProviderUsage(config, usage);
+
+  const content = raw.choices?.[0]?.message?.content;
+  if (content == null) throw new Error(`Provider returned no content. Body: ${rawText.slice(0, 300)}`);
 
   return { content, raw, usage };
 }
@@ -275,9 +280,6 @@ async function sendAnthropicRequest(
     throw new Error(`Provider error ${response.status} (${endpoint}): ${detail}`);
   }
 
-  const content = raw.content?.find((c) => c.type === "text")?.text;
-  if (content == null) throw new Error(`Provider returned no content. Body: ${rawText.slice(0, 300)}`);
-
   // Anthropic reports input_tokens EXCLUDING cache reads/writes. Normalize to the OpenAI meaning
   // (promptTokens = every input token, cacheReadTokens = the cached subset) so usage from both
   // adapters is comparable and cache-hit rates are not overstated.
@@ -291,6 +293,10 @@ async function sendAnthropicRequest(
         cacheCreationTokens: raw.usage.cache_creation_input_tokens,
       }
     : undefined;
+  reportProviderUsage(config, usage);
+
+  const content = raw.content?.find((c) => c.type === "text")?.text;
+  if (content == null) throw new Error(`Provider returned no content. Body: ${rawText.slice(0, 300)}`);
 
   return { content, raw, usage };
 }
