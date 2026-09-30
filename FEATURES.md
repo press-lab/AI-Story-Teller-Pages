@@ -234,7 +234,7 @@ Auto-approve settings: `adventure.memoryAutoApprove` — all togglable per adven
 
 One call returns up to 12 updates as JSON. Empty updates are normal. Local checks verify shape, length, evidence quoted from the pass window (every message since roughly the previous pass), target existence/eligibility, and duplicates. Existing cards receive additive facts; on living cards an update may name the fact it `replaces`, which is superseded in place (VOICE CONTRACT lines and static cards are never rewritten). At most one new recurring subject is proposed, and its triggers must be names or nouns — first-person recall phrases are dropped. New event recap cards are not generated. Arc updates append evidenced developments without changing authored pacing.
 
-`ADD_MEMORY_PROPOSAL` honors the matching auto-approval flag unless `requiresReview` is true. Plot Essentials changes, plot cards, and protected-card updates always require review. The pass rules are fixed text placed before per-turn data so providers can cache them.
+`ADD_MEMORY_PROPOSAL` honors the matching auto-approval flag unless `requiresReview` is true. Plot Essentials changes always require review; every Story Card suggestion (new, plot, or protected) follows the Story Cards toggle. The pass rules are fixed text placed before per-turn data so providers can cache them.
 
 These checks prove local routing and call counts, not model accuracy or literary quality. Memory evidence matching cannot establish every inference. Actual dollar savings depend on provider usage and optional exceptional calls.
 

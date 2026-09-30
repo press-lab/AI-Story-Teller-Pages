@@ -193,17 +193,29 @@ describe("background memory pass updates", () => {
     expect(actions.map(a => a.type)).toEqual(["LOG_EVALUATION_RESULT"]);
   });
 
-  it("requires review of foundational and new plot changes even with auto-approve enabled", () => {
+  it("requires review of Plot Essentials even with auto-approve enabled", () => {
     const adventure = fixture();
-    const updates = [
+    const next = apply(adventure, [
       { ...update, kind: "essentials", target: "Foundations", content: "The exiles now defend their permanent home." },
-      { ...update, kind: "newCard", target: "Silver Curse", content: "The silver curse threatens every exile.", cardType: "plot", category: "plot_beat", triggers: ["silver curse"], memoryMode: "living" },
-    ];
-    const next = apply(adventure, updates).reduce(adventureReducer, adventure);
+    ]).reduce(adventureReducer, adventure);
     expect(next.components).toEqual(adventure.components);
-    expect(next.storyCards).toEqual(adventure.storyCards);
-    expect(next.activeState.memoryProposals).toHaveLength(2);
-    expect(next.activeState.memoryProposals.every(p => p.requiresReview && p.status === "pending")).toBe(true);
+    expect(next.activeState.memoryProposals).toHaveLength(1);
+    expect(next.activeState.memoryProposals[0]).toMatchObject({ status: "pending", requiresReview: true });
+  });
+
+  it("lets the Story Cards toggle govern plot and protected cards", () => {
+    const adventure = fixture();
+    adventure.storyCards[0].protected = true;
+    const newPlot = { ...update, kind: "newCard", target: "Silver Curse", content: "The silver curse threatens every exile.", cardType: "plot", category: "plot_beat", triggers: ["silver curse"], memoryMode: "living" };
+    const on = apply(adventure, [update, newPlot]).reduce(adventureReducer, adventure);
+    expect(on.activeState.memoryProposals.every(p => !p.requiresReview && p.status === "approved")).toBe(true);
+    expect(on.storyCards.some(c => c.title === "Silver Curse")).toBe(true);
+    expect(on.storyCards[0].content).not.toEqual(adventure.storyCards[0].content);
+
+    const off = { ...adventure, memoryAutoApprove: { ...adventure.memoryAutoApprove, storyCard: false } };
+    const held = apply(off, [update, newPlot]).reduce(adventureReducer, off);
+    expect(held.storyCards).toEqual(off.storyCards);
+    expect(held.activeState.memoryProposals.every(p => p.status === "pending")).toBe(true);
   });
 
   it("drops first-person recall triggers from new cards", () => {
@@ -223,10 +235,10 @@ describe("background memory pass updates", () => {
     expect(actions.filter(a => a.type === "ADD_MEMORY_PROPOSAL")).toHaveLength(1);
   });
 
-  it("honors component opt-out, protected-card review, and brain cooldowns", () => {
+  it("honors component opt-out, Story Cards auto-approve off, and brain cooldowns", () => {
     const adventure = fixture();
     adventure.components[1].autoUpdate = false;
-    adventure.storyCards[0].protected = true;
+    adventure.memoryAutoApprove = { ...adventure.memoryAutoApprove, storyCard: false };
     adventure.brains[0].lastUpdatedTurn = 0;
     adventure.brains[0].autoUpdateCooldownTurns = 3;
     const next = apply(adventure, [
@@ -238,7 +250,7 @@ describe("background memory pass updates", () => {
     expect(next.components).toEqual(adventure.components);
     expect(next.storyCards).toEqual(adventure.storyCards);
     expect(next.activeState.memoryProposals).toHaveLength(1);
-    expect(next.activeState.memoryProposals[0]).toMatchObject({ status: "pending", requiresReview: true });
+    expect(next.activeState.memoryProposals[0]).toMatchObject({ status: "pending" });
   });
 
   it("keeps the pass rules free of per-turn data so providers can cache them", () => {

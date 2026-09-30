@@ -207,8 +207,6 @@ export function memoryUpdateActions(
         } else {
           proposal.appendContent = true;
         }
-        // Sensitive identity records and evolving plot state need review, even with generic auto-approval.
-        proposal.requiresReview = existing.type === "plot" || existing.protected;
       } else {
         const allowedTypes: StoryCardType[] = ["character", "location", "lore", "custom", "plot"];
         const category = typeof u.category === "string" ? u.category : "";
@@ -219,7 +217,6 @@ export function memoryUpdateActions(
         proposal.storyCardType = u.cardType as StoryCardType;
         proposal.memoryMode = u.memoryMode === "living" ? "living" : "static";
         proposal.suggestedTriggers = triggers;
-        proposal.requiresReview = u.cardType === "plot";
       }
     } else if (kind === "essentials" || kind === "pressure" || kind === "arc") {
       const type = kind === "essentials" ? "plotEssentials" : kind === "arc" ? "currentArc" : "activePressure";
