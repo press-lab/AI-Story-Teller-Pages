@@ -176,7 +176,9 @@ describe("Seattle memory quality", () => {
     const state = adventureReducer(a, { type: "ADD_MEMORY_PROPOSAL", proposal: makeMemoryProposal({ proposedType: "plotEssentialsUpdate", title: "Plot Essentials", targetId: "pe", content: "Seth is informed but unconvinced and has arrived at the Cullen home." }) });
     expect(state.storyCards).toHaveLength(0);
     expect(state.activeState.memoryProposals.filter(p => p.proposedType === "storyCard")).toHaveLength(0);
-    expect(JSON.stringify(state.components.find(c => c.id === "pe")?.memoryUpdateHistory)).toContain("unaware");
+    expect(state.activeState.memoryProposals.find(p => p.proposedType === "plotEssentialsUpdate")?.status).toBe("pending");
+    const approved = adventureReducer(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: state.activeState.memoryProposals[0].id });
+    expect(JSON.stringify(approved.components.find(c => c.id === "pe")?.memoryUpdateHistory)).toContain("unaware");
   });
 
   it("bounds component and card size", () => {

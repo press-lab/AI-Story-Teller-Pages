@@ -27,6 +27,56 @@ describe("SettingsPage API throttle controls", () => {
     cleanup();
   });
 
+  it("shows only applicable provider controls and reports inactive semantic rules", async () => {
+    const user = userEvent.setup();
+    render(
+      <SettingsPage
+        adventure={createDefaultAdventure("Settings Test")}
+        dispatch={vi.fn()}
+        providerPresets={[makePreset()]}
+        activePresetId="preset-test"
+        onProviderPresetsChange={vi.fn()}
+        onSelectPreset={vi.fn()}
+        uiPreferences={{ ...defaultUiPreferences, showAdvancedSettings: true }}
+        onUiPreferencesChange={vi.fn()}
+        globalAdventureSettings={defaultGlobalAdventureSettings}
+        onGlobalAdventureSettingsChange={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("No semantic automations active")).toBeInTheDocument();
+    expect(screen.getAllByLabelText("Remember while narrating")).toHaveLength(1);
+    expect(screen.queryByLabelText(/Top K/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("OpenRouter routing preference")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Enable prompt caching / sticky sessions")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Section Budgets JSON")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Test Model/ }));
+    expect(screen.queryByLabelText(/Top K/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Presence Penalty (reduces looping; 0–2)")).toBeInTheDocument();
+  });
+
+  it("hides rejected sampling controls on the DeepSeek Anthropic path", async () => {
+    const user = userEvent.setup();
+    render(
+      <SettingsPage
+        adventure={createDefaultAdventure("Anthropic Settings")}
+        dispatch={vi.fn()}
+        providerPresets={[{ ...makePreset(), baseUrl: "https://api.deepseek.com/anthropic" }]}
+        activePresetId="preset-test"
+        onProviderPresetsChange={vi.fn()}
+        onSelectPreset={vi.fn()}
+        uiPreferences={{ ...defaultUiPreferences, showAdvancedSettings: true }}
+        onUiPreferencesChange={vi.fn()}
+        globalAdventureSettings={defaultGlobalAdventureSettings}
+        onGlobalAdventureSettingsChange={vi.fn()}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: /Test Model/ }));
+    expect(screen.queryByLabelText(/Top K/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Presence Penalty/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Frequency Penalty/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Enable prompt caching / sticky sessions")).toBeInTheDocument();
+  });
+
   it("lets the user enable prompt caching on the active provider preset", async () => {
     const user = userEvent.setup();
     const onProviderPresetsChange = vi.fn();
@@ -34,7 +84,7 @@ describe("SettingsPage API throttle controls", () => {
     const advancedPrefs: UiPreferences = { ...defaultUiPreferences, showAdvancedSettings: true };
 
     function StatefulSettingsPage() {
-      const [presets, setPresets] = useState([makePreset()]);
+      const [presets, setPresets] = useState([{ ...makePreset(), baseUrl: "https://openrouter.ai/api/v1" }]);
       return (
         <SettingsPage
           adventure={createDefaultAdventure("Prompt Cache Test")}
@@ -82,7 +132,7 @@ describe("SettingsPage API throttle controls", () => {
     const advancedPrefs: UiPreferences = { ...defaultUiPreferences, showAdvancedSettings: true };
 
     function StatefulSettingsPage() {
-      const [presets, setPresets] = useState([makePreset()]);
+      const [presets, setPresets] = useState([{ ...makePreset(), baseUrl: "https://openrouter.ai/api/v1" }]);
       return (
         <SettingsPage
           adventure={createDefaultAdventure("Routing Test")}
@@ -105,6 +155,7 @@ describe("SettingsPage API throttle controls", () => {
     render(<StatefulSettingsPage />);
 
     await user.click(screen.getByRole("button", { name: /Test Model/ }));
+    expect(screen.getByLabelText("Top K (0 = off)")).toBeInTheDocument();
     await user.selectOptions(screen.getByLabelText("OpenRouter routing preference"), "price");
 
     expect(onProviderPresetsChange).toHaveBeenLastCalledWith(

@@ -12,6 +12,7 @@ import { runComponentAudit, type ComponentAuditRecommendation } from "../memory/
 import { runBrainAudit, type BrainAuditRecommendation } from "../memory/brainAudit";
 import { sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
 import { resolveBackgroundProviderConfig } from "../providers/backgroundProvider";
+import { isRunnableSemanticRule } from "../triggers/semanticRules";
 import { adventureReducer } from "../state/adventureReducer";
 import {
   applyProviderResponse,
@@ -283,7 +284,7 @@ export function useAdventureRuntime(
 
   async function startSemanticEvaluation(snapshot: Adventure) {
     if (!snapshot.semanticEvaluationSettings.enabled || semanticInFlight.current.has(snapshot.id)) return;
-    if (!snapshot.triggerRules.some(rule => rule.enabled && (rule.evaluationMode ?? "semantic") === "semantic")) return;
+    if (!snapshot.triggerRules.some(isRunnableSemanticRule)) return;
     const everyN = snapshot.semanticEvaluationSettings.semanticEvalEveryNTurns ?? 1;
     if (everyN === 0) return;
     const last = snapshot.activeState.lastSemanticEvalTurn;

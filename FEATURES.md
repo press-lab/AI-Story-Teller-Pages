@@ -199,13 +199,13 @@ All AI-generated content suggestions pass through Memory Proposals before becomi
 | `storyCard` | One-pass memory, story card audit, "Remember This" | Off | Upsert story card |
 | `brainUpdate` | Semantic engine (updateBrain/appendBrain) | Off | Apply BrainPatch |
 | `plotEssentialsUpdate` | Semantic engine, "Suggest Updates" | Off | Append to PE component |
-| `currentArcUpdate` | Semantic engine (updateComponentArc) | **On** | Append to arc component |
+| `currentArcUpdate` | One-pass memory and authored rules | Off | Append to arc component after review |
 | `plotPressureUpdate` | Semantic engine (updateComponentPressure) | **On** | Replace activePressure content |
-| `plotMomentumUpdate` | Legacy/disabled | Off | No-op |
-| `summaryUpdate` | Semantic engine (summaryConditions) — deprecated | Off | Append to rollingSummary |
+| `plotMomentumUpdate` | Old saves only | Off | Cannot be applied |
+| `summaryUpdate` | Old saves only | Off | Cannot be applied |
 | `ignore` | Classification fallback | — | No-op |
 
-Auto-approve settings: `adventure.memoryAutoApprove` — all togglable per adventure.
+Auto-apply settings for Character/Brain updates, Story Cards, Active Pressure, and Current Arc are exposed in Story Memory. Plot Essentials and new Arc proposals require review.
 
 ### One-pass validation and approval
 
@@ -373,11 +373,9 @@ LLM-based pass over all context items. Identifies overlapping content, proposes 
 
 ## 18. Rolling Summary and Scene State (Deprecated as Context Sections)
 
-**File:** `state/rollingSummary.ts`
+Data fields (`rollingSummary`, `sceneState`) are preserved on the Adventure object for backwards-compatible save loading. **Neither section is injected into context.** The Summary editor and the payload builders that generated these fields have been removed.
 
-Data fields (`rollingSummary`, `sceneState`) preserved on the Adventure object for backwards-compatible save loading. As of current version, **neither section is injected into context**. The Summary tab has been removed from the editor UI. The LLM calls that generated these (`buildRollingSummaryPayload`, `buildSceneStatePayload`) are no longer invoked.
-
-If you have legacy adventures with summary content, that content remains in the save file but is no longer sent to the model. The Current Story Arc component is the replacement for active narrative tracking.
+If you have legacy adventures with summary content, that content remains in the save file but is no longer sent to the model. Memory audits use active Plot Essentials, Current Arc, Active Pressure, and Chronicle messages instead. The Current Story Arc component is the replacement for active narrative tracking.
 
 ---
 
@@ -390,7 +388,7 @@ If you have legacy adventures with summary content, that content remains in the 
 | `memory` component type | **Legacy** | Still creatable; labeled "Lore Block (legacy)". No special behavior. Content should be migrated to triggered Story Cards. |
 | Rolling Summary context injection | **Removed** | Data preserved in saves. No longer in context. `summaryEnabled` setting has no effect. |
 | Scene State context injection | **Removed** | Data preserved in saves. No longer in context. `sceneStateEnabled` setting has no effect. |
-| Summary editor tab | **Removed** | Page file exists (`SummaryPage.tsx`) but is no longer imported or accessible. |
+| Summary editor tab | **Removed** | The page and generation payload builders have been removed. |
 
 ---
 

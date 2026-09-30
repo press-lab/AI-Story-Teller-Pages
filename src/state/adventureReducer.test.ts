@@ -60,8 +60,6 @@ const testedActionTypes = [
   "APPROVE_MEMORY_PROPOSAL",
   "REJECT_MEMORY_PROPOSAL",
   "IGNORE_MEMORY_PROPOSAL",
-  "UPDATE_ROLLING_SUMMARY",
-  "UPDATE_SCENE_STATE",
   "SET_TOKEN_BUDGET_SETTINGS",
   "SET_SYSTEM_TRIGGER_SETTINGS",
   "SET_MODEL_CONFIG",
@@ -78,7 +76,6 @@ const testedActionTypes = [
   "SET_CHALLENGE_MODE",
   "SET_LAST_MEMORY_CYCLE_TURN",
   "SET_LAST_SEMANTIC_EVAL_TURN",
-  "SET_LAST_SCENE_STATE_TURN",
   "RESET_RUNTIME_STATE",
   "ACCUMULATE_BACKGROUND_TOKENS",
   "SET_AUTO_SAVE_SETTINGS",
@@ -188,9 +185,6 @@ describe("adventureReducer", () => {
     expect(state.activeState.forceIncludeNextTurn).toHaveLength(0);
     expect(state.activeState.challengeMode).toBe(false);
 
-    state = reduce(state, { type: "UPDATE_ROLLING_SUMMARY", content: "new summary" });
-    expect(state.rollingSummary.content).toBe("new summary");
-
     state = reduce(state, {
       type: "SET_TOKEN_BUDGET_SETTINGS",
       settings: {
@@ -276,7 +270,7 @@ describe("adventureReducer", () => {
 
     state = reduce(state, { type: "RESET_RUNTIME_STATE" });
     expect(state.messages).toEqual([]);
-    expect(state.rollingSummary.content).toBe("");
+    expect(state.rollingSummary.content).toBe("summary");
     expect(state.activeState.turn).toBe(0);
     expect(state.activeState.nextTurnNote.content).toBe("");
     expect(state.triggerRules[0].lastFiredTurn).toBeUndefined();
@@ -565,6 +559,15 @@ describe("adventureReducer", () => {
     expect(state.activeState.rawImports).toHaveLength(0);
   });
 
+  it("requires review for foundational canon even if an old save enabled auto-approval", () => {
+    let state = baseAdventure();
+    state = { ...state, memoryAutoApprove: { ...state.memoryAutoApprove, plotEssentialsUpdate: true, arcProposal: true } };
+    const proposal = makeMemoryProposal({ id: "foundational", proposedType: "plotEssentialsUpdate", title: "Premise", content: "A new premise." });
+    state = reduce(state, { type: "ADD_MEMORY_PROPOSAL", proposal });
+    expect(state.activeState.memoryProposals.find((entry) => entry.id === "foundational")?.status).toBe("pending");
+    expect(state.components.some((entry) => entry.content === "A new premise.")).toBe(false);
+  });
+
   it("handles memory proposal approval, rejection, and ignore actions", () => {
     let state = baseAdventure();
     const storyProposal = makeMemoryProposal({
@@ -642,7 +645,8 @@ describe("adventureReducer", () => {
     });
     state = reduce(state, { type: "ADD_MEMORY_PROPOSAL", proposal: summaryProposal });
     state = reduce(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: "proposal-summary" });
-    expect(state.rollingSummary.content).toBe("Seth and Margo reached the old city.");
+    expect(state.rollingSummary.content).toBe("summary");
+    expect(state.activeState.memoryProposals.find((proposal) => proposal.id === "proposal-summary")?.status).toBe("pending");
 
     const momentum = makeComponent({ id: "component-momentum", title: "Immediate Momentum", type: "immediateMomentum", content: "Old next beat." });
     const momentumProposal = makeMemoryProposal({
@@ -1013,7 +1017,7 @@ describe("adventureReducer", () => {
     expect(state.activeState.memoryProposals.some((p) => p.id === "pressure-duplicate")).toBe(false);
   });
 
-  it("does not manufacture history from an auto-approved Plot Essentials replacement", () => {
+  it("reviews Plot Essentials replacements without manufacturing history", () => {
     const plot = makeComponent({
       id: "component-plot",
       title: "Plot Essentials",
@@ -1042,6 +1046,9 @@ describe("adventureReducer", () => {
       }),
     });
 
+    expect(state.components.find((component) => component.id === "component-plot")?.content).not.toContain("warn Margo");
+    expect(state.activeState.memoryProposals.find((proposal) => proposal.id === "plot-replacement")?.status).toBe("pending");
+    state = reduce(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: "plot-replacement" });
     expect(state.components.find((component) => component.id === "component-plot")?.content).toContain("warn Margo");
     expect(state.storyCards.some((card) => card.content.includes("silver warrant"))).toBe(false);
     expect(state.activeState.memoryProposals.find((proposal) => proposal.id === "plot-replacement")?.status).toBe("approved");
@@ -1155,7 +1162,7 @@ describe("adventureReducer", () => {
     expect(state.storyCards.some((card) => card.content.includes("Renzan conspiracy was broken"))).toBe(true);
   });
 
-  it("auto-approves arcProposal when enabled", () => {
+  it("requires review for arcProposal even when an old approval flag is enabled", () => {
     const arcComp = makeComponent({
       id: "component-arc",
       title: "Current Arc",
@@ -1186,6 +1193,9 @@ describe("adventureReducer", () => {
       }),
     });
 
+    expect(state.components.find((component) => component.id === "component-arc")?.arcPremise).toBeUndefined();
+    expect(state.activeState.memoryProposals.find((proposal) => proposal.id === "proposal-arc-auto")?.status).toBe("pending");
+    state = reduce(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: "proposal-arc-auto" });
     expect(state.components.find((component) => component.id === "component-arc")?.arcPremise).toBe(
       "Azula moves against the throne from the shadows",
     );
@@ -1661,7 +1671,7 @@ describe("adventureReducer", () => {
     expect(state.activeState.storyUndoStack.length).toBeGreaterThan(0);
   });
 
-  it("clamps rolling summary indexes when story sections are erased or reset", () => {
+  it("preserves legacy summary data while editing and resetting the story", () => {
     let state: Adventure = {
       ...baseAdventure(),
       rollingSummary: {
@@ -1673,11 +1683,12 @@ describe("adventureReducer", () => {
 
     state = reduce(state, { type: "DELETE_LAST_MESSAGE" });
     expect(state.messages).toHaveLength(1);
-    expect(state.rollingSummary.lastSummarizedMessageIndex).toBe(1);
+    expect(state.rollingSummary.lastSummarizedMessageIndex).toBe(2);
 
     state = reduce(state, { type: "RESET_RUNTIME_STATE" });
     expect(state.messages).toHaveLength(0);
-    expect(state.rollingSummary.lastSummarizedMessageIndex).toBeUndefined();
+    expect(state.rollingSummary.lastSummarizedMessageIndex).toBe(2);
+    expect(state.rollingSummary.content).toBe("The current transcript has already been summarized.");
   });
 
   it("advances arc pacing from engagement, auto-fires the break, then settles into aftermath", () => {

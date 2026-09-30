@@ -25,34 +25,34 @@ export const defaultTokenBudgetSettings: TokenBudgetSettings = {
   memoryPriorityMode: "userLocked",
   allowSystemToPrioritizeMemory: false,
   allowSystemToDropUnpinnedTriggeredCards: true,
-  allowSystemToTruncateSummary: true,
   recentMessageWindow: 12,
   sectionBudgets: {
-    rollingSummary: 1800,
-    sceneState: 400,
     recentMessages: 6000,
   },
-  autoSummarize: true,
-  autoSummarizeEveryNTurns: 20,
-  autoSceneStateEveryNTurns: 1,
-  sceneStateEnabled: true,
-  summaryEnabled: true,
 };
+
+export function activeTokenBudgetSettings(settings?: Partial<TokenBudgetSettings>): TokenBudgetSettings {
+  return {
+    maxContextTokens: settings?.maxContextTokens ?? defaultTokenBudgetSettings.maxContextTokens,
+    maxRecentMessages: settings?.maxRecentMessages ?? defaultTokenBudgetSettings.maxRecentMessages,
+    memoryPriorityMode: settings?.memoryPriorityMode ?? defaultTokenBudgetSettings.memoryPriorityMode,
+    allowSystemToPrioritizeMemory: settings?.allowSystemToPrioritizeMemory ?? defaultTokenBudgetSettings.allowSystemToPrioritizeMemory,
+    allowSystemToDropUnpinnedTriggeredCards: settings?.allowSystemToDropUnpinnedTriggeredCards ?? defaultTokenBudgetSettings.allowSystemToDropUnpinnedTriggeredCards,
+    recentMessageWindow: settings?.recentMessageWindow ?? defaultTokenBudgetSettings.recentMessageWindow,
+    sectionBudgets: { recentMessages: settings?.sectionBudgets?.recentMessages ?? defaultTokenBudgetSettings.sectionBudgets.recentMessages },
+  };
+}
 
 export const lightTokenBudgetPreset: Partial<TokenBudgetSettings> = {
   maxContextTokens: 8000,
   maxRecentMessages: 15,
-  sectionBudgets: { rollingSummary: 800, recentMessages: 3000 },
-  autoSummarize: true,
-  autoSummarizeEveryNTurns: 10,
+  sectionBudgets: { recentMessages: 3000 },
 };
 
 export const heavyTokenBudgetPreset: Partial<TokenBudgetSettings> = {
   maxContextTokens: 32000,
   maxRecentMessages: 80,
-  sectionBudgets: { rollingSummary: 4000, recentMessages: 12000 },
-  autoSummarize: true,
-  autoSummarizeEveryNTurns: 30,
+  sectionBudgets: { recentMessages: 12000 },
 };
 
 export const defaultProviderRequestThrottle: ProviderRequestThrottle = {
@@ -212,7 +212,6 @@ export function createDefaultAdventure(title = "Untitled Adventure"): Adventure 
     brains: [],
     triggerRules: [],
     rollingSummary: { content: "", updatedAt: timestamp },
-    sceneState: { content: "", updatedAt: timestamp },
     messages: [],
     activeState: {
       turn: 0,
@@ -493,6 +492,7 @@ export function persistedSemanticEvaluationSettings(
 export function sanitizeAdventureForPersistence(adventure: Adventure): Adventure {
   return {
     ...adventure,
+    tokenBudgetSettings: activeTokenBudgetSettings(adventure.tokenBudgetSettings),
     modelConfig: persistedProviderConfig(adventure.modelConfig) as ProviderConfig,
     semanticEvaluationSettings: persistedSemanticEvaluationSettings(adventure.semanticEvaluationSettings),
   };
@@ -551,7 +551,7 @@ export function normalizeAdventure(adventure: Adventure): Adventure {
         messages.length,
       ),
     },
-    sceneState: adventure.sceneState ?? { content: "", updatedAt: nowIso() },
+    sceneState: adventure.sceneState,
     brains: (adventure.brains ?? []).map((brain) => ({
       ...brain,
       source: brain.source ?? "manual",
@@ -618,6 +618,9 @@ export function normalizeAdventure(adventure: Adventure): Adventure {
       ...defaultMemoryAutoApproveSettings,
       ...(adventure.memoryAutoApprove ?? {}),
       plotMomentumUpdate: false,
+      summaryUpdate: false,
+      plotEssentialsUpdate: false,
+      arcProposal: false,
     },
     memoryDetectionSettings: {
       ...defaultMemoryDetectionSettings,
@@ -631,15 +634,7 @@ export function normalizeAdventure(adventure: Adventure): Adventure {
         ...(adventure.systemTriggers?.categories ?? {}),
       },
     },
-    tokenBudgetSettings: {
-      ...defaultTokenBudgetSettings,
-      ...(adventure.tokenBudgetSettings ?? {}),
-      // Ensure new fields always present even on old saves
-      autoSummarize: adventure.tokenBudgetSettings?.autoSummarize ?? true,
-      autoSummarizeEveryNTurns: adventure.tokenBudgetSettings?.autoSummarizeEveryNTurns ?? 20,
-      autoSceneStateEveryNTurns: adventure.tokenBudgetSettings?.autoSceneStateEveryNTurns ?? 1,
-      sceneStateEnabled: adventure.tokenBudgetSettings?.sceneStateEnabled ?? true,
-    },
+    tokenBudgetSettings: activeTokenBudgetSettings(adventure.tokenBudgetSettings),
     modelConfig: {
       ...defaultModelConfig,
       ...persistedProviderConfig(adventure.modelConfig),

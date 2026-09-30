@@ -64,6 +64,31 @@ beforeEach(() => {
 });
 
 describe("runSemanticPostTurnEvaluation", () => {
+  it("routes authored Current Arc updates to review", async () => {
+    const adventure = baseAdventure();
+    adventure.components = [makeComponent({ id: "arc", type: "currentArc", title: "Current Arc", content: "The threat approaches.", arcPremise: "The threat approaches." })];
+    adventure.triggerRules = [makeTriggerRule({
+      id: "arc-rule", name: "Arc event", enabled: true, evaluationMode: "semantic", condition: "when the threat advances",
+      actions: [{ type: "updateComponentArc", componentId: "arc" }],
+    })];
+    mockProvider.mockResolvedValueOnce({ content: '["trigger:arc-rule"]', raw: {} })
+      .mockResolvedValueOnce({ content: "The threat reached the gate.", raw: {} });
+    const result = await runSemanticPostTurnEvaluation(adventure, providerConfig);
+    expect(result.actions).toContainEqual(expect.objectContaining({ type: "ADD_MEMORY_PROPOSAL", proposal: expect.objectContaining({ proposedType: "currentArcUpdate", status: "pending" }) }));
+  });
+
+  it("does not call the provider for legacy-only summary and momentum rules", async () => {
+    const adventure = baseAdventure();
+    adventure.tokenBudgetSettings.autoSummarize = true;
+    adventure.tokenBudgetSettings.sceneStateEnabled = true;
+    adventure.triggerRules = [makeTriggerRule({
+      id: "legacy-only", name: "Legacy only", enabled: true, evaluationMode: "semantic", condition: "after every turn",
+      actions: [{ type: "updateSummary" }, { type: "updateComponentMomentum", componentId: "old" }],
+    })];
+    const result = await runSemanticPostTurnEvaluation(adventure, providerConfig);
+    expect(mockProvider).not.toHaveBeenCalled();
+    expect(result.logEntry.conditionsEvaluated).toHaveLength(0);
+  });
   it("returns empty actions and a log entry when semantic evaluation is disabled", async () => {
     const adventure = { ...baseAdventure(), semanticEvaluationSettings: { ...baseAdventure().semanticEvaluationSettings, enabled: false } };
     const result = await runSemanticPostTurnEvaluation(adventure, providerConfig);
@@ -123,7 +148,7 @@ describe("runSemanticPostTurnEvaluation", () => {
   it("records a parse error in the log when the LLM returns invalid JSON for conditions", async () => {
     const adventure = {
       ...baseAdventure(),
-      triggerRules: [makeTriggerRule({ name: "Rule", enabled: true, evaluationMode: "semantic", condition: "test" })],
+      triggerRules: [makeTriggerRule({ name: "Rule", enabled: true, evaluationMode: "semantic", condition: "test", actions: [{ type: "activateComponent", componentId: "comp" }] })],
     };
     mockProvider.mockResolvedValueOnce({ content: "not json at all", raw: {} });
 

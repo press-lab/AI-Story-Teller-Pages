@@ -300,18 +300,15 @@ export interface TokenBudgetSettings {
   memoryPriorityMode: MemoryPriorityMode;
   allowSystemToPrioritizeMemory: boolean;
   allowSystemToDropUnpinnedTriggeredCards: boolean;
-  allowSystemToTruncateSummary: boolean;
+  allowSystemToTruncateSummary?: boolean;
   recentMessageWindow: number;
   sectionBudgets: Partial<Record<ContextSectionKind, number>>;
-  /** Automatically regenerate the rolling summary in the background every N turns. */
-  autoSummarize: boolean;
-  autoSummarizeEveryNTurns: number;
-  /** How often to regenerate scene state in the background. 0 = manual only, 1 = every turn. Default 1. */
-  autoSceneStateEveryNTurns: number;
-  /** When false, scene state is excluded from context and never auto-updated. Default true. */
-  sceneStateEnabled: boolean;
-  /** When false, the durable rolling summary is excluded from context and never auto-generated. Default true. */
-  summaryEnabled: boolean;
+  /** Deprecated save fields. Kept for older adventure JSON only. */
+  autoSummarize?: boolean;
+  autoSummarizeEveryNTurns?: number;
+  autoSceneStateEveryNTurns?: number;
+  sceneStateEnabled?: boolean;
+  summaryEnabled?: boolean;
 }
 
 export interface ProviderConfig {
@@ -827,8 +824,6 @@ export type AdventureAction =
   | { type: "APPROVE_MEMORY_PROPOSAL"; proposalId: string; editedProposal?: Partial<MemoryProposal> }
   | { type: "REJECT_MEMORY_PROPOSAL"; proposalId: string }
   | { type: "IGNORE_MEMORY_PROPOSAL"; proposalId: string }
-  | { type: "UPDATE_ROLLING_SUMMARY"; content: string; lastSummarizedMessageIndex?: number }
-  | { type: "UPDATE_SCENE_STATE"; content: string }
   | { type: "SET_TOKEN_BUDGET_SETTINGS"; settings: TokenBudgetSettings }
   | { type: "SET_SYSTEM_TRIGGER_SETTINGS"; settings: SystemTriggerSettings }
   | { type: "SET_MODEL_CONFIG"; config: ProviderConfig }
@@ -846,6 +841,5 @@ export type AdventureAction =
   | { type: "SET_CHALLENGE_MODE" }
   | { type: "SET_LAST_MEMORY_CYCLE_TURN"; turn: number }
   | { type: "SET_LAST_SEMANTIC_EVAL_TURN"; turn: number }
-  | { type: "SET_LAST_SCENE_STATE_TURN"; turn: number }
   | { type: "RESET_RUNTIME_STATE" }
   | { type: "SET_AUTO_SAVE_SETTINGS"; autoSaveEnabled: boolean; autoSaveEveryNTurns: number; autoSaveEveryNMinutes?: number };

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createDefaultAdventure, makeBrain } from "../state/defaults";
+import { createDefaultAdventure, makeBrain, makeComponent } from "../state/defaults";
 import { sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
 import { runBrainAudit } from "./brainAudit";
 
@@ -47,6 +47,8 @@ describe("runBrainAudit", () => {
     const adventure = {
       ...createDefaultAdventure("Brain Audit"),
       activeState: { ...createDefaultAdventure("Brain Audit").activeState, turn: 10 },
+      rollingSummary: { content: "Stale summary says the gate is open.", updatedAt: "2026-01-01T00:00:00.000Z" },
+      components: [makeComponent({ title: "Active Pressure", type: "activePressure", content: "The gate remains sealed.", active: true })],
       messages: [
         { id: "u1", role: "user" as const, content: "Turn one input.", createdAt: "2026-01-01T00:00:00.000Z" },
         { id: "a1", role: "assistant" as const, content: "Turn one output.", createdAt: "2026-01-01T00:01:00.000Z" },
@@ -78,6 +80,8 @@ describe("runBrainAudit", () => {
     expect(prompt).not.toContain("Turn one input.");
     expect(prompt).toContain("Turn two input.");
     expect(prompt).toContain("Turn three output.");
+    expect(prompt).toContain("The gate remains sealed.");
+    expect(prompt).not.toContain("Stale summary says");
     expect(prompt).toContain("thoughts under review (last 2 current/archived entries)");
     expect(prompt).toContain("turn3_bad_perspective");
     expect(prompt).toContain("turn2_read");

@@ -39,7 +39,7 @@ Do not directly mutate adventure objects in components, trigger engines, importe
 - Rolling Summary and Scene State are retained on the adventure object for save-compat but are no longer emitted as their own assembled sections (see `FEATURES.md` §18). Quest state is not part of the default section assembly.
 - Protected means non-droppable during token truncation. Pinned means prioritized, not automatically non-droppable.
 - Only the system shell and user-marked protected context are absolutely non-droppable.
-- Budget cuts are controlled by `memoryPriorityMode`, `allowSystemToPrioritizeMemory`, `allowSystemToDropUnpinnedTriggeredCards`, and `allowSystemToTruncateSummary`.
+- Budget cuts are controlled by `memoryPriorityMode`, `allowSystemToPrioritizeMemory`, and `allowSystemToDropUnpinnedTriggeredCards`. Legacy `allowSystemToTruncateSummary` has no active section to affect.
 - In `userLocked`, drop older recent messages before memory when possible. In `systemSuggested`, the lowest scored unprotected item may drop first. In `hybrid`, system-suggested memory can drop before user-locked context.
 - Log excluded context items with `budget_exceeded`, `inactive`, `cooldown`, or `not_triggered`.
 - Log context build decisions for inclusion, exclusion, truncation, and ordering. Include `generatedBy` in ordering decisions.
@@ -54,7 +54,7 @@ Do not directly mutate adventure objects in components, trigger engines, importe
 
 ## Memory Placement Policy
 
-- **Adventure Chronicle**: `adventure.messages`, the complete persisted transcript. Keep it uncompressed. Never automatically include the full Chronicle in model context. It is source material for summaries and memory proposals, not direct context.
+- **Adventure Chronicle**: `adventure.messages`, the complete persisted transcript. Keep it uncompressed. Never automatically include the full Chronicle in model context. It is source material for memory proposals, not direct context.
 - **Rolling Summary**: `adventure.rollingSummary`, legacy compression of the Chronicle. It is retained on the adventure object for save compatibility but is not emitted as a model context section. Must not overwrite story cards, brains, or components.
 - **Next Output Bias**: `activeState.nextTurnNote`, a user-written short-term steering note for the next generation. Appears in section J, is visible in Context Preview, token-counted, reducer-driven, and expires after one successful generation by default.
 - **Story Cards**: durable recurring facts — private jokes, nicknames, secrets, promises, relationship facts, magical rules, recurring objects, locations, factions. Trigger-matched or pinned. Section F. Optional AI auto-updates use per-card cooldown fields (`autoUpdateCooldownTurns`, `lastAutoUpdateTurn`).
@@ -64,7 +64,7 @@ Do not directly mutate adventure objects in components, trigger engines, importe
 - **Immediate Momentum**: disabled legacy component type. Keep the type for old-save compatibility, but do not generate it, auto-update it, import it, or assemble it into context.
 - **AI Instructions**: persistent generation rules. Section B. AI must not modify.
 - **Author's Note**: tonal / mood layer. Section D. AI must not modify.
-- **Memory Inbox**: `activeState.memoryProposals` — AI/system-suggested memory updates before they become active context. Proposals have `status: "pending" | "approved" | "rejected" | "ignored"`. Pending proposals appear in Context Preview but are never model context. Approving a proposal converts it to a Story Card, Brain update, Plot Essentials update, Active Pressure update, or legacy Summary update via reducer actions.
+- **Memory Inbox**: `activeState.memoryProposals` — AI/system-suggested memory updates before they become active context. Proposals have `status: "pending" | "approved" | "rejected" | "ignored"`. Pending proposals appear in Context Preview but are never model context. Approving a current proposal converts it to a Story Card, Brain update, Plot Essentials update, or Active Pressure update via reducer actions. Old Summary and Immediate Momentum proposals remain readable but cannot be applied.
 
 Use `classifyMemory` in `src/memory/classificationPolicy.ts` when creating deterministic proposals. If a character has no BrainEntry, route durable character facts to an existing Story Card or a Story Card proposal; do not create a brainUpdate proposal by default. Ephemeral scenery, one-off room layouts, generic movement, and throwaway details should be ignored unless marked important or recurring.
 
@@ -72,11 +72,11 @@ Do not add an opaque Memory Bank retrieval layer. A future Inspectable Memory Ba
 
 ## Known Architecture Decision: Semantic Engine vs Memory Proposals
 
-The semantic post-turn evaluator (`src/triggers/semanticEngine.ts`) can apply brain, story card, and Plot Essentials updates **directly** — via `applyAIMemoryUpdate` → reducer actions — when `semanticEvaluationSettings.requireApprovalForAutoUpdates` is `false`. When that setting is `true`, generated updates become Memory Inbox proposals and do not mutate active memory until approved.
+The semantic post-turn evaluator (`src/triggers/semanticEngine.ts`) can apply brain and story card updates **directly** — via `applyAIMemoryUpdate` → reducer actions — when `semanticEvaluationSettings.requireApprovalForAutoUpdates` is `false`. Plot Essentials updates always become Memory Inbox proposals and require review. When the setting is `true`, other generated updates also become proposals.
 
 Auto-Cards are a removed legacy surface. Do not reintroduce an Auto-Card review queue without adding explicit UI, reducer actions, and context-builder tests.
 
-The reason direct brain/story-card/plotEssentials updates are allowed as an option: every semantic trigger that fires a memory-update action was **explicitly configured by the user** (condition string + action type + target ID). The user opted into this behavior. These are not surprise AI suggestions — they are user-defined rules executing.
+The reason direct brain/story-card updates are allowed as an option: every semantic trigger that fires a memory-update action was **explicitly configured by the user** (condition string + action type + target ID). The user opted into this behavior. These are not surprise AI suggestions — they are user-defined rules executing.
 
 Memory Inbox / Memory Proposals is the path for **unstructured AI-suggested new memory** — the `classifyMemory` flow, or future summary-extraction passes — where the source text is arbitrary and the AI is making a freeform durable-memory suggestion that the user has not pre-authorized.
 

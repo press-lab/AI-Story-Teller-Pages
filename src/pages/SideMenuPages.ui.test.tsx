@@ -17,7 +17,6 @@ import { ContextPreviewPage } from "./ContextPreviewPage";
 import { ImportExportPage } from "./ImportExportPage";
 import { MemoryInboxPage } from "./MemoryInboxPage";
 import { StoryCardsPage } from "./StoryCardsPage";
-import { SummaryPage } from "./SummaryPage";
 import { TriggersPage } from "./TriggersPage";
 
 const timestamp = "2026-01-01T00:00:00.000Z";
@@ -509,7 +508,7 @@ describe("side menu page smoke coverage", () => {
     });
   });
 
-  it("covers Inspector pages and Chronicle/Summary entry points", async () => {
+  it("covers Inspector pages and Chronicle entry points", async () => {
     const user = userEvent.setup();
     const onBuildContext = vi.fn();
     const onImportAdventure = vi.fn(async () => undefined);
@@ -523,6 +522,7 @@ describe("side menu page smoke coverage", () => {
     cleanup();
 
     renderWithAdventure((adventure, dispatch) => <TriggersPage adventure={adventure} dispatch={dispatch} />);
+    expect(screen.getAllByText(/No semantic automations active/).length).toBeGreaterThan(0);
     await user.click(screen.getByRole("button", { name: "Create Trigger" }));
     expect(screen.getByDisplayValue("New Trigger")).toBeInTheDocument();
     cleanup();
@@ -538,16 +538,6 @@ describe("side menu page smoke coverage", () => {
     expect(screen.getByRole("tab", { name: /Back Up/i })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("tab", { name: /Restore/i })).toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: /Migrate/i })).not.toBeInTheDocument();
-    cleanup();
-
-    const onGenerateDurableSummary = vi.fn(async () => "Generated durable summary.");
-    const onGenerateSceneState = vi.fn(async () => "Generated scene state.");
-    renderWithAdventure((adventure, dispatch) => (
-      <SummaryPage adventure={adventure} dispatch={dispatch} onGenerateDurableSummary={onGenerateDurableSummary} onGenerateSceneState={onGenerateSceneState} />
-    ));
-    const regenerateButtons = screen.getAllByRole("button", { name: "Regenerate" });
-    await user.click(regenerateButtons[0]);
-    expect(onGenerateDurableSummary).toHaveBeenCalledTimes(1);
     cleanup();
 
     renderWithAdventure((adventure, dispatch) => <ChroniclePage adventure={adventure} dispatch={dispatch} />);

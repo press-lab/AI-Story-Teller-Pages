@@ -135,7 +135,7 @@ npm.cmd run test:live   # optional, uses .env.test.local`}</pre>
         </p>
         <p>
           Pending proposals are not active context. Approving a proposal routes it to a Story Card, Brain
-          update, Plot Essentials update, Active Pressure update, or legacy Rolling Summary update through reducer-backed paths.
+          update, Plot Essentials update, or Active Pressure update through reducer-backed paths. Legacy Summary proposals from old saves remain readable but cannot be applied.
         </p>
       </>
     ),
