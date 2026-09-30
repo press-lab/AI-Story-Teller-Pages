@@ -1,5 +1,27 @@
 # Background memory cost and quality
 
+## 2026-09-30 redesign (from the Seattle Hunger playthrough)
+
+Evidence from a 911-turn save: background memory used ~15.5M prompt tokens against ~10M
+for the story itself; the one-pass envelope was missing on 73% of turns (deepseek-flash);
+the narrator prompt's cache hit stopped ~1.1k tokens in because the one-pass block listed
+per-turn targets; there was no current-state layer, so relationship status, sleeping
+arrangements, who had met whom, and the day of the week drifted; and the central
+relationship card had triggers that never matched and had not updated in ~700 turns.
+
+Changes:
+- The narrator only narrates. One background memory pass every N turns writes all memory.
+- Story State (always included) carries current truth; Brains carry knowledge boundaries.
+- Living-card facts can be superseded instead of accumulating contradictions.
+- Stable context is a cacheable system prefix; per-turn context rides in the newest user
+  message; history is trimmed in chunks of 10.
+- Out-of-character corrections withhold arc direction, force the continuity check, and can
+  optionally use DeepSeek reasoning.
+
+Targets to watch in play: out-of-character corrections at or below ~3 per 100 turns, and
+most story-call input served from cache. These are observations to make, not guarantees.
+
+
 Memory maintenance keeps the narrator's model, context budget, response length,
 and cadence settings unchanged. The optimization is in background reference
 selection, prompt reuse, and redundant proposals.

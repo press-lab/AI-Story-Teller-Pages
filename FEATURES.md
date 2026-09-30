@@ -20,19 +20,18 @@ The app is browser-only, local-first, IndexedDB-persisted, no backend. All LLM c
 2. `applyRuntimeEngines` on `input` — keyword/regex trigger rules fire synchronously
 3. `buildContext` — assembles provider payload (see Context Builder)
 4. Provider call — sends to LLM
-5. `parseOnePassMemory` separates the hidden JSON tail; legacy tags are stripped without applying them
+5. Stray memory envelopes / legacy tags are stripped without applying them (the narrator is never asked for memory output)
 6. Continuity Lint — if risky claim patterns matched, optional LLM correction pass
-7. Local memory validation — reject invalid evidence, targets, duplicates, and oversized output
-8. Approved thoughts update eligible existing Brains and print only when `printThoughts: true`
-9. One-pass `<memory_updates>` JSON tail — locally checked proposals and eligible Brain thoughts; no separate routine memory call
-10. `ADD_MESSAGE` — store cleaned assistant response
-11. `CONSUME_NEXT_TURN_NOTE` — clears if `expiresAfterUse`
-12. `applyRuntimeEngines` on `output` — keyword/regex trigger rules fire again
-13. `INCREMENT_TURN` — advances turn counter, clears `challengeMode`, prunes expired force-include entries
+7. `ADD_MESSAGE` — store cleaned assistant response
+8. `CONSUME_NEXT_TURN_NOTE` — clears if `expiresAfterUse`
+9. `applyRuntimeEngines` on `output` — keyword/regex trigger rules fire again
+10. `INCREMENT_TURN` — advances turn counter, clears `challengeMode`, prunes expired force-include entries
+
+Out-of-character (comms) turns build context with `outOfCharacter: true`: arc phase direction is withheld and the Continuity Challenge instruction is injected. With the preset option "Use reasoning on out-of-character corrections (DeepSeek only)", comms turns also send `thinking: enabled` with a larger output reserve.
 
 ### Background (async, after turn — not blocking):
-- Semantic evaluation (`runSemanticPostTurnEvaluation`) every `semanticEvalEveryNTurns` turns
-- `memoryDetectionSettings.enabled` selects the one-pass instruction. If the story model omits or corrupts the hidden memory envelope, the runtime falls back to the background memory cycle at the configured interval so automatic memory does not silently stop.
+- **Background memory pass** (`memory/compactMemoryFallback.ts` → `runBackgroundMemoryPass`): the single automatic memory writer. One JSON-mode call every `memoryDetectionSettings.everyNTurns` story turns (never after comms turns) reads every message since the previous pass plus related canon and returns Story State, character thoughts, knowledge boundaries, card, pressure, arc and essentials updates. A failed pass is logged and waits for the next slot; it never escalates into the multi-call `runMemoryCycle`.
+- Semantic evaluation (`runSemanticPostTurnEvaluation`) every `semanticEvalEveryNTurns` turns, only when the user configured semantic trigger rules
 - Arc continuation runs exceptionally after an arc reaches aftermath. Custom rule and arc requests are guarded against overlap.
 
 ---
@@ -43,26 +42,34 @@ The app is browser-only, local-first, IndexedDB-persisted, no backend. All LLM c
 
 Pure function — builds the provider payload each turn. Sections are assembled in order and subject to token budget management.
 
+### Payload layout (ordered for provider prefix caching)
+
+1. **System message — stable prefix.** Only sections that rarely change, so providers with prefix caching (DeepSeek, Anthropic, OpenRouter) can reuse it turn after turn.
+2. **Recent history**, chronological. The oldest kept message is aligned to an absolute index in chunks of 10 (`RECENT_MESSAGE_CHUNK`), so the start of the history stays identical for several turns instead of sliding every turn.
+3. **Turn context** — per-turn sections rendered as a `[TURN CONTEXT] … [END TURN CONTEXT]` block at the start of the newest user message (or as a trailing user message when history ends on an assistant turn). Never a system message: Anthropic-style adapters hoist system messages to the front, which would break the cache.
+
 ### Section order (by position):
 
-| Order | ID | Label | Contents |
-|---|---|---|---|
-| 0 | `system` | A. System Shell | Fixed system prompt + all active `narrationRules` components |
-| 1 | `aiInstructions` | B. AI Instructions | All active `aiInstructions` components |
-| 2 | `plotEssentials` | C. Plot Essentials | `plotEssentials`, `activePressure` components |
-| 2.5 | `currentArc` | C2. Current Story Arc | `currentArc` components (prefixed with `[Arc Premise: ...]` if set) |
-| 3 | `components` | E. Components | Always-on or pinned non-special-typed components |
-| 4 | `storyCards` | F. Story Cards | Triggered, always, or pinned story cards |
-| 5 | `brains` | G. Brains | Triggered or pinned brain entries (thoughts only) |
-| 8 | `authorNote` | D. Author's Note | `authorNote` components (placed late for recency influence) |
-| 10 | `nextTurnNote` | J. Next Output Bias | Active next-turn note |
-| 10.5 | `challengeMode` | M. Continuity Challenge | Injected instruction when `challengeMode` is active |
-| 11 | `recentMessages` | K. Recent Messages | Last N messages within token budget |
+| Order | ID | Label | Placement | Contents |
+|---|---|---|---|---|
+| 0 | `system` | A. System Shell | prefix | Fixed system prompt + turn scope contract + all active `narrationRules` components |
+| 1 | `aiInstructions` | B. AI Instructions | prefix | All active `aiInstructions` components |
+| 2 | `plotEssentials` | C. Plot Essentials | prefix | `plotEssentials`, `activePressure` components |
+| 2.5 | `currentArc` | C2. Current Story Arc | prefix | `currentArc` components (phase direction withheld on out-of-character turns) |
+| 3 | `components` | E. Components | prefix | Always-on or pinned non-special-typed components |
+| 3.5 | `pinnedStoryCards` | F0. Pinned Story Cards | prefix | Pinned or `always` story cards |
+| 4 | `recentMessages` | K. Recent Messages | history | Last N messages within token budget, chunk-aligned |
+| 5 | `storyState` | S. Story State | turn context | The Story State component (authoritative current truth) |
+| 6 | `storyCards` | F. Story Cards | turn context | Triggered and force-included story cards, up to 2 recalled event memories |
+| 7 | `brains` | G. Brains | turn context | Triggered or pinned brains: thoughts + knowledge boundary |
+| 8 | `authorNote` | D. Author's Note | turn context | `authorNote` components (closest to the newest turn) |
+| 10 | `nextTurnNote` | J. Next Output Bias | turn context | Active next-turn note |
+| 10.5 | `challengeMode` | M. Continuity Challenge | turn context | When `challengeMode` is active or the turn is out of character |
 
 ### Also injected as inspectable system-section items:
 - `Turn Scope Contract` - soft target from `responseLengthHint`
-- `Character Thought Capture` - if brains are active, instructs model to emit `<thought>` tags
-- `Memory Tagging` - if `systemTriggers.enabled`, instructs model to emit `<memory>` tags
+
+No memory bookkeeping instructions are ever sent to the narrator.
 
 ### Token budget management:
 When total exceeds `maxContextTokens`, items are dropped in priority order:
@@ -88,6 +95,7 @@ When total exceeds `maxContextTokens`, items are dropped in priority order:
 | `activePressure` | No* | C | Yes (replace) | One-sentence current external threat or obligation. Auto-updated, auto-approved by default. |
 | `immediateMomentum` | No | — | No | Disabled legacy type. Not generated, auto-updated, or assembled into context. |
 | `authorNote` | Yes | D (near-context) | No | Immediate narrative correction. One per adventure. Most powerful short-term tool. |
+| `storyState` | Yes | S (turn context) | Yes (replace) | Authoritative current truth: day/time, location, relationships, arrangements, who has met whom, open threads. Protected, always included when non-empty. Rewritten in full by the background memory pass (`storyStateUpdate`, auto-approved by default); turn off Auto-update to freeze it. Added empty to older saves on load. |
 | `memory` | No | — | No | **Legacy.** Migrate content to Story Cards (type: Lore). |
 | `custom` | No | E (if always-on/pinned) | No | General purpose. Configure inclusion policy, priority, protection manually. |
 
@@ -181,7 +189,7 @@ Brains track named character inner state as a keyed thought record. Primary upda
 Triggered by `characterName` or any string in `triggers`, matched against recent text (phrase match). Also respects `inclusionPolicy`, `pinned`, `protected`.
 
 ### Update paths:
-1. **One-pass memory thoughts** — narrator returns an evidenced thought in the same response; existing eligible Brains only, honoring per-type auto-approval and cooldowns
+1. **Background memory pass** — one evidenced thought per eligible character who took part in the recent turns, plus a knowledge boundary (`knowledge`: "Knows: … / Does not know: …", always replaced, never appended). Existing eligible Brains only, honoring `brainUpdate` auto-approval and cooldowns
 2. **Semantic engine** (`updateBrain`/`appendBrain` actions) — still available via explicitly configured trigger rules
 3. **Manual** — "Update Now" button in BrainsPage
 
@@ -196,8 +204,9 @@ All AI-generated content suggestions pass through Memory Proposals before becomi
 ### Proposal types:
 | Type | Source | Auto-Approve Default | Apply Behavior |
 |---|---|---|---|
-| `storyCard` | One-pass memory, story card audit, "Remember This" | Off | Upsert story card |
-| `brainUpdate` | Semantic engine (updateBrain/appendBrain) | Off | Apply BrainPatch |
+| `storyCard` | Background memory pass, story card audit, "Remember This" | Off | Upsert story card; a living-card update with `replaces` supersedes that fact |
+| `brainUpdate` | Background memory pass, semantic engine | Off | Apply BrainPatch (thoughts appended, `knowledge` replaced) |
+| `storyStateUpdate` | Background memory pass | **On** | Replace Story State content (not kept in proposal history when auto-approved) |
 | `plotEssentialsUpdate` | Semantic engine, "Suggest Updates" | Off | Append to PE component |
 | `currentArcUpdate` | Semantic engine (updateComponentArc) | **On** | Append to arc component |
 | `plotPressureUpdate` | Semantic engine (updateComponentPressure) | **On** | Replace activePressure content |
@@ -207,13 +216,11 @@ All AI-generated content suggestions pass through Memory Proposals before becomi
 
 Auto-approve settings: `adventure.memoryAutoApprove` — all togglable per adventure.
 
-### One-pass validation and approval
+### Background memory pass validation and approval
 
-Narration and up to four small updates share one provider response. Empty updates are normal. Local checks verify shape, length, current-turn evidence, target existence/eligibility, and duplicates. Existing cards receive additive facts; at most one new recurring subject is proposed. New event recap cards are not generated. Arc updates append evidenced developments without changing authored pacing.
+One call returns up to 12 updates as JSON. Empty updates are normal. Local checks verify shape, length, evidence quoted from the pass window (every message since roughly the previous pass), target existence/eligibility, and duplicates. Existing cards receive additive facts; on living cards an update may name the fact it `replaces`, which is superseded in place (VOICE CONTRACT lines and static cards are never rewritten). At most one new recurring subject is proposed, and its triggers must be names or nouns — first-person recall phrases are dropped. New event recap cards are not generated. Arc updates append evidenced developments without changing authored pacing.
 
-`ADD_MEMORY_PROPOSAL` honors the matching auto-approval flag unless `requiresReview` is true. One-pass Plot Essentials changes, plot cards, and protected-card updates always require review. A broken or missing memory tail preserves the narrative, logs the problem, and never starts a repair call. Continuity/agency corrections retain their exceptional calls and discard memory from the rejected draft.
-
-The one-pass instruction is named and token-counted in Context Preview. Global memory enablement is used consistently for preview and generation and saved to the adventure snapshot. Output reserves up to 1,400 extra tokens for the hidden tail while respecting the configured provider cap. Usage includes both story and memory tokens in the narration call. This is an allowance, not a mandatory output size.
+`ADD_MEMORY_PROPOSAL` honors the matching auto-approval flag unless `requiresReview` is true. Plot Essentials changes, plot cards, and protected-card updates always require review. The pass rules are fixed text placed before per-turn data so providers can cache them.
 
 These checks prove local routing and call counts, not model accuracy or literary quality. Memory evidence matching cannot establish every inference. Actual dollar savings depend on provider usage and optional exceptional calls.
 
