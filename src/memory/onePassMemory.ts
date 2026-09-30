@@ -46,14 +46,14 @@ const norm = (text: string) => text.normalize("NFKC").toLowerCase().replace(/[^\
 const words = (text: string) => text.trim().split(/\s+/).length;
 
 /** Local structural/evidence checks, not a claim that a quote proves every inference. */
-export function onePassMemoryActions(adventure: Adventure, context: ContextBuildResult, updates: unknown[], story: string, sourceTurnId: string, error?: string): AdventureAction[] {
+export function onePassMemoryActions(adventure: Adventure, context: ContextBuildResult, updates: unknown[], story: string, sourceTurnId: string, error?: string, sourceLabel = "One-pass memory: no additional API call", playerInputOverride?: string): AdventureAction[] {
   const actions: AdventureAction[] = [];
   const errors = error ? [error] : [];
   const executed: string[] = [];
   const visibleIds = new Set(context.sections.flatMap(s => s.items.map(i => i.id)));
   const instruction = context.sections.flatMap(s => s.items).find(i => i.id === ONE_PASS_MEMORY_ID)?.content ?? "";
   const lastMessage = adventure.messages.at(-1);
-  const playerInput = lastMessage?.role === "user" ? lastMessage.content : "";
+  const playerInput = playerInputOverride ?? (lastMessage?.role === "user" ? lastMessage.content : "");
   const evidenceSources = [norm(story), norm(playerInput)];
   const seen = new Set<string>();
   let newCards = 0;
@@ -136,7 +136,7 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
   }
   actions.push({ type: "LOG_EVALUATION_RESULT", entry: {
     id: createId("eval"), turn: adventure.activeState.turn, createdAt: nowIso(), conditionsEvaluated: [],
-    conditionsFired: [], actionsExecuted: ["One-pass memory: no additional API call", ...executed], generatedContent: [], errors,
+    conditionsFired: [], actionsExecuted: [sourceLabel, ...executed], generatedContent: [], errors,
   } });
   return actions;
 }

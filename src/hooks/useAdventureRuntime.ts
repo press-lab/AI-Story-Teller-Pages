@@ -4,6 +4,7 @@ import { buildContext } from "../contextBuilder/contextBuilder";
 import { saveAdventure } from "../db/adventureDb";
 import { scanEventMemories } from "../memory/eventMemoryScan";
 import { regenerateProposalContent } from "../memory/memoryDetection";
+import { runCompactMemoryFallback } from "../memory/compactMemoryFallback";
 import { generateArcContinuations, generateArcDirector, generateArcFromHistory, generateBrainFromName as generateBrainEntry, generateComponentContent, pickConvergentContinuation } from "../ai/generators";
 import { PLOT_ESSENTIALS_BEST_PRACTICES } from "../ai/authoringBestPractices";
 import { runStoryCardAudit, type AuditRecommendation } from "../memory/storyCardAudit";
@@ -255,13 +256,22 @@ export function useAdventureRuntime(
 
     memoryFallbackInFlight.current.add(snapshot.id);
     try {
-      const result = await runMemoryCycle(snapshot, buildBackgroundConfig(snapshot, providerSettingsRef.current));
+      const config = buildBackgroundConfig(snapshot, providerSettingsRef.current);
+      const compact = await runCompactMemoryFallback(snapshot, config);
+      const compactUsage: AdventureAction = {
+        type: "ACCUMULATE_BACKGROUND_TOKENS",
+        promptTokens: compact.tokenUsage.promptTokens,
+        completionTokens: compact.tokenUsage.completionTokens,
+      };
+      const actions = compact.valid
+        ? [...compact.actions, { type: "SET_LAST_MEMORY_CYCLE_TURN" as const, turn: snapshot.activeState.turn }, compactUsage]
+        : [...(await runMemoryCycle(snapshot, config)).actions, compactUsage];
       if (adventureRef.current?.id !== snapshot.id) return;
       if (isSubmittingRef.current) {
-        queuePendingUpdate(result.actions, "memoryCycle");
+        queuePendingUpdate(actions, "memoryCycle");
         return;
       }
-      applyActionsAndPersist(result.actions);
+      applyActionsAndPersist(actions);
     } catch (fallbackError) {
       if (adventureRef.current?.id === snapshot.id) {
         setError(fallbackError instanceof Error ? fallbackError.message : "Automatic memory fallback failed.");

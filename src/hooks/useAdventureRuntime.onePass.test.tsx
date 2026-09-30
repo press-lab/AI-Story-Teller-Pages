@@ -67,37 +67,55 @@ describe("runtime one-pass call accounting", () => {
   });
 
   it("preserves the story and starts the fallback cycle for a malformed memory tail", async () => {
-    vi.mocked(sendOpenAICompatibleChatCompletion).mockResolvedValue({ content: `${story}<memory_updates>{"updates": [${"you agree ".repeat(300)}`, raw: {} });
+    vi.mocked(sendOpenAICompatibleChatCompletion)
+      .mockResolvedValueOnce({ content: `${story}<memory_updates>{"updates": [${"you agree ".repeat(300)}`, raw: {} })
+      .mockResolvedValueOnce({ content: '{"updates":[]}', raw: {} });
     const { result } = setup();
     await act(async () => { await result.current.runtime.submitTurn("Mira explains."); });
-    expect(sendOpenAICompatibleChatCompletion).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(sendOpenAICompatibleChatCompletion).toHaveBeenCalledTimes(2));
+    expect(runMemoryCycle).not.toHaveBeenCalled();
     expect(result.current.adventure?.messages.at(-1)?.content).toBe(story);
-    expect(result.current.adventure?.activeState.evaluationLog[0].errors[0]).toContain("Incomplete");
+    expect(result.current.adventure?.activeState.evaluationLog.some(log => log.errors.some(error => error.includes("Incomplete")))).toBe(true);
     expect(result.current.adventure?.storyCards[0].content).toBe("Mira is a scout.");
   });
 
   it("keeps the agency correction exception, discards memory from its rejected draft, and accounts for both calls", async () => {
     vi.mocked(sendOpenAICompatibleChatCompletion)
       .mockResolvedValueOnce({ content: "You agree to the duke's terms. " + response, raw: {}, usage: { promptTokens: 2000, completionTokens: 150, totalTokens: 2150 } })
-      .mockResolvedValueOnce({ content: "The duke waits for an answer.", raw: {}, usage: { promptTokens: 200, completionTokens: 20, totalTokens: 220 } });
+      .mockResolvedValueOnce({ content: "The duke waits for an answer.", raw: {}, usage: { promptTokens: 200, completionTokens: 20, totalTokens: 220 } })
+      .mockResolvedValueOnce({ content: '{"updates":[]}', raw: {}, usage: { promptTokens: 100, completionTokens: 10, totalTokens: 110 } });
     const { result } = setup();
     await act(async () => { await result.current.runtime.submitTurn("I listen."); });
-    expect(sendOpenAICompatibleChatCompletion).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(sendOpenAICompatibleChatCompletion).toHaveBeenCalledTimes(3));
     expect(result.current.adventure?.messages.at(-1)?.content).toBe("The duke waits for an answer.");
     expect(result.current.adventure?.messages.at(-1)?.usage?.totalTokens).toBe(2370);
     expect(result.current.adventure?.storyCards[0].content).toBe("Mira is a scout.");
     const correction = vi.mocked(sendOpenAICompatibleChatCompletion).mock.calls[1][0];
     expect(correction.messages.map(m => m.content).join("\n")).not.toContain("<memory_updates>");
-    await waitFor(() => expect(runMemoryCycle).toHaveBeenCalledTimes(1));
+    expect(runMemoryCycle).not.toHaveBeenCalled();
   });
 
-  it("falls back to the background memory cycle when the story model omits the memory envelope", async () => {
-    vi.mocked(sendOpenAICompatibleChatCompletion).mockResolvedValue({ content: story, raw: {} });
+  it("recovers a missing memory envelope with one focused background call", async () => {
+    vi.mocked(sendOpenAICompatibleChatCompletion)
+      .mockResolvedValueOnce({ content: story, raw: {} })
+      .mockResolvedValueOnce({ content: '{"updates":[]}', raw: {} });
+    const { result } = setup();
+    await act(async () => { await result.current.runtime.submitTurn("Mira explains."); });
+    await waitFor(() => expect(sendOpenAICompatibleChatCompletion).toHaveBeenCalledTimes(2));
+    expect(runMemoryCycle).not.toHaveBeenCalled();
+    expect(result.current.adventure?.messages.at(-1)?.content).toBe(story);
+    expect(result.current.adventure?.activeState.evaluationLog.some(log => log.errors.some(error => error.includes("Memory envelope missing")))).toBe(true);
+  });
+
+  it("uses the legacy memory cycle if the focused recovery is invalid", async () => {
+    vi.mocked(sendOpenAICompatibleChatCompletion)
+      .mockResolvedValueOnce({ content: story, raw: {} })
+      .mockResolvedValueOnce({ content: "invalid JSON", raw: {} });
     const { result } = setup();
     await act(async () => { await result.current.runtime.submitTurn("Mira explains."); });
     await waitFor(() => expect(runMemoryCycle).toHaveBeenCalledTimes(1));
+    expect(sendOpenAICompatibleChatCompletion).toHaveBeenCalledTimes(2);
     expect(result.current.adventure?.messages.at(-1)?.content).toBe(story);
-    expect(result.current.adventure?.activeState.evaluationLog[0].errors[0]).toContain("Memory envelope missing");
   });
 
   it("blocks duplicate submissions before React has rendered loading state", async () => {
