@@ -30,6 +30,7 @@ Start with the three root docs. Everything in `docs/` carries a status line at t
 | [`building-a-scenario.md`](./building-a-scenario.md) | Guide | Scenario authors | Step-by-step recipe for a long-running adventure. |
 | [`adventure-design.md`](./adventure-design.md) | Guide | Authors, contributors | Design theory behind arcs, Brains, and the Arc Director. |
 | [`edit-surface-ui-treatment.md`](./edit-surface-ui-treatment.md) | Guide | Contributors | UI conventions for edit pages. |
+| [`hunter-finale-quality-review.md`](./hunter-finale-quality-review.md) | Proposal | Seth, contributors | Hunter Finale evidence, quality assessment, and revision 4 priorities for correction, current state, pacing, and cost. |
 | [`story-quality-continuity-strategy.md`](./story-quality-continuity-strategy.md) | Proposal | Seth, contributors | Revised quality-first design: narrative context, memory semantics, pacing, evaluation, and API cost. |
 | [`memory-cost-quality.md`](./memory-cost-quality.md) | History | Contributors | The 2026-09-30 background-memory redesign (current), plus legacy memory-cycle notes. |
 | [`memory-automation-playthrough-context.md`](./memory-automation-playthrough-context.md) | History | Contributors | July 2026 compact-card policy; auto-pinning superseded. |
