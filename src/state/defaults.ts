@@ -30,6 +30,7 @@ export const defaultTokenBudgetSettings: TokenBudgetSettings = {
   allowSystemToDropUnpinnedTriggeredCards: true,
   allowSystemToTruncateSummary: true,
   recentMessageWindow: 12,
+  minRecentMessages: 6,
   sectionBudgets: {
     rollingSummary: 1800,
     sceneState: 400,
@@ -93,6 +94,7 @@ export const defaultMemoryDetectionSettings: MemoryDetectionSettings = {
   enabled: true,
   generateContent: true,
   everyNTurns: 3,
+  suggestEventMemories: true,
 };
 
 export const defaultMemoryAutoApproveSettings: MemoryAutoApproveSettings = {

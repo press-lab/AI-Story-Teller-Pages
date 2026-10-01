@@ -21,8 +21,8 @@ const SYSTEM_SHELL = `You are the story engine for AI Story Teller. The context 
 
 STABLE CONTEXT (this system message — changes rarely):
   B. AI Instructions — narrative rules and style for this adventure.
-  C. Plot Essentials — overarching premise, long-term conflict, and persistent story-wide constraints. Active Pressure names the immediate external threat or obligation.
-  C2. Current Story Arc — active arc log and any gated Arc Director phase instruction.
+  C. Plot Essentials — overarching premise, long-term conflict, and persistent story-wide constraints.
+  C2. Current Story Arc — the arc premise and any gated Arc Director phase instruction.
   E. Components — general world-building context (always-on or pinned entries).
   F0. Pinned Story Cards — core identity and relationship records that always apply.
 
@@ -30,7 +30,9 @@ Then the recent story turns follow in chronological order.
 
 TURN CONTEXT (a block at the start of the newest user message, marked [TURN CONTEXT] … [END TURN CONTEXT]; it is narrator reference, never player speech):
   S. Story State — the authoritative CURRENT facts: day/date/time, location, relationship status, living and sleeping arrangements, who has met whom, open threads.
-  F. Story Cards — World Info entries injected when their trigger keywords appear in recent text.
+  P. Active Pressure — the immediate external threat or obligation pressing on the player character.
+  C3. Arc Progress — completed developments in the current arc so far.
+  F. Story Cards — World Info entries injected when their trigger keywords appear in recent text, plus pinned living records whose facts change during play.
   G. Brains — private thoughts and knowledge boundaries of named characters. Private to the narrator; never quote directly.
   D. Author's Note — immediate narrative direction for this turn. Highest-priority steering.
   J. Next Output Bias — one-turn instruction. Apply it, then disregard it.
@@ -67,6 +69,8 @@ interface BuildOptions {
 /** Sections sent in the per-turn [TURN CONTEXT] block after the history (never in the cached prefix). */
 export const TURN_CONTEXT_SECTIONS: ReadonlySet<ContextSectionKind> = new Set<ContextSectionKind>([
   "storyState",
+  "activePressure",
+  "arcProgress",
   "storyCards",
   "brains",
   "authorNote",
@@ -76,6 +80,8 @@ export const TURN_CONTEXT_SECTIONS: ReadonlySet<ContextSectionKind> = new Set<Co
 
 /** Recent history is trimmed from the front in blocks of this many messages so the prompt prefix stays identical across turns. */
 export const RECENT_MESSAGE_CHUNK = 10;
+/** Default for tokenBudgetSettings.minRecentMessages: three exchanges kept ahead of unprotected memory. */
+export const DEFAULT_MIN_RECENT_DIALOGUE = 6;
 /** The newest messages always kept, even if chunk alignment would trim them. */
 const MIN_RECENT_MESSAGES = 4;
 
@@ -448,9 +454,9 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
     return [next];
   });
 
-  // C. Plot Essentials + Active Pressure
+  // C. Plot Essentials — the stable story foundation (cached prefix).
   const plotEssentialItems = prioritySort(adventure.components).flatMap((component) => {
-    if (component.type !== "plotEssentials" && component.type !== "activePressure") return [];
+    if (component.type !== "plotEssentials") return [];
     if (!component.active) {
       logExcludedOnce(component.id, component.title, "inactive");
       return [];
@@ -460,7 +466,22 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
     return [next];
   });
 
-  // C2. Current Story Arc — active arc log, always included when active and has content
+  // P. Active Pressure — changes as stakes change, so it rides in the per-turn block, not the cached prefix.
+  const activePressureItems = prioritySort(adventure.components).flatMap((component) => {
+    if (component.type !== "activePressure") return [];
+    if (!component.active) {
+      logExcludedOnce(component.id, component.title, "inactive");
+      return [];
+    }
+    if (!component.content.trim()) return [];
+    const next = item(component.id, "component", component.title, component.content, component.priority, component.protected, component.pinned, component.active, component.inclusionPolicy, "user");
+    pushIncluded(next, `Active Pressure loaded in the turn context; priority=${component.priority}; protected=${component.protected}.`);
+    return [next];
+  });
+
+  // C2. Current Story Arc — premise and gated phase direction (cached prefix; changes only at phase changes).
+  // C3. Arc Progress — the growing development log, sent per turn so log appends do not break the cache.
+  const arcProgressItems: ContextItem[] = [];
   const currentArcItems = prioritySort(adventure.components).flatMap((component) => {
     if (component.type !== "currentArc") return [];
     if (!component.active) {
@@ -478,10 +499,15 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
         : phase === "simmer" || phase === "escalate"
           ? component.arcSimmerInstruction?.trim()
           : undefined;
-    if (!component.content.trim() && !component.arcPremise?.trim() && !phaseDirection) return [];
-    const premiseHeader = component.arcPremise?.trim() ? `[Arc Premise: ${component.arcPremise.trim()}]\n` : "";
-    const directionBlock = phaseDirection ? `\n\n[ARC DIRECTION — ${phase.toUpperCase()}]\n${phaseDirection}` : "";
-    const arcContent = premiseHeader + (component.content.trim() || "(no entries yet)") + directionBlock;
+    if (component.content.trim()) {
+      const progress = item(`${component.id}:progress`, "component", `${component.title} — progress`, component.content.trim(), component.priority, component.protected, component.pinned, component.active, component.inclusionPolicy, "user");
+      arcProgressItems.push(progress);
+      pushIncluded(progress, `Arc progress log loaded in the turn context; priority=${component.priority}.`);
+    }
+    if (!component.arcPremise?.trim() && !phaseDirection) return [];
+    const premiseHeader = component.arcPremise?.trim() ? `[Arc Premise: ${component.arcPremise.trim()}]` : "";
+    const directionBlock = phaseDirection ? `[ARC DIRECTION — ${phase.toUpperCase()}]\n${phaseDirection}` : "";
+    const arcContent = [premiseHeader, directionBlock].filter(Boolean).join("\n\n");
     const next = item(component.id, "component", component.title, arcContent, component.priority, component.protected, component.pinned, component.active, component.inclusionPolicy, "user");
     pushIncluded(next, `Current Story Arc loaded; priority=${component.priority}; arcPhase=${phase}.`);
     return [next];
@@ -545,7 +571,8 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
     if (matched) {
       const next = item(card.id, "storyCard", card.title, (card.type === "event" ? "Historical reference; use only when relevant, do not force a callback.\n" : "") + storyCardContextContent(card), card.priority, card.protected, card.pinned, card.active, card.inclusionPolicy, "user");
       pushIncluded(next, `Story card included by ${card.pinned ? "pin" : forced ? "manual force" : card.inclusionPolicy === "always" ? "always policy" : `trigger ${match.pattern}`}; priority=${card.priority}; protected=${card.protected}.`);
-      if ((card.pinned || card.inclusionPolicy === "always") && !forced) pinnedStoryCardItems.push(next);
+      // Living cards change during play, so even pinned ones ride in the per-turn block to keep the prefix stable.
+      if ((card.pinned || card.inclusionPolicy === "always") && !forced && card.memoryMode !== "living") pinnedStoryCardItems.push(next);
       else storyCardItems.push(next);
     } else {
       pushExcluded("storyCard", card.id, card.title, "not_triggered", "No story card trigger matched current input, output, or recent history.");
@@ -670,6 +697,8 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
     section("recentMessages", "K. Recent Messages", 4, recentMessageItems),
     // Per-turn context follows the history (see buildPayload) so the stable prefix stays cacheable.
     section("storyState", "S. Story State", 5, storyStateItems),
+    section("activePressure", "P. Active Pressure", 5.2, activePressureItems),
+    section("arcProgress", "C3. Arc Progress", 5.4, arcProgressItems),
     section("storyCards", "F. Story Cards", 6, storyCardItems),
     section("brains", "G. Brains", 7, brainItems),
     // D. Author's Note sits closest to the newest turn (AID-style) for maximum recency influence
@@ -680,8 +709,15 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
 
   const budget = budgetSettings.maxContextTokens;
 
+  // Minimum recent dialogue: the newest N messages outrank unprotected memory under budget pressure.
+  // They are trimmed (oldest first) only when protected and pinned context alone cannot fit beside them.
+  const minRecent = Math.max(0, Math.round(budgetSettings.minRecentMessages ?? DEFAULT_MIN_RECENT_DIALOGUE));
+  const recentFloorIds = new Set(recentMessageItems.slice(0, minRecent).map((entry) => entry.id));
+  let recentFloorReleased = false;
+
   const isDroppable = (sectionId: ContextSectionKind, entry: ContextItem): boolean => {
     if (entry.protected || entry.id === "system-shell") return false;
+    if (!recentFloorReleased && sectionId === "recentMessages" && recentFloorIds.has(entry.id)) return false;
     if (
       sectionId === "storyCards" &&
       !entry.pinned &&
@@ -771,6 +807,12 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
         : budgetSettings.memoryPriorityMode === "hybrid"
           ? applyHybridBudget()
           : applyUserLockedBudget();
+    if (!changed && !recentFloorReleased && recentFloorIds.size > 0) {
+      recentFloorReleased = true;
+      decisions.push(sourceDecision("message", "recent-dialogue-floor", "Minimum recent dialogue", "truncated", "budget_exceeded",
+        `The newest ${minRecent} messages could not all fit beside protected context; trimming them oldest first.`));
+      continue;
+    }
     if (!changed) break;
   }
 

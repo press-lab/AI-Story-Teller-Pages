@@ -18,7 +18,7 @@ const RISKY_PATTERNS: RiskyPattern[] = [
 
 /** Recent messages the checker reads directly; older truth reaches it through the canon sections. */
 export const CONTINUITY_TRANSCRIPT_MESSAGES = 12;
-const CANON_SECTIONS = new Set(["plotEssentials", "currentArc", "pinnedStoryCards", "storyState", "storyCards", "brains"]);
+const CANON_SECTIONS = new Set(["plotEssentials", "currentArc", "arcProgress", "activePressure", "pinnedStoryCards", "storyState", "storyCards", "brains"]);
 const CANON_CHAR_LIMIT = 12000;
 
 export function scanForRiskyClaims(text: string): boolean {

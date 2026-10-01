@@ -61,6 +61,8 @@ describe("development adventure seed", () => {
       "pinnedStoryCards",
       "recentMessages",
       "storyState",
+      "activePressure",
+      "arcProgress",
       "storyCards",
       "brains",
       "authorNote",

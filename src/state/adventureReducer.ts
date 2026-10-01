@@ -37,6 +37,7 @@ import {
 } from "../memory/storyCardPolicy";
 import { dedupeBrainThoughts, normalizeThoughtForDedupe } from "../memory/thoughtDedupe";
 import { supersedeCardFact } from "../memory/onePassMemory";
+import { applyStoryStateLine, storyStateLineValue } from "../memory/storyStateLines";
 
 function touch<T extends { updatedAt: string }>(entry: T): T {
   return { ...entry, updatedAt: nowIso() };
@@ -650,6 +651,8 @@ function brainProposalField(proposal: MemoryProposal): "knowledge" | "thoughts" 
 function isReplacementProposal(proposal: MemoryProposal): boolean {
   switch (proposal.proposedType) {
     case "storyStateUpdate":
+      // A line "set" replaces that line; list add/remove edits are additions.
+      return !proposal.stateLine || proposal.stateLine.op === "set";
     case "plotPressureUpdate":
       return true;
     case "plotEssentialsUpdate":
@@ -670,7 +673,9 @@ function proposalTargetContent(state: Adventure, proposal: MemoryProposal): stri
     return brain ? brain.knowledge ?? "" : undefined;
   }
   if (proposal.proposedType === "storyCard") return state.storyCards.find((card) => card.id === proposal.targetId)?.content;
-  return state.components.find((component) => component.id === proposal.targetId)?.content;
+  const content = state.components.find((component) => component.id === proposal.targetId)?.content;
+  if (content !== undefined && proposal.stateLine) return storyStateLineValue(content, proposal.stateLine.label) ?? "";
+  return content;
 }
 
 /** True when a replacement's target was edited after the suggestion was drafted. */
@@ -1145,10 +1150,13 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal)
       state.components.find((c) => c.id === proposal.targetId && c.type === "storyState") ??
       state.components.find((c) => c.type === "storyState");
     if (!existing) return {};
+    // A line edit applies to the CURRENT block, so edits to other lines are never lost.
+    const content = proposal.stateLine ? applyStoryStateLine(existing.content, proposal.stateLine, proposal.content) : proposal.content;
+    if (content === undefined || content === existing.content) return {};
     return {
       components: upsertById(
         state.components,
-        recordComponentMemoryUpdate(existing, { ...existing, content: proposal.content, lastAutoUpdateTurn: state.activeState.turn }, proposalMemoryMeta("replace")),
+        recordComponentMemoryUpdate(existing, { ...existing, content, lastAutoUpdateTurn: state.activeState.turn }, proposalMemoryMeta(proposal.stateLine ? "patch" : "replace")),
       ),
     };
   }
@@ -1701,7 +1709,8 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
         p.proposedType === clean.proposedType &&
         normalizeProposalTitle(p.title) === normTitle &&
         (p.targetId ?? "") === (clean.targetId ?? "") &&
-        brainProposalField(p) === brainField;
+        brainProposalField(p) === brainField &&
+        (p.stateLine?.op ?? "") === (clean.stateLine?.op ?? "");
       // Replacements supersede older pending drafts (below), so only an identical one is a duplicate.
       // Additions to an existing target are distinct facts unless the content repeats a pending one.
       // A new card with the same title as a pending new card is the same suggestion.
@@ -1758,14 +1767,20 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
             normalizedReplacementContent(component.content) === normalizedReplacementContent(clean.content),
         );
       const duplicatesCurrentStoryState =
-        clean.proposedType === "storyStateUpdate" &&
+        clean.proposedType === "storyStateUpdate" && !clean.stateLine &&
         state.components.some((component) => component.type === "storyState" && normalizedReplacementContent(component.content) === normalizedReplacementContent(clean.content));
       if (duplicatesCurrentStoryState || duplicatesPending || duplicatesDismissed || duplicatesCard || duplicatesStoryCardContent || duplicatesExistingCardContent || duplicatesExistingTargetContent || duplicatesCurrentPressure) return state;
       // A replacement is a full snapshot: a newer suggestion supersedes any older pending one for the
       // same target. (The background pass is shown pending drafts, so it carries forward what is still true.)
-      const supersedes = (proposal: MemoryProposal) =>
-        replacement && proposal.status === "pending" && proposal.proposedType === clean.proposedType && isReplacementProposal(proposal) &&
-        (clean.proposedType === "storyStateUpdate" || ((proposal.targetId ?? "") === (clean.targetId ?? "") && brainProposalField(proposal) === brainField));
+      // A full Story State rewrite covers every line, so it also supersedes pending line edits.
+      const supersedes = (proposal: MemoryProposal) => {
+        if (!replacement || proposal.status !== "pending" || proposal.proposedType !== clean.proposedType) return false;
+        if (clean.proposedType === "storyStateUpdate") {
+          if (!clean.stateLine) return true;
+          return proposal.stateLine?.op === "set" && proposal.stateLine.label === clean.stateLine.label;
+        }
+        return isReplacementProposal(proposal) && (proposal.targetId ?? "") === (clean.targetId ?? "") && brainProposalField(proposal) === brainField;
+      };
       const existingProposals = state.activeState.memoryProposals.map((proposal) =>
         supersedes(proposal)
           ? updateMemoryProposal(proposal, { status: "ignored", rationale: `${proposal.rationale} Superseded by a newer suggestion.` })

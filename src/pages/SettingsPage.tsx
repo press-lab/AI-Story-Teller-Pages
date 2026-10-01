@@ -400,7 +400,12 @@ export function SettingsPage({
               onChange={(value) => updateMemoryDetection({ everyNTurns: Math.max(1, Math.round(value || 1)) })}
             />
           </Field>
-          <p className="muted">The narrator only writes the story. Every N story turns, one background call reads the turns since the last update and suggests Story State, character thought and knowledge, Story Card, and plot updates. Suggestions follow the auto-approve toggles in Memory Suggestions; anything not auto-approved waits there for review. Out-of-character turns never trigger it.</p>
+          <CheckboxField
+            label="Suggest Event Memories for turning points"
+            checked={globalAdventureSettings.memoryDetectionSettings.suggestEventMemories !== false}
+            onChange={(suggestEventMemories) => updateMemoryDetection({ suggestEventMemories })}
+          />
+          <p className="muted">The narrator only writes the story. Every N story turns, one background call reads the turns since the last update and suggests Story State, character thought and knowledge, Story Card, and plot updates. Suggestions follow the auto-approve toggles in Memory Suggestions; anything not auto-approved waits there for review. Out-of-character turns never trigger it. With Event Memories on, the pass may also suggest one completed turning point (a revelation, a costly choice, a promise) per pass; those always wait for your review.</p>
         </article>
         {/* ── Context Budget (advanced) ─────────────── */}
         {advanced && (
@@ -435,6 +440,13 @@ export function SettingsPage({
                   <option value="systemSuggested">systemSuggested</option>
                   <option value="hybrid">hybrid</option>
                 </select>
+              </Field>
+              <Field label="Minimum recent dialogue (messages)">
+                <NumberInput
+                  min={0}
+                  value={activeSettings.tokenBudgetSettings.minRecentMessages ?? 6}
+                  onChange={(value) => updateBudget({ minRecentMessages: Math.max(0, Math.round(value || 0)) })}
+                />
               </Field>
               <Field label="Trigger Recent Message Window">
                 <NumberInput

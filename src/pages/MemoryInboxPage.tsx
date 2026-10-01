@@ -45,6 +45,12 @@ export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onR
     || proposal.rationale.toLowerCase().includes(searchLower));
   const pending = visibleProposals.filter((p) => p.status === "pending");
   const resolved = visibleProposals.filter((p) => p.status !== "pending");
+  const pendingStoryState = allProposals.filter((p) => p.status === "pending" && p.proposedType === "storyStateUpdate" && !p.requiresReview);
+
+  function approveAllStoryState() {
+    // Oldest first, so a later full rewrite or line edit lands last.
+    [...pendingStoryState].reverse().forEach((proposal) => dispatch({ type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id }));
+  }
   const totalPending = allProposals.filter((p) => p.status === "pending").length;
   const totalResolved = allProposals.length - totalPending;
 
@@ -143,13 +149,13 @@ export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onR
         <summary>Rules &amp; auto-approve</summary>
         <h3>Memory Suggestions</h3>
         <p className="muted">
-          Memory Suggestions holds AI-proposed changes to your story data Ã¢â‚¬â€ Story State rewrites, new Story Cards, Character Self updates
+          Memory Suggestions holds AI-proposed changes to your story data — Story State rewrites, new Story Cards, Character Self updates
           (thoughts and knowledge boundaries), Plot Essentials rewrites, Active Pressure updates, and legacy Summary changes.
           A newer Story State suggestion replaces an older one that is still pending. The AI generates these automatically after turns or when
           you use <strong>Remember This</strong>. Review each proposal and <strong>Approve</strong> to apply it,
           <strong> Reject</strong> to dismiss it cleanly, or <strong>Ignore</strong> to remove it from view without applying.
           You can edit the content before approving.
-          {" "}<strong>Approved Story Cards, Character Self updates, Plot Essentials, and Active Pressure become active context</strong> Ã¢â‚¬â€ the model reads them when their section is included.
+          {" "}<strong>Approved Story Cards, Character Self updates, Plot Essentials, and Active Pressure become active context</strong> — the model reads them when their section is included.
           Be especially careful with Character Self and plot updates: approving emotional escalation or relationship milestones
           unchecked is how characters drift. Edit proposals before approving, or reject ones that pull the story somewhere you don't want.
         </p>
@@ -209,6 +215,13 @@ export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onR
           Create Suggestion
         </button>
       </details>
+
+      {pendingStoryState.length > 1 && (
+        <div className="row" style={{ gap: "0.5rem", alignItems: "center", margin: "0.5rem 0" }}>
+          <button type="button" onClick={approveAllStoryState}>Approve all Story State edits ({pendingStoryState.length})</button>
+          <span className="muted">Applies oldest first; line edits only change their own line.</span>
+        </div>
+      )}
 
       <div className="list">
         {pending.length === 0 && <p className="muted">No pending memory suggestions.</p>}
@@ -274,7 +287,7 @@ function ProposalCard({ proposal, targetChanged = false, dispatch, onUpdate, onR
         <div className="suggestion-meta">
           <p className="eyebrow">
             {proposal.proposedType}
-            {proposal.status !== "pending" ? ` Ã‚Â· ${proposal.status}` : ""}
+            {proposal.status !== "pending" ? ` · ${proposal.status}` : ""}
           </p>
           <input
             value={proposal.title}
@@ -293,7 +306,7 @@ function ProposalCard({ proposal, targetChanged = false, dispatch, onUpdate, onR
             <>
               {onRegenerate && (
                 <button type="button" disabled={regenerating} onClick={handleRegenerate}>
-                  {regenerating ? "Ã¢â‚¬Â¦" : "Regenerate"}
+                  {regenerating ? "…" : "Regenerate"}
                 </button>
               )}
               <button
@@ -314,8 +327,14 @@ function ProposalCard({ proposal, targetChanged = false, dispatch, onUpdate, onR
         </div>
       </div>
 
+      {proposal.stateLine?.op === "set" && proposal.baseContent !== undefined && (
+        <p className="muted" style={{ margin: "0.25rem 0" }}>Before: {proposal.baseContent || "(line not present)"}</p>
+      )}
+      {proposal.stateLine && proposal.stateLine.op !== "set" && (
+        <p className="muted" style={{ margin: "0.25rem 0" }}>{proposal.stateLine.op === "add" ? "Adds this item to" : "Removes this item from"} {proposal.stateLine.label}:</p>
+      )}
       <textarea
-        rows={5}
+        rows={proposal.stateLine ? 2 : 5}
         value={proposal.content}
         onChange={(event) => onUpdate(proposal, { content: event.target.value })}
         placeholder="Proposed content..."
@@ -324,7 +343,7 @@ function ProposalCard({ proposal, targetChanged = false, dispatch, onUpdate, onR
 
       <details className="editor-tools-panel">
         <summary>Source &amp; details</summary>
-        {proposal.eventMemory && <p>Event Memory Ã‚Â· {proposal.eventMemory.kind} Ã‚Â· Participants: {proposal.eventMemory.participants.join(", ")} Ã‚Â· Recall cues: {proposal.eventMemory.recallCues.join(", ")} Ã‚Â· Source messages: {proposal.eventMemory.sourceMessageIds.join(", ")}</p>}
+        {proposal.eventMemory && <p>Event Memory · {proposal.eventMemory.kind} · Participants: {proposal.eventMemory.participants.join(", ")} · Recall cues: {proposal.eventMemory.recallCues.join(", ")} · Source messages: {proposal.eventMemory.sourceMessageIds.join(", ")}</p>}
         <div className="grid two">
           <Field label="Source">
             <textarea

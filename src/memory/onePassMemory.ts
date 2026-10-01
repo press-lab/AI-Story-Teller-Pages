@@ -3,6 +3,7 @@ import { createId, nowIso } from "../utils/id";
 import { cardMatchesName } from "../state/defaults";
 import { applyAIMemoryUpdate } from "./applyAIMemoryUpdate";
 import { isFirstPersonRecallTrigger } from "./storyCardPolicy";
+import { applyStoryStateLine, canonicalStateLabel, hasLabeledStoryState, STORY_STATE_LIST_LABELS, storyStateLineValue } from "./storyStateLines";
 
 /**
  * Shared memory-update contract for the background memory pass.
@@ -20,35 +21,39 @@ export const MEMORY_OUTPUT_RESERVE = 2000;
 export const MEMORY_PASS_MAX_UPDATES = 12;
 
 export const STORY_STATE_WORD_LIMIT = 250;
+const STATE_LINE_WORD_LIMIT = 60;
+const EVENT_WORD_LIMIT = 90;
 const KNOWLEDGE_WORD_LIMIT = 90;
 const THOUGHT_WORD_LIMIT = 60;
 
 /** Fixed rules for the background memory pass. Kept free of per-turn data so providers can cache it. */
-export function memoryPassRules(categories: string[]): string {
+export function memoryPassRules(categories: string[], options: { events?: boolean } = {}): string {
   return `[BACKGROUND MEMORY PASS]
 The story turns below are already written. Your job is bookkeeping: keep the story's memory current so the narrator never forgets or contradicts what happened. Return ONLY a JSON object {"updates":[...]}. An empty array is valid when nothing changed. Maximum ${MEMORY_PASS_MAX_UPDATES} updates.
 Each update has: kind, target, content, evidence, reason, claim. evidence is an EXACT quote copied from the RECENT TURNS (player or story text) that establishes the change. reason says why it matters later. claim is one of "fact" (the story established it happened or is true), "belief" (a character thinks or suspects it), "intention" (someone plans, offers, or proposes it), or "correction" (the player explicitly corrected canon).
 Never record a suggestion, offer, possibility, or plan as an accomplished fact: keep conditional wording ("offered the spare room if he wants it" is not "moved in"). A belief must read as a belief ("the captain suspects the duke"), never as proof. Dialogue can lie and attempts can fail: record what the text establishes, not what a character claims. Never give a character knowledge they did not receive.
 Keep the meaning, not just the label: when a relationship, promise, debt, or trust changes, include the cause in one clause ("trusts him because he kept her secret when exposing it would have helped him"). Preserve a distinctive line or detail when it carries a character's voice. Routine movement and small talk are not memory.
-PENDING drafts, when shown, are unapproved suggestions from earlier passes: they are not evidence and not canon. Do not repeat them. A new "state" update replaces the pending Story State draft, so carry forward whatever in that draft is still true.
+PENDING drafts, when shown, are unapproved suggestions from earlier passes: they are not evidence and not canon. Do not repeat them. A full "state" update replaces every pending Story State draft, so carry forward whatever in them is still true.
 
 Kinds, in priority order:
-- "state": target is the EXACT title of the Story State component. content is its COMPLETE replacement (max ${STORY_STATE_WORD_LIMIT} words), in present tense, using these labeled lines:
+- "stateLine": a targeted change to ONE labeled line of Story State. target is the label: "Day/Time", "Location", "Relationships", "Arrangements", "Has met", or "Open threads". op is "set" (content is the new value of the whole line, max 60 words), or, for "Has met" and "Open threads" only, "add" (content is one new item) or "remove" (content is the item to drop, copied from the line; use it when a thread resolved). Prefer stateLine whenever Story State already has labeled lines and only some changed: other lines stay exactly as they are.
+- "state": target is the EXACT title of the Story State component. Use only when Story State is EMPTY or most of its lines are stale. content is its COMPLETE replacement (max ${STORY_STATE_WORD_LIMIT} words), in present tense, using these labeled lines:
     Day/Time: current day of week, date if known, and time of day.
     Location: where the player character is now and with whom.
     Relationships: the current status of each important relationship (e.g. dating, sleeping together, estranged), stated plainly.
     Arrangements: living and sleeping arrangements and other standing routines.
     Has met: characters the player character has already met in person, with one short clause each.
     Open threads: unresolved situations that are still live.
-  Keep every line that is still true, update what changed, drop what is over. Return a state update whenever any line is missing, stale, or changed in the recent turns; this is the most important update.
+  Keep every line that is still true, update what changed, drop what is over. Keeping Story State current (with stateLine or state) is the most important update.
 - "thought": target is an eligible character name. content is ONE new first-person private reaction, belief, or plan from the recent turns (max ${THOUGHT_WORD_LIMIT} words). Give one to EVERY eligible character who took part in the recent turns and had something new to think. Never repeat an existing thought.
-- "knows": target is an eligible character name. content is the COMPLETE replacement of that character's knowledge boundary (max ${KNOWLEDGE_WORD_LIMIT} words) as two lines: "Knows: â€¦" and "Does not know: â€¦". List only story-relevant facts, especially what they have NOT witnessed or been told (other people's conversations, private details, identities). Update it when the recent turns changed what the character knows.
+- "knows": target is an eligible character name. content is the COMPLETE replacement of that character's knowledge boundary (max ${KNOWLEDGE_WORD_LIMIT} words) as two lines: "Knows: …" and "Does not know: …". List only story-relevant facts, especially what they have NOT witnessed or been told (other people's conversations, private details, identities). Update it when the recent turns changed what the character knows.
 - "card": target is the EXACT title of an existing Story Card shown in the canon. content is ONE new durable fact (max 70 words). If the new fact makes an existing fact on a LIVING card untrue, also set "replaces" to that old fact copied exactly from the card; it will be superseded instead of kept beside the new fact. Static cards only accept additions. Never touch a VOICE CONTRACT. Omit already-known facts and rephrasings.
-- "newCard": target is a genuinely new recurring subject's name, content max 90 words. Also provide cardType (character, location, lore, custom, plot), memoryMode (static or living), triggers (1-3 narrow phrases that will literally appear in future story text, such as a name or a distinctive noun; never first-person recall phrases like "the night Iâ€¦" or "when sheâ€¦"), and category from: ${categories.join(", ") || "NONE (no new cards allowed)"}. At most ONE per pass. Never create cards for a conversation, invitation, room movement, routine choice, temporary mood, or an event recap. A plot card requires a lasting obligation, alliance, betrayal, secret, or irreversible change; it will require review.
+- "newCard": target is a genuinely new recurring subject's name, content max 90 words. Also provide cardType (character, location, lore, custom, plot), memoryMode (static or living), triggers (1-3 narrow phrases that will literally appear in future story text, such as a name or a distinctive noun; never first-person recall phrases like "the night I…" or "when she…"), and category from: ${categories.join(", ") || "NONE (no new cards allowed)"}. At most ONE per pass. Never create cards for a conversation, invitation, room movement, routine choice, temporary mood, or an event recap. A plot card requires a lasting obligation, alliance, betrayal, secret, or irreversible change; it will require review.
 - "pressure": target is the EXACT title of the Active Pressure component; content is its full replacement, ONE sentence (max 45 words) naming the external threat or obligation pressing on the player. Only when it materially changed or resolved.
 - "arc": target is the EXACT title of the Current Arc; content is one concise completed development (max 45 words) relevant to its premise, appended to its log. Never change the premise or pacing. Only while the arc is in its BREAK phase, add "resolved": true when the recent turns show its central conflict actually concluded (the confrontation ended and its outcome is settled), not merely that the climax began; the player reviews it before the arc moves on.
 - "essentials": target is the EXACT title of Plot Essentials; content is its full replacement (max 180 words). Only when the overarching premise or long-term conflict fundamentally changed. Always reviewed.
-
+${options.events ? `- "event": a COMPLETED turning point worth remembering for the rest of the story: a revelation, a costly choice, a promise made or broken, a first meeting that matters, or the origin of a recurring personal symbol. Ordinary pleasant conversations, routine scenes, and anything still in progress do NOT qualify; most passes have none. target is a short distinctive title (max 8 words). content (max ${EVENT_WORD_LIMIT} words) states what happened, what caused it, and what it changed. Also provide eventKind ("first", "commitment", "revelation", "choice", or "sharedExperience"), participants (1-4 character names who were there), and recallCues (2-3 concrete phrases likely to appear when this memory matters later, such as an object or place; not "remember when"). At most ONE per pass; it always waits for review.
+` : ""}
 Story State holds what is true NOW. Story Cards hold durable facts about recurring subjects. Brains hold private thoughts and knowledge boundaries. Only output changes supported by the recent turns and consistent with the canon.`;
 }
 
@@ -79,6 +84,8 @@ const WORD_LIMITS: Record<string, number> = {
   thought: THOUGHT_WORD_LIMIT,
   knows: KNOWLEDGE_WORD_LIMIT,
   state: STORY_STATE_WORD_LIMIT,
+  stateLine: STATE_LINE_WORD_LIMIT,
+  event: EVENT_WORD_LIMIT,
 };
 
 export interface MemoryPassScope {
@@ -86,7 +93,12 @@ export interface MemoryPassScope {
   visibleIds: Set<string>;
   /** Brain character names eligible for thought / knowledge updates this pass. */
   eligibleThoughtTargets: string[];
+  /** The pass may suggest one Event Memory (Settings → Automatic memory). */
+  allowEvents?: boolean;
 }
+
+const EVENT_KINDS = ["first", "commitment", "revelation", "choice", "sharedExperience"] as const;
+const GENERIC_EVENT_CUES = new Set(["remember when", "how we met", "first meeting", "first time", "our promise", "shared experience", "that night", "that day"]);
 
 /**
  * Supersede one fact on a living card: the line matching `replaces` is swapped for `content`.
@@ -102,9 +114,9 @@ export function supersedeCardFact(card: Pick<StoryCard, "content">, replaces: st
     return candidate.length > 0 && (candidate === target || candidate.includes(target));
   });
   if (index < 0 || (voiceStart >= 0 && index >= voiceStart)) return undefined;
-  const bullet = /^(\s*(?:[-*â€¢]|\d+\.)\s+)/.exec(lines[index])?.[1] ?? "";
+  const bullet = /^(\s*(?:[-*•]|\d+\.)\s+)/.exec(lines[index])?.[1] ?? "";
   const next = [...lines];
-  next[index] = bullet + content.replace(/^\s*(?:[-*â€¢]|\d+\.)\s+/, "");
+  next[index] = bullet + content.replace(/^\s*(?:[-*•]|\d+\.)\s+/, "");
   return next.join("\n");
 }
 
@@ -132,6 +144,7 @@ export function memoryUpdateActions(
   if (updates.length > MEMORY_PASS_MAX_UPDATES) errors.push(`Memory pass returned ${updates.length} updates; only the first ${MEMORY_PASS_MAX_UPDATES} were considered.`);
   const seen = new Set<string>();
   let newCards = 0;
+  let events = 0;
   for (const raw of updates.slice(0, MEMORY_PASS_MAX_UPDATES)) {
     const reject = (reason: string) => errors.push(`Memory pass skipped: ${reason}`);
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) { reject("invalid update"); continue; }
@@ -147,7 +160,9 @@ export function memoryUpdateActions(
     const limit = WORD_LIMITS[kind] ?? 45;
     if (words(content) > limit) { reject(`${target}: content exceeds limit`); continue; }
     if (content.includes("<") || content.length > 4000 || target.length > 150 || reason.length > 600) { reject(`${target}: invalid content`); continue; }
-    const key = `${kind}:${norm(target)}`;
+    // List edits to one Story State line are distinct updates; everything else allows one update per target.
+    const listOp = kind === "stateLine" && (u.op === "add" || u.op === "remove") ? `:${u.op}:${norm(content)}` : "";
+    const key = `${kind}:${norm(target)}${listOp}`;
     if (seen.has(key)) { reject(`${target}: repeated target`); continue; }
     seen.add(key);
     const timestamp = nowIso();
@@ -178,11 +193,53 @@ export function memoryUpdateActions(
       }
       if (brain.lastUpdatedTurn !== undefined && adventure.activeState.turn - brain.lastUpdatedTurn < (brain.autoUpdateCooldownTurns ?? 0)) { reject(`${target}: brain on cooldown`); continue; }
       if (Object.values({ ...brain.archivedThoughts, ...brain.thoughts }).some(t => norm(t).includes(norm(content)))) continue;
-      const patch = { thoughts: { [`${adventure.activeState.turn}_${sourceTurnId}`]: `${adventure.activeState.turn} â†’ ${content}` } };
+      const patch = { thoughts: { [`${adventure.activeState.turn}_${sourceTurnId}`]: `${adventure.activeState.turn} → ${content}` } };
       const boundary = applyAIMemoryUpdate(adventure, [{ type: "brainPatch", brainId: brain.id, patch, mode: "append", turn: adventure.activeState.turn, preview: content }]);
       if (adventure.memoryAutoApprove.brainUpdate) actions.push(...boundary.actions);
       else actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal: { ...proposal, proposedType: "brainUpdate", targetId: brain.id, content: JSON.stringify(patch) } });
       executed.push(`Thought: ${target}`);
+      continue;
+    }
+
+    if (kind === "stateLine") {
+      const label = canonicalStateLabel(target);
+      const component = adventure.components.find(c => c.type === "storyState" && c.active && c.autoUpdate !== false);
+      if (!label) { reject(`${target}: unknown Story State line`); continue; }
+      if (!component) { reject(`${target}: Story State not available`); continue; }
+      if (!hasLabeledStoryState(component.content)) { reject(`${target}: Story State has no labeled lines; a full state update is needed`); continue; }
+      const op = u.op === "add" || u.op === "remove" ? u.op : "set";
+      if (op !== "set" && !STORY_STATE_LIST_LABELS.has(label)) { reject(`${target}: only Has met and Open threads take add/remove`); continue; }
+      const current = storyStateLineValue(component.content, label);
+      const applied = applyStoryStateLine(component.content, { label, op }, content);
+      if (applied === undefined) { reject(`${target}: item to remove is not on the line`); continue; }
+      if (applied === component.content || (op === "set" && current !== undefined && norm(current) === norm(content))) continue;
+      proposal.proposedType = "storyStateUpdate";
+      proposal.targetId = component.id;
+      proposal.title = `${component.title} · ${label}`;
+      proposal.stateLine = { label, op };
+      if (op === "set") proposal.baseContent = current ?? "";
+      actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal });
+      executed.push(`Story State · ${label} (${op})`);
+      continue;
+    }
+
+    if (kind === "event") {
+      if (!scope.allowEvents || ++events > 1) { reject(`${target}: event not allowed in this pass`); continue; }
+      const eventKind = EVENT_KINDS.find(k => k === u.eventKind);
+      const participants = Array.isArray(u.participants) ? u.participants.filter((p): p is string => typeof p === "string" && p.trim().length >= 2 && p.length <= 80).map(p => p.trim()) : [];
+      const cues = Array.isArray(u.recallCues) ? u.recallCues.filter((c): c is string => typeof c === "string" && c.trim().length >= 3 && c.length <= 80).map(c => c.trim()) : [];
+      const recallCues = cues.filter(c => !GENERIC_EVENT_CUES.has(norm(c)) && !isFirstPersonRecallTrigger(c)).slice(0, 3);
+      if (!eventKind) { reject(`${target}: event needs an eventKind`); continue; }
+      if (!participants.length || participants.length > 4 || participants.some(p => !evidenceText.includes(norm(p)))) { reject(`${target}: event participants must appear in the recent turns`); continue; }
+      if (!recallCues.length) { reject(`${target}: event needs concrete recall cues`); continue; }
+      proposal.storyCardType = "event";
+      proposal.memoryMode = "historical";
+      proposal.suggestedTriggers = recallCues;
+      proposal.requiresReview = true;
+      proposal.eventMemory = { kind: eventKind, participants, recallCues, sourceMessageIds: source.id ? [source.id] : [] };
+      proposal.rationale += " Event Memory: always reviewed.";
+      actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal });
+      executed.push(`Proposed event: ${target}`);
       continue;
     }
 

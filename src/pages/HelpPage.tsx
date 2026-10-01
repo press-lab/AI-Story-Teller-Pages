@@ -445,10 +445,11 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
       <>
         <p>The payload is ordered so providers can cache the stable part:</p>
         <ol>
-          <li>System message (stable prefix): System Shell with Narration Rules, AI Instructions, Plot Essentials and Active Pressure, Current Story Arc, Components, Pinned Story Cards.</li>
+          <li>System message (stable prefix): System Shell with Narration Rules, AI Instructions, Plot Essentials, the Current Story Arc premise and phase direction, Components, Pinned Story Cards (except living cards).</li>
           <li>Recent Messages, sent chronologically and trimmed in chunks of 10.</li>
-          <li>Turn context, at the start of the newest user message: Story State, triggered Story Cards, Brains, Author's Note, Next Turn Note, Continuity Challenge.</li>
+          <li>Turn context, at the start of the newest user message: Story State, Active Pressure, Arc Progress (the arc's development log), triggered and pinned living Story Cards, Brains, Author's Note, Next Turn Note, Continuity Challenge. These change often, so keeping them out of the prefix lets providers reuse the cache.</li>
         </ol>
+        <p>Story State is usually updated one line at a time (for example just Location, or one item added to Open threads); each line edit appears in Memory Suggestions with its previous value, and "Approve all Story State edits" applies them together. Settings → Context Budget → "Minimum recent dialogue" keeps the newest messages ahead of lower-priority memory when the context is full.</p>
         <p>
           Context Preview must match the provider payload. Recent messages are shown newest-first in preview
           but sent chronologically. Per-turn material never goes in the system message, because that would

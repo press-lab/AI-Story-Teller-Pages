@@ -314,6 +314,8 @@ export interface TokenBudgetSettings {
   allowSystemToDropUnpinnedTriggeredCards: boolean;
   allowSystemToTruncateSummary: boolean;
   recentMessageWindow: number;
+  /** Newest messages kept ahead of unprotected memory when the budget is tight. 0 = drop recent messages first (legacy). */
+  minRecentMessages?: number;
   sectionBudgets: Partial<Record<ContextSectionKind, number>>;
   /** Automatically regenerate the rolling summary in the background every N turns. */
   autoSummarize: boolean;
@@ -403,6 +405,8 @@ export interface MemoryDetectionSettings {
   enabled: boolean;
   generateContent: boolean;
   everyNTurns: number;
+  /** The background memory pass may suggest one exceptional Event Memory per pass (always reviewed). Default true. */
+  suggestEventMemories?: boolean;
 }
 
 export type ForceIncludeTargetType = "component" | "storyCard" | "brain";
@@ -461,6 +465,10 @@ export type MemoryProposalType =
 
 export type MemoryProposalStatus = "pending" | "approved" | "rejected" | "ignored";
 
+/** The labeled lines of a Story State block, in their canonical order. */
+export const STORY_STATE_LABELS = ["Day/Time", "Location", "Relationships", "Arrangements", "Has met", "Open threads"] as const;
+export type StoryStateLabel = typeof STORY_STATE_LABELS[number];
+
 export interface MemoryProposal {
   /** Consequential automatic changes require explicit review, regardless of generic auto-approval. */
   requiresReview?: boolean;
@@ -492,6 +500,11 @@ export interface MemoryProposal {
   supersedes?: { oldFact: string; newFact: string };
   /** How the source text supports the update: an established fact, a character's belief, a stated intention, or an author correction. */
   claim?: "fact" | "belief" | "intention" | "correction";
+  /**
+   * storyStateUpdate only: a targeted edit of one labeled Story State line instead of a full rewrite.
+   * "set" replaces the line; "add" / "remove" change one item of a list line (Has met, Open threads).
+   */
+  stateLine?: { label: StoryStateLabel; op: "set" | "add" | "remove" };
   /** currentArcUpdate only: the memory pass judged the arc's climax resolved. Approval moves the arc to aftermath. */
   resolvesArc?: boolean;
   createdAt: ISODateString;
@@ -718,6 +731,8 @@ export type ContextSectionKind =
   | "sceneState"      // L. Scene State — current location, characters, situation (deprecated)
   | "pinnedStoryCards" // F0. Pinned / always Story Cards — stable prefix, cache-friendly
   | "storyState"      // S. Story State — authoritative current facts, rewritten by the background memory pass
+  | "activePressure"  // P. Active Pressure — per-turn block so stake changes do not break the cached prefix
+  | "arcProgress"     // C3. Arc Progress — the current arc's development log, per-turn block
   | "challengeMode";  // M. Continuity Challenge — one-turn verification instruction
 
 export type ExcludedReason = "budget_exceeded" | "inactive" | "cooldown" | "not_triggered";

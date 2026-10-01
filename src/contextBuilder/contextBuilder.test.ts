@@ -244,6 +244,8 @@ describe("buildContext", () => {
       "pinnedStoryCards",
       "recentMessages",
       "storyState",
+      "activePressure",
+      "arcProgress",
       "storyCards",
       "brains",
       "authorNote",
@@ -521,7 +523,8 @@ describe("buildContext", () => {
         { id: "old", role: "user", content: "old ".repeat(80), createdAt: "2026-01-01T00:00:00.000Z" },
         { id: "new", role: "assistant", content: "new ".repeat(80), createdAt: "2026-01-01T00:01:00.000Z" },
       ],
-      tokenBudgetSettings: budget({ maxContextTokens: 260, maxRecentMessages: 2, recentMessageWindow: 2 }),
+      // minRecentMessages: 0 exercises the legacy order, where older recent messages drop before memory.
+      tokenBudgetSettings: budget({ maxContextTokens: 260, maxRecentMessages: 2, recentMessageWindow: 2, minRecentMessages: 0 }),
     } satisfies Adventure;
 
     const userLocked = buildContext({ ...base, tokenBudgetSettings: budget({ ...base.tokenBudgetSettings, memoryPriorityMode: "userLocked" }) }, { currentInput: "signal" });
@@ -824,7 +827,7 @@ describe("buildContext", () => {
     // adventureForContext has no aiInstructions/plotEssentials/authorNote/sceneState content
     const result = buildContext(adventureForContext(), { currentInput: "lantern" });
     // All section IDs always present in result.sections
-    expect(result.sections.map((s) => s.id)).toHaveLength(13);
+    expect(result.sections.map((s) => s.id)).toHaveLength(15);
     // Empty typed sections do not appear in the payload
     const payload = result.messages.map((message) => message.content).join("\n");
     expect(payload).not.toContain("# B. AI Instructions");
@@ -850,6 +853,8 @@ describe("buildContext", () => {
       "pinnedStoryCards",
       "recentMessages",
       "storyState",
+      "activePressure",
+      "arcProgress",
       "storyCards",
       "brains",
       "authorNote",
