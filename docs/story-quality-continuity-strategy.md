@@ -1,6 +1,6 @@
 # Storytelling quality first: a revised architecture proposal
 
-> **Status:** Proposal, revision 2. No application changes implemented.
+> **Status:** Proposal, revision 3 — decision rationale added. No application changes implemented.
 > **Audience:** Seth and contributors.
 > **Reviewed:** 2026-09-30. Application code: `82321cffab90c4769ecefd30acb60fe2e76371a3`; previous proposal: `83b7eb751ddbbe8198b402c673bea58297a68f0e`.
 > **Evidence:** Source review, two read-only save inspections, and actual context-builder output. No paid model evaluations were performed. Proposed behavior below is not current behavior.
@@ -369,7 +369,7 @@ Curated context must not leak future events or hidden break instructions. Preser
 - D alone improving substantially suggests both matter.
 - Good drafts becoming poor final outputs implicates repair passes.
 
-This is a diagnostic, not a complete factorial study or proof of a universal winner. No such provider experiment was run for this document.
+This is a small diagnostic comparison, not a statistically conclusive model ranking or proof of a universal winner. No such provider experiment was run for this document.
 
 ### Test memory separately
 
@@ -432,5 +432,63 @@ These sources inform evaluation questions, not a claim that a research architect
 - [Lost in the Middle](https://arxiv.org/abs/2307.03172) documents sensitivity to information placement in the models/tasks it tested. It is a reason to evaluate actual context use, not a timeless claim that larger contexts are always worse.
 
 Repository behavior is grounded in source inspection. The token comparison is a deterministic local measurement. Narrative gains, model rankings, and dollar savings remain hypotheses until evaluated.
+
+## 14. Decision rationale and what would change the recommendation
+
+### Why I start with the experience rather than the architecture
+
+Your first objective is the best possible interactive story. That does not translate directly into “largest model,” “most memory,” or “most AI passes.” Each can help, but each can also introduce delay, irrelevant context, or conflicting decisions.
+
+I therefore judge a mechanism by its effect on scenes and on a continuing adventure. Reliability is a necessary foundation; it is not a substitute for voice, emotional movement, or satisfying consequences. This is why the roadmap combines immediate integrity fixes with narrative diagnosis rather than postponing all creative evaluation until a memory redesign is complete.
+
+There is no specified spending ceiling here. I would not quietly sacrifice quality to reach an invented price target. The useful result is a measured choice: what quality a configuration delivers, what it costs, and what extra spending actually buys.
+
+### Why the proposed division of work fits this codebase
+
+The narrator's output should be an engaging continuation. The memory worker's output should be a faithful, usable account of what changed. They can use the same capable model while receiving different instructions and settings.
+
+The repository already implements this separation, so retaining it avoids discarding useful controls and tests. That is an implementation advantage, not proof that the design is optimal. A combined narration-and-memory response would deserve reconsideration if matched experiments showed better prose, dependable updates, and a worthwhile reduction in total cost.
+
+Likewise, “one coordinated writer” means consistent application rules. It does not mean one enormous prompt that reads every record, nor does it eliminate explicitly configured semantic automation.
+
+### Why memory accuracy has disproportionate value
+
+A bad sentence can spoil one response. A bad memory can shape many later responses.
+
+Suppose an offer becomes “they moved in together.” Later narration repeats that arrangement. A subsequent memory pass quotes the repetition, and the original mistake starts to look corroborated. Repetition of the same unsupported assertion is not independent evidence.
+
+Source lineage and corrections matter because they let the app trace that chain back to the originating claim. This is the reason for actual source IDs, distinctions between fact and belief, and rechecking memory after edits. It is also why a cheaper memory model must demonstrate semantic accuracy, not merely valid formatting.
+
+Missing memory matters too. A system that avoids all unsupported additions by recording almost nothing will lose promises, motives, and earned intimacy. Evaluation must measure both false additions and important omissions.
+
+### Why causal memory needs restraint
+
+Remembering why a character trusts someone gives the narrator material for a specific reaction. However, converting that history into “she must always trust him” would freeze the relationship.
+
+Historical causes should inform behavior without prescribing every future response. Current beliefs can change; intentions can be abandoned; resolved obligations should stop generating pressure. The system should preserve the earlier event while updating what it means now.
+
+That is why this proposal separates history, current state, and character perspective. The purpose is to support believable development, including surprising development, rather than enforce permanent personality snapshots.
+
+### Why I do not prescribe one model, budget, or cadence yet
+
+The local review established what the code sends and how it handles updates. It did not establish which available model writes the best story for you, how much recent context is sufficient, or how frequently memory should run.
+
+The model/context comparison is useful because it tests competing explanations. If better context fixes the current narrator, a model upgrade alone misses the main opportunity. If strong context still produces weak prose, more memory machinery is unlikely to solve it. If the raw draft is good and the repaired version is worse, the intervention should target the repair path.
+
+These experiments should use bounded offline checkpoints first. They do not require adding an evaluator call to every live turn.
+
+### Confidence and conditions for changing direction
+
+| Recommendation | Basis for the choice | Evidence that would change it |
+|---|---|---|
+| Fix coverage, pending-change loss, and stale writes | Directly observed mechanisms can lose or overwrite information | A changed implementation that closes those paths; no model benchmark is needed to justify the integrity requirement |
+| Keep separate narration and memory | Existing architecture supports distinct objectives and independent evaluation | A combined design consistently produces equally good stories and updates with lower total burden |
+| Prefer concise causal memory | It preserves material that can explain distinctive later behavior | Controlled play shows more repetition or less useful recall than a simpler representation |
+| Keep repair calls selective | The current repair paths have limited evidence and can alter correct prose | Broader checking demonstrates a clear net quality gain with acceptable delay and cost |
+| Delay a vector store or full fact graph | Current storage/selection defects offer nearer, testable improvements | Correctly stored important memories remain unretrievable with practical alias/cue methods |
+| Use three turns only as a baseline | It is the existing default, with a plausible recent-history bridge | Measured freshness, omission, or cost favors another interval or a bounded adaptive policy |
+| Avoid per-turn planning by default | Its benefit has not been demonstrated here | Blind comparisons and longer play show better agency, pacing, and payoff that justify the additional request |
+
+The strongest conclusions concern information integrity and the need to evaluate the actual provider payload. The proposed gains from causal memory and selective repairs are reasonable design hypotheses. Specific model rankings, dollar savings, and optimal settings remain open.
 
 **The proposed destination is a strong storyteller with a concise, current, causally meaningful working memory, reliable long-term recall, and little administrative burden on the player. The next step is to find which part of the current experience most limits that outcome, while closing the information-loss paths already visible in code.**
