@@ -583,6 +583,7 @@ export function normalizeAdventure(adventure: Adventure): Adventure {
       challengeMode: adventure.activeState?.challengeMode ?? false,
       lastMemoryCycleTurn: adventure.activeState?.lastMemoryCycleTurn,
       lastMemoryPassMessageId: adventure.activeState?.lastMemoryPassMessageId,
+      corrections: Array.isArray(adventure.activeState?.corrections) ? adventure.activeState.corrections : [],
       lastSemanticEvalTurn: adventure.activeState?.lastSemanticEvalTurn,
       lastSceneStateTurn: adventure.activeState?.lastSceneStateTurn,
     },

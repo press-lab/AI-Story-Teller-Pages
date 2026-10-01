@@ -90,6 +90,8 @@ const testedActionTypes = [
   "SET_ARC_CONTINUATIONS",
   "COMPLETE_ARC_TO_STORY_CARD",
   "APPLY_ARC_CONTINUATION",
+  "MARK_CORRECTIONS_SEEN",
+  "DISMISS_CORRECTION",
 ] as const satisfies AdventureAction["type"][];
 
 type MissingActionCoverage = Exclude<AdventureAction["type"], (typeof testedActionTypes)[number]>;

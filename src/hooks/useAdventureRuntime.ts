@@ -108,7 +108,7 @@ async function sendStoryCompletionWithGuard({
   config: RuntimeProviderSettings;
   responseLengthHint: number;
   playerInput: string;
-}): Promise<{ content: string; usage?: ProviderUsage }> {
+}): Promise<{ content: string; usage?: ProviderUsage; repairNotes?: string[] }> {
   const response = await sendOpenAICompatibleChatCompletion({ messages, config });
   const guard = evaluateStoryResponseGuard(response.content, responseLengthHint, playerInput);
   if (!guard.needsCorrection) return response;
@@ -126,7 +126,7 @@ async function sendStoryCompletionWithGuard({
     // default thinking mode can otherwise consume the entire small correction budget.
     thinking: "disabled",
   });
-  return { content: corrected.content, usage: combineProviderUsage(response.usage, corrected.usage) };
+  return { content: corrected.content, usage: combineProviderUsage(response.usage, corrected.usage), repairNotes: guard.reasons };
 }
 
 function stripThinkTags(text: string): string {
@@ -303,7 +303,9 @@ export function useAdventureRuntime(
     if (!snapshot.memoryDetectionSettings.enabled || memoryFallbackInFlight.current.has(snapshot.id)) return;
     const everyN = Math.max(1, snapshot.memoryDetectionSettings.everyNTurns ?? 3);
     const last = snapshot.activeState.lastMemoryCycleTurn;
-    if (last !== undefined && snapshot.activeState.turn - last < everyN) return;
+    // An author correction no pass has read yet runs the pass now, so rejected material is retracted promptly.
+    const unreadCorrection = (snapshot.activeState.corrections ?? []).some((c) => c.status === "active" && !c.seenByPass);
+    if (!unreadCorrection && last !== undefined && snapshot.activeState.turn - last < everyN) return;
 
     memoryFallbackInFlight.current.add(snapshot.id);
     try {
@@ -314,8 +316,9 @@ export function useAdventureRuntime(
         ...(pass.valid ? [] : [{ type: "LOG_EVALUATION_RESULT" as const, entry: {
           id: createId("eval"), turn: snapshot.activeState.turn, createdAt: nowIso(), conditionsEvaluated: [],
           conditionsFired: [], actionsExecuted: ["Background memory pass: one API call"], generatedContent: [],
-          errors: ["Background memory pass returned no usable JSON; the next scheduled pass re-reads these turns."],
+          errors: [`Background memory pass returned no usable JSON${pass.failure ? ` (${pass.failure})` : ""}; the next scheduled pass re-reads these turns.`],
         } }]),
+        ...(pass.valid && pass.correctionIds.length ? [{ type: "MARK_CORRECTIONS_SEEN" as const, correctionIds: pass.correctionIds }] : []),
         // A failed pass waits for the next slot but does not count as coverage: the marker stays put, so
         // the next pass re-reads every unprocessed message instead of skipping them.
         { type: "SET_LAST_MEMORY_CYCLE_TURN", turn: snapshot.activeState.turn, messageId: pass.valid ? snapshot.messages.at(-1)?.id : undefined },

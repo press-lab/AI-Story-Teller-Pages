@@ -207,10 +207,11 @@ describe("targeted Story State edits", () => {
   });
 
   it("adds and removes list items, inserts a missing line in order, and refuses unlabeled text", () => {
+    // A legacy single-line list is rewritten as bullets with thread ids on its first edit.
     const added = applyStoryStateLine(LABELED_STATE, { label: "Open threads", op: "add" }, "the burned bridge")!;
-    expect(storyStateLineValue(added, "Open threads")).toBe("the duke's riders; the missing seal; the burned bridge");
+    expect(storyStateLineValue(added, "Open threads")).toBe("- the duke's riders\n- the missing seal\n- [t1] the burned bridge");
     const removed = applyStoryStateLine(added, { label: "Open threads", op: "remove" }, "the missing seal")!;
-    expect(storyStateLineValue(removed, "Open threads")).toBe("the duke's riders; the burned bridge");
+    expect(storyStateLineValue(removed, "Open threads")).toBe("- the duke's riders\n- [t1] the burned bridge");
     expect(applyStoryStateLine(LABELED_STATE, { label: "Open threads", op: "remove" }, "a thread that never existed")).toBeUndefined();
     const inserted = applyStoryStateLine(LABELED_STATE, { label: "Arrangements", op: "set" }, "Mira sleeps in the spare room.")!;
     expect(inserted.split("\n").indexOf("Arrangements: Mira sleeps in the spare room.")).toBe(3);
@@ -299,7 +300,7 @@ describe("minimum recent dialogue", () => {
     const adventure = fixture();
     adventure.storyCards.push(makeStoryCard({ id: "lore", title: "Old Lore", content: "lore ".repeat(150), keys: ["tower"], active: true, priority: 10 }));
     adventure.messages = Array.from({ length: 8 }, (_, i) => ({ id: `message_${i}`, role: i % 2 ? "assistant" : "user", content: `tower turn ${i} `.repeat(20), createdAt: "2026-01-01T00:00:00.000Z" })) as Adventure["messages"];
-    adventure.tokenBudgetSettings = { ...adventure.tokenBudgetSettings, maxContextTokens: 1600, maxRecentMessages: 8, recentMessageWindow: 8, minRecentMessages };
+    adventure.tokenBudgetSettings = { ...adventure.tokenBudgetSettings, maxContextTokens: 1760, maxRecentMessages: 8, recentMessageWindow: 8, minRecentMessages };
     return adventure;
   }
 

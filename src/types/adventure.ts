@@ -465,6 +465,23 @@ export type MemoryProposalType =
 
 export type MemoryProposalStatus = "pending" | "approved" | "rejected" | "ignored";
 
+/**
+ * An author correction: an out-of-character instruction, or a story edit that removed text memory had
+ * already recorded. The narrator sees active corrections for a few turns; the memory pass uses them as
+ * evidence to retract or rewrite affected memory, then marks them seen.
+ */
+export interface CorrectionEntry {
+  id: string;
+  text: string;
+  source: "outOfCharacter" | "messageEdited" | "messageErased";
+  messageId?: string;
+  turn: number;
+  createdAt: ISODateString;
+  status: "active" | "reconciled" | "dismissed";
+  /** A valid memory pass has read it. It retires once seen and a few turns old. */
+  seenByPass?: boolean;
+}
+
 /** The labeled lines of a Story State block, in their canonical order. */
 export const STORY_STATE_LABELS = ["Day/Time", "Location", "Relationships", "Arrangements", "Has met", "Open threads"] as const;
 export type StoryStateLabel = typeof STORY_STATE_LABELS[number];
@@ -633,6 +650,8 @@ export interface ActiveState {
   lastMemoryCycleTurn?: number;
   /** Id of the newest message the background memory pass had seen; the next pass reads everything after it. */
   lastMemoryPassMessageId?: string;
+  /** Author corrections the memory pass and narrator must honor until reconciled. */
+  corrections?: CorrectionEntry[];
   /** Turn number when semantic evaluation last ran. */
   lastSemanticEvalTurn?: number;
   /** Turn number when scene state last ran. */
@@ -733,7 +752,8 @@ export type ContextSectionKind =
   | "storyState"      // S. Story State — authoritative current facts, rewritten by the background memory pass
   | "activePressure"  // P. Active Pressure — per-turn block so stake changes do not break the cached prefix
   | "arcProgress"     // C3. Arc Progress — the current arc's development log, per-turn block
-  | "challengeMode";  // M. Continuity Challenge — one-turn verification instruction
+  | "challengeMode"   // M. Continuity Challenge — one-turn verification instruction
+  | "corrections";    // N. Author Corrections — recent out-of-character corrections, per-turn block
 
 export type ExcludedReason = "budget_exceeded" | "inactive" | "cooldown" | "not_triggered";
 
@@ -904,6 +924,8 @@ export type AdventureAction =
   | { type: "FLUSH_PENDING_UPDATES" }
   | { type: "SET_CHALLENGE_MODE" }
   | { type: "SET_LAST_MEMORY_CYCLE_TURN"; turn: number; messageId?: string }
+  | { type: "MARK_CORRECTIONS_SEEN"; correctionIds: string[] }
+  | { type: "DISMISS_CORRECTION"; correctionId: string }
   | { type: "SET_LAST_SEMANTIC_EVAL_TURN"; turn: number }
   | { type: "SET_LAST_SCENE_STATE_TURN"; turn: number }
   | { type: "RESET_RUNTIME_STATE" }

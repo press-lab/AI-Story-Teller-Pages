@@ -125,9 +125,9 @@ export function buildStoryResponseCorrectionMessages({
         `You are a strict rewrite pass for AI Story Teller. Return only the corrected visible story response.\n` +
         `Hard limit: ${wordLimit} words maximum.\n` +
         `Fix these violations: ${reasons.join("; ") || "turn scope"}.\n` +
-        `Do not add new events, new plans, new locations, or extra consequences. Preserve only the earliest playable beat from the draft.\n` +
-        `Do not narrate the player's unspoken actions, reactions, dialogue, consent, movement, decisions, acceptance, or internal conclusions.\n` +
-        `NPCs and the world may react. Stop as soon as the player can reasonably answer, interrupt, refuse, choose, or redirect.\n` +
+        `Make the smallest change that fixes the listed problems. Keep the draft's voice, its events, and every NPC action, including actions the player already asked for or authorized. Do not add new events, plans, locations, or consequences.\n` +
+        `Remove only the player's unspoken actions, reactions, dialogue, consent, movement, decisions, acceptance, or internal conclusions; NPCs and the world keep acting.\n` +
+        `If the draft is too long, trim description and repetition first, and end at a natural point where the player can respond.\n` +
         `Do not include OOC commentary, explanations, word counts, option menus, <thought> tags, or <memory> tags.`,
     },
     {

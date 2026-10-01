@@ -1,4 +1,5 @@
 import { selectEventMemories } from "../memory/eventMemory";
+import { stripStoryStateIds } from "../memory/storyStateLines";
 import type {
   Adventure,
   BrainEntry,
@@ -36,6 +37,7 @@ TURN CONTEXT (a block at the start of the newest user message, marked [TURN CONT
   G. Brains — private thoughts and knowledge boundaries of named characters. Private to the narrator; never quote directly.
   D. Author's Note — immediate narrative direction for this turn. Highest-priority steering.
   J. Next Output Bias — one-turn instruction. Apply it, then disregard it.
+  N. Author Corrections — the author's recent out-of-character corrections. They override every card, arc direction, and earlier story text; anything they reject never happened.
   M. Continuity Challenge — one-turn verification instruction when active.
 
 CURRENT TRUTH:
@@ -47,7 +49,7 @@ KNOWLEDGE BOUNDARIES:
   Never let a character state facts, names, or motives they have no way of knowing. When unsure, have them guess, ask, or stay silent.
 
 OUT-OF-CHARACTER MESSAGES:
-  Text wrapped as [Out of Character: …] is the player speaking to you as the narrator. Treat it as a correction or instruction that overrides cards, arc direction, and your previous output. Fix or retcon exactly what was asked, briefly acknowledge it only if needed, then continue the scene.
+  Text wrapped as [Out of Character: …] is the player speaking to you as the narrator. Treat it as a correction or instruction that overrides cards, arc direction, and your previous output. Fix or retcon exactly what was asked, then continue the scene. Never let characters acknowledge, discuss, or deny the correction in dialogue: repair the fiction silently, as if the rejected material never existed. When the player asks only to discuss, answer out of character and do not advance the story.
 
 CANON GROUNDING:
   Treat this adventure's context as the only canon, even when names, places, factions, or concepts resemble a published setting, fandom, or prior playthrough.
@@ -75,6 +77,7 @@ export const TURN_CONTEXT_SECTIONS: ReadonlySet<ContextSectionKind> = new Set<Co
   "brains",
   "authorNote",
   "nextTurnNote",
+  "corrections",
   "challengeMode",
 ]);
 
@@ -341,7 +344,7 @@ function buildTurnScopeContract(responseLengthHint: number | undefined): string 
     ? Math.max(50, Math.min(500, responseLengthHint))
     : 250;
   const minWords = Math.floor(wordTarget * 0.55);
-  return `TURN SCOPE CONTRACT: The player's selected visible limit is ${wordTarget} words. Aim for ${minWords}-${wordTarget} visible words; shorter is acceptable when the next playable beat is clear. Do not mention word counts or pad prose. This is a scope ceiling, not a quota. If any other instruction asks for a fuller, substantial, complete, or cinematic scene, obey this turn scope contract first. Write only the next immediate exchange or consequence. Do not advance through multiple beats, tour multiple locations, wrap up the scene, or resolve a major outcome the player has not earned. Never narrate the player's unspoken actions, reactions, dialogue, consent, movement, commitments, or decisions. Stop as soon as the player could reasonably act, answer, interrupt, refuse, choose, or redirect. End on a live in-scene moment, not an option menu or summary.`;
+  return `TURN SCOPE CONTRACT: The player's selected visible limit is ${wordTarget} words. Aim for ${minWords}-${wordTarget} visible words; shorter is acceptable when the next playable beat is clear. Do not mention word counts or pad prose. This is a scope ceiling, not a quota. If any other instruction asks for a fuller, substantial, complete, or cinematic scene, obey this turn scope contract first. Write only the next immediate exchange or consequence. Do not advance through multiple beats, tour multiple locations, wrap up the scene, or resolve a major outcome the player has not earned. Never narrate the player's unspoken actions, reactions, dialogue, consent, movement, commitments, or decisions. NPCs act on their own: when the player has asked for or authorized an NPC's action, or the player character cannot act (asleep, unconscious), the NPC carries it out this turn instead of asking again. Once a confrontation the story has built toward is underway, advance it; do not replace its antagonists with a new mystery or a higher villain unless the arc direction says to. End once the player has something meaningful to respond to. End on a live in-scene moment, not an option menu or summary.`;
 }
 
 export const TURN_CONTEXT_OPEN = "[TURN CONTEXT — narrator reference for this turn; not player speech]";
@@ -533,7 +536,8 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
       return [];
     }
     if (!component.content.trim()) return [];
-    const next = item(component.id, "component", component.title, component.content, component.priority, component.protected, component.pinned, component.active, "always", "ai");
+    // Thread ids ("[t3]") are bookkeeping handles for the memory pass; the narrator reads plain bullets.
+    const next = item(component.id, "component", component.title, stripStoryStateIds(component.content), component.priority, component.protected, component.pinned, component.active, "always", "ai");
     pushIncluded(next, `Story State loaded; priority=${component.priority}; protected=${component.protected}.`);
     return [next];
   });
@@ -644,6 +648,12 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
     ),
   );
 
+  // N. Author Corrections — recent out-of-character corrections, protected, per-turn block.
+  const correctionItems: ContextItem[] = (adventure.activeState.corrections ?? [])
+    .filter((correction) => correction.status === "active" && correction.source === "outOfCharacter")
+    .map((correction) => item(correction.id, "system", `Correction (turn ${correction.turn})`, correction.text, 900, true, false, true, "always", "user"));
+  correctionItems.forEach((entry) => pushIncluded(entry, "Active author correction; protected until the memory pass has reconciled it."));
+
   // M. Continuity Challenge — one-turn verification instruction, protected, consumes no budget when inactive
   const CHALLENGE_INSTRUCTION =
     "[CONTINUITY CHALLENGE]\n" +
@@ -704,6 +714,7 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
     // D. Author's Note sits closest to the newest turn (AID-style) for maximum recency influence
     section("authorNote", "D. Author's Note", 8, authorNoteItems),
     section("nextTurnNote", "J. Next Output Bias", 10, nextTurnNoteItems),
+    section("corrections", "N. Author Corrections", 10.2, correctionItems),
     section("challengeMode", "M. Continuity Challenge", 10.5, challengeItems),
   ]);
 

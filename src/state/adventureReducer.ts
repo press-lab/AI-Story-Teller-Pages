@@ -2,6 +2,7 @@ import { sameEventMemory } from "../memory/eventMemory";
 import type {
   Adventure,
   AdventureAction,
+  CorrectionEntry,
   ArcPace,
   ArcPacingState,
   ArcPhase,
@@ -37,7 +38,7 @@ import {
 } from "../memory/storyCardPolicy";
 import { dedupeBrainThoughts, normalizeThoughtForDedupe } from "../memory/thoughtDedupe";
 import { supersedeCardFact } from "../memory/onePassMemory";
-import { applyStoryStateLine, storyStateLineValue } from "../memory/storyStateLines";
+import { applyStoryStateLine, normalizeStoryState, storyStateLineValue } from "../memory/storyStateLines";
 
 function touch<T extends { updatedAt: string }>(entry: T): T {
   return { ...entry, updatedAt: nowIso() };
@@ -702,6 +703,35 @@ function isTranscriptMessageId(id: string): boolean {
   return /^message_/.test(id);
 }
 
+/** Story turns an author correction stays in front of the narrator (and active for the memory pass). */
+export const CORRECTION_ACTIVE_TURNS = 3;
+const MAX_ACTIVE_CORRECTIONS = 5;
+
+function withCorrection(state: Adventure, entry: Omit<CorrectionEntry, "id" | "createdAt" | "status" | "turn">): CorrectionEntry[] {
+  const existing = state.activeState.corrections ?? [];
+  const next: CorrectionEntry[] = [...existing, { ...entry, id: createId("correction"), createdAt: nowIso(), status: "active", turn: state.activeState.turn }];
+  // Keep the newest few active; older ones retire rather than crowd the narrator.
+  const active = next.filter((c) => c.status === "active");
+  const overflow = new Set(active.slice(0, Math.max(0, active.length - MAX_ACTIVE_CORRECTIONS)).map((c) => c.id));
+  return next.map((c) => overflow.has(c.id) ? { ...c, status: "reconciled" as const } : c).slice(-50);
+}
+
+/**
+ * When the author edits or erases a message that memory was built from, applied memory may now be
+ * wrong. Record a correction listing what was recorded from it, so the next memory pass re-checks it.
+ */
+function messageChangeActiveState(state: Adventure, messageId: string, change: "edited" | "erased" | "regenerated"): Partial<Adventure["activeState"]> {
+  const reason = change === "edited" ? "Its source message was edited; the next memory pass re-reads it." : change === "erased" ? "Its source message was erased." : "Its source message was regenerated.";
+  const applied = state.activeState.memoryProposals.filter((p) => p.status === "approved" && p.sourceTurnId === messageId);
+  const corrections = applied.length === 0 ? state.activeState.corrections : withCorrection(state, {
+    source: change === "edited" ? "messageEdited" : "messageErased",
+    messageId,
+    text: `The author ${change} story text that memory had already recorded. Re-check these recorded facts against the current story and retract any it no longer supports: ` +
+      applied.slice(0, 8).map((p) => `${p.title}: "${p.content.replace(/\s+/g, " ").slice(0, 200)}"`).join("; "),
+  });
+  return { memoryProposals: retireProposalsFromMessages(state, [messageId], reason), corrections };
+}
+
 /** Drafts whose source message was edited or erased no longer have evidence; retire them. */
 function retireProposalsFromMessages(state: Adventure, messageIds: string[], reason: string): Adventure["activeState"]["memoryProposals"] {
   const removed = new Set(messageIds);
@@ -1010,7 +1040,13 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal)
         existing,
         guardStoryCard({
           ...existing,
-          content: replacementContentWithGuardedFacts(existing, safeContent),
+          // The superseded fact must not come back from the archive as a "guarded" fact either.
+          archivedFacts: proposal.supersedes && existing.archivedFacts
+            ? supersedeCardFact({ content: existing.archivedFacts }, proposal.supersedes.oldFact, "") ?? existing.archivedFacts
+            : existing.archivedFacts,
+          // A targeted supersession or retraction changes one named fact and keeps the rest, so guarded
+          // facts need no restoring; restoring them would resurrect a fact the author just rejected.
+          content: proposal.supersedes ? (safeContent === "(empty)" ? "" : safeContent) : replacementContentWithGuardedFacts(existing, safeContent),
           // Merge, never overwrite, keys — a sparse update must not strip a card's aliases (which would
           // break alias-matching and let the card be duplicated again later).
           keys: Array.from(new Set([
@@ -1151,7 +1187,7 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal)
       state.components.find((c) => c.type === "storyState");
     if (!existing) return {};
     // A line edit applies to the CURRENT block, so edits to other lines are never lost.
-    const content = proposal.stateLine ? applyStoryStateLine(existing.content, proposal.stateLine, proposal.content) : proposal.content;
+    const content = proposal.stateLine ? applyStoryStateLine(existing.content, proposal.stateLine, proposal.content) : normalizeStoryState(proposal.content);
     if (content === undefined || content === existing.content) return {};
     return {
       components: upsertById(
@@ -1329,9 +1365,15 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
     case "ADD_MESSAGE": {
       const message = addMessage(state, action);
       const index = state.messages.length;
+      // An out-of-character player message is the author speaking: keep it as a correction so the
+      // narrator honors it for a few turns and the memory pass can retract what it rejects.
+      const ooc = action.role === "user" && action.inputMode === "comms" && message.content.trim();
       return withStoryHistory(
         state,
-        { messages: [...state.messages, message] },
+        {
+          messages: [...state.messages, message],
+          ...(ooc ? { activeState: { ...state.activeState, corrections: withCorrection(state, { source: "outOfCharacter", messageId: message.id, text: message.content.trim().slice(0, 1500) }) } } : {}),
+        },
         storyHistoryEntry(
           action.role === "assistant" ? "Add generated section" : "Add entered section",
           { type: "deleteMessage", messageId: message.id },
@@ -1348,7 +1390,7 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
           messages: state.messages.map((message) =>
             message.id === action.messageId ? { ...message, content: action.content } : message,
           ),
-          activeState: { ...state.activeState, memoryProposals: retireProposalsFromMessages(state, [action.messageId], "Its source message was edited; the next memory pass re-reads it.") },
+          activeState: { ...state.activeState, ...messageChangeActiveState(state, action.messageId, "edited") },
         },
         storyHistoryEntry(
           "Edit story section",
@@ -1365,7 +1407,7 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
         state,
         {
           messages: state.messages.filter((entry) => entry.id !== action.messageId),
-          activeState: { ...state.activeState, memoryProposals: retireProposalsFromMessages(state, [message.id], "Its source message was erased.") },
+          activeState: { ...state.activeState, ...messageChangeActiveState(state, message.id, "erased") },
         },
         storyHistoryEntry(
           "Erase story section",
@@ -1382,7 +1424,7 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
         state,
         {
           messages: state.messages.slice(0, -1),
-          activeState: { ...state.activeState, memoryProposals: retireProposalsFromMessages(state, [message.id], "Its source message was erased.") },
+          activeState: { ...state.activeState, ...messageChangeActiveState(state, message.id, "erased") },
         },
         storyHistoryEntry(
           message.role === "assistant" ? "Erase last generated section" : "Erase last entered section",
@@ -1400,7 +1442,7 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
         state,
         {
           messages: state.messages.filter((_, itemIndex) => itemIndex !== removeIndex),
-          activeState: { ...state.activeState, memoryProposals: retireProposalsFromMessages(state, [message.id], "Its source message was regenerated.") },
+          activeState: { ...state.activeState, ...messageChangeActiveState(state, message.id, "regenerated") },
         },
         storyHistoryEntry(
           "Erase last generated section",
@@ -1421,12 +1463,31 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
           forceIncludeNextTurn: state.activeState.forceIncludeNextTurn.filter(
             (entry) => entry.expiresTurn > state.activeState.turn + 1,
           ),
+          corrections: state.activeState.corrections?.map((c) =>
+            c.status === "active" && c.seenByPass && state.activeState.turn + 1 - c.turn >= CORRECTION_ACTIVE_TURNS ? { ...c, status: "reconciled" as const } : c),
           challengeMode: false,
         },
       });
     case "SET_CHALLENGE_MODE":
       return touchAdventure(state, {
         activeState: { ...state.activeState, challengeMode: true },
+      });
+    case "MARK_CORRECTIONS_SEEN": {
+      const seen = new Set(action.correctionIds);
+      return touchAdventure(state, {
+        activeState: {
+          ...state.activeState,
+          corrections: (state.activeState.corrections ?? []).map((c) => !seen.has(c.id) || c.status !== "active" ? c
+            : state.activeState.turn - c.turn >= CORRECTION_ACTIVE_TURNS ? { ...c, seenByPass: true, status: "reconciled" as const } : { ...c, seenByPass: true }),
+        },
+      });
+    }
+    case "DISMISS_CORRECTION":
+      return touchAdventure(state, {
+        activeState: {
+          ...state.activeState,
+          corrections: (state.activeState.corrections ?? []).map((c) => c.id === action.correctionId ? { ...c, status: "dismissed" as const } : c),
+        },
       });
     case "SET_LAST_MEMORY_CYCLE_TURN":
       return touchAdventure(state, {

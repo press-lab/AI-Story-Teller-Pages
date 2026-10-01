@@ -47,7 +47,9 @@ describe("storyResponseGuard", () => {
 
     expect(messages[0].role).toBe("system");
     expect(messages[0].content).toContain("Hard limit: 150 words maximum.");
-    expect(messages[0].content).toContain("Do not narrate the player's unspoken actions");
+    expect(messages[0].content).toContain("Remove only the player's unspoken actions");
+    expect(messages[0].content).toContain("every NPC action");
+    expect(messages[0].content).not.toContain("earliest playable beat");
     expect(messages[1].content).toContain("We can help Zaun now.");
   });
 });

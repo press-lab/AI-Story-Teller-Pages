@@ -449,6 +449,7 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
           <li>Recent Messages, sent chronologically and trimmed in chunks of 10.</li>
           <li>Turn context, at the start of the newest user message: Story State, Active Pressure, Arc Progress (the arc's development log), triggered and pinned living Story Cards, Brains, Author's Note, Next Turn Note, Continuity Challenge. These change often, so keeping them out of the prefix lets providers reuse the cache.</li>
         </ol>
+        <p>Out-of-character corrections are kept as Author Corrections: the narrator follows them for a few turns, and the next memory pass removes what they reject from Story State, cards (static ones included), and character knowledge. Memory Suggestions lists them, and its Memory health panel explains settings or limits that stop memory from staying current. Story State is capped at about 400 words and 8 open threads; when it grows past that, the memory pass suggests a consolidated version for your review.</p>
         <p>Story State is usually updated one line at a time (for example just Location, or one item added to Open threads); each line edit appears in Memory Suggestions with its previous value, and "Approve all Story State edits" applies them together. Settings → Context Budget → "Minimum recent dialogue" keeps the newest messages ahead of lower-priority memory when the context is full.</p>
         <p>
           Context Preview must match the provider payload. Recent messages are shown newest-first in preview

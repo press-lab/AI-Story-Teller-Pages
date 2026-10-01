@@ -2,6 +2,7 @@ import { useState } from "react";
 import { classifyMemory } from "../memory/classificationPolicy";
 import { resolveMemoryTarget } from "../memory/resolveMemoryTarget";
 import { proposalTargetChanged } from "../state/adventureReducer";
+import { memoryHealthIssues } from "../memory/memoryHealth";
 import type { MemoryAutoApproveSettings, MemoryProposal, MemoryProposalType, MemoryReconcileRequest, StoryCardType } from "../types/adventure";
 import { createId, nowIso } from "../utils/id";
 import type { AdventurePageProps } from "./pageTypes";
@@ -107,6 +108,8 @@ export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onR
   }
 
   const autoApprove = adventure.memoryAutoApprove;
+  const healthIssues = memoryHealthIssues(adventure);
+  const activeCorrections = (adventure.activeState.corrections ?? []).filter((correction) => correction.status === "active");
 
   function setAutoApprove(patch: Partial<MemoryAutoApproveSettings>) {
     dispatch({ type: "SET_MEMORY_AUTO_APPROVE", settings: { ...autoApprove, ...patch } });
@@ -124,6 +127,38 @@ export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onR
           {searchLower && <span>{visibleProposals.length} shown</span>}
         </div>
       </div>
+
+      {healthIssues.length > 0 && (
+        <details className="panel memory-health-panel" open={healthIssues.some((issue) => issue.severity === "warning")}>
+          <summary>Memory health ({healthIssues.length})</summary>
+          <ul className="memory-health-list">
+            {healthIssues.map((issue) => (
+              <li key={issue.id}>
+                <strong>{issue.severity === "warning" ? "⚠ " : ""}{issue.title}</strong>
+                <p className="muted" style={{ margin: "0.15rem 0 0.5rem" }}>{issue.detail}</p>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
+      {activeCorrections.length > 0 && (
+        <div className="panel">
+          <strong>Author corrections in effect</strong>
+          <p className="muted" style={{ margin: "0.25rem 0" }}>
+            Your out-of-character corrections, and story edits that removed recorded text. The narrator follows them for a few turns, and the next memory pass retracts what they reject from Story State, cards, and knowledge.
+          </p>
+          <ul>
+            {activeCorrections.map((correction) => (
+              <li key={correction.id}>
+                <span className="muted">Turn {correction.turn}{correction.seenByPass ? " · read by memory" : " · waiting for the memory pass"}: </span>
+                {correction.text.length > 300 ? `${correction.text.slice(0, 300)}…` : correction.text}
+                {" "}<button type="button" onClick={() => dispatch({ type: "DISMISS_CORRECTION", correctionId: correction.id })}>Dismiss</button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {onFindEventMemories && <div className="panel">
         <button type="button" disabled={loading || Boolean(eventScan)} onClick={async () => {

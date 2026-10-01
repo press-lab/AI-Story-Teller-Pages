@@ -20,6 +20,8 @@ import { adventureReducer } from "./adventureReducer";
 export interface MockableProviderResponse {
   content: string;
   usage?: ProviderUsage;
+  /** Why the draft was rewritten before it was kept (length, agency), when it was. */
+  repairNotes?: string[];
 }
 
 export interface RunTurnPipelineOptions {
@@ -149,6 +151,17 @@ export async function applyProviderResponse({
     usage: entryUsage,
   });
   next = adventureReducer(next, { type: "CONSUME_NEXT_TURN_NOTE" });
+  // Every rewrite of the narrator's draft is logged, so its effect on the prose can be judged.
+  const repairs = [
+    ...(response.repairNotes ?? []).map((note) => `Narration rewritten: ${note}`),
+    ...(continuityCorrected ? ["Narration rewritten by the continuity check"] : []),
+  ];
+  if (repairs.length) {
+    next = adventureReducer(next, { type: "LOG_EVALUATION_RESULT", entry: {
+      id: createId("eval"), turn: next.activeState.turn, createdAt: new Date().toISOString(), conditionsEvaluated: [],
+      conditionsFired: [], actionsExecuted: repairs, generatedContent: [], errors: [],
+    } });
+  }
 
   next = applyRuntimeEngines(next, { source: "output", text: finalContent });
 

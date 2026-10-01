@@ -250,6 +250,7 @@ describe("buildContext", () => {
       "brains",
       "authorNote",
       "nextTurnNote",
+      "corrections",
       "challengeMode",
     ]);
     expect(result.messages[0].role).toBe("system");
@@ -645,7 +646,7 @@ describe("buildContext", () => {
     const result = buildContext(adventure, { currentInput: "lantern" });
     const noteSection = result.sections.find((section) => section.id === "nextTurnNote");
 
-    expect(result.sections.map((section) => section.id).slice(-3)).toEqual(["authorNote", "nextTurnNote", "challengeMode"]);
+    expect(result.sections.map((section) => section.id).slice(-3)).toEqual(["nextTurnNote", "corrections", "challengeMode"]);
     expect(noteSection?.label).toBe("J. Next Output Bias");
     expect(noteSection?.items).toHaveLength(1);
     expect(noteSection?.items[0]).toMatchObject({
@@ -827,7 +828,7 @@ describe("buildContext", () => {
     // adventureForContext has no aiInstructions/plotEssentials/authorNote/sceneState content
     const result = buildContext(adventureForContext(), { currentInput: "lantern" });
     // All section IDs always present in result.sections
-    expect(result.sections.map((s) => s.id)).toHaveLength(15);
+    expect(result.sections.map((s) => s.id)).toHaveLength(16);
     // Empty typed sections do not appear in the payload
     const payload = result.messages.map((message) => message.content).join("\n");
     expect(payload).not.toContain("# B. AI Instructions");
@@ -859,6 +860,7 @@ describe("buildContext", () => {
       "brains",
       "authorNote",
       "nextTurnNote",
+      "corrections",
       "challengeMode",
     ]);
     expect(result.sections.find((section) => section.id === "aiInstructions")?.items.map((item) => item.id)).toEqual(["component-ai"]);

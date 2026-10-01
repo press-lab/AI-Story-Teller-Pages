@@ -67,6 +67,7 @@ describe("development adventure seed", () => {
       "brains",
       "authorNote",
       "nextTurnNote",
+      "corrections",
       "challengeMode",
     ]);
 
