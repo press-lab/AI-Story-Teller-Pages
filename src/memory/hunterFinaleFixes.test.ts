@@ -5,6 +5,7 @@ import { createDefaultAdventure, makeBrain, makeComponent, makeStoryCard } from 
 import { applyProviderResponse } from "../state/turnPipeline";
 import type { Adventure, AdventureAction } from "../types/adventure";
 import { memoryHealthIssues } from "./memoryHealth";
+import { makeStoryThread } from "./storyThreads";
 import { memoryUpdateActions } from "./onePassMemory";
 import { applyStoryStateLine, MAX_OPEN_THREADS, normalizeStoryState, openThreads, storyStateLineValue, stripStoryStateIds, tryStoryStateLine } from "./storyStateLines";
 
@@ -72,19 +73,20 @@ describe("open threads", () => {
 describe("bounded Story State", () => {
   function oversized(): Adventure {
     const adventure = fixture();
-    adventure.components[0].content = `Location: the warehouse.\nRelationships: ${"history ".repeat(450)}\nOpen threads:\n- [t1] the courier waits\n- [t2] Marcus is pinned`;
+    adventure.components[0].content = `Location: the warehouse.\nRelationships: ${"history ".repeat(450)}\nHas met: Marcus; Ivy`;
+    adventure.storyThreads = [makeStoryThread([], "the courier waits", 1), { ...makeStoryThread([], "Marcus is pinned", 1), id: "t2" }];
     return adventure;
   }
 
   it("refuses line edits that grow an over-long block, but welcomes removals", () => {
     const adventure = oversized();
-    const grow = pass(adventure, [{ kind: "stateLine", target: "Open threads", op: "add", content: "a brand new thread", evidence: "Edythe pins Marcus while Seth holds the door", reason: "x" }]);
+    const grow = pass(adventure, [{ kind: "stateLine", target: "Has met", op: "add", content: "a brand new acquaintance", evidence: "Edythe pins Marcus while Seth holds the door", reason: "x" }]);
     expect(grow.some((a) => a.type === "ADD_MEMORY_PROPOSAL")).toBe(false);
-    const shrink = pass(adventure, [{ kind: "stateLine", target: "Open threads", op: "remove", content: "t2", evidence: "Ivy is already dead on the warehouse floor", reason: "done" }]);
+    const shrink = pass(adventure, [{ kind: "stateLine", target: "Has met", op: "remove", content: "Ivy", evidence: "Ivy is already dead on the warehouse floor", reason: "done" }]);
     expect(shrink.some((a) => a.type === "ADD_MEMORY_PROPOSAL")).toBe(true);
   });
 
-  it("holds a consolidating rewrite of an over-long block for review, and rejects too many threads", () => {
+  it("holds a consolidating rewrite of an over-long block for review, and keeps threads out of the text", () => {
     let state = oversized();
     const consolidated = "Location: the warehouse.\nRelationships: Seth and Edythe are together.\nOpen threads:\n- the blood results";
     state = reduce(state, pass(state, [{ kind: "state", target: "Story State", content: consolidated, evidence: "Edythe pins Marcus while Seth holds the door", reason: "consolidate" }]));
@@ -92,9 +94,8 @@ describe("bounded Story State", () => {
     expect(proposal).toMatchObject({ status: "pending", requiresReview: true });
     expect(state.components[0].content).toContain("history history");
 
-    const tooMany = `Location: x.\nOpen threads:\n${Array.from({ length: MAX_OPEN_THREADS + 1 }, (_, i) => `- thread ${i}`).join("\n")}`;
-    expect(pass(fixture(), [{ kind: "state", target: "Story State", content: tooMany, evidence: "Edythe pins Marcus while Seth holds the door", reason: "x" }])
-      .some((a) => a.type === "ADD_MEMORY_PROPOSAL")).toBe(false);
+    expect(proposal.content).not.toContain("Open threads");
+    expect(proposal.content).not.toContain("blood results");
   });
 });
 
@@ -188,7 +189,7 @@ describe("memory health", () => {
   it("explains the conditions found in the Hunter Finale save without changing anything", () => {
     const adventure = fixture();
     adventure.memoryDetectionSettings = { ...adventure.memoryDetectionSettings, enabled: true, everyNTurns: 1 };
-    adventure.components[0].content = `Location: x.\nOpen threads: ${Array.from({ length: 12 }, (_, i) => `thread ${i}`).join("; ")}`;
+    adventure.storyThreads = Array.from({ length: 12 }, (_, i) => ({ ...makeStoryThread([], `thread ${i}`, 1), id: `t${i + 1}` }));
     adventure.components.push(
       makeComponent({ id: "arc", title: "Arc", type: "currentArc", content: "", active: true, autoUpdate: false, arcState: { phase: "break", tier: 5, threadEngagement: {}, pendingBreak: false } }),
       makeComponent({ id: "pressure", title: "Active Pressure", type: "activePressure", content: "Confront the hunters.", active: true, autoUpdate: false }),

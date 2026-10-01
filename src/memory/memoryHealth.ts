@@ -1,5 +1,6 @@
 import type { Adventure } from "../types/adventure";
-import { MAX_OPEN_THREADS, openThreads, STORY_STATE_MAX_WORDS, storyStateWordCount } from "./storyStateLines";
+import { MAX_OPEN_THREADS, STORY_STATE_MAX_WORDS, storyStateWordCount } from "./storyStateLines";
+import { openStoryThreads } from "./storyThreads";
 
 /**
  * Plain-language explanations of why automatic memory is (or is not) keeping the story current.
@@ -28,9 +29,9 @@ export function memoryHealthIssues(adventure: Adventure): MemoryHealthIssue[] {
   const components = adventure.components.filter((component) => component.active);
 
   const storyState = components.find((component) => component.type === "storyState");
-  if (storyState?.content.trim()) {
+  if (storyState) {
     const words = storyStateWordCount(storyState.content);
-    const threads = openThreads(storyState.content).length;
+    const threads = openStoryThreads(adventure.storyThreads).length;
     if (words > STORY_STATE_MAX_WORDS || threads > MAX_OPEN_THREADS) {
       issues.push({
         id: "story-state-size",
@@ -39,7 +40,7 @@ export function memoryHealthIssues(adventure: Adventure): MemoryHealthIssue[] {
         detail: `It is sent with every turn, so finished events listed there keep steering the narrator. The limits are ${STORY_STATE_MAX_WORDS} words and ${MAX_OPEN_THREADS} live threads. ` +
           (storyState.autoUpdate === false
             ? "AI updates are off for this block, so trim it by hand."
-            : "The next memory pass will suggest a consolidated version for your review."),
+            : "The next memory pass will suggest a consolidation (a shorter text, or resolving finished threads) for your review. You can also resolve threads yourself under Story State."),
       });
     }
   }

@@ -1,5 +1,6 @@
 import { selectEventMemories } from "../memory/eventMemory";
 import { stripStoryStateIds } from "../memory/storyStateLines";
+import { storyStateWithThreads } from "../memory/storyThreads";
 import type {
   Adventure,
   BrainEntry,
@@ -31,7 +32,8 @@ Then the recent story turns follow in chronological order.
 
 TURN CONTEXT (a block at the start of the newest user message, marked [TURN CONTEXT] … [END TURN CONTEXT]; it is narrator reference, never player speech):
   S. Story State — the authoritative CURRENT facts: day/date/time, location, relationship status, living and sleeping arrangements, who has met whom, open threads.
-  P. Active Pressure — the immediate external threat or obligation pressing on the player character.
+  S2. Scene Direction — who is present, what each NPC is trying to do right now, and the choice left open to the player. NPCs pursue those aims actively; the player alone decides the open choice. It never decides outcomes.
+  P. Active Pressure —the immediate external threat or obligation pressing on the player character.
   C3. Arc Progress — completed developments in the current arc so far.
   F. Story Cards — World Info entries injected when their trigger keywords appear in recent text, plus pinned living records whose facts change during play.
   G. Brains — private thoughts and knowledge boundaries of named characters. Private to the narrator; never quote directly.
@@ -71,6 +73,7 @@ interface BuildOptions {
 /** Sections sent in the per-turn [TURN CONTEXT] block after the history (never in the cached prefix). */
 export const TURN_CONTEXT_SECTIONS: ReadonlySet<ContextSectionKind> = new Set<ContextSectionKind>([
   "storyState",
+  "sceneDirection",
   "activePressure",
   "arcProgress",
   "storyCards",
@@ -528,23 +531,38 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
     return [next];
   });
 
-  // S. Story State — authoritative current facts. Always included when it has content; sent in the turn context.
+  // S. Story State — authoritative current facts plus the open threads. Always included when it has content; sent in the turn context.
   const storyStateItems = prioritySort(adventure.components).flatMap((component) => {
     if (component.type !== "storyState") return [];
     if (!component.active) {
       logExcludedOnce(component.id, component.title, "inactive");
       return [];
     }
-    if (!component.content.trim()) return [];
-    // Thread ids ("[t3]") are bookkeeping handles for the memory pass; the narrator reads plain bullets.
-    const next = item(component.id, "component", component.title, stripStoryStateIds(component.content), component.priority, component.protected, component.pinned, component.active, "always", "ai");
+    // Thread ids ("t3") are bookkeeping handles for the memory pass; the narrator reads plain bullets.
+    const stateText = storyStateWithThreads(stripStoryStateIds(component.content), adventure.storyThreads, false);
+    if (!stateText.trim()) return [];
+    const next = item(component.id, "component", component.title, stateText, component.priority, component.protected, component.pinned, component.active, "always", "ai");
     pushIncluded(next, `Story State loaded; priority=${component.priority}; protected=${component.protected}.`);
+    return [next];
+  });
+
+  // S2. Scene Direction — who is present, NPC aims, the open choice. Replaced by every memory pass.
+  const sceneDirectionItems = prioritySort(adventure.components).flatMap((component) => {
+    if (component.type !== "sceneDirection") return [];
+    if (!component.active) {
+      logExcludedOnce(component.id, component.title, "inactive");
+      return [];
+    }
+    if (!component.content.trim()) return [];
+    const asOf = component.lastAutoUpdateTurn !== undefined ? `(As of turn ${component.lastAutoUpdateTurn}; the recent turns override it.)\n` : "";
+    const next = item(component.id, "component", component.title, asOf + component.content.trim(), component.priority, component.protected, component.pinned, component.active, "always", "ai");
+    pushIncluded(next, `Scene Direction loaded; priority=${component.priority}.`);
     return [next];
   });
 
   // E. Components — general always-on or pinned components (not a special typed section above)
   const generalComponentItems = prioritySort(adventure.components).flatMap((component) => {
-    if (component.type === "narrationRules" || component.type === "aiInstructions" || component.type === "plotEssentials" || component.type === "currentArc" || component.type === "activePressure" || component.type === "immediateMomentum" || component.type === "authorNote" || component.type === "storyState") return [];
+    if (component.type === "narrationRules" || component.type === "aiInstructions" || component.type === "plotEssentials" || component.type === "currentArc" || component.type === "activePressure" || component.type === "immediateMomentum" || component.type === "authorNote" || component.type === "storyState" || component.type === "sceneDirection") return [];
     if (!component.active) {
       logExcludedOnce(component.id, component.title, "inactive");
       return [];
@@ -707,6 +725,7 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
     section("recentMessages", "K. Recent Messages", 4, recentMessageItems),
     // Per-turn context follows the history (see buildPayload) so the stable prefix stays cacheable.
     section("storyState", "S. Story State", 5, storyStateItems),
+    section("sceneDirection", "S2. Scene Direction", 5.1, sceneDirectionItems),
     section("activePressure", "P. Active Pressure", 5.2, activePressureItems),
     section("arcProgress", "C3. Arc Progress", 5.4, arcProgressItems),
     section("storyCards", "F. Story Cards", 6, storyCardItems),

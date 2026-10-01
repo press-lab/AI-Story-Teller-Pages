@@ -244,6 +244,7 @@ describe("buildContext", () => {
       "pinnedStoryCards",
       "recentMessages",
       "storyState",
+      "sceneDirection",
       "activePressure",
       "arcProgress",
       "storyCards",
@@ -828,7 +829,7 @@ describe("buildContext", () => {
     // adventureForContext has no aiInstructions/plotEssentials/authorNote/sceneState content
     const result = buildContext(adventureForContext(), { currentInput: "lantern" });
     // All section IDs always present in result.sections
-    expect(result.sections.map((s) => s.id)).toHaveLength(16);
+    expect(result.sections.map((s) => s.id)).toHaveLength(17);
     // Empty typed sections do not appear in the payload
     const payload = result.messages.map((message) => message.content).join("\n");
     expect(payload).not.toContain("# B. AI Instructions");
@@ -854,6 +855,7 @@ describe("buildContext", () => {
       "pinnedStoryCards",
       "recentMessages",
       "storyState",
+      "sceneDirection",
       "activePressure",
       "arcProgress",
       "storyCards",

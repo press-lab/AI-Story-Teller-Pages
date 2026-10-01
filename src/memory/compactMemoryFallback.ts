@@ -4,7 +4,8 @@ import { sendOpenAICompatibleChatCompletion } from "../providers/openAICompatibl
 import { matchPatterns } from "../triggers/matching";
 import type { Adventure, AdventureAction, ChatMessage, ProviderConfig } from "../types/adventure";
 import { MEMORY_OUTPUT_RESERVE, memoryPassRules, memoryUpdateActions } from "./onePassMemory";
-import { MAX_OPEN_THREADS, openThreads, STORY_STATE_MAX_WORDS, storyStateWordCount } from "./storyStateLines";
+import { MAX_OPEN_THREADS, STORY_STATE_MAX_WORDS, storyStateWordCount } from "./storyStateLines";
+import { openStoryThreads, storyStateWithThreads } from "./storyThreads";
 
 /**
  * Background memory pass — the single automatic memory writer.
@@ -121,7 +122,7 @@ export async function runBackgroundMemoryPass(
   const windowText = window.map(message => message.content).join("\n");
   const context = buildContext(adventure, { latestModelOutput: latestStory.content });
   // Story State is added below in its raw form (with thread ids), not the narrator's view.
-  const referenceSections = new Set(["plotEssentials", "activePressure", "currentArc", "arcProgress", "components", "pinnedStoryCards", "storyCards", "brains"]);
+  const referenceSections = new Set(["sceneDirection", "plotEssentials", "activePressure", "currentArc", "arcProgress", "components", "pinnedStoryCards", "storyCards", "brains"]);
   const references = context.sections.filter(section => referenceSections.has(section.id))
     .flatMap(section => section.items.map(item => `${section.label} — ${item.title}:\n${item.content}`));
   const visibleIds = new Set(context.sections.flatMap(section => section.items.map(item => item.id)));
@@ -150,9 +151,10 @@ export async function runBackgroundMemoryPass(
   const storyState = adventure.components.find(c => c.type === "storyState" && c.active && c.autoUpdate !== false);
   if (storyState) visibleIds.add(storyState.id);
   const stateWords = storyState ? storyStateWordCount(storyState.content) : 0;
-  const threadCount = storyState ? openThreads(storyState.content).length : 0;
-  if (storyState?.content.trim()) references.unshift(`S. Story State — ${storyState.title} (${stateWords} words, ${threadCount} open threads):\n${storyState.content}`);
-  const stateOverLimit = stateWords > STORY_STATE_MAX_WORDS || threadCount > MAX_OPEN_THREADS;
+  const threadCount = openStoryThreads(adventure.storyThreads).length;
+  const stateWithThreads = storyState ? storyStateWithThreads(storyState.content, adventure.storyThreads, true) : "";
+  if (stateWithThreads.trim()) references.unshift(`S. Story State — ${storyState!.title} (${stateWords} words of text, ${threadCount} open threads):\n${stateWithThreads}`);
+  const sceneDirection = adventure.components.find(c => c.type === "sceneDirection" && c.active && c.autoUpdate !== false);
   const eligibleBrains = eligibleBrainsForCapture(adventure, windowText);
   const brainLines = eligibleBrains.map(brain => [
     `${brain.characterName}:`,
@@ -182,7 +184,9 @@ export async function runBackgroundMemoryPass(
     { role: "user", content: "CANON (current memory):\n" + (references.join("\n\n") || "(none)") },
     { role: "user", content: [
       `Story State title: ${JSON.stringify(storyState?.title ?? null)}${storyState && !storyState.content.trim() ? " (currently EMPTY — write it now from the recent turns and canon)" : ""}`,
-      ...(stateOverLimit ? [`Story State is OVER THE LIMIT (${stateWords} words, ${threadCount} open threads; limits ${STORY_STATE_MAX_WORDS} words and ${MAX_OPEN_THREADS} threads). Return ONE full "state" update that consolidates it: keep what is true now, keep only live unresolved threads, drop completed events. The player will review it.`] : []),
+      ...(stateWords > STORY_STATE_MAX_WORDS ? [`Story State text is OVER THE LIMIT (${stateWords} words; limit ${STORY_STATE_MAX_WORDS}). Return ONE full "state" update that consolidates it: keep what is true now, drop completed events. The player will review it.`] : []),
+      ...(threadCount > MAX_OPEN_THREADS ? [`Open threads are OVER THE LIMIT (${threadCount} open; limit ${MAX_OPEN_THREADS}). Return ONE "thread" update with op "keep" listing the ids of the threads that are still live (at most ${MAX_OPEN_THREADS}); all others will be resolved. The player will review it.`] : []),
+      ...(sceneDirection ? [`Scene Direction title: ${JSON.stringify(sceneDirection.title)}${sceneDirection.content.trim() ? "" : " (currently EMPTY — write it for the current scene)"}`] : []),
       ...(corrections.length ? ["AUTHOR CORRECTIONS (authoritative; override canon and story text; quote them as evidence):", ...corrections.map(c => `- ${c.text}`)] : []),
       `Eligible characters for "thought" and "knows": ${JSON.stringify(eligibleBrains.map(brain => brain.characterName))}`,
       ...(brainLines.length ? ["Current character memory:", ...brainLines] : []),

@@ -88,7 +88,8 @@ describe("background memory pass updates", () => {
     expect(Object.values(next.brains[0].thoughts)).toEqual(expect.arrayContaining(["I distrust the duke.", expect.stringContaining("stop fearing")]));
     expect(next.components.find(c => c.id === "pressure")?.content).toBe("The tribute obligation has ended.");
     // A full rewrite is stored with list lines as bullets and stable thread ids.
-    expect(next.components.find(c => c.id === "state")?.content).toBe(state.replace("Open threads: the silver curse.", "Open threads:\n- [t1] the silver curse."));
+    expect(next.components.find(c => c.id === "state")?.content).toBe(state.replace("\nOpen threads: the silver curse.", ""));
+    // Open threads are their own data; a full rewrite never carries them into the text.
     expect(next.components.find(c => c.id === "essentials")?.content).toBe(adventure.components[0].content);
     expect(next.activeState.memoryProposals.find(p => p.proposedType === "storyStateUpdate")?.status).toBe("approved");
   });

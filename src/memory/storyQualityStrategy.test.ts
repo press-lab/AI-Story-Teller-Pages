@@ -250,8 +250,8 @@ describe("targeted Story State edits", () => {
     state.memoryAutoApprove = { ...state.memoryAutoApprove, storyStateUpdate: false };
     state = reduce(state, passActions(state, [
       { kind: "stateLine", target: "Location", op: "set", content: "the gate.", evidence: EVIDENCE, reason: "a" },
-      { kind: "stateLine", target: "Open threads", op: "add", content: "the burned bridge", evidence: EVIDENCE, reason: "b" },
-      { kind: "stateLine", target: "Open threads", op: "remove", content: "the missing seal", evidence: EVIDENCE, reason: "c" },
+      { kind: "stateLine", target: "Has met", op: "add", content: "Captain Orlo (harbor master)", evidence: EVIDENCE, reason: "b" },
+      { kind: "stateLine", target: "Has met", op: "remove", content: "the ferryman (owed a favor)", evidence: EVIDENCE, reason: "c" },
     ]));
     expect(state.activeState.memoryProposals.filter((p) => p.status === "pending")).toHaveLength(3);
     state = reduce(state, passActions(state, [{ kind: "stateLine", target: "Location", op: "set", content: "the cellar.", evidence: EVIDENCE, reason: "d" }]));
@@ -300,7 +300,10 @@ describe("minimum recent dialogue", () => {
     const adventure = fixture();
     adventure.storyCards.push(makeStoryCard({ id: "lore", title: "Old Lore", content: "lore ".repeat(150), keys: ["tower"], active: true, priority: 10 }));
     adventure.messages = Array.from({ length: 8 }, (_, i) => ({ id: `message_${i}`, role: i % 2 ? "assistant" : "user", content: `tower turn ${i} `.repeat(20), createdAt: "2026-01-01T00:00:00.000Z" })) as Adventure["messages"];
-    adventure.tokenBudgetSettings = { ...adventure.tokenBudgetSettings, maxContextTokens: 1760, maxRecentMessages: 8, recentMessageWindow: 8, minRecentMessages };
+    adventure.tokenBudgetSettings = { ...adventure.tokenBudgetSettings, maxContextTokens: 1_000_000, maxRecentMessages: 8, recentMessageWindow: 8, minRecentMessages };
+    // Over budget by more than two messages but less than two messages plus the lore card.
+    const total = buildContext(adventure, {}).totalEstimatedTokens;
+    adventure.tokenBudgetSettings = { ...adventure.tokenBudgetSettings, maxContextTokens: total - 200 };
     return adventure;
   }
 

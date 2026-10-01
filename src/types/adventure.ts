@@ -28,6 +28,7 @@ export type ComponentType =
   | "authorNote"
   | "memory"
   | "storyState"
+  | "sceneDirection"
   | "custom";
 
 export type MemoryUpdateOperation = "create" | "replace" | "append" | "patch";
@@ -460,6 +461,7 @@ export type MemoryProposalType =
   | "plotPressureUpdate"
   | "plotMomentumUpdate"
   | "storyStateUpdate"
+  | "sceneDirectionUpdate"
   | "summaryUpdate"
   | "ignore";
 
@@ -480,6 +482,23 @@ export interface CorrectionEntry {
   status: "active" | "reconciled" | "dismissed";
   /** A valid memory pass has read it. It retires once seen and a few turns old. */
   seenByPass?: boolean;
+}
+
+/**
+ * One live situation the story has not settled yet ("Open threads"). Kept as data beside the Story State
+ * text so each thread has a stable id, can be resolved without matching prose, and keeps its history.
+ */
+export interface StoryThread {
+  /** Stable short id, "t1", "t2", … */
+  id: string;
+  text: string;
+  status: "open" | "resolved";
+  createdTurn: number;
+  resolvedTurn?: number;
+  /** Message the thread was recorded from, when the memory pass opened it. */
+  sourceTurnId?: string;
+  createdAt: ISODateString;
+  updatedAt: ISODateString;
 }
 
 /** The labeled lines of a Story State block, in their canonical order. */
@@ -522,6 +541,11 @@ export interface MemoryProposal {
    * "set" replaces the line; "add" / "remove" change one item of a list line (Has met, Open threads).
    */
   stateLine?: { label: StoryStateLabel; op: "set" | "add" | "remove" };
+  /**
+   * storyStateUpdate only: a change to the structured open-thread list (`Adventure.storyThreads`).
+   * "add" opens a thread with `content`; "update" rewrites one thread; "resolve" closes the listed threads.
+   */
+  threadOp?: { op: "add" } | { op: "update"; threadId: string } | { op: "resolve"; threadIds: string[] };
   /** currentArcUpdate only: the memory pass judged the arc's climax resolved. Approval moves the arc to aftermath. */
   resolvesArc?: boolean;
   createdAt: ISODateString;
@@ -671,6 +695,8 @@ export interface Adventure {
   components: ComponentEntry[];
   storyCards: StoryCard[];
   brains: BrainEntry[];
+  /** Open threads, kept as data beside the Story State text. Resolved threads stay for history. */
+  storyThreads: StoryThread[];
   triggerRules: TriggerRule[];
   rollingSummary: RollingSummary;
   sceneState?: RollingSummary;
@@ -695,6 +721,8 @@ export interface MemoryAutoApproveSettings {
   brainUpdate: boolean;
   /** Story State rewrites from the background memory pass. Default true: the block is only useful if it stays current. */
   storyStateUpdate: boolean;
+  /** Scene Direction rewrites from the background memory pass. Default true: it is short-lived steering, replaced every pass. */
+  sceneDirectionUpdate?: boolean;
 }
 
 export interface AdventureThumbnailImage {
@@ -750,6 +778,7 @@ export type ContextSectionKind =
   | "sceneState"      // L. Scene State — current location, characters, situation (deprecated)
   | "pinnedStoryCards" // F0. Pinned / always Story Cards — stable prefix, cache-friendly
   | "storyState"      // S. Story State — authoritative current facts, rewritten by the background memory pass
+  | "sceneDirection"  // S2. Scene Direction — who is present, NPC aims, the open choice; per-turn block
   | "activePressure"  // P. Active Pressure — per-turn block so stake changes do not break the cached prefix
   | "arcProgress"     // C3. Arc Progress — the current arc's development log, per-turn block
   | "challengeMode"   // M. Continuity Challenge — one-turn verification instruction
@@ -925,6 +954,11 @@ export type AdventureAction =
   | { type: "SET_CHALLENGE_MODE" }
   | { type: "SET_LAST_MEMORY_CYCLE_TURN"; turn: number; messageId?: string }
   | { type: "MARK_CORRECTIONS_SEEN"; correctionIds: string[] }
+  | { type: "ADD_STORY_THREAD"; text: string }
+  | { type: "UPDATE_STORY_THREAD"; threadId: string; text: string }
+  | { type: "RESOLVE_STORY_THREAD"; threadId: string }
+  | { type: "REOPEN_STORY_THREAD"; threadId: string }
+  | { type: "DELETE_STORY_THREAD"; threadId: string }
   | { type: "DISMISS_CORRECTION"; correctionId: string }
   | { type: "SET_LAST_SEMANTIC_EVAL_TURN"; turn: number }
   | { type: "SET_LAST_SCENE_STATE_TURN"; turn: number }

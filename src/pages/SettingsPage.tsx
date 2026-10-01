@@ -634,6 +634,7 @@ export function SettingsPage({
                   <CheckboxField label="Story Cards" checked={activeSettings.memoryAutoApprove.storyCard} onChange={(storyCard) => updateMemoryAutoApprove({ storyCard })} />
                   <CheckboxField label="Characters" checked={activeSettings.memoryAutoApprove.brainUpdate} onChange={(brainUpdate) => updateMemoryAutoApprove({ brainUpdate })} />
                   <CheckboxField label="Story State" checked={activeSettings.memoryAutoApprove.storyStateUpdate} onChange={(storyStateUpdate) => updateMemoryAutoApprove({ storyStateUpdate })} />
+                  <CheckboxField label="Scene Direction" checked={activeSettings.memoryAutoApprove.sceneDirectionUpdate !== false} onChange={(sceneDirectionUpdate) => updateMemoryAutoApprove({ sceneDirectionUpdate })} />
                 </div>
                 <p className="muted">
                   These toggles apply to Memory Suggestions created by the background memory pass and manual builders.

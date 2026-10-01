@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { StoryThreadsPanel } from "./StoryThreadsPanel";
 import type { Adventure, AdventureAction, ArcPace, ArcPhase, ArcTriggerMode, ComponentEntry, ComponentType, ContextInclusionPolicy, PlotAIBuilderRequest } from "../types/adventure";
 import type { ComponentAuditRecommendation } from "../memory/componentAudit";
 import { makeComponent } from "../state/defaults";
@@ -269,6 +270,7 @@ const TYPE_LABELS: Record<ComponentType, string> = {
   authorNote: "Author's Note",
   memory: "Lore Block (legacy)",
   storyState: "Story State",
+  sceneDirection: "Scene Direction",
   custom: "Custom",
 };
 
@@ -282,6 +284,7 @@ const TYPE_DESCRIPTIONS: Record<ComponentType, string> = {
   authorNote: "Near-context narrative direction — inserted just before Recent Messages for maximum influence on the next response. One per adventure. Most powerful mid-session correction tool: if a character is drifting too passive, too emotional, or too reactive, add a directive here before the next turn. 'Nix should have a project she is actively working on right now' resets the register immediately.",
   memory: "Legacy lore block. Move content to a Story Card with type Lore for triggered inclusion.",
   storyState: "Authoritative current truth — day/date/time, location, relationship status, living arrangements, who the player has met, and open threads. Always included, near the end of context. Every few turns the background memory pass suggests a full rewrite in Memory Suggestions (auto-approve it under Story State if you prefer). Turn off suggestions below to freeze it. Edit it directly whenever the story gets a fact wrong.",
+  sceneDirection: "Short steering for the current scene: who is present, what each NPC is trying to do, and the choice left open to the player. Written by the background memory pass and replaced every pass (auto-approved by default); edit it any time. It never decides outcomes or the player's actions.",
   custom: "A general-purpose context block. Configure inclusion policy, priority, and protection manually.",
 };
 
@@ -368,7 +371,7 @@ const PLOT_GROUP_DEFINITIONS: Array<{
     id: "current-state",
     title: "Current Story State",
     description: "What is true right now and what pressure is active.",
-    types: ["storyState", "plotEssentials", "activePressure", "currentArc"],
+    types: ["storyState", "sceneDirection", "plotEssentials", "activePressure", "currentArc"],
   },
 ];
 
@@ -840,6 +843,7 @@ export function ComponentsPage({ adventure, dispatch, loading, onSuggestPlotUpda
                   onChange={(event) => dispatch({ type: "UPDATE_COMPONENT", componentId: component.id, patch: { content: event.target.value } })}
                 />
               </Field>
+              {component.type === "storyState" && <StoryThreadsPanel adventure={adventure} dispatch={dispatch} />}
               </section>
               <MemoryUpdateHistory history={component.memoryUpdateHistory} />
               {pePreview[component.id] !== undefined && (
@@ -853,6 +857,18 @@ export function ComponentsPage({ adventure, dispatch, loading, onSuggestPlotUpda
               )}
               <details className="brain-secondary-details item-secondary-details">
                 <summary>Automation, context settings, and actions</summary>
+              {component.type === "sceneDirection" && (
+                <div className="grid two">
+                  <CheckboxField
+                    label="Background memory pass writes Scene Direction"
+                    checked={component.autoUpdate !== false}
+                    onChange={(autoUpdate) => dispatch({ type: "UPDATE_COMPONENT", componentId: component.id, patch: { autoUpdate } })}
+                  />
+                  <Field label="Last updated (turn)">
+                    <input value={component.lastAutoUpdateTurn ?? "Never"} readOnly />
+                  </Field>
+                </div>
+              )}
               {component.type === "storyState" && (
                 <div className="grid two">
                   <CheckboxField

@@ -111,6 +111,14 @@ function replaceSection(content: string, section: StateSection | undefined, rend
   return [...lines.slice(0, insertAt), rendered, ...lines.slice(insertAt)].join("\n");
 }
 
+/** Remove one labeled line (and its continuation lines) from the block, returning its former value. */
+export function withoutStoryStateLine(content: string, label: StoryStateLabel): { content: string; value?: string } {
+  const section = parseSections(content).find((entry) => entry.label === label);
+  if (!section) return { content };
+  const lines = content.split("\n");
+  return { content: [...lines.slice(0, section.start), ...lines.slice(section.end + 1)].join("\n").trim(), value: section.value };
+}
+
 /** Give every open thread a stable id and write list lines as bullets. Idempotent. */
 export function normalizeStoryState(content: string): string {
   const sections = parseSections(content);

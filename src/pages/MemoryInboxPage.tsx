@@ -16,6 +16,7 @@ const proposalTypes: MemoryProposalType[] = [
   "arcProposal",
   "plotPressureUpdate",
   "storyStateUpdate",
+  "sceneDirectionUpdate",
   "plotMomentumUpdate",
   "summaryUpdate",
   "ignore",
@@ -204,6 +205,7 @@ export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onR
           <CheckboxField label="Story Cards" checked={autoApprove.storyCard} onChange={(v) => setAutoApprove({ storyCard: v })} />
           <CheckboxField label="Characters" checked={autoApprove.brainUpdate} onChange={(v) => setAutoApprove({ brainUpdate: v })} />
           <CheckboxField label="Story State" checked={autoApprove.storyStateUpdate} onChange={(v) => setAutoApprove({ storyStateUpdate: v })} />
+          <CheckboxField label="Scene Direction" checked={autoApprove.sceneDirectionUpdate !== false} onChange={(v) => setAutoApprove({ sceneDirectionUpdate: v })} />
         </div>
       </details>
 
@@ -364,6 +366,11 @@ function ProposalCard({ proposal, targetChanged = false, dispatch, onUpdate, onR
 
       {proposal.stateLine?.op === "set" && proposal.baseContent !== undefined && (
         <p className="muted" style={{ margin: "0.25rem 0" }}>Before: {proposal.baseContent || "(line not present)"}</p>
+      )}
+      {proposal.threadOp && (
+        <p className="muted" style={{ margin: "0.25rem 0" }}>
+          {proposal.threadOp.op === "add" ? "Opens a new thread:" : proposal.threadOp.op === "update" ? `Rewords thread ${proposal.threadOp.threadId} (was: ${proposal.baseContent ?? "?"}):` : `Resolves ${proposal.threadOp.threadIds.length} thread${proposal.threadOp.threadIds.length === 1 ? "" : "s"}:`}
+        </p>
       )}
       {proposal.stateLine && proposal.stateLine.op !== "set" && (
         <p className="muted" style={{ margin: "0.25rem 0" }}>{proposal.stateLine.op === "add" ? "Adds this item to" : "Removes this item from"} {proposal.stateLine.label}:</p>

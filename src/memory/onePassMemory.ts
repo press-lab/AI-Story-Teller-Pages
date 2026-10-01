@@ -3,7 +3,8 @@ import { createId, nowIso } from "../utils/id";
 import { cardMatchesName } from "../state/defaults";
 import { applyAIMemoryUpdate } from "./applyAIMemoryUpdate";
 import { isFirstPersonRecallTrigger } from "./storyCardPolicy";
-import { canonicalStateLabel, hasLabeledStoryState, MAX_OPEN_THREADS, normalizeStoryState, openThreads, STORY_STATE_LIST_LABELS, STORY_STATE_MAX_WORDS, storyStateLineValue, storyStateWordCount, tryStoryStateLine } from "./storyStateLines";
+import { canonicalStateLabel, hasLabeledStoryState, MAX_OPEN_THREADS, STORY_STATE_LIST_LABELS, STORY_STATE_MAX_WORDS, storyStateLineValue, storyStateWordCount, tryStoryStateLine, withoutStoryStateLine } from "./storyStateLines";
+import { findOpenThread, isDuplicateThread, openStoryThreads } from "./storyThreads";
 
 /**
  * Shared memory-update contract for the background memory pass.
@@ -23,6 +24,9 @@ export const MEMORY_PASS_MAX_UPDATES = 8;
 
 export const STORY_STATE_WORD_LIMIT = STORY_STATE_MAX_WORDS;
 const STATE_LINE_WORD_LIMIT = 60;
+const SCENE_WORD_LIMIT = 80;
+/** Resolving more threads than this in one update is a consolidation: the player reviews it. */
+const THREAD_BULK_RESOLVE_REVIEW = 4;
 const EVENT_WORD_LIMIT = 90;
 const KNOWLEDGE_WORD_LIMIT = 140;
 const THOUGHT_WORD_LIMIT = 60;
@@ -41,16 +45,21 @@ PENDING drafts, when shown, are unapproved suggestions from earlier passes: they
 
 Work in this order and stop when the remaining changes are minor:
 1. Corrections: "retract" or rewrite whatever an AUTHOR CORRECTION rejects.
-2. Story State, using these kinds:
-- "stateLine": a targeted change to ONE labeled line. target is the label: "Day/Time", "Location", "Relationships", "Arrangements", "Has met", or "Open threads". op is "set" (content is the new value of a non-list line, max ${STATE_LINE_WORD_LIMIT} words), or, for "Has met" and "Open threads", "add" (content is ONE new item, max ${STATE_LINE_WORD_LIMIT} words) or "remove" (content is the thread id such as "t3", or the item copied from the line). FIRST remove every open thread the recent turns finished, made impossible, or that a correction rejected; only then add new ones. Open threads holds at most ${MAX_OPEN_THREADS} live, unresolved situations: never completed actions, past dialogue, or plans already carried out.
-- "state": target is the EXACT title of the Story State component. Use when Story State is EMPTY, mostly stale, or flagged as OVER THE LIMIT. content is its COMPLETE replacement (max ${STORY_STATE_WORD_LIMIT} words, at most ${MAX_OPEN_THREADS} open threads), in present tense, using these labeled lines:
+2. Open threads and Story State, using these kinds:
+- "thread": the open-thread list, shown in Story State as "- [t3] …". FIRST resolve every thread the recent turns finished, made impossible, or that a correction rejected; only then add new ones. Threads are live, unresolved situations (at most ${MAX_OPEN_THREADS} open): never completed actions, past dialogue, or plans already carried out. op is:
+    "resolve": target is the thread id, or several ids separated by commas ("t3, t7, t9"); content says in a few words what settled them. One resolve may close many threads.
+    "add": target is "new"; content is ONE new live situation (max ${STATE_LINE_WORD_LIMIT} words).
+    "update": target is one thread id; content is its new wording when the situation changed but is still open.
+    "keep": target lists the ids of the threads that are still live (at most ${MAX_OPEN_THREADS}); every other open thread is resolved. content says briefly why. Use it when the list is over the limit.
+- "stateLine": a targeted change to ONE labeled line. target is the label: "Day/Time", "Location", "Relationships", "Arrangements", or "Has met". op is "set" (content is the new value of a non-list line, max ${STATE_LINE_WORD_LIMIT} words), or, for "Has met", "add" (ONE new item) or "remove" (the item copied from the line).
+- "state": target is the EXACT title of the Story State component. Use when Story State is EMPTY, mostly stale, or flagged as OVER THE LIMIT. content is its COMPLETE replacement (max ${STORY_STATE_WORD_LIMIT} words) WITHOUT the open threads (change those with "thread"), in present tense, using these labeled lines:
     Day/Time: current day of week, date if known, and time of day.
     Location: where the player character is now and with whom.
     Relationships: the current status of each important relationship, stated plainly, with its cause in one clause.
     Arrangements: living and sleeping arrangements and other standing routines.
     Has met: one bullet per character the player character has met in person, a few words each.
-    Open threads: one bullet per live, unresolved situation.
   Keep what is still true, update what changed, drop what is over. Completed events belong in the Chronicle, not in Story State.
+- "scene": target is the EXACT title of the Scene Direction component. content (max ${SCENE_WORD_LIMIT} words) is three labeled lines for the scene now: "Present: …" (who is here), "Aims: …" (what each NPC present is actively trying to do next, from canon and the recent turns), and "Open choice: …" (the decision left to the player). Never decide outcomes or the player's actions, and never invent new antagonists. Return one whenever the scene, who is present, or what they want changed.
 3. "knows": target is an eligible character name. content is the COMPLETE replacement of that character's knowledge boundary (max ${KNOWLEDGE_WORD_LIMIT} words) as two lines: "Knows: …" and "Does not know: …". When the recent turns show the character WITNESSED or was TOLD something listed under "Does not know", move it to "Knows". Only characters who were present or were told; never assume a whole household shares knowledge. Keep "Does not know" to consequential secrets.
 4. "pressure": target is the EXACT title of the Active Pressure component; content is its full replacement, ONE sentence (max 45 words) naming the external threat or obligation pressing on the player, or stating that it is resolved. Only when it materially changed or resolved.
 5. "arc": target is the EXACT title of the Current Arc; content is one concise completed development (max 45 words) relevant to its premise, appended to its log. Never change the premise or pacing. Only while the arc is in its BREAK phase, add "resolved": true when the recent turns show its central conflict actually concluded (the confrontation ended and its outcome is settled), not merely that the climax began; the player reviews it before the arc moves on.
@@ -93,6 +102,8 @@ const WORD_LIMITS: Record<string, number> = {
   knows: KNOWLEDGE_WORD_LIMIT,
   state: STORY_STATE_WORD_LIMIT,
   stateLine: STATE_LINE_WORD_LIMIT,
+  thread: STATE_LINE_WORD_LIMIT,
+  scene: SCENE_WORD_LIMIT,
   event: EVENT_WORD_LIMIT,
 };
 
@@ -186,9 +197,11 @@ export function memoryUpdateActions(
     if (words(content) > limit) { reject(`${target}: ${kind} content is ${words(content)} words, over its ${limit}-word limit`); continue; }
     // Evidence quoted from an author correction (not story text) authorizes corrective edits.
     const fromCorrection = Boolean(source.id?.startsWith("correction:"));
-    if (content.includes("<") || content.length > 4000 || target.length > 150 || reason.length > 600) { reject(`${target}: invalid content`); continue; }
+    // A thread update's target may list many ids ("t1, t2, …") when consolidating.
+    const targetLimit = kind === "thread" ? 2000 : 150;
+    if (content.includes("<") || content.length > 4000 || target.length > targetLimit || reason.length > 600) { reject(`${target.slice(0, 80)}: invalid content`); continue; }
     // List edits to one Story State line are distinct updates; everything else allows one update per target.
-    const listOp = kind === "stateLine" && (u.op === "add" || u.op === "remove") ? `:${u.op}:${norm(content)}` : "";
+    const listOp = (kind === "stateLine" || kind === "thread") && (u.op === "add" || u.op === "remove" || u.op === "resolve") ? `:${u.op}:${norm(content)}` : "";
     const key = `${kind}:${norm(target)}${listOp}`;
     if (seen.has(key)) { reject(`${target}: repeated target`); continue; }
     seen.add(key);
@@ -226,6 +239,79 @@ export function memoryUpdateActions(
       if (adventure.memoryAutoApprove.brainUpdate) actions.push(...boundary.actions);
       else actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal: { ...proposal, proposedType: "brainUpdate", targetId: brain.id, content: JSON.stringify(patch) } });
       executed.push(`Thought: ${target}`);
+      continue;
+    }
+
+    // Open threads are data now; an old-style "Open threads" line edit is read as a thread change.
+    const threadUpdate = kind === "thread" || (kind === "stateLine" && canonicalStateLabel(target) === "Open threads");
+    if (threadUpdate) {
+      const component = adventure.components.find(c => c.type === "storyState" && c.active && c.autoUpdate !== false);
+      if (!component) { reject(`${target}: Story State not available`); continue; }
+      const op = u.op === "resolve" || u.op === "remove" ? "resolve" : u.op === "update" ? "update" : u.op === "keep" ? "keep" : "add";
+      const open = openStoryThreads(adventure.storyThreads);
+      proposal.proposedType = "storyStateUpdate";
+      proposal.targetId = component.id;
+      proposal.title = `${component.title} · Open threads`;
+      if (op === "add") {
+        if (isDuplicateThread(adventure.storyThreads, content)) continue;
+        if (open.length >= MAX_OPEN_THREADS) { reject(`Open threads: ${open.length} already open (limit ${MAX_OPEN_THREADS}); resolve one first`); continue; }
+        proposal.threadOp = { op: "add" };
+        actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal });
+        executed.push("Thread added");
+        continue;
+      }
+      // For a stateLine "remove", the item to drop is in content; for "thread", the ids are in target.
+      const refs = (kind === "stateLine" ? [content] : target.split(/[,;]|\s+and\s+/)).map(ref => ref.trim()).filter(Boolean);
+      if (op === "keep") {
+        // Consolidation: keep the listed live threads, resolve every other open one. Always reviewed.
+        const keep = new Set(refs.map(ref => findOpenThread(adventure.storyThreads, ref)?.id).filter((id): id is string => Boolean(id)));
+        if (keep.size !== refs.length || keep.size > MAX_OPEN_THREADS) { reject(`Open threads: keep must list at most ${MAX_OPEN_THREADS} existing open thread ids`); continue; }
+        const closing = open.filter(thread => !keep.has(thread.id));
+        if (closing.length === 0) continue;
+        proposal.threadOp = { op: "resolve", threadIds: closing.map(thread => thread.id) };
+        proposal.content = `Keeps ${[...keep].join(", ") || "no threads"} open and resolves the other ${closing.length} — ${content}`;
+        proposal.requiresReview = true;
+        proposal.rationale += ` Consolidates open threads (${open.length} → ${keep.size}): review before applying.`;
+        actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal });
+        executed.push(`Threads consolidated: keeps ${keep.size}, resolves ${closing.length}`);
+        continue;
+      }
+      const found = refs.map(ref => findOpenThread(adventure.storyThreads, ref));
+      if (found.some(thread => !thread)) { reject(`Open threads: no open thread ${refs.filter((_, i) => !found[i]).join(", ")}`); continue; }
+      const threads = [...new Map(found.map(thread => [thread!.id, thread!])).values()];
+      if (op === "update") {
+        if (threads.length !== 1) { reject("Open threads: update one thread at a time"); continue; }
+        if (norm(threads[0].text) === norm(content)) continue;
+        proposal.threadOp = { op: "update", threadId: threads[0].id };
+        proposal.title = `${component.title} · Open threads · ${threads[0].id}`;
+        proposal.baseContent = threads[0].text;
+        actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal });
+        executed.push(`Thread updated: ${threads[0].id}`);
+        continue;
+      }
+      proposal.threadOp = { op: "resolve", threadIds: threads.map(thread => thread.id) };
+      proposal.content = `Resolved ${threads.map(thread => `${thread.id} "${thread.text.slice(0, 80)}"`).join("; ")}${kind === "thread" ? ` — ${content}` : ""}`;
+      if (threads.length >= THREAD_BULK_RESOLVE_REVIEW) {
+        proposal.requiresReview = true;
+        proposal.rationale += ` Resolves ${threads.length} threads at once: review before applying.`;
+      }
+      actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal });
+      executed.push(`Threads resolved: ${threads.map(thread => thread.id).join(", ")}`);
+      continue;
+    }
+
+    if (kind === "scene") {
+      const component = adventure.components.find(c => c.type === "sceneDirection" && c.active);
+      if (!component) { reject(`${target}: Scene Direction not available`); continue; }
+      if (component.autoUpdate === false) { reject(`${target}: AI updates are switched off for this block (disabled by you)`); continue; }
+      if (!/\baims\s*:/i.test(content)) { reject(`${target}: scene direction needs an "Aims:" line`); continue; }
+      if (norm(component.content) === norm(content)) continue;
+      proposal.proposedType = "sceneDirectionUpdate";
+      proposal.targetId = component.id;
+      proposal.title = component.title;
+      proposal.baseContent = component.content;
+      actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal });
+      executed.push("Scene Direction");
       continue;
     }
 
@@ -282,12 +368,11 @@ export function memoryUpdateActions(
       const component = adventure.components.find(c => c.type === "storyState" && c.active && c.autoUpdate !== false && c.title === target);
       if (!component) { reject(`${target}: Story State not available`); continue; }
       if (norm(component.content) === norm(content)) continue;
-      const threadCount = openThreads(content).length;
-      if (threadCount > MAX_OPEN_THREADS) { reject(`${target}: ${threadCount} open threads (limit ${MAX_OPEN_THREADS}); keep only live, unresolved ones`); continue; }
       proposal.proposedType = "storyStateUpdate";
       proposal.targetId = component.id;
       proposal.title = component.title;
-      proposal.content = normalizeStoryState(content);
+      // Open threads are separate data; any thread list in a full rewrite is dropped, not merged.
+      proposal.content = withoutStoryStateLine(content, "Open threads").content;
       proposal.baseContent = component.content;
       // Consolidating an over-long block drops a lot of text at once: the player reviews that rewrite.
       if (storyStateWordCount(component.content) > STORY_STATE_MAX_WORDS) {

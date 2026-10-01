@@ -3,6 +3,7 @@ import type {
   Adventure,
   AdventureAction,
   CorrectionEntry,
+  StoryThread,
   ArcPace,
   ArcPacingState,
   ArcPhase,
@@ -38,7 +39,8 @@ import {
 } from "../memory/storyCardPolicy";
 import { dedupeBrainThoughts, normalizeThoughtForDedupe } from "../memory/thoughtDedupe";
 import { supersedeCardFact } from "../memory/onePassMemory";
-import { applyStoryStateLine, normalizeStoryState, storyStateLineValue } from "../memory/storyStateLines";
+import { applyStoryStateLine, storyStateLineValue, withoutStoryStateLine } from "../memory/storyStateLines";
+import { isDuplicateThread, makeStoryThread } from "../memory/storyThreads";
 
 function touch<T extends { updatedAt: string }>(entry: T): T {
   return { ...entry, updatedAt: nowIso() };
@@ -629,6 +631,33 @@ function proposalWithEdits(proposal: MemoryProposal, editedProposal?: Partial<Me
   return editedProposal ? updateMemoryProposal(proposal, editedProposal) : proposal;
 }
 
+/** Identity of a thread operation, so drafts about different threads never collide. */
+function threadOpKey(proposal: MemoryProposal): string {
+  const op = proposal.threadOp;
+  if (!op) return "";
+  return op.op === "update" ? `update:${op.threadId}` : op.op === "resolve" ? `resolve:${[...op.threadIds].sort().join(",")}` : "add";
+}
+
+/** Apply a thread operation from an approved proposal. Unknown or already-resolved ids are skipped. */
+function applyThreadOp(state: Adventure, proposal: MemoryProposal): StoryThread[] | undefined {
+  const op = proposal.threadOp;
+  if (!op) return undefined;
+  const threads = state.storyThreads ?? [];
+  const turn = state.activeState.turn;
+  const timestamp = nowIso();
+  if (op.op === "add") {
+    if (!proposal.content.trim() || isDuplicateThread(threads, proposal.content)) return undefined;
+    return [...threads, makeStoryThread(threads, proposal.content, turn, proposal.sourceTurnId)];
+  }
+  if (op.op === "update") {
+    if (!threads.some((thread) => thread.id === op.threadId && thread.status === "open")) return undefined;
+    return threads.map((thread) => thread.id === op.threadId ? { ...thread, text: proposal.content.trim(), updatedAt: timestamp } : thread);
+  }
+  const ids = new Set(op.threadIds);
+  if (!threads.some((thread) => ids.has(thread.id) && thread.status === "open")) return undefined;
+  return threads.map((thread) => ids.has(thread.id) && thread.status === "open" ? { ...thread, status: "resolved" as const, resolvedTurn: turn, updatedAt: timestamp } : thread);
+}
+
 /** Which part of a Brain a brainUpdate proposal touches, so thought and knowledge drafts never collide. */
 function brainProposalField(proposal: MemoryProposal): "knowledge" | "thoughts" | "other" {
   if (proposal.proposedType !== "brainUpdate") return "other";
@@ -652,8 +681,11 @@ function brainProposalField(proposal: MemoryProposal): "knowledge" | "thoughts" 
 function isReplacementProposal(proposal: MemoryProposal): boolean {
   switch (proposal.proposedType) {
     case "storyStateUpdate":
-      // A line "set" replaces that line; list add/remove edits are additions.
+      // A thread "update" or line "set" replaces one item; thread add/resolve and list add/remove are additions.
+      if (proposal.threadOp) return proposal.threadOp.op === "update";
       return !proposal.stateLine || proposal.stateLine.op === "set";
+    case "sceneDirectionUpdate":
+      return true;
     case "plotPressureUpdate":
       return true;
     case "plotEssentialsUpdate":
@@ -674,6 +706,10 @@ function proposalTargetContent(state: Adventure, proposal: MemoryProposal): stri
     return brain ? brain.knowledge ?? "" : undefined;
   }
   if (proposal.proposedType === "storyCard") return state.storyCards.find((card) => card.id === proposal.targetId)?.content;
+  if (proposal.threadOp?.op === "update") {
+    const threadId = proposal.threadOp.threadId;
+    return state.storyThreads?.find((thread) => thread.id === threadId)?.text;
+  }
   const content = state.components.find((component) => component.id === proposal.targetId)?.content;
   if (content !== undefined && proposal.stateLine) return storyStateLineValue(content, proposal.stateLine.label) ?? "";
   return content;
@@ -1180,6 +1216,23 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal)
     return {};
   }
 
+  if (proposal.proposedType === "storyStateUpdate" && proposal.threadOp) {
+    const storyThreads = applyThreadOp(state, proposal);
+    return storyThreads ? { storyThreads } : {};
+  }
+
+  if (proposal.proposedType === "sceneDirectionUpdate") {
+    if (!proposal.content.trim()) return {};
+    const existing = state.components.find((c) => c.id === proposal.targetId && c.type === "sceneDirection") ?? state.components.find((c) => c.type === "sceneDirection");
+    if (!existing) return {};
+    return {
+      components: upsertById(
+        state.components,
+        recordComponentMemoryUpdate(existing, { ...existing, content: proposal.content, lastAutoUpdateTurn: state.activeState.turn }, proposalMemoryMeta("replace")),
+      ),
+    };
+  }
+
   if (proposal.proposedType === "storyStateUpdate") {
     if (!proposal.content.trim()) return {};
     const existing =
@@ -1187,7 +1240,8 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal)
       state.components.find((c) => c.type === "storyState");
     if (!existing) return {};
     // A line edit applies to the CURRENT block, so edits to other lines are never lost.
-    const content = proposal.stateLine ? applyStoryStateLine(existing.content, proposal.stateLine, proposal.content) : normalizeStoryState(proposal.content);
+    // Open threads are their own data; a full rewrite never carries a thread list into the text.
+    const content = proposal.stateLine ? applyStoryStateLine(existing.content, proposal.stateLine, proposal.content) : withoutStoryStateLine(proposal.content, "Open threads").content;
     if (content === undefined || content === existing.content) return {};
     return {
       components: upsertById(
@@ -1482,6 +1536,26 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
         },
       });
     }
+    case "ADD_STORY_THREAD": {
+      const text = action.text.trim();
+      if (!text || isDuplicateThread(state.storyThreads, text)) return state;
+      return touchAdventure(state, { storyThreads: [...(state.storyThreads ?? []), makeStoryThread(state.storyThreads ?? [], text, state.activeState.turn)] });
+    }
+    case "UPDATE_STORY_THREAD":
+      if (!action.text.trim()) return state;
+      return touchAdventure(state, {
+        storyThreads: (state.storyThreads ?? []).map((thread) => thread.id === action.threadId ? { ...thread, text: action.text, updatedAt: nowIso() } : thread),
+      });
+    case "RESOLVE_STORY_THREAD":
+    case "REOPEN_STORY_THREAD":
+      return touchAdventure(state, {
+        storyThreads: (state.storyThreads ?? []).map((thread) => thread.id !== action.threadId ? thread
+          : action.type === "RESOLVE_STORY_THREAD"
+            ? { ...thread, status: "resolved" as const, resolvedTurn: state.activeState.turn, updatedAt: nowIso() }
+            : { ...thread, status: "open" as const, resolvedTurn: undefined, updatedAt: nowIso() }),
+      });
+    case "DELETE_STORY_THREAD":
+      return touchAdventure(state, { storyThreads: (state.storyThreads ?? []).filter((thread) => thread.id !== action.threadId) });
     case "DISMISS_CORRECTION":
       return touchAdventure(state, {
         activeState: {
@@ -1771,7 +1845,8 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
         normalizeProposalTitle(p.title) === normTitle &&
         (p.targetId ?? "") === (clean.targetId ?? "") &&
         brainProposalField(p) === brainField &&
-        (p.stateLine?.op ?? "") === (clean.stateLine?.op ?? "");
+        (p.stateLine?.op ?? "") === (clean.stateLine?.op ?? "") &&
+        threadOpKey(p) === threadOpKey(clean);
       // Replacements supersede older pending drafts (below), so only an identical one is a duplicate.
       // Additions to an existing target are distinct facts unless the content repeats a pending one.
       // A new card with the same title as a pending new card is the same suggestion.
@@ -1828,7 +1903,7 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
             normalizedReplacementContent(component.content) === normalizedReplacementContent(clean.content),
         );
       const duplicatesCurrentStoryState =
-        clean.proposedType === "storyStateUpdate" && !clean.stateLine &&
+        clean.proposedType === "storyStateUpdate" && !clean.stateLine && !clean.threadOp &&
         state.components.some((component) => component.type === "storyState" && normalizedReplacementContent(component.content) === normalizedReplacementContent(clean.content));
       if (duplicatesCurrentStoryState || duplicatesPending || duplicatesDismissed || duplicatesCard || duplicatesStoryCardContent || duplicatesExistingCardContent || duplicatesExistingTargetContent || duplicatesCurrentPressure) return state;
       // A replacement is a full snapshot: a newer suggestion supersedes any older pending one for the
@@ -1837,6 +1912,9 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
       const supersedes = (proposal: MemoryProposal) => {
         if (!replacement || proposal.status !== "pending" || proposal.proposedType !== clean.proposedType) return false;
         if (clean.proposedType === "storyStateUpdate") {
+          // Threads are separate data: a full rewrite of the text never supersedes thread changes.
+          if (clean.threadOp) return proposal.threadOp?.op === "update" && threadOpKey(proposal) === threadOpKey(clean);
+          if (proposal.threadOp) return false;
           if (!clean.stateLine) return true;
           return proposal.stateLine?.op === "set" && proposal.stateLine.label === clean.stateLine.label;
         }
@@ -2046,6 +2124,7 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
     case "RESET_RUNTIME_STATE":
       return touchAdventure(state, {
         messages: [],
+        storyThreads: [],
         rollingSummary: { content: "", updatedAt: nowIso() },
         activeState: {
           ...state.activeState,

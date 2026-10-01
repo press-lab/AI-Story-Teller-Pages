@@ -21,6 +21,7 @@ import { combineProviderUsage } from "../providers/usage";
 import { dedupeBrainThoughts } from "../memory/thoughtDedupe";
 import { applyGuardedStoryCardPolicy, restoreGuardedFactsToLiveContent } from "../memory/storyCardPolicy";
 import { createId, nowIso } from "../utils/id";
+import { migrateOpenThreads } from "../memory/storyThreads";
 
 export const defaultTokenBudgetSettings: TokenBudgetSettings = {
   maxContextTokens: 16000,
@@ -107,6 +108,7 @@ export const defaultMemoryAutoApproveSettings: MemoryAutoApproveSettings = {
   storyCard: false,
   brainUpdate: false,
   storyStateUpdate: false,
+  sceneDirectionUpdate: true,
 };
 
 export const STORY_STATE_TITLE = "Story State";
@@ -121,6 +123,26 @@ export function makeStoryStateComponent(): ComponentEntry {
     active: true,
     alwaysOn: true,
     protected: true,
+    inclusionPolicy: "always",
+    autoUpdate: true,
+  });
+}
+
+export const SCENE_DIRECTION_TITLE = "Scene Direction";
+
+/**
+ * Short per-scene steering written by the background memory pass: who is present, what each NPC is
+ * trying to do, and the choice left open to the player. Visible, editable, replaced every pass.
+ */
+export function makeSceneDirectionComponent(): ComponentEntry {
+  return makeComponent({
+    title: SCENE_DIRECTION_TITLE,
+    type: "sceneDirection",
+    content: "",
+    priority: 238,
+    active: true,
+    alwaysOn: true,
+    protected: false,
     inclusionPolicy: "always",
     autoUpdate: true,
   });
@@ -246,9 +268,11 @@ export function createDefaultAdventure(title = "Untitled Adventure"): Adventure 
       }),
       makeComponent({ title: "Active Pressure", type: "activePressure", content: "", priority: 245, active: true }),
       makeStoryStateComponent(),
+      makeSceneDirectionComponent(),
     ],
     storyCards: [],
     brains: [],
+    storyThreads: [],
     triggerRules: [],
     rollingSummary: { content: "", updatedAt: timestamp },
     sceneState: { content: "", updatedAt: timestamp },
@@ -538,7 +562,29 @@ export function sanitizeAdventureForPersistence(adventure: Adventure): Adventure
   };
 }
 
+/**
+ * Saves from before structured threads keep their open threads as an "Open threads:" line inside the
+ * Story State text. Move that line into `storyThreads` once; afterwards the text holds no thread list.
+ */
+function withStoryThreads(adventure: Adventure, original: Partial<Adventure>): Adventure {
+  if (Array.isArray(original.storyThreads)) return { ...adventure, storyThreads: original.storyThreads };
+  const state = adventure.components.find((component) => component.type === "storyState");
+  if (!state) return { ...adventure, storyThreads: [] };
+  const migrated = migrateOpenThreads(state.content, adventure.activeState.turn);
+  return {
+    ...adventure,
+    storyThreads: migrated.threads,
+    components: migrated.threads.length === 0 && migrated.content === state.content.trim()
+      ? adventure.components
+      : adventure.components.map((component) => component.id === state.id ? { ...component, content: migrated.content } : component),
+  };
+}
+
 export function normalizeAdventure(adventure: Adventure): Adventure {
+  return withStoryThreads(normalizeAdventureFields(adventure), adventure);
+}
+
+function normalizeAdventureFields(adventure: Adventure): Adventure {
   const baseline = createDefaultAdventure(adventure.title || "Untitled Adventure");
   const messages = removeMirroredOpeningMessage(adventure);
   const migrateGuardedStoryCards = !adventure.activeState?.stateFlags?.compactStoryCardsMigrated;
@@ -637,7 +683,7 @@ export function normalizeAdventure(adventure: Adventure): Adventure {
       // Deduplicate singleton types: keep the first occurrence of each singleton type.
       // This fixes adventures that were created with duplicate narrationRules (or other
       // singleton) components due to a bug in createAdventure merging baseline + setup.
-      const singletonTypes = new Set(["narrationRules", "aiInstructions", "plotEssentials", "authorNote", "currentArc", "storyState"]);
+      const singletonTypes = new Set(["narrationRules", "aiInstructions", "plotEssentials", "authorNote", "currentArc", "storyState", "sceneDirection"]);
       const seenSingletons = new Set<string>();
       const deduped = normalized.filter((component) => {
         if (!singletonTypes.has(component.type)) return true;
@@ -647,11 +693,13 @@ export function normalizeAdventure(adventure: Adventure): Adventure {
       });
       const hasActivePressure = deduped.some((c) => c.type === "activePressure");
       const hasStoryState = deduped.some((c) => c.type === "storyState");
+      const hasSceneDirection = deduped.some((c) => c.type === "sceneDirection");
       return [
         ...deduped,
         ...(hasActivePressure ? [] : [makeComponent({ title: "Active Pressure", type: "activePressure", content: "", priority: 245, active: true })]),
         // Older saves predate Story State; give them an empty one so the background pass can fill it.
         ...(hasStoryState ? [] : [makeStoryStateComponent()]),
+        ...(hasSceneDirection ? [] : [makeSceneDirectionComponent()]),
       ];
     })(),
     triggerRules: (adventure.triggerRules ?? []).map((rule) => ({
