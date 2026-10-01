@@ -44,8 +44,10 @@ export interface ArcPacingState {
   threadEngagement: Record<string, number>;
   /** Ask-mode: the break gate has opened and is awaiting the player's confirmation. */
   pendingBreak: boolean;
-  /** Turn the arc entered the break phase, used to time the transition to aftermath. */
+  /** Turn the arc entered the break phase. Elapsed turns surface a resolve prompt; they never resolve the arc alone. */
   brokeAtTurn?: number;
+  /** The break has run its minimum length; awaiting an explicit Resolve (or an approved resolution suggestion). */
+  pendingResolution?: boolean;
 }
 
 export type ArcPace = "short" | "medium" | "long" | "epic";
@@ -481,6 +483,17 @@ export interface MemoryProposal {
   autoUpdateCooldownTurns?: number;
   storyCardPatch?: Partial<Pick<StoryCard, "active" | "pinned" | "protected" | "inclusionPolicy" | "priority" | "state" | "compactKind" | "compactStatus">>;
   componentPatch?: Partial<Pick<ComponentEntry, "active" | "pinned" | "protected" | "inclusionPolicy" | "priority" | "state" | "autoUpdate" | "autoUpdateCooldownTurns">>;
+  /**
+   * Replacement proposals only: the target's content when the suggestion was drafted. If the target
+   * changed since, auto-approval holds the proposal for review instead of overwriting the newer edit.
+   */
+  baseContent?: string;
+  /** Living-card fact supersession, re-applied against the card's current content at approval time. */
+  supersedes?: { oldFact: string; newFact: string };
+  /** How the source text supports the update: an established fact, a character's belief, a stated intention, or an author correction. */
+  claim?: "fact" | "belief" | "intention" | "correction";
+  /** currentArcUpdate only: the memory pass judged the arc's climax resolved. Approval moves the arc to aftermath. */
+  resolvesArc?: boolean;
   createdAt: ISODateString;
   updatedAt: ISODateString;
 }

@@ -136,6 +136,14 @@ function ArcDirector({
         </div>
       )}
 
+      {arc.phase === "break" && arc.pendingResolution && (
+        <div className="row" style={{ gap: "0.5rem", margin: "0.5rem 0", alignItems: "center" }}>
+          <span>The break has had room to play out. Has the confrontation actually resolved?</span>
+          <button type="button" onClick={() => setPhase("aftermath")}>Resolve arc</button>
+          <button type="button" onClick={() => patch({ arcState: { ...arc, pendingResolution: false, brokeAtTurn: turn } })}>Not yet</button>
+        </div>
+      )}
+
       {arc.phase === "aftermath" && (component.arcContinuationOptions?.length ?? 0) > 0 && (
         <div className="editor-card" style={{ borderLeft: "3px solid #2e7d32", margin: "0.5rem 0" }}>
           <strong>This arc resolved — where does it go next?</strong>

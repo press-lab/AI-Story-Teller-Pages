@@ -3,7 +3,7 @@ import { resolveBackgroundProviderConfig } from "../providers/backgroundProvider
 import { sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
 import { matchPatterns } from "../triggers/matching";
 import type { Adventure, AdventureAction, ChatMessage, ProviderConfig } from "../types/adventure";
-import { MEMORY_OUTPUT_RESERVE, MEMORY_PASS_MAX_UPDATES, memoryPassRules, memoryUpdateActions } from "./onePassMemory";
+import { MEMORY_OUTPUT_RESERVE, memoryPassRules, memoryUpdateActions } from "./onePassMemory";
 
 /**
  * Background memory pass — the single automatic memory writer.
@@ -19,8 +19,17 @@ export const MEMORY_PASS_LABEL = "Background memory pass: one API call";
 export interface BackgroundMemoryPassResult {
   actions: AdventureAction[];
   tokenUsage: { promptTokens: number; completionTokens: number };
+  /** The model returned usable JSON. Only a valid pass moves the coverage marker. */
   valid: boolean;
+  /** Story messages since the last completed pass that did not fit the window and were never read. */
+  uncoveredMessages: number;
 }
+
+/** Cards matched only by the evidence window (not by the narrator's context) that the pass may also read and target. */
+const MEMORY_PASS_EXTRA_CARDS = 12;
+
+/** Bookkeeping profile: memory should be faithful, not novel. Narrator sampling settings do not carry over. */
+const MEMORY_PASS_TEMPERATURE = 0.3;
 
 /**
  * Safety ceiling for the pass window. Passes that run on schedule stay under it; it only bites after
@@ -34,6 +43,11 @@ export const MEMORY_PASS_MAX_MESSAGES = 60;
  * Never fewer than 6, never more than max(60, 2N + 2).
  */
 export function memoryPassWindow(adventure: Adventure) {
+  return memoryPassCoverage(adventure).window;
+}
+
+/** The pass window plus how many unread messages since the last completed pass fell outside it. */
+export function memoryPassCoverage(adventure: Adventure) {
   const everyN = Math.max(1, adventure.memoryDetectionSettings.everyNTurns ?? 3);
   const scheduled = everyN * 2 + 2;
   const messages = adventure.messages;
@@ -41,24 +55,69 @@ export function memoryPassWindow(adventure: Adventure) {
   const markerIndex = markerId ? messages.findIndex(message => message.id === markerId) : -1;
   const sincePass = markerIndex >= 0 ? messages.length - Math.max(0, markerIndex - 1) : scheduled;
   const count = Math.min(Math.max(6, sincePass), Math.max(MEMORY_PASS_MAX_MESSAGES, scheduled));
-  return messages.slice(-count);
+  const unread = markerIndex >= 0 ? messages.length - markerIndex - 1 : 0;
+  return { window: messages.slice(-count), uncoveredMessages: Math.max(0, unread - count) };
+}
+
+/** The pass's own generation profile: low variability, no novelty penalties, and room for the full schema. */
+export function memoryPassConfig(config: ProviderConfig): ProviderConfig {
+  return {
+    ...config,
+    temperature: Number.isFinite(config.temperature) ? Math.min(config.temperature, MEMORY_PASS_TEMPERATURE) : MEMORY_PASS_TEMPERATURE,
+    presencePenalty: 0,
+    frequencyPenalty: 0,
+    maxOutputTokens: MEMORY_OUTPUT_RESERVE,
+  };
+}
+
+function arcInBreak(adventure: Adventure): boolean {
+  return adventure.components.some(c => c.type === "currentArc" && c.active && c.arcState?.phase === "break");
+}
+
+function draftPreview(content: string): string {
+  let text = content;
+  try {
+    const parsed: unknown = JSON.parse(content);
+    if (parsed && typeof parsed === "object") {
+      const record = parsed as Record<string, unknown>;
+      text = typeof record.knowledge === "string" ? `knowledge → ${record.knowledge}`
+        : record.thoughts && typeof record.thoughts === "object" ? `thought → ${Object.values(record.thoughts).join(" | ")}`
+        : content;
+    }
+  } catch {
+    // Plain-text draft.
+  }
+  const flat = text.replace(/\s+/g, " ").trim();
+  return flat.length > 600 ? `${flat.slice(0, 600)}…` : flat;
 }
 
 export async function runBackgroundMemoryPass(
   adventure: Adventure,
   providerConfig: ProviderConfig,
 ): Promise<BackgroundMemoryPassResult> {
-  const empty = { actions: [] as AdventureAction[], tokenUsage: { promptTokens: 0, completionTokens: 0 }, valid: false };
+  const { window, uncoveredMessages } = memoryPassCoverage(adventure);
+  const empty = { actions: [] as AdventureAction[], tokenUsage: { promptTokens: 0, completionTokens: 0 }, valid: false, uncoveredMessages };
   const latestStory = [...adventure.messages].reverse().find(message => message.role === "assistant");
   if (!latestStory) return empty;
 
-  const window = memoryPassWindow(adventure);
   const windowText = window.map(message => message.content).join("\n");
   const context = buildContext(adventure, { latestModelOutput: latestStory.content });
   const referenceSections = new Set(["plotEssentials", "currentArc", "components", "pinnedStoryCards", "storyState", "storyCards", "brains"]);
   const references = context.sections.filter(section => referenceSections.has(section.id))
     .flatMap(section => section.items.map(item => `${section.label} — ${item.title}:\n${item.content}`));
   const visibleIds = new Set(context.sections.flatMap(section => section.items.map(item => item.id)));
+
+  // The narrator's context is selected for the newest turn. Records mentioned earlier in the evidence
+  // window are just as relevant to bookkeeping, so the pass reads and may target them too.
+  const windowCards = adventure.storyCards
+    .filter(card => card.active && card.type !== "event" && !visibleIds.has(card.id)
+      && matchPatterns(windowText, [card.title, ...card.keys], card.matchType ?? "phrase").matched)
+    .sort((a, b) => b.priority - a.priority)
+    .slice(0, MEMORY_PASS_EXTRA_CARDS);
+  for (const card of windowCards) {
+    visibleIds.add(card.id);
+    references.push(`Story Card (mentioned earlier in these turns) — ${card.title}:\n${card.content}`);
+  }
 
   // Story State is always targetable, even while it is still empty and therefore absent from context.
   const storyState = adventure.components.find(c => c.type === "storyState" && c.active && c.autoUpdate !== false);
@@ -79,6 +138,11 @@ export async function runBackgroundMemoryPass(
     .filter(proposal => proposal.status === "pending" && proposal.proposedType === "storyCard")
     .map(proposal => proposal.title)
     .slice(0, 30);
+  // Unapproved drafts are shown as drafts so later passes reconcile them instead of losing them.
+  const pendingDrafts = adventure.activeState.memoryProposals
+    .filter(proposal => proposal.status === "pending" && proposal.proposedType !== "arcProposal")
+    .slice(0, 12)
+    .map(proposal => `- [${proposal.proposedType}] ${proposal.title}: ${draftPreview(proposal.content)}\n  (evidence: "${proposal.sourceText.slice(0, 160)}")`);
 
   const recent = window.map(message => `${message.role === "user" ? "PLAYER" : "STORY"}: ${message.content}`).join("\n\n");
   const messages: ChatMessage[] = [
@@ -91,6 +155,8 @@ export async function runBackgroundMemoryPass(
       ...(brainLines.length ? ["Current character memory:", ...brainLines] : []),
       `Story Card titles related to these turns (update these instead of creating duplicates): ${JSON.stringify(relatedTitles)}`,
       `Pending Story Card titles (do not duplicate): ${JSON.stringify(pendingTitles)}`,
+      ...(pendingDrafts.length ? ["PENDING drafts (unapproved; not evidence, not canon):", ...pendingDrafts] : []),
+      ...(arcInBreak(adventure) ? [`The Current Arc is in its BREAK phase: if these turns conclude its central conflict, the "arc" update may set "resolved": true.`] : []),
       "",
       "RECENT TURNS (the only valid evidence):",
       recent,
@@ -101,7 +167,7 @@ export async function runBackgroundMemoryPass(
   try {
     const backgroundConfig = resolveBackgroundProviderConfig(adventure, providerConfig);
     response = await sendOpenAICompatibleChatCompletion({
-      config: { ...backgroundConfig, maxOutputTokens: Math.min(backgroundConfig.maxOutputTokens, MEMORY_OUTPUT_RESERVE) },
+      config: memoryPassConfig(backgroundConfig),
       messages,
       responseFormat: "json_object",
     });
@@ -120,12 +186,13 @@ export async function runBackgroundMemoryPass(
     const actions = memoryUpdateActions(
       adventure,
       { visibleIds, eligibleThoughtTargets: eligibleBrains.map(brain => brain.characterName) },
-      parsed.updates.slice(0, MEMORY_PASS_MAX_UPDATES),
-      window.map(message => message.content),
+      parsed.updates,
+      window.map(message => ({ id: message.id, content: message.content })),
       latestStory.id,
       MEMORY_PASS_LABEL,
+      uncoveredMessages > 0 ? `Coverage gap: ${uncoveredMessages} older messages since the last completed pass did not fit this window and were not read.` : undefined,
     );
-    return { actions, tokenUsage, valid: true };
+    return { actions, tokenUsage, valid: true, uncoveredMessages };
   } catch {
     return { ...empty, tokenUsage };
   }

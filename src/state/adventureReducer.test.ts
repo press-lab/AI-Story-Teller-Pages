@@ -1682,7 +1682,7 @@ describe("adventureReducer", () => {
     expect(state.rollingSummary.lastSummarizedMessageIndex).toBeUndefined();
   });
 
-  it("advances arc pacing from engagement, auto-fires the break, then settles into aftermath", () => {
+  it("advances arc pacing from engagement, auto-fires the break, then asks before resolving", () => {
     let state = baseAdventure();
     const arc = makeComponent({
       title: "Current Story Arc",
@@ -1706,9 +1706,42 @@ describe("adventureReducer", () => {
     expect(get().arcState?.phase).toBe("break");
     expect(get().arcState?.brokeAtTurn).toBe(8);
 
-    // break settles into aftermath after ARC_BREAK_DURATION (6) turns
+    // Elapsed turns never resolve the arc: after ARC_BREAK_DURATION (6) turns it asks instead.
+    state = reduce(state, { type: "ADVANCE_ARC_PACING", triggeredIds: [], turn: 13 });
+    expect(get().arcState?.pendingResolution).toBeFalsy();
     state = reduce(state, { type: "ADVANCE_ARC_PACING", triggeredIds: [], turn: 14 });
+    expect(get().arcState?.phase).toBe("break");
+    expect(get().arcState?.pendingResolution).toBe(true);
+    state = reduce(state, { type: "ADVANCE_ARC_PACING", triggeredIds: [], turn: 40 });
+    expect(get().arcState?.phase).toBe("break");
+
+    // An explicit Resolve moves it on and clears the prompt.
+    state = reduce(state, { type: "SET_ARC_PHASE", componentId: arc.id, phase: "aftermath", turn: 41 });
     expect(get().arcState?.phase).toBe("aftermath");
+    expect(get().arcState?.pendingResolution).toBe(false);
+  });
+
+  it("resolves a break only through an approved, evidence-backed resolution suggestion", () => {
+    let state = baseAdventure();
+    const arc = makeComponent({
+      title: "Current Story Arc", type: "currentArc", content: "", arcPremise: "The duke's coup",
+      arcThreadKeys: ["baddie"], arcPace: "short", arcTriggerMode: "auto",
+    });
+    state = reduce(state, { type: "UPSERT_COMPONENT", component: arc });
+    state = reduce(state, { type: "SET_ARC_PHASE", componentId: arc.id, phase: "break", turn: 3 });
+    state = reduce(state, { type: "SET_MEMORY_AUTO_APPROVE", settings: { ...state.memoryAutoApprove, currentArcUpdate: true } });
+    state = reduce(state, { type: "ADD_MEMORY_PROPOSAL", proposal: {
+      id: "resolve", sourceTurnId: "turn-4", sourceText: "The duke kneels and surrenders his seal.", proposedType: "currentArcUpdate",
+      title: "Current Story Arc", content: "The duke surrendered his seal; the coup is over.", suggestedTriggers: [], confidence: 0.75,
+      rationale: "Memory pass", status: "pending", targetId: arc.id, appendContent: true, requiresReview: true, resolvesArc: true,
+      createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z",
+    } });
+    const get = () => state.components.find((component) => component.id === arc.id)!;
+    // Review is required even with arc auto-approve on.
+    expect(get().arcState?.phase).toBe("break");
+    state = reduce(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: "resolve" });
+    expect(get().arcState?.phase).toBe("aftermath");
+    expect(get().content).toContain("coup is over");
   });
 
   it("holds the break in ask mode until the player confirms it", () => {

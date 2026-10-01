@@ -107,7 +107,7 @@ describe("background memory pass", () => {
   it("reports an invalid response without falling back to the multi-call cycle", async () => {
     provider.mockResolvedValue({ content: "not JSON", raw: {}, usage: { promptTokens: 90, completionTokens: 10, totalTokens: 100 } });
     const result = await runBackgroundMemoryPass(adventureAfterTurns(), config);
-    expect(result).toEqual({ actions: [], tokenUsage: { promptTokens: 90, completionTokens: 10 }, valid: false });
+    expect(result).toEqual({ actions: [], tokenUsage: { promptTokens: 90, completionTokens: 10 }, valid: false, uncoveredMessages: 0 });
     expect(provider).toHaveBeenCalledTimes(1);
   });
 

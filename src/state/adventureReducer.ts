@@ -36,6 +36,7 @@ import {
   restoreGuardedFactsToLiveContent,
 } from "../memory/storyCardPolicy";
 import { dedupeBrainThoughts, normalizeThoughtForDedupe } from "../memory/thoughtDedupe";
+import { supersedeCardFact } from "../memory/onePassMemory";
 
 function touch<T extends { updatedAt: string }>(entry: T): T {
   return { ...entry, updatedAt: nowIso() };
@@ -210,7 +211,11 @@ const ARC_PACE_THRESHOLDS: Record<ArcPace, { escalate: number; break: number }> 
   epic: { escalate: 30, break: 60 },
 };
 
-/** Turns the arc holds in the break phase before settling into aftermath. */
+/**
+ * Turns the arc holds in the break phase before the Director asks whether the climax resolved.
+ * Elapsed turns are not proof of resolution: the arc stays in break until the player resolves it
+ * or approves an evidence-backed resolution suggestion from the memory pass.
+ */
 const ARC_BREAK_DURATION = 6;
 
 function emptyArcState(): ArcPacingState {
@@ -250,6 +255,7 @@ function advanceArcComponent(component: ComponentEntry, triggeredIds: string[], 
   let phase = state.phase;
   let pendingBreak = state.pendingBreak;
   let brokeAtTurn = state.brokeAtTurn;
+  let pendingResolution = state.pendingResolution ?? false;
 
   // 2. One-way phase transitions.
   if (phase === "simmer" && total >= escalate) phase = "escalate";
@@ -262,15 +268,16 @@ function advanceArcComponent(component: ComponentEntry, triggeredIds: string[], 
       pendingBreak = true; // leash: hold at escalate, surface the "let it break?" prompt
     }
   }
-  // 3. The break settles into aftermath so the arc resolves and the next can seed.
+  // 3. After the break has had room to play out, ask whether it resolved. Time alone never resolves it.
   if (phase === "break" && brokeAtTurn !== undefined && turn - brokeAtTurn >= ARC_BREAK_DURATION) {
-    phase = "aftermath";
+    pendingResolution = true;
   }
 
   const unchanged =
-    !changed && phase === state.phase && pendingBreak === state.pendingBreak && brokeAtTurn === state.brokeAtTurn && tier === state.tier;
+    !changed && phase === state.phase && pendingBreak === state.pendingBreak && brokeAtTurn === state.brokeAtTurn && tier === state.tier
+    && pendingResolution === (state.pendingResolution ?? false);
   if (unchanged) return component;
-  return touch({ ...component, arcState: { phase, tier, threadEngagement: nextEngagement, pendingBreak, brokeAtTurn } });
+  return touch({ ...component, arcState: { phase, tier, threadEngagement: nextEngagement, pendingBreak, brokeAtTurn, ...(pendingResolution ? { pendingResolution } : {}) } });
 }
 
 /** Manual phase override (UI: "Spring it now", confirm a pending break, "Resolve arc", "Reset"). */
@@ -280,7 +287,7 @@ function setArcPhase(component: ComponentEntry, phase: ArcPhase, turn: number | 
   // Resetting to simmer clears the counters so the next arc climbs fresh.
   const threadEngagement = phase === "simmer" ? {} : state.threadEngagement;
   const tier = phase === "simmer" ? 0 : state.tier;
-  return touch({ ...component, arcState: { ...state, phase, pendingBreak: false, brokeAtTurn, threadEngagement, tier } });
+  return touch({ ...component, arcState: { ...state, phase, pendingBreak: false, pendingResolution: false, brokeAtTurn, threadEngagement, tier } });
 }
 
 function arcArchiveCard(component: ComponentEntry): StoryCard | undefined {
@@ -577,6 +584,7 @@ function withStoryHistory(state: Adventure, patch: Partial<Adventure>, entry: St
     ...patch,
     activeState: {
       ...state.activeState,
+      ...patch.activeState,
       storyUndoStack: [entry, ...state.activeState.storyUndoStack].slice(0, STORY_HISTORY_LIMIT),
       storyRedoStack: [],
     },
@@ -617,6 +625,86 @@ function updateMemoryProposal(proposal: MemoryProposal, patch: Partial<MemoryPro
 
 function proposalWithEdits(proposal: MemoryProposal, editedProposal?: Partial<MemoryProposal>): MemoryProposal {
   return editedProposal ? updateMemoryProposal(proposal, editedProposal) : proposal;
+}
+
+/** Which part of a Brain a brainUpdate proposal touches, so thought and knowledge drafts never collide. */
+function brainProposalField(proposal: MemoryProposal): "knowledge" | "thoughts" | "other" {
+  if (proposal.proposedType !== "brainUpdate") return "other";
+  try {
+    const parsed: unknown = JSON.parse(proposal.content);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      const keys = Object.keys(parsed);
+      if (keys.length === 1 && keys[0] === "knowledge") return "knowledge";
+      if (keys.length === 1 && keys[0] === "thoughts") return "thoughts";
+    }
+  } catch {
+    // Plain-text Brain note.
+  }
+  return "other";
+}
+
+/**
+ * A replacement proposal rewrites its whole target (a snapshot), as opposed to adding to it.
+ * A newer pending replacement supersedes an older one for the same target.
+ */
+function isReplacementProposal(proposal: MemoryProposal): boolean {
+  switch (proposal.proposedType) {
+    case "storyStateUpdate":
+    case "plotPressureUpdate":
+      return true;
+    case "plotEssentialsUpdate":
+      return !proposal.appendContent;
+    case "brainUpdate":
+      return brainProposalField(proposal) === "knowledge";
+    case "storyCard":
+      return Boolean(proposal.targetId) && !proposal.appendContent;
+    default:
+      return false;
+  }
+}
+
+/** The target's current content, for the field a replacement proposal would overwrite. */
+function proposalTargetContent(state: Adventure, proposal: MemoryProposal): string | undefined {
+  if (proposal.proposedType === "brainUpdate") {
+    const brain = state.brains.find((entry) => entry.id === proposal.targetId);
+    return brain ? brain.knowledge ?? "" : undefined;
+  }
+  if (proposal.proposedType === "storyCard") return state.storyCards.find((card) => card.id === proposal.targetId)?.content;
+  return state.components.find((component) => component.id === proposal.targetId)?.content;
+}
+
+/** True when a replacement's target was edited after the suggestion was drafted. */
+export function proposalTargetChanged(state: Adventure, proposal: MemoryProposal): boolean {
+  if (proposal.baseContent === undefined || !isReplacementProposal(proposal)) return false;
+  const current = proposalTargetContent(state, proposal);
+  return current !== undefined && normalizedReplacementContent(current) !== normalizedReplacementContent(proposal.baseContent);
+}
+
+/** Re-apply a living-card fact supersession to the card's CURRENT content, so later edits survive approval. */
+function rebaseSupersession(state: Adventure, proposal: MemoryProposal): MemoryProposal {
+  if (!proposal.supersedes || !proposalTargetChanged(state, proposal)) return proposal;
+  const card = state.storyCards.find((entry) => entry.id === proposal.targetId);
+  if (!card) return proposal;
+  const superseded = supersedeCardFact(card, proposal.supersedes.oldFact, proposal.supersedes.newFact);
+  // The old fact is already gone from the edited card: add the new fact instead of restoring the old text.
+  return superseded
+    ? { ...proposal, content: superseded, baseContent: card.content }
+    : { ...proposal, content: proposal.supersedes.newFact, appendContent: true, baseContent: undefined };
+}
+
+/** A message id from the transcript (as opposed to a turn number or test id). */
+function isTranscriptMessageId(id: string): boolean {
+  return /^message_/.test(id);
+}
+
+/** Drafts whose source message was edited or erased no longer have evidence; retire them. */
+function retireProposalsFromMessages(state: Adventure, messageIds: string[], reason: string): Adventure["activeState"]["memoryProposals"] {
+  const removed = new Set(messageIds);
+  return state.activeState.memoryProposals.map((proposal) =>
+    proposal.status === "pending" && removed.has(proposal.sourceTurnId)
+      ? updateMemoryProposal(proposal, { status: "ignored", rationale: `${proposal.rationale} ${reason}` })
+      : proposal,
+  );
 }
 
 function stripThink(text: string): string {
@@ -1107,12 +1195,14 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal)
     if (!arcComp) return {};
     const existing = arcComp.content.trim();
     const newContent = existing ? `${existing}\n\n${proposal.content}` : proposal.content;
+    // An approved resolution suggestion is the evidence-backed way an arc leaves the break (besides manual Resolve).
+    const resolved = proposal.resolvesArc && arcComp.arcState?.phase === "break" ? setArcPhase(arcComp, "aftermath", state.activeState.turn) : arcComp;
     return {
       components: upsertById(
         state.components,
         recordComponentMemoryUpdate(
           arcComp,
-          { ...arcComp, content: newContent, lastAutoUpdateTurn: state.activeState.turn, ...proposal.componentPatch },
+          { ...resolved, content: newContent, lastAutoUpdateTurn: state.activeState.turn, ...proposal.componentPatch },
           proposalMemoryMeta(existing ? "append" : "replace"),
         ),
       ),
@@ -1250,6 +1340,7 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
           messages: state.messages.map((message) =>
             message.id === action.messageId ? { ...message, content: action.content } : message,
           ),
+          activeState: { ...state.activeState, memoryProposals: retireProposalsFromMessages(state, [action.messageId], "Its source message was edited; the next memory pass re-reads it.") },
         },
         storyHistoryEntry(
           "Edit story section",
@@ -1264,7 +1355,10 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
       if (!message) return state;
       return withStoryHistory(
         state,
-        { messages: state.messages.filter((entry) => entry.id !== action.messageId) },
+        {
+          messages: state.messages.filter((entry) => entry.id !== action.messageId),
+          activeState: { ...state.activeState, memoryProposals: retireProposalsFromMessages(state, [message.id], "Its source message was erased.") },
+        },
         storyHistoryEntry(
           "Erase story section",
           { type: "insertMessage", message, index },
@@ -1278,7 +1372,10 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
       if (!message) return state;
       return withStoryHistory(
         state,
-        { messages: state.messages.slice(0, -1) },
+        {
+          messages: state.messages.slice(0, -1),
+          activeState: { ...state.activeState, memoryProposals: retireProposalsFromMessages(state, [message.id], "Its source message was erased.") },
+        },
         storyHistoryEntry(
           message.role === "assistant" ? "Erase last generated section" : "Erase last entered section",
           { type: "insertMessage", message, index },
@@ -1293,7 +1390,10 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
       const message = state.messages[removeIndex];
       return withStoryHistory(
         state,
-        { messages: state.messages.filter((_, itemIndex) => itemIndex !== removeIndex) },
+        {
+          messages: state.messages.filter((_, itemIndex) => itemIndex !== removeIndex),
+          activeState: { ...state.activeState, memoryProposals: retireProposalsFromMessages(state, [message.id], "Its source message was regenerated.") },
+        },
         storyHistoryEntry(
           "Erase last generated section",
           { type: "insertMessage", message, index: removeIndex },
@@ -1580,6 +1680,8 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
     case "ADD_MEMORY_PROPOSAL": {
       const clean = sanitizeProposal(routedProposal(state, action.proposal));
       if (!clean) return state;
+      // A late background result whose source message was regenerated or erased meanwhile has no evidence left.
+      if (isTranscriptMessageId(clean.sourceTurnId) && !state.messages.some((message) => message.id === clean.sourceTurnId)) return state;
       if (clean.storyCardType === "event" && [...state.storyCards.filter(c => c.type === "event"), ...state.activeState.memoryProposals.filter(p => p.storyCardType === "event")].some(c => sameEventMemory(c, clean))) return state;
       // Dedup: drop a proposal that duplicates one already pending, one the user already
       // dismissed (rejected/ignored), or a NEW story card whose title already exists as a card.
@@ -1593,12 +1695,23 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
       const hasMemoryPatch =
         Boolean(clean.storyCardPatch && Object.keys(clean.storyCardPatch).length > 0) ||
         Boolean(clean.componentPatch && Object.keys(clean.componentPatch).length > 0);
+      const replacement = isReplacementProposal(clean);
+      const brainField = brainProposalField(clean);
       const matchesTarget = (p: MemoryProposal) =>
         p.proposedType === clean.proposedType &&
         normalizeProposalTitle(p.title) === normTitle &&
-        (p.targetId ?? "") === (clean.targetId ?? "");
-      const duplicatesPending = clean.proposedType !== "storyStateUpdate"
-        && state.activeState.memoryProposals.some((p) => p.status === "pending" && matchesTarget(p));
+        (p.targetId ?? "") === (clean.targetId ?? "") &&
+        brainProposalField(p) === brainField;
+      // Replacements supersede older pending drafts (below), so only an identical one is a duplicate.
+      // Additions to an existing target are distinct facts unless the content repeats a pending one.
+      // A new card with the same title as a pending new card is the same suggestion.
+      const duplicatesPending = state.activeState.memoryProposals.some((p) => {
+        if (p.status !== "pending" || !matchesTarget(p) || Boolean(p.resolvesArc) !== Boolean(clean.resolvesArc)) return false;
+        if (replacement) return normalizedReplacementContent(p.content) === normalizedReplacementContent(clean.content);
+        if (!clean.targetId) return true;
+        return contentLooksDuplicate(p.content, clean.content) ||
+          normalizedReplacementContent(p.content).includes(normalizedReplacementContent(clean.content));
+      });
       // A dismissed new-card suggestion should not come back every turn. Targeted updates are
       // different: a Brain or Story Card keeps evolving, so rejecting one revision must not mute
       // every later revision for that target. Only suppress a targeted update when its content is
@@ -1648,20 +1761,27 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
         clean.proposedType === "storyStateUpdate" &&
         state.components.some((component) => component.type === "storyState" && normalizedReplacementContent(component.content) === normalizedReplacementContent(clean.content));
       if (duplicatesCurrentStoryState || duplicatesPending || duplicatesDismissed || duplicatesCard || duplicatesStoryCardContent || duplicatesExistingCardContent || duplicatesExistingTargetContent || duplicatesCurrentPressure) return state;
-      // Story State is a full snapshot: a newer suggestion supersedes any older pending one.
-      const existingProposals = clean.proposedType === "storyStateUpdate"
-        ? state.activeState.memoryProposals.map((proposal) =>
-            proposal.proposedType === "storyStateUpdate" && proposal.status === "pending"
-              ? updateMemoryProposal(proposal, { status: "ignored", rationale: `${proposal.rationale} Superseded by a newer Story State suggestion.` })
-              : proposal,
-          )
-        : state.activeState.memoryProposals;
+      // A replacement is a full snapshot: a newer suggestion supersedes any older pending one for the
+      // same target. (The background pass is shown pending drafts, so it carries forward what is still true.)
+      const supersedes = (proposal: MemoryProposal) =>
+        replacement && proposal.status === "pending" && proposal.proposedType === clean.proposedType && isReplacementProposal(proposal) &&
+        (clean.proposedType === "storyStateUpdate" || ((proposal.targetId ?? "") === (clean.targetId ?? "") && brainProposalField(proposal) === brainField));
+      const existingProposals = state.activeState.memoryProposals.map((proposal) =>
+        supersedes(proposal)
+          ? updateMemoryProposal(proposal, { status: "ignored", rationale: `${proposal.rationale} Superseded by a newer suggestion.` })
+          : proposal,
+      );
       const autoApprove = state.memoryAutoApprove?.[clean.proposedType as keyof typeof state.memoryAutoApprove] ?? false;
+      // Auto-approval never overwrites an edit made after the suggestion was drafted; that case waits for review.
+      if (autoApprove && !clean.requiresReview && proposalTargetChanged(state, clean)) {
+        const held = updateMemoryProposal(clean, { rationale: `${clean.rationale} The target changed after this was drafted; review before applying.` });
+        return touchAdventure(state, { activeState: { ...state.activeState, memoryProposals: [held, ...existingProposals] } });
+      }
       if (autoApprove && !clean.requiresReview) {
         const approved = updateMemoryProposal(clean, { status: "approved" });
         const applied = applyApprovedMemoryProposal(state, approved);
         if (clean.proposedType === "plotPressureUpdate") {
-          return touchAdventure(state, applied);
+          return touchAdventure(state, { ...applied, activeState: { ...state.activeState, memoryProposals: existingProposals } });
         }
         return touchAdventure(state, {
           ...applied,
@@ -1690,8 +1810,10 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
     case "APPROVE_MEMORY_PROPOSAL": {
       const existing = state.activeState.memoryProposals.find((proposal) => proposal.id === action.proposalId);
       if (!existing) return state;
-      const proposal = sanitizeProposal(routedProposal(state, proposalWithEdits(existing, action.editedProposal)));
-      if (!proposal) return state;
+      const routed = sanitizeProposal(routedProposal(state, proposalWithEdits(existing, action.editedProposal)));
+      if (!routed) return state;
+      // An unedited fact supersession is re-applied to the card as it is now, keeping later edits.
+      const proposal = action.editedProposal?.content !== undefined ? routed : rebaseSupersession(state, routed);
       const approved = updateMemoryProposal(proposal, { status: "approved" });
       const applied = applyApprovedMemoryProposal(state, approved);
       return touchAdventure(state, {

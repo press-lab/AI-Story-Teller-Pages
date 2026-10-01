@@ -27,7 +27,10 @@ const THOUGHT_WORD_LIMIT = 60;
 export function memoryPassRules(categories: string[]): string {
   return `[BACKGROUND MEMORY PASS]
 The story turns below are already written. Your job is bookkeeping: keep the story's memory current so the narrator never forgets or contradicts what happened. Return ONLY a JSON object {"updates":[...]}. An empty array is valid when nothing changed. Maximum ${MEMORY_PASS_MAX_UPDATES} updates.
-Each update has: kind, target, content, evidence, reason. evidence is an EXACT quote copied from the RECENT TURNS (player or story text) that establishes the change. reason says why it matters later. Never record a suggestion, possibility, or plan as an accomplished fact. Never give a character knowledge they did not receive.
+Each update has: kind, target, content, evidence, reason, claim. evidence is an EXACT quote copied from the RECENT TURNS (player or story text) that establishes the change. reason says why it matters later. claim is one of "fact" (the story established it happened or is true), "belief" (a character thinks or suspects it), "intention" (someone plans, offers, or proposes it), or "correction" (the player explicitly corrected canon).
+Never record a suggestion, offer, possibility, or plan as an accomplished fact: keep conditional wording ("offered the spare room if he wants it" is not "moved in"). A belief must read as a belief ("the captain suspects the duke"), never as proof. Dialogue can lie and attempts can fail: record what the text establishes, not what a character claims. Never give a character knowledge they did not receive.
+Keep the meaning, not just the label: when a relationship, promise, debt, or trust changes, include the cause in one clause ("trusts him because he kept her secret when exposing it would have helped him"). Preserve a distinctive line or detail when it carries a character's voice. Routine movement and small talk are not memory.
+PENDING drafts, when shown, are unapproved suggestions from earlier passes: they are not evidence and not canon. Do not repeat them. A new "state" update replaces the pending Story State draft, so carry forward whatever in that draft is still true.
 
 Kinds, in priority order:
 - "state": target is the EXACT title of the Story State component. content is its COMPLETE replacement (max ${STORY_STATE_WORD_LIMIT} words), in present tense, using these labeled lines:
@@ -39,11 +42,11 @@ Kinds, in priority order:
     Open threads: unresolved situations that are still live.
   Keep every line that is still true, update what changed, drop what is over. Return a state update whenever any line is missing, stale, or changed in the recent turns; this is the most important update.
 - "thought": target is an eligible character name. content is ONE new first-person private reaction, belief, or plan from the recent turns (max ${THOUGHT_WORD_LIMIT} words). Give one to EVERY eligible character who took part in the recent turns and had something new to think. Never repeat an existing thought.
-- "knows": target is an eligible character name. content is the COMPLETE replacement of that character's knowledge boundary (max ${KNOWLEDGE_WORD_LIMIT} words) as two lines: "Knows: …" and "Does not know: …". List only story-relevant facts, especially what they have NOT witnessed or been told (other people's conversations, private details, identities). Update it when the recent turns changed what the character knows.
+- "knows": target is an eligible character name. content is the COMPLETE replacement of that character's knowledge boundary (max ${KNOWLEDGE_WORD_LIMIT} words) as two lines: "Knows: â€¦" and "Does not know: â€¦". List only story-relevant facts, especially what they have NOT witnessed or been told (other people's conversations, private details, identities). Update it when the recent turns changed what the character knows.
 - "card": target is the EXACT title of an existing Story Card shown in the canon. content is ONE new durable fact (max 70 words). If the new fact makes an existing fact on a LIVING card untrue, also set "replaces" to that old fact copied exactly from the card; it will be superseded instead of kept beside the new fact. Static cards only accept additions. Never touch a VOICE CONTRACT. Omit already-known facts and rephrasings.
-- "newCard": target is a genuinely new recurring subject's name, content max 90 words. Also provide cardType (character, location, lore, custom, plot), memoryMode (static or living), triggers (1-3 narrow phrases that will literally appear in future story text, such as a name or a distinctive noun; never first-person recall phrases like "the night I…" or "when she…"), and category from: ${categories.join(", ") || "NONE (no new cards allowed)"}. At most ONE per pass. Never create cards for a conversation, invitation, room movement, routine choice, temporary mood, or an event recap. A plot card requires a lasting obligation, alliance, betrayal, secret, or irreversible change; it will require review.
+- "newCard": target is a genuinely new recurring subject's name, content max 90 words. Also provide cardType (character, location, lore, custom, plot), memoryMode (static or living), triggers (1-3 narrow phrases that will literally appear in future story text, such as a name or a distinctive noun; never first-person recall phrases like "the night Iâ€¦" or "when sheâ€¦"), and category from: ${categories.join(", ") || "NONE (no new cards allowed)"}. At most ONE per pass. Never create cards for a conversation, invitation, room movement, routine choice, temporary mood, or an event recap. A plot card requires a lasting obligation, alliance, betrayal, secret, or irreversible change; it will require review.
 - "pressure": target is the EXACT title of the Active Pressure component; content is its full replacement, ONE sentence (max 45 words) naming the external threat or obligation pressing on the player. Only when it materially changed or resolved.
-- "arc": target is the EXACT title of the Current Arc; content is one concise completed development (max 45 words) relevant to its premise, appended to its log. Never change the premise, phase, or pacing.
+- "arc": target is the EXACT title of the Current Arc; content is one concise completed development (max 45 words) relevant to its premise, appended to its log. Never change the premise or pacing. Only while the arc is in its BREAK phase, add "resolved": true when the recent turns show its central conflict actually concluded (the confrontation ended and its outcome is settled), not merely that the climax began; the player reviews it before the arc moves on.
 - "essentials": target is the EXACT title of Plot Essentials; content is its full replacement (max 180 words). Only when the overarching premise or long-term conflict fundamentally changed. Always reviewed.
 
 Story State holds what is true NOW. Story Cards hold durable facts about recurring subjects. Brains hold private thoughts and knowledge boundaries. Only output changes supported by the recent turns and consistent with the canon.`;
@@ -99,9 +102,9 @@ export function supersedeCardFact(card: Pick<StoryCard, "content">, replaces: st
     return candidate.length > 0 && (candidate === target || candidate.includes(target));
   });
   if (index < 0 || (voiceStart >= 0 && index >= voiceStart)) return undefined;
-  const bullet = /^(\s*(?:[-*•]|\d+\.)\s+)/.exec(lines[index])?.[1] ?? "";
+  const bullet = /^(\s*(?:[-*â€¢]|\d+\.)\s+)/.exec(lines[index])?.[1] ?? "";
   const next = [...lines];
-  next[index] = bullet + content.replace(/^\s*(?:[-*•]|\d+\.)\s+/, "");
+  next[index] = bullet + content.replace(/^\s*(?:[-*â€¢]|\d+\.)\s+/, "");
   return next.join("\n");
 }
 
@@ -113,7 +116,7 @@ export function memoryUpdateActions(
   adventure: Adventure,
   scope: MemoryPassScope,
   updates: unknown[],
-  evidenceTexts: string[],
+  evidenceTexts: Array<string | { id: string; content: string }>,
   sourceTurnId: string,
   sourceLabel: string,
   error?: string,
@@ -121,8 +124,12 @@ export function memoryUpdateActions(
   const actions: AdventureAction[] = [];
   const errors = error ? [error] : [];
   const executed: string[] = [];
-  const evidenceSources = evidenceTexts.map(norm).filter(Boolean);
+  const evidence = evidenceTexts
+    .map(entry => typeof entry === "string" ? { id: undefined, text: norm(entry) } : { id: entry.id, text: norm(entry.content) })
+    .filter(entry => entry.text);
+  const evidenceSources = evidence.map(entry => entry.text);
   const evidenceText = evidenceSources.join(" ");
+  if (updates.length > MEMORY_PASS_MAX_UPDATES) errors.push(`Memory pass returned ${updates.length} updates; only the first ${MEMORY_PASS_MAX_UPDATES} were considered.`);
   const seen = new Set<string>();
   let newCards = 0;
   for (const raw of updates.slice(0, MEMORY_PASS_MAX_UPDATES)) {
@@ -130,10 +137,13 @@ export function memoryUpdateActions(
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) { reject("invalid update"); continue; }
     const u = raw as Record<string, unknown>;
     if (![u.kind, u.target, u.content, u.evidence].every(v => typeof v === "string" && v.trim())) { reject("missing fields"); continue; }
-    const kind = u.kind as string, target = (u.target as string).trim(), content = (u.content as string).trim(), evidence = (u.evidence as string).trim();
+    const kind = u.kind as string, target = (u.target as string).trim(), content = (u.content as string).trim(), quoted = (u.evidence as string).trim();
     const reason = typeof u.reason === "string" ? u.reason.trim() : "";
-    const quote = norm(evidence);
-    if (quote.length < 12 || !evidenceSources.some(s => s.includes(quote))) { reject(`${target}: evidence is not in the recent turns`); continue; }
+    const claim = u.claim === "fact" || u.claim === "belief" || u.claim === "intention" || u.claim === "correction" ? u.claim : undefined;
+    const quote = norm(quoted);
+    // Link the update to the latest message that actually contains the quote, so edits and regeneration can find it.
+    const source = quote.length >= 12 ? [...evidence].reverse().find(entry => entry.text.includes(quote)) : undefined;
+    if (!source) { reject(`${target}: evidence is not in the recent turns`); continue; }
     const limit = WORD_LIMITS[kind] ?? 45;
     if (words(content) > limit) { reject(`${target}: content exceeds limit`); continue; }
     if (content.includes("<") || content.length > 4000 || target.length > 150 || reason.length > 600) { reject(`${target}: invalid content`); continue; }
@@ -142,9 +152,10 @@ export function memoryUpdateActions(
     seen.add(key);
     const timestamp = nowIso();
     const proposal: MemoryProposal = {
-      id: createId("proposal"), sourceTurnId, sourceText: evidence, proposedType: "storyCard", title: target,
-      content, suggestedTriggers: [], confidence: 0.75, rationale: `Memory pass: ${reason || kind}`,
+      id: createId("proposal"), sourceTurnId: source.id ?? sourceTurnId, sourceText: quoted, proposedType: "storyCard", title: target,
+      content, suggestedTriggers: [], confidence: 0.75, rationale: `Memory pass${claim ? ` (${claim})` : ""}: ${reason || kind}`,
       status: "pending", createdAt: timestamp, updatedAt: timestamp,
+      ...(claim ? { claim } : {}),
     };
 
     if (kind === "thought" || kind === "knows") {
@@ -156,16 +167,18 @@ export function memoryUpdateActions(
       if (kind === "knows") {
         if (!/\bknows\s*:/i.test(content)) { reject(`${target}: knowledge must use Knows / Does not know lines`); continue; }
         if (norm(brain.knowledge ?? "") === norm(content)) continue;
-        const patch = { knowledge: content };
-        const boundary = applyAIMemoryUpdate(adventure, [{ type: "brainPatch", brainId: brain.id, patch, mode: "replace", turn: adventure.activeState.turn, preview: content }]);
-        if (adventure.memoryAutoApprove.brainUpdate) actions.push(...boundary.actions);
-        else actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal: { ...proposal, proposedType: "brainUpdate", targetId: brain.id, content: JSON.stringify(patch) } });
+        // A replacement: carried as a proposal with its base so a newer edit is never silently overwritten.
+        // The reducer auto-approves it under the Brain auto-approve setting when the base is still current.
+        actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal: {
+          ...proposal, proposedType: "brainUpdate", title: brain.characterName, targetId: brain.id,
+          content: JSON.stringify({ knowledge: content }), baseContent: brain.knowledge ?? "",
+        } });
         executed.push(`Knowledge: ${target}`);
         continue;
       }
       if (brain.lastUpdatedTurn !== undefined && adventure.activeState.turn - brain.lastUpdatedTurn < (brain.autoUpdateCooldownTurns ?? 0)) { reject(`${target}: brain on cooldown`); continue; }
       if (Object.values({ ...brain.archivedThoughts, ...brain.thoughts }).some(t => norm(t).includes(norm(content)))) continue;
-      const patch = { thoughts: { [`${adventure.activeState.turn}_${sourceTurnId}`]: `${adventure.activeState.turn} → ${content}` } };
+      const patch = { thoughts: { [`${adventure.activeState.turn}_${sourceTurnId}`]: `${adventure.activeState.turn} â†’ ${content}` } };
       const boundary = applyAIMemoryUpdate(adventure, [{ type: "brainPatch", brainId: brain.id, patch, mode: "append", turn: adventure.activeState.turn, preview: content }]);
       if (adventure.memoryAutoApprove.brainUpdate) actions.push(...boundary.actions);
       else actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal: { ...proposal, proposedType: "brainUpdate", targetId: brain.id, content: JSON.stringify(patch) } });
@@ -180,6 +193,7 @@ export function memoryUpdateActions(
       proposal.proposedType = "storyStateUpdate";
       proposal.targetId = component.id;
       proposal.title = component.title;
+      proposal.baseContent = component.content;
       actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal });
       executed.push("Story State");
       continue;
@@ -203,6 +217,8 @@ export function memoryUpdateActions(
           if (!superseded) { reject(`${target}: replaced fact not found on the card`); continue; }
           proposal.content = superseded;
           proposal.appendContent = false;
+          proposal.baseContent = existing.content;
+          proposal.supersedes = { oldFact: replaces, newFact: content };
           proposal.rationale += ` Supersedes: "${replaces.slice(0, 200)}"`;
         } else {
           proposal.appendContent = true;
@@ -224,15 +240,22 @@ export function memoryUpdateActions(
       const component = components.length === 1 ? components[0] : undefined;
       if (!component) { reject(`${target}: component not in this pass`); continue; }
       if (norm(component.content) === norm(content)) continue;
-      if (kind === "arc" && (!component.arcPremise?.trim() || norm(component.content).includes(norm(content)))) continue;
+      const resolvesArc = kind === "arc" && u.resolved === true && component.arcState?.phase === "break";
+      if (kind === "arc" && (!component.arcPremise?.trim() || (!resolvesArc && norm(component.content).includes(norm(content))))) continue;
       if (kind === "pressure" && /\n|[.!?]\s+\p{Lu}/u.test(content)) { reject(`${target}: pressure must be one sentence`); continue; }
       proposal.proposedType = kind === "essentials" ? "plotEssentialsUpdate" : kind === "arc" ? "currentArcUpdate" : "plotPressureUpdate";
       proposal.targetId = component.id;
       proposal.appendContent = kind === "arc";
-      proposal.requiresReview = kind === "essentials";
-      if (proposal.requiresReview) proposal.rationale += " Foundational story change: review required.";
+      if (kind !== "arc") proposal.baseContent = component.content;
+      proposal.requiresReview = kind === "essentials" || resolvesArc;
+      if (kind === "essentials") proposal.rationale += " Foundational story change: review required.";
+      if (resolvesArc) {
+        // Elapsed turns never resolve an arc; this evidence-backed suggestion does, once the player approves it.
+        proposal.resolvesArc = true;
+        proposal.rationale += " Suggests the arc's climax has resolved: approving moves the arc to aftermath.";
+      }
     } else { reject(`${target}: unsupported memory kind`); continue; }
-    if (proposal.requiresReview && kind !== "essentials") proposal.rationale += " Consequential memory change: review required.";
+    if (proposal.requiresReview && kind !== "essentials" && !proposal.resolvesArc) proposal.rationale += " Consequential memory change: review required.";
     actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal });
     executed.push(`Proposed ${kind}: ${target}`);
   }

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { classifyMemory } from "../memory/classificationPolicy";
 import { resolveMemoryTarget } from "../memory/resolveMemoryTarget";
+import { proposalTargetChanged } from "../state/adventureReducer";
 import type { MemoryAutoApproveSettings, MemoryProposal, MemoryProposalType, MemoryReconcileRequest, StoryCardType } from "../types/adventure";
 import { createId, nowIso } from "../utils/id";
 import type { AdventurePageProps } from "./pageTypes";
@@ -142,13 +143,13 @@ export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onR
         <summary>Rules &amp; auto-approve</summary>
         <h3>Memory Suggestions</h3>
         <p className="muted">
-          Memory Suggestions holds AI-proposed changes to your story data — Story State rewrites, new Story Cards, Character Self updates
+          Memory Suggestions holds AI-proposed changes to your story data Ã¢â‚¬â€ Story State rewrites, new Story Cards, Character Self updates
           (thoughts and knowledge boundaries), Plot Essentials rewrites, Active Pressure updates, and legacy Summary changes.
           A newer Story State suggestion replaces an older one that is still pending. The AI generates these automatically after turns or when
           you use <strong>Remember This</strong>. Review each proposal and <strong>Approve</strong> to apply it,
           <strong> Reject</strong> to dismiss it cleanly, or <strong>Ignore</strong> to remove it from view without applying.
           You can edit the content before approving.
-          {" "}<strong>Approved Story Cards, Character Self updates, Plot Essentials, and Active Pressure become active context</strong> — the model reads them when their section is included.
+          {" "}<strong>Approved Story Cards, Character Self updates, Plot Essentials, and Active Pressure become active context</strong> Ã¢â‚¬â€ the model reads them when their section is included.
           Be especially careful with Character Self and plot updates: approving emotional escalation or relationship milestones
           unchecked is how characters drift. Edit proposals before approving, or reject ones that pull the story somewhere you don't want.
         </p>
@@ -212,7 +213,7 @@ export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onR
       <div className="list">
         {pending.length === 0 && <p className="muted">No pending memory suggestions.</p>}
         {pending.map((proposal) => (
-          <ProposalCard key={proposal.id} proposal={proposal} dispatch={dispatch} onUpdate={updateProposal} onRegenerate={onRegenerateProposal} />
+          <ProposalCard key={proposal.id} proposal={proposal} targetChanged={proposal.status === "pending" && proposalTargetChanged(adventure, proposal)} dispatch={dispatch} onUpdate={updateProposal} onRegenerate={onRegenerateProposal} />
         ))}
       </div>
 
@@ -221,7 +222,7 @@ export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onR
           <summary>History ({resolved.length})</summary>
           <div className="list" style={{ marginTop: "0.75rem" }}>
             {resolved.map((proposal) => (
-              <ProposalCard key={proposal.id} proposal={proposal} dispatch={dispatch} onUpdate={updateProposal} onRegenerate={onRegenerateProposal} />
+              <ProposalCard key={proposal.id} proposal={proposal} targetChanged={proposal.status === "pending" && proposalTargetChanged(adventure, proposal)} dispatch={dispatch} onUpdate={updateProposal} onRegenerate={onRegenerateProposal} />
             ))}
           </div>
         </details>
@@ -232,12 +233,13 @@ export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onR
 
 interface ProposalCardProps {
   proposal: MemoryProposal;
+  targetChanged?: boolean;
   dispatch: AdventurePageProps["dispatch"];
   onUpdate: (proposal: MemoryProposal, patch: Partial<MemoryProposal>) => void;
   onRegenerate?: (proposalId: string) => Promise<void>;
 }
 
-function ProposalCard({ proposal, dispatch, onUpdate, onRegenerate }: ProposalCardProps) {
+function ProposalCard({ proposal, targetChanged = false, dispatch, onUpdate, onRegenerate }: ProposalCardProps) {
   const isPending = proposal.status === "pending";
   const [regenerating, setRegenerating] = useState(false);
 
@@ -259,6 +261,8 @@ function ProposalCard({ proposal, dispatch, onUpdate, onRegenerate }: ProposalCa
         <span className="story-card-badges">
           <span className="badge badge-type">{Math.round(proposal.confidence * 100)}%</span>
             {isPending && proposal.requiresReview && <span className="badge">Review required</span>}
+          {targetChanged && <span className="badge badge-protected" title="The target was edited after this suggestion was drafted. Approving replaces those edits.">Target edited since</span>}
+          {proposal.claim && proposal.claim !== "fact" && <span className="badge">{proposal.claim}</span>}
           {!isPending && <span className="badge badge-inactive">{proposal.status}</span>}
           {proposal.suggestedTriggers.length > 0 && <span className="badge">{proposal.suggestedTriggers.length} keys</span>}
         </span>
@@ -270,7 +274,7 @@ function ProposalCard({ proposal, dispatch, onUpdate, onRegenerate }: ProposalCa
         <div className="suggestion-meta">
           <p className="eyebrow">
             {proposal.proposedType}
-            {proposal.status !== "pending" ? ` · ${proposal.status}` : ""}
+            {proposal.status !== "pending" ? ` Ã‚Â· ${proposal.status}` : ""}
           </p>
           <input
             value={proposal.title}
@@ -289,7 +293,7 @@ function ProposalCard({ proposal, dispatch, onUpdate, onRegenerate }: ProposalCa
             <>
               {onRegenerate && (
                 <button type="button" disabled={regenerating} onClick={handleRegenerate}>
-                  {regenerating ? "…" : "Regenerate"}
+                  {regenerating ? "Ã¢â‚¬Â¦" : "Regenerate"}
                 </button>
               )}
               <button
@@ -320,7 +324,7 @@ function ProposalCard({ proposal, dispatch, onUpdate, onRegenerate }: ProposalCa
 
       <details className="editor-tools-panel">
         <summary>Source &amp; details</summary>
-        {proposal.eventMemory && <p>Event Memory · {proposal.eventMemory.kind} · Participants: {proposal.eventMemory.participants.join(", ")} · Recall cues: {proposal.eventMemory.recallCues.join(", ")} · Source messages: {proposal.eventMemory.sourceMessageIds.join(", ")}</p>}
+        {proposal.eventMemory && <p>Event Memory Ã‚Â· {proposal.eventMemory.kind} Ã‚Â· Participants: {proposal.eventMemory.participants.join(", ")} Ã‚Â· Recall cues: {proposal.eventMemory.recallCues.join(", ")} Ã‚Â· Source messages: {proposal.eventMemory.sourceMessageIds.join(", ")}</p>}
         <div className="grid two">
           <Field label="Source">
             <textarea

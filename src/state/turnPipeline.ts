@@ -1,6 +1,8 @@
 import { parseOnePassMemory } from "../memory/onePassMemory";
 import { buildContext, extractInlineThoughts } from "../contextBuilder/contextBuilder";
-import { runContinuityCheck, scanForRiskyClaims } from "../continuityLint";
+import { continuityCanon, runContinuityCheck, scanForRiskyClaims } from "../continuityLint";
+import { matchPatterns } from "../triggers/matching";
+import { cardMatchesName } from "./defaults";
 import { evaluateTriggerRules, type TriggerEvaluationEvent } from "../triggers/triggerEngine";
 import type {
   Adventure,
@@ -65,6 +67,21 @@ export function appendUserCue(messages: ChatMessage[], cue: string): ChatMessage
   return [...messages, { role: "user" as const, content: cue }];
 }
 
+/**
+ * Arc thread ids (Story Cards / Brains) whose trigger patterns match this turn's text.
+ * A Brain and a Story Card for the same character are one participant and count once.
+ */
+export function currentTurnThreadIds(adventure: Adventure, turnText: string): string[] {
+  const threadKeys = new Set(adventure.components.filter((c) => c.type === "currentArc").flatMap((c) => c.arcThreadKeys ?? []));
+  if (threadKeys.size === 0 || !turnText.trim()) return [];
+  const cards = adventure.storyCards.filter((card) =>
+    threadKeys.has(card.id) && card.active && matchPatterns(turnText, [card.title, ...card.keys], card.matchType ?? "phrase").matched);
+  const brains = adventure.brains.filter((brain) =>
+    threadKeys.has(brain.id) && brain.active && matchPatterns(turnText, [brain.characterName, ...brain.triggers].filter(Boolean), "phrase").matched
+    && !cards.some((card) => cardMatchesName(card, brain.characterName)));
+  return [...cards.map((card) => card.id), ...brains.map((brain) => brain.id)];
+}
+
 export function latestAssistantOutput(adventure: Adventure): string | undefined {
   return [...adventure.messages].reverse().find((message) => message.role === "assistant")?.content;
 }
@@ -107,13 +124,17 @@ export async function applyProviderResponse({
   let continuityCorrected = false;
   let entryUsage = response.usage;
   if (mode !== "comms" && providerConfig && scanForRiskyClaims(rawContentForLint)) {
-    const lintResult = await runContinuityCheck(next, providerConfig, rawContentForLint);
+    const lintResult = await runContinuityCheck(next, providerConfig, rawContentForLint, undefined, continuityCanon(preProviderContext));
     if (lintResult.correctedText) {
       finalContent = lintResult.correctedText;
       continuityCorrected = true;
     }
     entryUsage = combineProviderUsage(entryUsage, lintResult.usage);
   }
+
+  // This turn's own text: the player's input (when recorded) plus the response. Used for arc engagement.
+  const lastMessage = next.messages.at(-1);
+  const currentTurnText = [lastMessage?.role === "user" ? lastMessage.content : "", finalContent].filter(Boolean).join("\n");
 
   const messageId = assistantMessageId ?? createId("message");
   // Memory is written by the background memory pass (see compactMemoryFallback.ts), never inline.
@@ -131,10 +152,11 @@ export async function applyProviderResponse({
 
   next = applyRuntimeEngines(next, { source: "output", text: finalContent });
 
-  // Arc Director: count only Story Card / Brain ids whose trigger patterns matched turn text.
-  // Pinned or always-on context can be included without counting as engagement.
-  const triggeredIds = preProviderContext.triggeredThreadIds;
-  if (advanceArcPacing && triggeredIds.length > 0) {
+  // Arc Director: count only arc threads that took part in THIS turn's text. A mention lingering in
+  // the recent-history window is not new engagement, and pinned context never counts. The pacing step
+  // runs every story turn so a break that has played out can ask whether it resolved.
+  if (advanceArcPacing) {
+    const triggeredIds = currentTurnThreadIds(next, currentTurnText);
     next = adventureReducer(next, { type: "ADVANCE_ARC_PACING", triggeredIds, turn: next.activeState.turn });
   }
 

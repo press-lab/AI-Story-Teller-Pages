@@ -314,9 +314,11 @@ export function useAdventureRuntime(
         ...(pass.valid ? [] : [{ type: "LOG_EVALUATION_RESULT" as const, entry: {
           id: createId("eval"), turn: snapshot.activeState.turn, createdAt: nowIso(), conditionsEvaluated: [],
           conditionsFired: [], actionsExecuted: ["Background memory pass: one API call"], generatedContent: [],
-          errors: ["Background memory pass returned no usable JSON; it will run again at the next scheduled turn."],
+          errors: ["Background memory pass returned no usable JSON; the next scheduled pass re-reads these turns."],
         } }]),
-        { type: "SET_LAST_MEMORY_CYCLE_TURN", turn: snapshot.activeState.turn, messageId: snapshot.messages.at(-1)?.id },
+        // A failed pass waits for the next slot but does not count as coverage: the marker stays put, so
+        // the next pass re-reads every unprocessed message instead of skipping them.
+        { type: "SET_LAST_MEMORY_CYCLE_TURN", turn: snapshot.activeState.turn, messageId: pass.valid ? snapshot.messages.at(-1)?.id : undefined },
         { type: "ACCUMULATE_BACKGROUND_TOKENS", promptTokens: pass.tokenUsage.promptTokens, completionTokens: pass.tokenUsage.completionTokens },
         ...entryBackgroundUsageActions(snapshot, pass.tokenUsage),
       ];

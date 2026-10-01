@@ -424,7 +424,7 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
           <li>Send <code>ContextBuildResult.messages</code> to the provider. The narrator only narrates.</li>
           <li>Strip any stray memory or thought tags, then run the continuity check if the reply makes risky claims.</li>
           <li>Add assistant output through the reducer and consume the Next Output Bias.</li>
-          <li>Run output-side keyword and regex automations and advance Arc Director pacing.</li>
+          <li>Run output-side keyword and regex automations and advance Arc Director pacing. Only Story Cards and Brains named in this turn's own text count, and a break never resolves on a timer: after six turns it asks whether the confrontation resolved.</li>
           <li>Increment the turn and persist.</li>
           <li>In the background: every N story turns, one memory pass suggests Story State, character, Story Card, and plot updates; semantic evaluation runs only if you configured semantic rules.</li>
         </ol>

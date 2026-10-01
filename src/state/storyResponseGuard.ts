@@ -35,6 +35,8 @@ const PLAYER_ACTION_VERBS = [
 ];
 
 const PLAYER_ACTION_RE_GLOBAL = new RegExp(`\\byou\\s+(?:${PLAYER_ACTION_VERBS.join("|")})\\b`, "gi");
+// Player input is often first person ("I follow her") while narration is second person ("You follow her").
+const FIRST_PERSON_ACTION_RE_GLOBAL = new RegExp(`\\b(?:i|we)\\s+(${PLAYER_ACTION_VERBS.join("|")})\\b`, "gi");
 
 export interface StoryResponseGuardResult {
   visibleWordCount: number;
@@ -74,8 +76,15 @@ function playerActionPhrases(text: string): string[] {
   return [...stripped.matchAll(PLAYER_ACTION_RE_GLOBAL)].map((match) => match[0].toLowerCase());
 }
 
+/** Actions the player authorized this turn, in the narrator's second-person form. */
+function playerAuthorizedPhrases(playerInput: string): Set<string> {
+  const stripped = stripQuotedText(stripHiddenTags(playerInput));
+  const firstPerson = [...stripped.matchAll(FIRST_PERSON_ACTION_RE_GLOBAL)].map((match) => `you ${match[1].toLowerCase()}`);
+  return new Set([...playerActionPhrases(playerInput), ...firstPerson]);
+}
+
 export function hasPlayerAgencyViolation(text: string, playerInput = ""): boolean {
-  const playerAuthoredActions = new Set(playerActionPhrases(playerInput));
+  const playerAuthoredActions = playerAuthorizedPhrases(playerInput);
   return playerActionPhrases(text).some((phrase) => !playerAuthoredActions.has(phrase));
 }
 

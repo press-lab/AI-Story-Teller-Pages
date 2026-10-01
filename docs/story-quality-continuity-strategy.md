@@ -1,6 +1,6 @@
 # Storytelling quality first: a revised architecture proposal
 
-> **Status:** Proposal, revision 3 — decision rationale added. No application changes implemented.
+> **Status:** Proposal, revision 3, partially implemented. Implemented: failed-pass coverage, pending-draft reconciliation and dedupe, stale-write holds, source-message provenance and retirement on edit, evidence-window references, fact/belief/intention labels, bookkeeping sampling profile, first-person agency matching, canon-aware continuity checks, current-turn arc engagement, and evidence-based arc resolution (see `FEATURES.md` §1, §6, Arc Director). Not implemented: the narrator/context evaluation experiments, targeted Story State operations, automatic Event Memory proposals, a minimum recent-dialogue budget, and cache-layout changes.
 > **Audience:** Seth and contributors.
 > **Reviewed:** 2026-09-30. Application code: `82321cffab90c4769ecefd30acb60fe2e76371a3`; previous proposal: `83b7eb751ddbbe8198b402c673bea58297a68f0e`.
 > **Evidence:** Source review, two read-only save inspections, and actual context-builder output. No paid model evaluations were performed. Proposed behavior below is not current behavior.
