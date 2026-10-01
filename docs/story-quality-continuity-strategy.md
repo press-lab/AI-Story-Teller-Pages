@@ -1,267 +1,436 @@
-# Story quality, continuity, memory updates, and API cost
+# Storytelling quality first: a revised architecture proposal
 
-> **Status:** Proposal — analysis and recommendations; no application changes implemented.
-> **Audience:** Seth and future contributors.
-> **Reviewed:** 2026-09-30, against `82321cffab90c4769ecefd30acb60fe2e76371a3` on `main`.
-> **Scope:** Current application code and recent fixes. No saves were changed. Code inspection establishes behavior and risks; it does not establish real-model prose quality or realized savings.
+> **Status:** Proposal, revision 2. No application changes implemented.
+> **Audience:** Seth and contributors.
+> **Reviewed:** 2026-09-30. Application code: `82321cffab90c4769ecefd30acb60fe2e76371a3`; previous proposal: `83b7eb751ddbbe8198b402c673bea58297a68f0e`.
+> **Evidence:** Source review, two read-only save inspections, and actual context-builder output. No paid model evaluations were performed. Proposed behavior below is not current behavior.
 
-## Recommendation
+## 1. The decision
 
-Keep the current architecture: a capable narrator, deterministic context assembly, and one separate background memory call that maintains the existing visible memory surfaces.
+**Keep one strong narrator and one coordinated memory-maintenance pass. Improve the information they receive, what they preserve, and when their output becomes authoritative. Judge the design by the resulting story.**
 
-The next investment should make that memory path **complete, fact-preserving, and reliably applied**, then improve which facts reach narration, then remove avoidable API work. A stronger narrator cannot recall a fact that never reaches its context. A cheaper memory model is expensive if its mistakes repeatedly require corrections.
+The app should feel like a capable collaborator who remembers why things matter, lets characters develop, follows the player's lead, and brings consequences to completion. Accurate dates and relationship labels are necessary, but they are only part of that experience.
 
-Treat the objectives in this order:
+The priorities are:
 
-1. **Story quality and continuity:** distinct characters, responsive scenes, player agency, earned consequences, accurate current facts, and meaningful callbacks.
-2. **Reliable context maintenance:** important developments reach the right component, card, or Brain without inventing facts or erasing unchanged ones.
-3. **Lower cost:** minimize spend per satisfying, accepted story turn, subject to the first two objectives.
+1. **The best story experience:** prose, character voice, emotional and causal continuity, agency, pacing, payoff, and responsiveness to this player's taste.
+2. **Good automatic maintenance:** the story's changes reach the appropriate components, cards, and Brains without requiring the player to administer them.
+3. **Lower API cost:** remove redundant work and use the least expensive configuration that preserves the desired experience.
 
-This is not a recommendation to add a planner, critic, summarizer, and narrator call to every turn. Most proposed reliability improvements are deterministic bookkeeping around the existing call.
+This ordering permits spending more on a narrator or a memory pass when it produces a meaningfully better story. It also permits removing an AI call when that call damages good prose. Fewer calls and fewer tokens are useful measurements; neither is the objective.
 
-## What the recent fixes already give us
+My recommendation is an evolution of Claude's fixes, with two important additions: **preserve the causal and emotional meaning of events**, and **evaluate the narrator, context, and repair passes separately before deciding which one is the bottleneck**.
 
-The current direction is worth preserving:
+## 2. What the first proposal got right—and what I would change
 
-| Existing behavior | Why it helps | Evidence |
-|---|---|---|
-| Narrator writes prose; automatic memory is a separate JSON call, normally every three story turns | Removes competing output duties from narration and amortizes memory overhead | [Runtime](../src/hooks/useAdventureRuntime.ts), [background pass](../src/memory/compactMemoryFallback.ts) |
-| Memory window follows a previous-pass message marker, with overlap and a bounded catch-up window | Covers more than a fixed recent excerpt during ordinary scheduled operation | `memoryPassWindow` |
-| Story State stores current facts; Brains include knowledge boundaries | Addresses relationship resets, repeated introductions, and characters knowing private information | [Memory contract](../src/memory/onePassMemory.ts) |
-| Stable system prefix, chunk-aligned history, changing context in the newest user message | Creates opportunities for prefix reuse while keeping memory inspectable | [Context builder](../src/contextBuilder/contextBuilder.ts) |
-| Living cards can supersede an old fact; new Story State suggestions replace older pending suggestions | Reduces contradictory card facts and review-queue clutter | [Memory contract](../src/memory/onePassMemory.ts), [reducer](../src/state/adventureReducer.ts) |
-| Usage aggregates multiple calls and tracks lifetime usage, including discarded work when usage is returned | Makes cost comparisons more honest | [Provider usage](../src/providers/usage.ts), runtime |
-| Story Cards auto-approve now honors the user's toggle for plot and protected cards; Plot Essentials still require review | Makes configured automation actually apply those card suggestions | Commit `82321cf`, memory contract |
+The first proposal identified real reliability risks. Its weakness was treating a reliable memory pipeline as nearly the whole strategy.
 
-“Every three turns” is the default, not necessarily an existing adventure's active configuration. Likewise, automatic detection does not mean automatic application: Story State, cards, Brains, and Current Arc are reviewed by default; Active Pressure auto-approves by default.
+| Earlier emphasis | Revised judgment |
+|---|---|
+| Fix memory, then address narrative quality | Fix known information-loss defects, while diagnosing prose, context, and correction quality in parallel. A flawless store cannot rescue weak narration or destructive rewrites. |
+| Preserve current facts | Also preserve motives, causes, obligations, unfinished actions, and relationship turning points. “They trust each other” loses more than “She trusts him because he kept her secret when exposing it would have helped him.” |
+| Require review for consequential changes | Consequence alone is the wrong distinction. An unambiguous commitment already made in the story should be recordable under the user's auto-update policy. An invented commitment should not be. |
+| Make small structured updates | Apply structure selectively to facts where exactness matters. Keep natural language for voice, meaning, motives, and nuance; do not turn every sentence into a database relation. |
+| Preserve deterministic pacing | Preserve the gate, but examine what its counters mean and how an arc becomes complete. A six-turn timer is not evidence that a conflict resolved. |
+| Improve retrieval before expanding memory | Also improve what gets retained. Perfect retrieval cannot recover a relationship turning point that was discarded as a temporary conversation. |
+| Keep a capable narrator | Actually compare narrator candidates with the same high-quality context. The existing configured model has not been shown to be the quality ceiling. |
 
-Normal play no longer schedules the legacy `runMemoryCycle`. User-configured semantic rules, manual AI tools, response rewrites, continuity checks, and arc continuation can still add calls.
+The prior document remains available in Git history. This revision replaces its recommendations rather than adding a competing proposal.
 
-## Highest-priority findings
+## 3. What the app actually does today
 
-These are source-backed mechanisms and risks, not claims that every one has already harmed a particular save.
+The core is already useful: a browser-only app, a central reducer, inspectable context sections, a complete transcript, distinct memory surfaces, optional approval, and provider usage tracking. No backend or distributed agent system is needed for the improvements recommended here.
 
-### 1. Memory coverage can advance after a failed pass
+### The working foundation
 
-`startMemoryPass` records `SET_LAST_MEMORY_CYCLE_TURN`, including the message marker, even when the pass reports `valid: false`. The next pass then reads from that newer marker, retaining only the normal overlap. Earlier facts in the failed window can fall out.
+- Narration and automatic memory generation are separate. Normal automatic maintenance uses one JSON call, with a default cadence of three story turns.
+- The memory call can update Story State, existing Brains, cards, Active Pressure, Current Arc progress, and Plot Essentials through their respective paths.
+- Context combines persistent instructions, selected memory, and recent messages. Per-turn material goes near the newest user input.
+- Story State and knowledge boundaries address current truth and information access.
+- The Arc Director withholds the authored break instruction until its gate opens.
+- Auto-approval follows configured policies; it is distinct from generating suggestions. Plot Essentials still require review.
+- The provider accounting now includes multiple calls and discarded work when usage is reported.
 
-There are two related limits:
+These findings come from [the runtime](../src/hooks/useAdventureRuntime.ts), [turn pipeline](../src/state/turnPipeline.ts), [context builder](../src/contextBuilder/contextBuilder.ts), [background pass](../src/memory/compactMemoryFallback.ts), [memory contract](../src/memory/onePassMemory.ts), and [usage accounting](../src/providers/usage.ts).
 
-- A long backlog is truncated to the latest `max(60, 2N + 2)` messages; a message-count ceiling is not a token ceiling.
-- Valid JSON is considered a valid pass even when individual updates are rejected. Twelve updates and a bounded output cannot guarantee that every important change was processed.
+### Important limitations confirmed in code
 
-**Proposal:** separate last attempt, scanned-through coverage, and unresolved/rejected work. Failures should retain unprocessed evidence for the next scheduled slot, without triggering a retry storm. Process long backlogs in bounded chronological chunks. A valid empty result can complete a scan; rejected items and overflow need explicit disposition.
+| Current mechanism | Implication |
+|---|---|
+| A failed memory pass still advances the message marker | Some unprocessed evidence can leave the next window. Separate attempted work from completed coverage. |
+| Pending State contents are not supplied to the next pass; a newer pending State supersedes the older one | Unapproved developments can disappear from subsequent drafts. |
+| Non-State pending proposals are deduplicated by type/title/target | Distinct card facts can compete; thought and knowledge proposals for one Brain can compete too. |
+| Memory references come from narration's already-selected context | A record relevant to earlier evidence can be unavailable to the maintenance task. |
+| Quotes are checked for presence, not semantic support | A real quote can accompany an incorrect inference, speaker attribution, or belief promoted into fact. |
+| The continuity checker sees only eight recent messages | It can soften a true older promise, while missing contradictions outside its regex triggers. |
+| The agency guard compares second-person action phrases | “I follow her” can still lead to a suspected violation when narration says “You follow her.” Its rewrite receives the input and draft, not full canon. |
+| Brains emit live thoughts and knowledge, not legacy `currentState`, `relationshipPressure`, or `recentDevelopments` | A value being saved does not mean the narrator sees it. |
+| Trigger matching includes a recent-text window | A mention can influence several turns. It is not proof of present participation or a new plot development. |
+| Arc advancement moves Break to Aftermath once six elapsed turns have passed, when advancement executes | Resolution can be a timer effect rather than an established outcome. |
+| Current Arc updates append to its log; historical material needs deliberate management | Long-running context can accumulate history that no longer helps the next scene. |
+| Automatic memory does not create Event Memory cards | Some distinctive experiences need manual capture or the explicit Chronicle scan. |
 
-**Success condition:** a transient failure or long pause cannot silently make an important source event unreachable by memory maintenance.
+Relevant implementations: [proposal application and arc advancement](../src/state/adventureReducer.ts), [continuity lint](../src/continuityLint.ts), [response guard](../src/state/storyResponseGuard.ts), and [event recall](../src/memory/eventMemory.ts). These are confirmed mechanisms; their frequency and impact during play remain unmeasured.
 
-### 2. Reviewed memory can lose developments while waiting for approval
+### What two real snapshots show
 
-The pass reads active canon and pending new-card titles. It does not read the contents of pending Story State suggestions. A new Story State proposal marks the older pending proposal ignored.
+I normalized two saved adventures with the existing code and ran `buildContext` without making a provider request.
 
-Example: one pass proposes “Mira moved in.” The player keeps playing without approving it. Later, that scene leaves the pass window. A new state rewrite can omit the arrangement because neither active canon nor the new excerpt contains it.
+| Observation | Seattle copy, turn 911 | Repaired Seattle, turn 900 |
+|---|---:|---:|
+| Stored Story Cards | 306 | 28 |
+| Cards included in this context, pinned plus triggered | 12 | 16 |
+| Estimated total context tokens | 15,369 | 11,693 |
+| Estimated tokens for system section plus AI Instructions | 2,777 | 1,356 |
+| Estimated tokens for recent messages | 5,762 | 5,008 |
+| Story State included | No | Yes |
 
-The reducer also suppresses another pending proposal for the same non-state type/title/target. This can block distinct later card facts. Thought and knowledge proposals for the same Brain both use `brainUpdate`, so they can compete when review is enabled.
+These are different snapshots, with several simultaneous edits and different recent histories. They are **not a controlled quality comparison or a billing estimate**. The tokenizer is approximate.
 
-**Proposal:** retain evidence-backed pending changes as a separate, inspectable draft chain used by the memory worker. Keep them out of narrator canon until approved. Merge distinct additions; replace only genuinely superseded changes; retain rejected decisions. Identify Brain thought additions and knowledge replacements separately.
+They demonstrate why counting saved cards or looking only at settings is insufficient: the repaired snapshot has fewer stored cards but more cards in the actual context, and a smaller overall prompt. Better organization can make more useful information available with less text.
 
-Approving an old full replacement should check whether its target changed since drafting. Rebase or request review of the conflict rather than overwrite newer facts.
+The repaired snapshot also contains nonempty legacy `currentState` text on six active Brains; the builder omits that field. This is not a recommendation to restore the old unbounded field. It is a reason to verify the real provider payload whenever evaluating a memory design.
 
-**Success condition:** leaving the review inbox unopened for twenty turns does not discard distinct developments or silently roll back later edits.
+Evidence files, in the Saves repository:
 
-### 3. Evidence presence is weaker than evidence support
+- `sync/saves/adv_mumc3n18_8aw1nzj1/2026-09-30T08-14-18-428Z-auto.json`
+- `sync/saves/adv_seattle_hunger_repaired_20260930/2026-09-30T19-48-51-373Z-manual.json`
 
-`memoryUpdateActions` checks whether a normalized evidence quote occurs in a supplied message, plus shape, size, target, and some duplicate rules. That is useful, but a quote does not prove every claim in a 250-word state replacement or a character's knowledge.
+## 4. Design principles and why I choose them
 
-For example, “Mira watches him leave” does not establish that she knows his destination. “Maybe we should move in” does not establish a living arrangement.
+### A. Separate creativity from recordkeeping, but share a coherent story
 
-**Proposal:** have the existing memory call return small changes with source message IDs, quoted evidence, and the old value being replaced. Deterministic validation checks source existence, target revision, allowed fields, and preservation of unrelated facts. Review ambiguous inference; do not add a paid judge to every fact.
+The narrator may introduce an NPC's next action, an obstacle, an image, or an unexpected response within established constraints. The memory worker records the resulting fiction; it should not independently advance events.
 
-Full human-readable Story State and knowledge text can remain the presentation. Internally, field-level changes would make omissions and contradictions easier to detect. This would require a deliberate schema/UI change, not silent string patching.
+The two tasks need different prompts, sampling, output formats, and often different context. A common model is a reasonable initial baseline; a cheaper memory model earns its place through accuracy tests.
 
-### 4. The memory worker sees a narrator-shaped reference set
+**Tradeoff:** a periodic second call and update lag. The benefit is focused narration and a maintenance task we can inspect and evaluate independently.
 
-The background pass builds references from `buildContext` after narration's relevance and token-budget decisions. A card mentioned earlier in the pass window may be listed by title while its content is absent from canon; an existing card must be visible to be updated.
+### B. Remember what will change future behavior
 
-This couples two different questions: “What does this next scene need?” and “Which records changed anywhere in the unprocessed turns?”
+A useful memory answers a future storytelling question: what would this person do, what promise still binds, why does this place matter, what is unfinished, or what must not be contradicted?
 
-**Proposal:** select bounded memory references from the entire evidence window: matching identities and aliases, relevant relationship cards, existing values for every update target, Story State, and applicable plot context. Use a memory-specific token budget. Do not send the whole card inventory or hidden future arc instructions.
+Store the cause and consequence when they matter. Preserve a distinctive line or detail when it carries voice or emotional meaning. Routine movement belongs in current scene state, not permanent lore.
 
-Also separate knowledge eligibility from thought cadence: `eligibleBrainsForCapture` filters out Brains on cooldown before both kinds of update. Learning a secret should not wait merely because a private reaction was recently recorded.
+**Tradeoff:** salience requires judgment. Avoid rigid rules that discard all conversations or retain every event. An ordinary-looking conversation can contain the story's most important change.
 
-### 5. The continuity checker can remove legitimate established facts
+### C. Separate world truth, belief, intention, history, and author direction
 
-[Continuity lint](../src/continuityLint.ts) activates on several regex patterns and checks only eight recent messages. It does not receive Story State, relevant cards, or older event evidence.
+“Mira suspects the duke,” “the duke is guilty,” “Mira plans to confront him,” and “Mira confronted him” are different claims. A direction for a future climax is different again.
 
-A promise established fifty turns ago can be valid canon while absent from those eight messages. The checker is instructed to soften unsupported claims and may erase a correct callback. Conversely, many contradictions will never match its patterns.
+A character can lie; a player can propose an action without completing it; an NPC can form a mistaken belief. Correct memory preserves these distinctions.
 
-**Proposal:** provide a compact set of claim-relevant canon and distinguish “contradicted,” “unsupported,” and “unknown.” Preserve legitimate new world/NPC developments; scrutinize retroactive claims about the player, earlier events, and character knowledge. Prefer minimal edits with inspectable reasons.
+**Tradeoff:** some lightweight labels and source metadata. This is worth more than a single model confidence score, which does not establish truth.
 
-This is a targeted repair path, not the authority that decides all story truth.
+### D. Preserve facts precisely and meaning expressively
 
-## What belongs where
+Use targeted changes for time, location, relationship status, obligations, and knowledge access. Use concise natural language for character voice, emotional significance, motives, and causal explanations.
 
-Better updates come from narrower responsibilities, not asking every component to summarize everything.
+Do not require a full replacement of a large block to change one fact. Do not build a universal fact graph before a narrower approach has proved inadequate.
 
-| Surface | Keep here | Update when |
-|---|---|---|
-| Narration Rules / AI Instructions | Perspective, player agency, prose behavior, durable scenario rules | User edits or explicitly invokes generation; never autonomous memory writes |
-| Author's Note | Short tonal or scene emphasis | User-directed changes |
-| Plot Essentials | Premise, long-term conflict, persistent world-wide constraints | A foundational change occurs; review required |
-| Active Pressure | One sentence naming the live external obligation/threat | The pressure materially changes or resolves; a quiet scene need not invent danger |
-| Current Arc | Premise and concise consequential progress; Director owns pacing | A relevant development completes; never let memory change authored phase/cost |
-| Story State | Current time, place, arrangements, relationships, meetings, unresolved threads | Established current truth changes; carry forward unchanged values |
-| Living Story Card | Durable subject/relationship facts that can evolve | A lasting addition or explicit supersession occurs |
-| Static Story Card / voice contract | Identity, stable setting facts, characteristic behavior | Explicit additions or author revision; preserve voice and identity |
-| Brain | A major character's private reaction and knowledge boundary | New supported thought or acquired knowledge; no automatic creation for incidental NPCs |
-| Event Memory | A distinctive completed experience worth recalling later | Currently manual tools/explicit Chronicle scan; historical facts are retained |
-| Chronicle | Original transcript and evidence | Append/edit through existing user-facing controls; do not replace it with summaries |
-| Next Output Bias | One-turn steering | User requests a temporary emphasis |
+**Tradeoff:** mixed structured and prose representations need explicit ownership. The benefit is avoiding both accidental deletion and sterile memory.
 
-A single event may legitimately affect several surfaces. If Mira accepts a standing room offer, Story State records the arrangement; a relationship card can retain the durable commitment; her Brain changes only if the scene supports a reaction or new knowledge. Plot Essentials should usually stay untouched.
+### E. Treat attention as scarce even when context is cheap
 
-“No update” is a good result when nothing lasting changed. More cards, more thoughts, or a freshly rewritten component are not quality metrics.
+Recent dialogue, a live obligation, and a central character's voice may matter more than pages of technically relevant lore. Budget for what enables the next scene, while preserving the archive outside the prompt.
 
-## Improve the storytelling itself
+**Tradeoff:** selection can omit something useful. Make omissions explainable and test retrieval, rather than assuming a large context window solves the problem.
 
-Continuity is necessary, but a perfectly consistent story can still be dull.
+### F. Automate established changes; surface unresolved ambiguity
 
-**Keep narration focused on one playable beat.** The existing turn-scope contract already emphasizes agency and immediate consequences. Preserve it. Evaluate whether scenes respond to the player's actual intent, NPCs pursue independent goals, voices remain distinguishable, consequences persist, and the player gets a meaningful opening to act.
+The player should be able to play without repeatedly approving that the characters arrived at a location or learned something in dialogue. A major event already established in the fiction is not inherently less recordable than a minor one.
 
-Use [the taste profile](./user-taste-profile.md) as scenario guidance: competent protagonists, distinct ensemble agendas, action with consequences, charged relationships, and earned downtime. Do not turn that into an automatic demand for danger every turn or manufacture jealousy in an established bond.
+Review is useful for ambiguous identity, contradictory evidence, destructive replacement, foundational premise changes, and user-selected approval policies. Existing protected authoring surfaces remain protected.
 
-**Consolidate competing instructions.** The system shell says OOC corrections may be acknowledged and then the scene continued, while factory Narration Rules say respond as a collaborator and stop. Resolve that policy explicitly. Remove duplicated rules only after checking their function; preserve user-authored scenario constraints.
+**Tradeoff:** automation can make mistakes. Source links, reversible updates, revision checks, and selective review make that risk manageable without turning the game into clerical work.
 
-**Preserve recent scene texture.** Dialogue rhythm, interrupted actions, emotional subtext, and physical staging cannot all be reconstructed from Story State. Keep enough raw recent history to continue the scene naturally. The default is a 16,000-token context budget with 6,000 for recent messages; these are starting settings, not proven optima. Inspect actual retained messages after all budget cuts and chunk alignment.
+### G. Let code guarantee mechanics; evaluate AI interpretation
 
-**Use deterministic pacing without forcing plots.** Preserve the Arc Director's phase gate and counted engagement. Add evaluation cases where the player ignores a subplot, where an arc resolves, and where quiet aftermath is appropriate. Never expose the future break instruction early to improve “planning.”
+Code can guarantee that a stale replacement does not overwrite a newer revision. It cannot prove that “she smiled” means “she forgave him.”
 
-**Choose models by observed failures.** Keep a capable narrator as the baseline. Test candidate narrator and memory models separately on the same fixtures. Do not infer that a pricing tier guarantees or prevents fidelity. A memory model must preserve unchanged facts, identities, and knowledge boundaries; fluent JSON alone is insufficient.
+Use deterministic validation for identity, permitted writes, source existence, coverage, revision conflicts, and budgets. Evaluate semantic accuracy with difficult examples. Do not label a valid JSON response “correct memory.”
 
-## Make automatic memory useful without constant supervision
+### H. Optimize the whole session
 
-The long-term target should be **automatic routine maintenance with review for consequential uncertainty**. The current toggles are coarser than that.
+A smaller request that causes three corrections is not a successful optimization. Neither is a stronger model whose better prose is subsequently flattened by a weak rewrite.
 
-Today, keep Story State review enabled during a short measured trial and inspect suggestions promptly. Story Cards auto-approve now also covers plot/protected card suggestions, so that toggle is not a “safe additions only” mode. Leave it off during baseline diagnosis if those changes need review.
+Measure story quality, correction burden, latency, and total paid work together. Keep separate measurements so an improvement in one cannot conceal a serious regression in another.
 
-Future behavior should distinguish:
+## 5. The proposed architecture
 
-- Directly evidenced routine changes, such as an established arrival or a character being told a fact.
-- Consequential changes, such as identity, foundational plot, a major relationship commitment, or disputed retcons.
-- Unsupported or conflicting inferences, which should remain unapplied.
+Keep the existing visible surfaces. Improve the data flow through them.
 
-Do not use model-reported confidence alone to make this distinction. The current proposal confidence of `0.75` is a constant, not a calibrated probability.
-
-The same background request can produce both auto-applicable routine changes and reviewable proposals. Add provenance and undo at the update boundary; never promote pending material to hidden canon.
-
-Out-of-character corrections need durable handling too. They currently skip automatic post-turn memory work; a later pass can see them if still in its window, but persistence is not guaranteed. A proposed correction queue should preserve the player's intended retcon separately from in-world events and ensure the relevant memory is reconciled.
-
-Likewise, regeneration and transcript edits need provenance-aware invalidation: identify memory based on removed/replaced text, preserve independent facts, and reconcile only affected records. Queuing asynchronous updates avoids some timing hazards but does not establish that a full replacement still matches the current target revision.
-
-## Retrieve the right memory before adding more memory
-
-The current title/keyword matching and bounded Event Memory recall are inspectable and require no retrieval API call. Improve these first:
-
-1. Show cards repeatedly mentioned in source turns but never included, and explain whether matching, activity, or budget caused exclusion.
-2. Resolve character aliases consistently and prioritize the active scene's participants. A passing name mention should not by itself imply physical presence or dramatic engagement.
-3. Keep central identities and standing commitments available without pinning every memory. Pinning and protection are different controls.
-4. Keep event callbacks specific: participant plus a distinctive cue, with a small bounded result set. Current automatic event recall is capped at two.
-5. Separate current facts from historical truth. A breakup changes today's relationship without erasing the event when the relationship began.
-
-Automatic background memory currently neither creates nor edits Event Memory cards. This leaves some long-term callbacks dependent on manual capture or Chronicle scanning. After core reliability work, consider proposing exceptional completed events within the existing pass, using exact source IDs and mandatory review. That would be a new product policy requiring explicit documentation and tests, not an existing feature.
-
-An embedding search layer is a later option only if alias/cue retrieval demonstrably misses useful memories. It must remain a visible surface with evidence, relevance reasons, token costs, and controls, as required by [AGENTS.md](../AGENTS.md). A backend is not a prerequisite for these nearer-term improvements.
-
-## Reduce costs without weakening the story
-
-### Count the real work
-
-The normal baseline is approximately:
-
-```text
-calls per accepted turn =
-  1 narration
-  + response-guard rewrite frequency
-  + continuity-check frequency
-  + 1 / memory cadence
-  + custom semantic-rule calls
-  + amortized arc/manual/retry/regeneration calls
+```mermaid
+flowchart TD
+    A[Player input and current adventure revision] --> B[Deterministic context assembly]
+    B --> C[One narrator call]
+    C --> D[Local checks; targeted repair only when justified]
+    D --> E[Retained story revision in Chronicle]
+    E --> F[One scheduled memory pass]
+    F --> G[Evidence and revision validation]
+    G --> H[Allowed updates or reviewable proposals]
+    H --> I[Story State, Cards, Brains, Plot and Events]
+    I --> B
+    E --> B
 ```
 
-At cadence three, narration plus scheduled memory alone averages about 1.33 calls per turn over a long run. Initial scheduling, failures, and extra paths change the observed number.
+This is a proposed steady-state flow, not a claim that the current implementation provides all the checks shown. User-configured semantic rules remain supported; their writes should obey the same revision and conflict rules rather than become an independent last-writer-wins path.
 
-[The response guard](../src/state/storyResponseGuard.ts) can trigger a rewrite for excess length or suspected agency violations. Its action matching is second-person and phrase-based. “I follow her” in player input may not exempt “You follow her” in narration. This is a concrete false-positive case to evaluate before changing the guard. The rewrite is not run through the same guard again, and continuity lint runs afterward.
+There is no default planner call, per-character call, or critic call. If a later experiment proves that a scene-level planning call materially improves quality, it can be added at that boundary with an explicit cost budget.
 
-Measure false corrections as well as missed violations. A rewrite that damages good prose costs money and quality.
+### The narrator's context should answer six questions
 
-### Give memory its own generation settings
+1. What did the player just attempt, say, or explicitly authorize?
+2. What is physically happening now, including any unfinished action?
+3. Who is involved, how do they speak, and what do they want?
+4. What does each relevant character know, believe, or misunderstand?
+5. Which earlier cause, promise, relationship event, or constraint matters here?
+6. What is the current narrative pressure, and where is a natural opening for the player to act?
 
-The background resolver inherits narrator configuration, including sampling and maximum output, unless overridden by the available background settings. The memory pass caps output at `min(backgroundConfig.maxOutputTokens, 2000)`; factory maximum output is 1,200. Thus 2,000 is a ceiling, not guaranteed capacity.
+These answers should come from the existing sections, not a new hidden mega-summary. Context selection can be deterministic; authoring the underlying memory still uses AI.
 
-Twelve updates, full State/knowledge replacements, and repeated evidence may not fit. Lower sampling variability and zero novelty penalties are reasonable **trial settings** for bookkeeping, with a separate output budget sized to measured completion needs. Support provider-specific capability checks and explicit truncation diagnostics.
+Preserve player agency without freezing the story. If the player says “we travel to the city,” narrate the authorized transition. If they merely receive an invitation, leave the choice open. “One playable beat” is useful guidance, but it should not force every response to stop before anything happens.
 
-First reduce unnecessary replacement text and repeated quotes. Then adjust capacity. Do not save a few output tokens at the expense of losing the entire JSON response.
+Treat voice examples, behavioral motives, and unresolved relationship tensions as useful input. “Sarcastic and loyal” is less actionable than a short example of how a character jokes when afraid and what they refuse to concede.
 
-### Protect useful cache reuse
+### Pacing should create opportunities and recognize endings
 
-The current “stable” prefix still contains Active Pressure, the evolving Current Arc log, and pinned living cards. Updating them can invalidate reuse of later prefix content.
+Preserve the authored break gate and deterministic engagement policy. However, matching a name across recent text is a coarse proxy for engagement, and multiple selected IDs can accelerate it.
 
-Start by suppressing redundant rephrasing, keeping arc entries consequential, and measuring prefix changes. Correctness must win when a real fact changes.
+Improve the counted signal before adding an AI pacing judge: distinguish current-turn interaction from repeated historical mentions, and avoid counting several representations of one interaction as several dramatic developments.
 
-If measurements justify it, split stable arc premise/identity from dynamic progress and pressure into separately named, inspectable sections. **This would change the repository's fixed context-order contract**, so it needs coordinated design, docs, and tests. Do not silently move per-turn content into system messages or withhold fresh facts for caching.
+Most importantly, opening a climax and completing it are different events. **Elapsed turns should not be treated as proof of resolution.** The existing manual Resolve control is a sound authority for explicit completion. A memory pass could propose that resolution occurred, with evidence, without directly advancing the phase.
 
-Cache behavior is provider-specific. DeepSeek documents automatic context caching and hit/miss reporting; Anthropic documents prefix matching and explicit/automatic cache boundaries. The current adapter marks system content; history alignment alone does not prove that every provider caches the whole history. Measure the actual adapter and usage fields. [DeepSeek caching](https://api-docs.deepseek.com/guides/kv_cache/), [Anthropic caching](https://platform.claude.com/docs/en/build-with-claude/prompt-caching).
+Changing automatic resolution requires a deliberate revision to the current pacing contract and tests. Do not introduce an unrestricted model verdict that decides whether the story is “dramatic enough.” Arc continuation should follow an actual ending and respect the user's continuation preference; a finished conflict need not reveal an automatic higher villain.
 
-### Tune cadence after coverage is trustworthy
+## 6. What good context updates look like
 
-Keep three turns as the baseline. Test other intervals only after failures, pending changes, and backlog coverage are handled. A longer interval reduces repeated instructions/reference overhead, but the evidence window grows and memory becomes older.
+### Maintain one small record of what changed
 
-For illustration, over 90 turns, cadence three makes roughly 30 scheduled passes and cadence five roughly 18. That is 40% fewer memory calls, **not** 40% less total spend. Larger windows and additional repairs can erase the saving.
+Within the existing memory request, identify meaningful changes and route them to their homes. The returned updates should carry:
 
-A later adaptive scheduler could run earlier after explicit corrections or salient changes and delay routine maintenance modestly. Keep a maximum freshness bound and one serialized worker per adventure. Heuristics must not become the sole way important changes get noticed.
+- The stable target identity, operation, and target revision.
+- The actual source message ID or IDs and a short supporting excerpt.
+- Whether the statement is an established fact, character belief, intention, or explicit author correction.
+- The old value being superseded, when applicable.
+- A concise reason the change matters for later play.
 
-### Price requests correctly
+This does not require exposing private chain-of-thought. It is inspectable evidence and update metadata.
 
-Track each request's purpose, provider/model, input, output, cache reads/writes, latency, outcome, and associated source turn. The current lifetime totals are a strong start, but aggregated tokens alone cannot accurately price mixed models or missing usage.
+**Use targeted operations selectively:** add a durable fact; supersede a specific current fact; mark a thread resolved; append a distinct historical event; update a relevant knowledge boundary. Full replacement remains reasonable for a one-sentence Active Pressure or a small block whose unchanged fields can be checked.
 
-Use the provider's billing semantics to separate uncached input, cache reads, cache writes, and output; avoid charging cached input twice. Unknown usage should remain unknown. Report both total session cost and cost per accepted turn, including corrections and discarded generations. No fixed dollar savings are established by this review.
+Preserve existing IDs and free-text authoring. A schema change should begin with the most failure-prone State/knowledge fields, not a wholesale migration of every saved sentence.
 
-## Evaluation that can decide whether a change is better
+### Match the maintenance context to the maintenance task
 
-Use fixed representative snapshots and source excerpts from saves, without modifying synchronized originals. Separate deterministic reliability tests from paid model evaluations.
+Give the worker all unprocessed source messages within an explicit token budget, the current values of relevant targets, relevant identities/aliases, and applicable constraints. It should see records mentioned anywhere in that evidence window, even if they were unnecessary for the newest narrator prompt.
 
-| Test family | What must be observed |
-|---|---|
-| Current truth | Day/time, location, relationship, sleeping arrangement, and introductions survive a long scene transition |
-| Knowledge boundaries | Absent characters do not learn a secret; present characters gain knowledge through a supported channel |
-| Memory completeness | An early-window fact survives a failed pass; a backlog is covered; unrelated fields survive replacements |
-| Review and concurrency | Distinct pending facts persist; thought/knowledge coexist; stale async replacements do not overwrite newer edits |
-| Player agency | First-/second-/third-person authored actions are distinguished from invented choices; rewrites preserve valid intent |
-| Long-term recall | A real older promise survives lint; a distinctive event is recalled when cued without unsolicited callbacks |
-| Plot and voice | No early arc cost, endless escalation, forced subplot, repeated beat, flattened voice, or manufactured commitment |
-| Correction/edit | OOC retcons persist; regenerated or deleted events no longer supply active memory |
-| Provider limits | Truncated/malformed output, unavailable usage, and unsupported response formatting are visible and recoverable |
+Show pending changes as pending, with their original evidence. They are drafts to reconcile, not new evidence or approved truth. Keep them out of narrator context until applied.
 
-For model comparisons, hold the snapshot, prompt version, and player action constant; use repeated samples and blind human preference where possible. First establish the current baseline, then change one factor at a time. A later 100-turn pilot is useful, but rare continuity failures require longer runs and regression fixtures.
+Split a backlog chronologically; preserve the cursor for unread material. An output ceiling must not silently mean “forget everything after update twelve.” Differentiate complete scanning, deferred work, and rejected changes. Do not endlessly retry a claim deliberately rejected as unsupported.
 
-Track:
+### Preserve enough meaning for each surface
 
-- Human preference for prose, character voice, agency, responsiveness, and pacing.
-- Continuity corrections and regenerations per 100 turns, with error categories.
-- Important supported changes captured/applied versus missed; false facts and lost unchanged facts.
-- Time from source event to active memory, plus pending-review age.
-- Memory parse/rejection/overflow rates and confirmed coverage gaps.
-- Calls, tokens, cache behavior, latency, total cost, and cost per accepted turn.
-
-A cheap variant passes only if it preserves the agreed quality bar. Local tests can prove reducer and payload behavior; they cannot prove that prose is enjoyable or that a model follows long prompts in real play.
-
-## Order of work
-
-| Phase | Work | Gate before proceeding |
+| Surface | Retain | Avoid |
 |---|---|---|
-| 1. Establish baseline | Use the current fixes; inspect context, updates, review delay, and all request categories on a representative run | Failures and costs can be attributed to specific paths |
-| 2. Make memory reliable | Separate attempt/coverage markers; preserve pending deltas; revision-check replacements; independent memory references; knowledge eligibility; explicit overflow | Deterministic failure/review/concurrency fixtures retain all required facts |
-| 3. Improve narrative fidelity | Canon-aware lint, more accurate agency detection, consistent OOC rules, retrieval diagnostics, provenance-aware retcons | Fewer continuity/agency errors without worse prose or pacing |
-| 4. Optimize measured waste | Dedicated memory profile, redundant update suppression, provider-aware caching, cadence and model trials | Cost per accepted turn falls while quality and memory accuracy hold |
-| 5. Expand only for demonstrated gaps | Exceptional event capture, inspectable semantic retrieval, or larger architecture changes | A concrete recurring failure warrants the added complexity |
+| Story State | Current scene, arrangements, relationship status, active constraints, immediate unresolved actions; as-of revision | An exhaustive lifelong list of every meeting or event |
+| Story Cards | Stable identity/voice and durable subject facts; why important bonds or commitments exist | Repeated daily recaps or contradictory living facts |
+| Brains | Relevant knowledge, current beliefs and intentions, meaningful private reactions | Treating every old thought as a current intention; granting unseen knowledge |
+| Current Arc | Active premise, completed causal developments, unresolved stakes, evidence of progress | An indefinitely growing transcript or invented progress |
+| Active Pressure | The live external force, or its explicit resolution | Manufacturing a new danger merely to fill the field |
+| Plot Essentials | The compact story foundation and durable constraints | Updating the premise after ordinary scene changes |
+| Event Memory | A completed, distinctive turning point with cause, consequence, participants, source, and recall cues | Every pleasant conversation; a recap duplicated across all surfaces |
+| Chronicle | The source transcript, with edits handled through existing controls | Using the entire archive as the default narrator prompt |
+| AI Instructions / Author's Note / Next Output Bias | Author-owned rules, tone, and temporary steering | Autonomous rewriting by maintenance |
 
-The recommended first implementation scope is Phase 2, beginning with failed-pass coverage and preservation of unapproved changes. Keep the narrator/memory separation Claude established. Make the information path dependable before making it cheaper.
+For Brains, first improve what current thoughts and knowledge contain. If a separate bounded “current intention” view proves necessary, add a visible, tested field. Do not silently revive legacy fields that the current builder intentionally excludes.
+
+A private reaction can involve interpretation. “Mira suspects betrayal” can be a character belief grounded in persona and recent conduct; it must not become proof that betrayal occurred. Inferred interiority must not create new witnessed events, abilities, or secret knowledge.
+
+A 250-word State block and 90-word knowledge block cannot grow with the entire adventure. Retain current essentials there; keep historical meetings and durable facts in retrievable records. Knowledge boundaries should focus on consequential secrets and access, not enumerate everything a character does not know.
+
+### Preserve emotionally important events automatically, selectively
+
+The current background pass excludes event recaps and cannot create Event Memory cards. That avoids clutter, but can lose the reason a bond feels earned.
+
+I recommend a later, narrow extension: allow the existing pass to propose exceptional completed events, using the existing Event Memory surface and mandatory review required by current policy. Prioritize revelations, costly choices, broken promises, first meetings that matter, and recurring personal symbols.
+
+This is an explicit policy change, not current behavior. Start with few candidates and measure useful later recall. Storage alone is insufficient; verify that natural cues retrieve the event without forcing constant callbacks.
+
+### Make related updates consistent
+
+An established breakup may update current relationship status, supersede a living-card fact, and change a Brain. Those are several views of one development.
+
+Keep source linkage across them. Apply compatible changes against current revisions; defer stale or conflicting ones. One invalid update should not discard all unrelated valid changes, but the app should not silently apply an incoherent subset of a dependent change.
+
+Review should merge distinct pending additions and preserve thought and knowledge updates separately. Approving a draft weeks later must not erase intervening user edits.
+
+### Example: intention, commitment, and knowledge
+
+Suppose the player says, “I might stay at Mira's tonight.” Mira says, “The room is yours if you want it.”
+
+At this point:
+
+- No move-in or sleeping arrangement is established.
+- A standing offer may matter; the conditional wording must survive.
+- Mira knows the offer was made. An absent friend does not automatically know.
+- A plausible private hope is a belief or desire, not a completed event.
+
+Later the player explicitly accepts and the scene establishes a continuing arrangement. State records it; a living record can retain its duration and terms; a major relationship turning point may justify an event. Plot Essentials probably remain unchanged.
+
+The distinction between an offer, tonight's stay, and moving in matters more than how many updates the worker produces.
+
+## 7. Freshness, authority, and correction
+
+Periodic memory can work because recent prose supplies the immediate bridge. It fails when the bridge disappears or stale State is presented as timeless authority.
+
+**Proposed rule:** every derived snapshot states what source revision it covers. Established changes after that point take precedence for the affected facts. Newer text is not automatically more authoritative: dialogue can contain a lie, an attempted action can fail, and a narrator can contradict explicit canon.
+
+Explicit author corrections should persist through a dedicated reconciliation path and remain distinguishable from events inside the story. Ordinary OOC discussion should not become an NPC memory. The current runtime skips automatic memory after OOC turns; a later window may happen to include them, but that is not a dependable correction mechanism.
+
+Regeneration, deletion, and editing must invalidate or recheck affected derived memory using source provenance. Queuing asynchronous actions is not enough; replacements also need a revision check at application time.
+
+**Proposed coverage invariant:** before unprocessed story text leaves the working context, either maintenance has accounted for it or the system exposes the gap and retains enough source for recovery. A rare bounded catch-up or wait is preferable to silently skipping important events. This is a design target, not a guarantee the current code provides.
+
+Keep cadence three as a baseline, not a sacred number. Change it only with evidence about freshness, loss, cost, and latency. Important knowledge acquisition should not inherit a cooldown intended to suppress repetitive thoughts.
+
+## 8. Repairs must earn their place
+
+The output pipeline can pay for narration, then an agency/length rewrite, then continuity lint. Each transformation can also weaken voice or remove valid facts.
+
+Evaluate all three outputs separately. Record why a repair fired and whether a human prefers the result. Improve the detector before paying for more repairs.
+
+For a justified continuity repair, supply relevant established canon and distinguish:
+
+- A contradiction of established truth.
+- A retroactive claim with insufficient support.
+- A legitimate new event or NPC action.
+- An unresolved fact that should remain uncertain.
+
+A new arrival is not wrong simply because it was absent from previous messages. A previously established promise is not wrong because its evidence is older than eight messages.
+
+Use the smallest correction that fixes the problem. Include voice constraints and necessary canon. Recheck the final output locally; combine agency and continuity issues into one repair request when they are known together, rather than repeatedly rewriting the prose.
+
+A small length overrun should be evaluated against the user's chosen limit and experience; changing hard-limit behavior would be a product decision. Do not simply disable the guard or truncate good prose mid-sentence.
+
+## 9. Spend less by removing waste before lowering capability
+
+### Model and generation settings
+
+Test a stronger narrator against the current one. Also test the current narrator with better context. This distinguishes model limitations from information problems.
+
+Initially use a competent memory model with a bookkeeping-specific profile: lower sampling variability, no novelty incentive, and enough output capacity for the requested schema. The background resolver currently inherits narrator settings. The pass ceiling is `min(maxOutputTokens, 2000)`; the factory maximum is 1,200, so 2,000 is not guaranteed.
+
+If a cheaper memory model passes the difficult extraction and preservation tests, use it. A bad persistent update can affect many later turns, so JSON compliance alone is not enough. Keep voice-consistent narration across ordinary turns; frequent model switching should also be tested for style discontinuity.
+
+### Context budgets
+
+Retain enough raw recent dialogue for natural continuation. Reduce duplicated instructions, obsolete state, repeated thoughts, and irrelevant memory before reducing that history.
+
+The default `userLocked` budget policy can drop older recent messages before memory. That may be exactly what an author wants, but it should not be assumed best for conversational flow. Propose a minimum coherent recent exchange/scene allowance, subject to explicit protected-context constraints. Report when protected material prevents it from fitting.
+
+Do not pick a universal token budget by intuition. Compare actual payloads and outcomes. Section estimates also differ from billed provider tokens and must leave room for output.
+
+### Caching
+
+Maintain stable serialization and useful prefix reuse. The current prefix still contains evolving Active Pressure, arc progress, and pinned living cards, so it is not entirely stable. First eliminate redundant updates; then consider separating stable identity/premise from frequently changing values.
+
+That separation would change the repository's fixed context-order contract and must be proposed and tested explicitly. Fresh facts must never be withheld to preserve a cache hit.
+
+Provider behavior differs: DeepSeek describes best-effort prefix caching; Anthropic supports explicit and automatic cache boundaries. The current adapter's system breakpoint does not establish that all later history is cached. Measure returned usage, rather than promise a fixed discount. [DeepSeek documentation](https://api-docs.deepseek.com/guides/kv_cache/), [Anthropic documentation](https://platform.claude.com/docs/en/build-with-claude/prompt-caching).
+
+### Frequency and total cost
+
+For a long run, the approximate scheduled baseline is one narrator call per turn plus one memory call per three turns. Add repair calls, user-defined semantic work, regeneration, arc continuation, and manual tools.
+
+Changing cadence from three to five reduces scheduled memory calls by about 40%, but increases each evidence window and update delay. It does not imply 40% lower total cost. Do not add a separate AI call just to decide whether the memory call is needed.
+
+Track cost by request purpose and model, with input/output and cache categories interpreted according to provider billing. Missing usage remains unknown. Include paid failures and discarded work.
+
+Report **cost per 100 retained turns alongside quality, correction count, latency, and player maintenance time**. A retained turn is not automatically a satisfying one; human judgment remains necessary.
+
+## 10. How to decide what actually improves quality
+
+### First diagnose the bottleneck
+
+Use a small set of representative checkpoints: tense dialogue, action, a relationship change, a long callback, a secret, and an arc climax. Hold the player action and allowed evidence constant.
+
+| Experiment | Narrator | Context |
+|---|---|---|
+| A | Current | Current builder |
+| B | Current | Human-curated context from the same available evidence |
+| C | Stronger candidate | Current builder |
+| D | Stronger candidate | Curated context |
+
+Curated context must not leak future events or hidden break instructions. Preserve scenario intent. Use repeated samples and blind preference where practical.
+
+- B improving on A suggests selection/representation is a bottleneck.
+- C improving on A suggests model capability matters.
+- D alone improving substantially suggests both matter.
+- Good drafts becoming poor final outputs implicates repair passes.
+
+This is a diagnostic, not a complete factorial study or proof of a universal winner. No such provider experiment was run for this document.
+
+### Test memory separately
+
+Build expected changes from known source windows. Measure omission, unsupported additions, wrong subject, wrong time, lost unchanged facts, knowledge leakage, duplicate proposals, and correct no-op behavior.
+
+Test failures and edits too: invalid JSON, truncation, delayed approval, multiple facts for one target, late asynchronous results, regeneration, OOC retcons, and long pauses.
+
+Keep source coverage and semantic completeness separate. Code can prove it supplied every message; it cannot prove the model noticed every meaningful detail.
+
+### Then test closed-loop play
+
+Single-turn comparisons miss memory feedback. Run selected configurations through multiple scenes and enough turns for earlier evidence to leave recent context. Include quiet scenes, unresolved obligations, returning characters, and a real ending.
+
+Assess:
+
+- Is the prose enjoyable and the voice distinctive?
+- Do NPCs behave consistently while still changing?
+- Do past choices cause later consequences?
+- Can the player move the story without directing every beat?
+- Do corrections stay corrected?
+- Are promises and emotional turning points recalled appropriately?
+- Do arcs resolve without forced sequels or abrupt timer endings?
+- How much editing, review, and regeneration does the player do?
+- What are the total spend and response delays?
+
+Do not reduce these to one averaged score that hides a serious continuity failure. Keep a small regression set plus longer play; local unit tests cannot establish literary quality.
+
+## 11. Recommended order of work
+
+| Priority | Work | Why first |
+|---|---|---|
+| 1 | Capture actual narrator context, raw draft, repairs, memory changes, and request costs on representative checkpoints; run the model/context comparison | Determines what limits the experience before committing to a large redesign |
+| 1, alongside diagnosis | Repair failed-pass coverage, pending-change loss, stale replacements, and correction provenance | These are known information-integrity defects, regardless of model choice |
+| 2 | Improve narrator instructions, scene-context selection, and repair precision; distinguish arc completion from elapsed time | Directly improves prose, agency, and narrative payoff |
+| 3 | Improve memory semantics: causal facts, knowledge access, targeted updates, consistent routing, bounded character intentions | Makes automatic updates help future writing instead of merely producing more records |
+| 4 | Add selective event capture and better cue/alias retrieval if long-term callbacks remain weak | Preserves and retrieves the moments that make a long story feel personal |
+| 5 | Tune sampling, output capacity, cache layout, cadence, and cheaper model candidates against the established quality bar | Reduces measured waste without guessing what the story can afford to lose |
+
+Some diagnosis uses current controls; schema, scheduling, context-order, and phase-transition changes require implementation later. This document does not authorize applying them to existing adventures or rewriting saves.
+
+## 12. Alternatives considered
+
+| Alternative | Decision and tradeoff |
+|---|---|
+| Put the entire Chronicle into a huge context | Useful as an offline comparison on bounded excerpts, not the default design. Repetition, contradictions, cost, and attention remain concerns. |
+| Make the narrator emit prose plus all memory every turn | Keep the current separation. This changes the narrator's task and expands every response; reconsider only if direct testing shows a clear advantage. |
+| Add a planner and critic every turn | Do not make this the baseline. Extra calls must demonstrate a quality gain that survives latency and cost. A scene-boundary trial remains reasonable. |
+| Require manual approval of everything | Unsuitable as the intended play experience. Preserve the user's controls, but improve automatic handling of established changes. |
+| Automatically accept all memory | Unsupported inference becomes persistent canon. Use evidence, revision checks, and selective review. |
+| Build a full knowledge graph or vector database immediately | Premature. Start with existing surfaces and inspectable selection; adopt semantic retrieval only for demonstrated misses. |
+| Always choose the cheapest memory model | Reject as a default assumption. Errors can propagate across many turns. |
+| Restore every legacy Brain field to context | Reject. Define a bounded visible representation for demonstrated needs instead of restoring past context growth. |
+
+## 13. Research context and limits
+
+These sources inform evaluation questions, not a claim that a research architecture is optimal for this app:
+
+- [LongMemEval](https://arxiv.org/abs/2410.10813) separates extraction, temporal reasoning, knowledge updates, multi-session reasoning, and abstention. That supports testing memory capabilities separately rather than equating a larger context with reliable memory.
+- [Generative Agents](https://arxiv.org/abs/2304.03442) evaluates observation, reflection, and planning in believable agents. It motivates preserving useful interpretation and intentions; its simulation results do not establish that this app needs a separate planning call every turn.
+- [Lost in the Middle](https://arxiv.org/abs/2307.03172) documents sensitivity to information placement in the models/tasks it tested. It is a reason to evaluate actual context use, not a timeless claim that larger contexts are always worse.
+
+Repository behavior is grounded in source inspection. The token comparison is a deterministic local measurement. Narrative gains, model rankings, and dollar savings remain hypotheses until evaluated.
+
+**The proposed destination is a strong storyteller with a concise, current, causally meaningful working memory, reliable long-term recall, and little administrative burden on the player. The next step is to find which part of the current experience most limits that outcome, while closing the information-loss paths already visible in code.**
