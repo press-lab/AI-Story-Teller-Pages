@@ -32,6 +32,21 @@ afterEach(() => {
 });
 
 describe("sendOpenAICompatibleChatCompletion", () => {
+  it.each([undefined, "disabled"] as const)("uses supported OpenRouter GLM reasoning for %s", async (thinking) => {
+    const spy = mockFetch(200, { choices: [{ message: { content: "A story." } }] });
+    await sendOpenAICompatibleChatCompletion({ messages: [], config: { ...config, baseUrl: "https://openrouter.ai/api/v1", model: "z-ai/glm-5.3-flash", maxOutputTokens: 24000 }, thinking });
+    const body = JSON.parse(spy.mock.calls[0][1]?.body as string);
+    expect(body.reasoning).toEqual({ effort: thinking === "disabled" ? "low" : "high" });
+    expect(body.thinking).toBeUndefined();
+    expect(body.max_tokens).toBe(24000);
+  });
+
+  it.each([null, "", "   "])("reports exhausted reasoning budget for empty content %s", async (content) => {
+    const spy = mockFetch(200, { choices: [{ finish_reason: "length", message: { content } }], usage: { completion_tokens: 455, completion_tokens_details: { reasoning_tokens: 455 } } });
+    await expect(sendOpenAICompatibleChatCompletion({ messages: [], config })).rejects.toThrow("finish reason: length; output tokens: 455; reasoning tokens: 455");
+    expect(spy).toHaveBeenCalledOnce();
+  });
+
   it("recognizes only native DeepSeek API hosts", () => {
     expect(isNativeDeepSeekProvider({ baseUrl: "https://api.deepseek.com" })).toBe(true);
     expect(isNativeDeepSeekProvider({ baseUrl: "https://deepseek.com/v1" })).toBe(true);

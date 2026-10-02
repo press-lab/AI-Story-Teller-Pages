@@ -19,6 +19,11 @@ function applyPromptCaching(messages: ChatMessage[]): CacheableMessage[] {
   );
 }
 
+/** GLM 5.3 requires reasoning even for short visible replies. */
+export function requiresGlmReasoning(config: Pick<ProviderConfig, "model">): boolean {
+  return /^(?:z-ai\/)?glm-5\.3(?:-flash(?:x)?|)(?::[^/]+)?$/i.test(config.model);
+}
+
 export interface SendChatCompletionOptions {
   messages: ChatMessage[];
   config: ProviderConfig;
@@ -177,7 +182,11 @@ async function sendOpenAIRequest(
         ...(config.presencePenalty !== undefined ? { presence_penalty: config.presencePenalty } : {}),
         ...(config.frequencyPenalty !== undefined ? { frequency_penalty: config.frequencyPenalty } : {}),
         ...(responseFormat ? { response_format: { type: responseFormat } } : {}),
-        ...(thinking ? { thinking: { type: thinking } } : {}),
+        ...(requiresGlmReasoning(config)
+          ? (isOpenRouterProvider(config)
+            ? { reasoning: { effort: thinking === "disabled" ? "low" : "high" } }
+            : { thinking: { type: "enabled" }, reasoning_effort: thinking === "disabled" ? "low" : "high" })
+          : (thinking ? { thinking: { type: thinking } } : {})),
         ...(sessionId ? { session_id: sessionId } : {}),
         ...(provider ? { provider } : {}),
       }),
@@ -188,7 +197,7 @@ async function sendOpenAIRequest(
   }
 
   const rawText = await response.text().catch(() => "");
-  let raw: { error?: { message?: string }; choices?: Array<{ message?: { content?: string } }>; usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number; prompt_cache_hit_tokens?: number; prompt_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number } } };
+  let raw: { error?: { message?: string }; choices?: Array<{ finish_reason?: string; message?: { content?: string | null } }>; usage?: { prompt_tokens?: number; completion_tokens?: number; completion_tokens_details?: { reasoning_tokens?: number }; total_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number; prompt_cache_hit_tokens?: number; prompt_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number } } };
   try {
     raw = JSON.parse(rawText) as typeof raw;
   } catch {
@@ -215,7 +224,15 @@ async function sendOpenAIRequest(
   reportProviderUsage(config, usage);
 
   const content = raw.choices?.[0]?.message?.content;
-  if (content == null) throw new Error(`Provider returned no content. Body: ${rawText.slice(0, 300)}`);
+  if (typeof content !== "string" || !content.trim()) {
+    const finish = raw.choices?.[0]?.finish_reason ?? "unknown";
+    const reasoningTokens = raw.usage?.completion_tokens_details?.reasoning_tokens;
+    const detail = `Model: ${config.model}; finish reason: ${finish}; output tokens: ${usage?.completionTokens ?? "unknown"}; reasoning tokens: ${reasoningTokens ?? "unknown"}; requested limit: ${config.maxOutputTokens}.`;
+    const advice = finish === "length"
+      ? " The output limit was reached before visible text was returned. Increase Max Output Tokens or reduce reasoning effort."
+      : " Try another provider route if this persists.";
+    throw new Error(`Provider returned no content. ${detail}${advice}`);
+  }
 
   return { content, raw, usage };
 }

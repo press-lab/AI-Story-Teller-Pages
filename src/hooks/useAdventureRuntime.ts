@@ -1,3 +1,4 @@
+import { requiresGlmReasoning } from "../providers/openAICompatible";
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { buildContext } from "../contextBuilder/contextBuilder";
 import { saveAdventure } from "../db/adventureDb";
@@ -57,6 +58,9 @@ function mergeProviderConfig(adventure: Adventure, settings: RuntimeProviderSett
 }
 
 export function applyResponseLengthHint(config: RuntimeProviderSettings, hint: number, hiddenReserveTokens = 0): RuntimeProviderSettings {
+  // Keep the user's total reasoning + answer budget; prompts and the response guard
+  // still enforce visible story length. Never silently increase the configured ceiling.
+  if (requiresGlmReasoning(config) && Number.isFinite(config.maxOutputTokens) && config.maxOutputTokens > 0) return config;
   const wordTarget = Number.isFinite(hint) ? Math.max(50, Math.min(500, Math.round(hint))) : 250;
   const visibleTokenCap = Math.ceil(wordTarget * 1.5) + 80;
   const hiddenReserve = Math.max(0, Math.ceil(hiddenReserveTokens));
@@ -86,6 +90,7 @@ function correctionConfig(config: RuntimeProviderSettings, responseLengthHint: n
     responseLengthHint,
     0,
   );
+  if (requiresGlmReasoning(config)) return bounded;
   const correctionCap = Math.ceil(storyResponseWordLimit(responseLengthHint) * 1.15) + 35;
   return { ...bounded, maxOutputTokens: Math.min(bounded.maxOutputTokens, correctionCap) };
 }

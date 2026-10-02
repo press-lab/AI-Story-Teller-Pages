@@ -336,7 +336,7 @@ export function SettingsPage({
                         />
                         <p className="muted" style={{ fontSize: "0.8em", margin: "0.25rem 0 0" }}>
                           When you send an [Out of Character] correction, the model thinks before rewriting. Costs extra output
-                          tokens on those turns only; story turns keep reasoning off.
+                          tokens on those turns only. This switch does not control reasoning for other models.
                         </p>
                         <Field label="OpenRouter routing preference">
                           <select

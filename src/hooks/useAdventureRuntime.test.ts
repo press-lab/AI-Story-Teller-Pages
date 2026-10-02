@@ -12,6 +12,12 @@ const baseConfig: RuntimeProviderSettings = {
 };
 
 describe("applyResponseLengthHint", () => {
+  it("preserves the configured GLM reasoning budget independently of visible length", () => {
+    for (const model of ["z-ai/glm-5.3-flash", "glm-5.3", "z-ai/glm-5.3-flash:free"]) {
+      expect(applyResponseLengthHint({ ...baseConfig, model, maxOutputTokens: 24000 }, 250).maxOutputTokens).toBe(24000);
+      expect(applyResponseLengthHint({ ...baseConfig, model, maxOutputTokens: 300 }, 250).maxOutputTokens).toBe(300);
+    }
+  });
   it("applies a tight length-derived cap below the provider maximum", () => {
     expect(applyResponseLengthHint(baseConfig, 150).maxOutputTokens).toBe(305);
   });
