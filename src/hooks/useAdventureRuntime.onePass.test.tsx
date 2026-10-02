@@ -7,20 +7,16 @@ import type { Adventure, MemoryDetectionSettings } from "../types/adventure";
 import { useAdventureRuntime } from "./useAdventureRuntime";
 import { sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
 import { runMemoryCycle, runSemanticPostTurnEvaluation } from "../triggers/semanticEngine";
-import { reportProviderUsage } from "../providers/usage";
 
 vi.mock("../db/adventureDb", () => ({ saveAdventure: vi.fn(async () => undefined) }));
-vi.mock("../providers/openAICompatible", async importOriginal => ({
-  ...await importOriginal<typeof import("../providers/openAICompatible")>(),
-  sendOpenAICompatibleChatCompletion: vi.fn(),
-}));
+vi.mock("../providers/openAICompatible", () => ({ sendOpenAICompatibleChatCompletion: vi.fn() }));
 vi.mock("../triggers/semanticEngine", async importOriginal => ({
   ...await importOriginal<typeof import("../triggers/semanticEngine")>(),
   runMemoryCycle: vi.fn(async () => ({ actions: [] })),
   runSemanticPostTurnEvaluation: vi.fn(),
 }));
 
-function setup(enabled = true, customRule = false, providerOverrides: Partial<typeof defaultModelConfig> = {}) {
+function setup(enabled = true, customRule = false) {
   const initial = createDefaultAdventure("Call accounting");
   initial.memoryDetectionSettings = { ...initial.memoryDetectionSettings, enabled: !enabled }; // deliberately stale saved settings
   initial.memoryAutoApprove = { ...initial.memoryAutoApprove, storyCard: true };
@@ -29,46 +25,35 @@ function setup(enabled = true, customRule = false, providerOverrides: Partial<ty
   const globalMemory: MemoryDetectionSettings = { enabled, everyNTurns: 3, generateContent: true };
   return renderHook(() => {
     const [adventure, setAdventure] = useState<Adventure | undefined>(initial);
-    const runtime = useAdventureRuntime(adventure, setAdventure, { ...defaultModelConfig, ...providerOverrides, apiKey: "test" }, vi.fn(), vi.fn(), vi.fn(), async () => undefined, globalMemory);
+    const runtime = useAdventureRuntime(adventure, setAdventure, { ...defaultModelConfig, apiKey: "test" }, vi.fn(), vi.fn(), vi.fn(), async () => undefined, globalMemory);
     return { runtime, adventure };
   });
 }
 
 const story = "Mira explains that silver burns her skin.";
-const memoryPass = JSON.stringify({ updates: [{ kind: "card", target: "Mira", content: "Silver burns Mira's skin.", evidence: story, reason: "Lasting vulnerability" }] });
+const response = `${story}\n<memory_updates>${JSON.stringify({ updates: [{ kind: "card", target: "Mira", content: "Silver burns Mira's skin.", evidence: story, reason: "Lasting vulnerability" }] })}</memory_updates>`;
 
-describe("runtime call accounting: narrator plus scheduled background memory pass", () => {
+describe("runtime one-pass call accounting", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(sendOpenAICompatibleChatCompletion).mockImplementation(async ({ responseFormat }) => (
-      responseFormat === "json_object"
-        ? { content: memoryPass, raw: {}, usage: { promptTokens: 1500, completionTokens: 90, totalTokens: 1590 } }
-        : { content: story, raw: {}, usage: { promptTokens: 2000, completionTokens: 140, totalTokens: 2140 } }
-    ));
+    vi.mocked(sendOpenAICompatibleChatCompletion).mockResolvedValue({ content: response, raw: {}, usage: { promptTokens: 2000, completionTokens: 140, totalTokens: 2140 } });
   });
   afterEach(cleanup);
 
-  const storyCalls = () => vi.mocked(sendOpenAICompatibleChatCompletion).mock.calls.filter(([options]) => options.responseFormat !== "json_object");
-  const memoryCalls = () => vi.mocked(sendOpenAICompatibleChatCompletion).mock.calls.filter(([options]) => options.responseFormat === "json_object");
-
-  it("sends a narrator prompt without memory bookkeeping and runs one background pass per N turns", async () => {
+  it("uses one API call per submit/continue/regenerate with automatic memory ON and no follow-up cycle", async () => {
     const { result } = setup();
     await act(async () => { await result.current.runtime.submitTurn("Mira explains."); });
-    await waitFor(() => expect(memoryCalls()).toHaveLength(1));
-    expect(storyCalls()).toHaveLength(1);
-    expect(storyCalls()[0][0].messages.map(m => m.content).join("\n")).not.toContain("memory_updates");
-    await waitFor(() => expect(result.current.adventure?.storyCards[0].content).toContain("Silver"));
+    expect(sendOpenAICompatibleChatCompletion).toHaveBeenCalledTimes(1);
+    expect(result.current.adventure?.storyCards[0].content).toContain("Silver");
+    expect(result.current.adventure?.memoryDetectionSettings.enabled).toBe(true);
     expect(result.current.adventure?.messages.at(-1)?.content).toBe(story);
-    expect(result.current.adventure?.activeState.backgroundTokenUsage).toEqual({ promptTokens: 1500, completionTokens: 90 });
-
-    // everyNTurns = 3: the next two turns do not trigger another pass.
     await act(async () => { await result.current.runtime.continueTurn(); });
-    await act(async () => { await result.current.runtime.submitTurn("Mira waits."); });
-    expect(storyCalls()).toHaveLength(3);
-    expect(memoryCalls()).toHaveLength(1);
-    await act(async () => { await result.current.runtime.submitTurn("Mira leaves."); });
-    await waitFor(() => expect(memoryCalls()).toHaveLength(2));
+    expect(sendOpenAICompatibleChatCompletion).toHaveBeenCalledTimes(2);
+    await act(async () => { await result.current.runtime.regenerateLastResponse(); });
+    expect(sendOpenAICompatibleChatCompletion).toHaveBeenCalledTimes(3);
     expect(runMemoryCycle).not.toHaveBeenCalled();
+    expect(result.current.adventure?.activeState.memoryProposals).toHaveLength(1);
+    expect(result.current.adventure?.activeState.turn).toBe(2);
   });
 
   it("honors global memory OFF despite a saved ON setting", async () => {
@@ -77,40 +62,26 @@ describe("runtime call accounting: narrator plus scheduled background memory pas
     expect(sendOpenAICompatibleChatCompletion).toHaveBeenCalledTimes(1);
     expect(runMemoryCycle).not.toHaveBeenCalled();
     expect(result.current.adventure?.storyCards[0].content).toBe("Mira is a scout.");
+    const payload = vi.mocked(sendOpenAICompatibleChatCompletion).mock.calls[0][0];
+    expect(payload.messages.map(m => m.content).join("\n")).not.toContain("[ONE-PASS MEMORY]");
   });
 
-  it("does not run the memory pass after an out-of-character turn", async () => {
-    const { result } = setup();
-    await act(async () => { await result.current.runtime.submitTurn("[Out of Character: tomorrow is Tuesday]", "comms"); });
-    expect(storyCalls()).toHaveLength(1);
-    expect(memoryCalls()).toHaveLength(0);
-  });
-
-  it("turns on DeepSeek reasoning only for out-of-character corrections when enabled", async () => {
-    const { result } = setup(true, false, { baseUrl: "https://api.deepseek.com/anthropic", reasoningForCorrections: true });
-    await act(async () => { await result.current.runtime.submitTurn("[Out of Character: tomorrow is Tuesday]", "comms"); });
-    await act(async () => { await result.current.runtime.submitTurn("I nod."); });
-    const [ooc, story] = storyCalls().map(([options]) => options);
-    expect(ooc.thinking).toBe("enabled");
-    expect(ooc.config.maxOutputTokens).toBeGreaterThan(story.config.maxOutputTokens);
-    expect(story.thinking).toBeUndefined();
-  });
-
-  it("logs an invalid memory pass and never escalates to the multi-call cycle", async () => {
-    vi.mocked(sendOpenAICompatibleChatCompletion).mockImplementation(async ({ responseFormat }) => (
-      responseFormat === "json_object" ? { content: "invalid JSON", raw: {} } : { content: story, raw: {} }
-    ));
+  it("preserves the story and starts the fallback cycle for a malformed memory tail", async () => {
+    vi.mocked(sendOpenAICompatibleChatCompletion)
+      .mockResolvedValueOnce({ content: `${story}<memory_updates>{"updates": [${"you agree ".repeat(300)}`, raw: {} })
+      .mockResolvedValueOnce({ content: '{"updates":[]}', raw: {} });
     const { result } = setup();
     await act(async () => { await result.current.runtime.submitTurn("Mira explains."); });
-    await waitFor(() => expect(result.current.adventure?.activeState.evaluationLog.some(log => log.errors.some(error => error.includes("no usable JSON")))).toBe(true));
+    await waitFor(() => expect(sendOpenAICompatibleChatCompletion).toHaveBeenCalledTimes(2));
     expect(runMemoryCycle).not.toHaveBeenCalled();
     expect(result.current.adventure?.messages.at(-1)?.content).toBe(story);
-    expect(result.current.adventure?.activeState.lastMemoryCycleTurn).toBe(1);
+    expect(result.current.adventure?.activeState.evaluationLog.some(log => log.errors.some(error => error.includes("Incomplete")))).toBe(true);
+    expect(result.current.adventure?.storyCards[0].content).toBe("Mira is a scout.");
   });
 
-  it("keeps the agency correction exception and accounts for both story calls", async () => {
+  it("keeps the agency correction exception, discards memory from its rejected draft, and accounts for both calls", async () => {
     vi.mocked(sendOpenAICompatibleChatCompletion)
-      .mockResolvedValueOnce({ content: "You agree to the duke's terms.", raw: {}, usage: { promptTokens: 2000, completionTokens: 150, totalTokens: 2150 } })
+      .mockResolvedValueOnce({ content: "You agree to the duke's terms. " + response, raw: {}, usage: { promptTokens: 2000, completionTokens: 150, totalTokens: 2150 } })
       .mockResolvedValueOnce({ content: "The duke waits for an answer.", raw: {}, usage: { promptTokens: 200, completionTokens: 20, totalTokens: 220 } })
       .mockResolvedValueOnce({ content: '{"updates":[]}', raw: {}, usage: { promptTokens: 100, completionTokens: 10, totalTokens: 110 } });
     const { result } = setup();
@@ -118,7 +89,33 @@ describe("runtime call accounting: narrator plus scheduled background memory pas
     await waitFor(() => expect(sendOpenAICompatibleChatCompletion).toHaveBeenCalledTimes(3));
     expect(result.current.adventure?.messages.at(-1)?.content).toBe("The duke waits for an answer.");
     expect(result.current.adventure?.messages.at(-1)?.usage?.totalTokens).toBe(2370);
+    expect(result.current.adventure?.storyCards[0].content).toBe("Mira is a scout.");
+    const correction = vi.mocked(sendOpenAICompatibleChatCompletion).mock.calls[1][0];
+    expect(correction.messages.map(m => m.content).join("\n")).not.toContain("<memory_updates>");
     expect(runMemoryCycle).not.toHaveBeenCalled();
+  });
+
+  it("recovers a missing memory envelope with one focused background call", async () => {
+    vi.mocked(sendOpenAICompatibleChatCompletion)
+      .mockResolvedValueOnce({ content: story, raw: {} })
+      .mockResolvedValueOnce({ content: '{"updates":[]}', raw: {} });
+    const { result } = setup();
+    await act(async () => { await result.current.runtime.submitTurn("Mira explains."); });
+    await waitFor(() => expect(sendOpenAICompatibleChatCompletion).toHaveBeenCalledTimes(2));
+    expect(runMemoryCycle).not.toHaveBeenCalled();
+    expect(result.current.adventure?.messages.at(-1)?.content).toBe(story);
+    expect(result.current.adventure?.activeState.evaluationLog.some(log => log.errors.some(error => error.includes("Memory envelope missing")))).toBe(true);
+  });
+
+  it("uses the legacy memory cycle if the focused recovery is invalid", async () => {
+    vi.mocked(sendOpenAICompatibleChatCompletion)
+      .mockResolvedValueOnce({ content: story, raw: {} })
+      .mockResolvedValueOnce({ content: "invalid JSON", raw: {} });
+    const { result } = setup();
+    await act(async () => { await result.current.runtime.submitTurn("Mira explains."); });
+    await waitFor(() => expect(runMemoryCycle).toHaveBeenCalledTimes(1));
+    expect(sendOpenAICompatibleChatCompletion).toHaveBeenCalledTimes(2);
+    expect(result.current.adventure?.messages.at(-1)?.content).toBe(story);
   });
 
   it("blocks duplicate submissions before React has rendered loading state", async () => {
@@ -126,18 +123,19 @@ describe("runtime call accounting: narrator plus scheduled background memory pas
     await act(async () => {
       await Promise.all([result.current.runtime.submitTurn("Mira explains."), result.current.runtime.submitTurn("Mira explains.")]);
     });
-    expect(storyCalls()).toHaveLength(1);
+    expect(sendOpenAICompatibleChatCompletion).toHaveBeenCalledTimes(1);
   });
 
-  it("retains continuity correction", async () => {
+  it("retains continuity correction and discards the superseded draft's memory", async () => {
     vi.mocked(sendOpenAICompatibleChatCompletion)
-      .mockResolvedValueOnce({ content: "The deadline is tonight. " + story, raw: {} })
-      .mockResolvedValueOnce({ content: "Mira has no deadline to report.", raw: {} })
-      .mockResolvedValue({ content: '{"updates":[]}', raw: {} });
+      .mockResolvedValueOnce({ content: "The deadline is tonight. " + response, raw: {} })
+      .mockResolvedValueOnce({ content: "Mira has no deadline to report.", raw: {} });
     const { result } = setup();
     await act(async () => { await result.current.runtime.submitTurn("Mira explains."); });
-    expect(result.current.adventure?.messages.at(-1)?.content).toBe("Mira has no deadline to report.");
+    expect(sendOpenAICompatibleChatCompletion).toHaveBeenCalledTimes(2);
     expect(result.current.adventure?.storyCards[0].content).toBe("Mira is a scout.");
+    expect(result.current.adventure?.messages.at(-1)?.content).toBe("Mira has no deadline to report.");
+    expect(result.current.adventure?.activeState.evaluationLog[0].errors[0]).toContain("continuity correction");
   });
 
   it("does not overlap explicitly configured background rule evaluations", async () => {
@@ -147,33 +145,7 @@ describe("runtime call accounting: narrator plus scheduled background memory pas
     await act(async () => { await result.current.runtime.submitTurn("Mira explains."); });
     await act(async () => { await result.current.runtime.continueTurn(); });
     expect(runSemanticPostTurnEvaluation).toHaveBeenCalledTimes(1);
+    expect(sendOpenAICompatibleChatCompletion).toHaveBeenCalledTimes(2);
     await act(async () => { resolve({ actions: [], logEntry: { id: "eval", turn: 1, createdAt: "2026-09-28", conditionsEvaluated: [], conditionsFired: [], generatedContent: [], actionsExecuted: [], errors: [] } }); });
-  });
-
-  it("keeps entry, background, and lifetime usage separate and complete", async () => {
-    const usageFor = (promptTokens: number, completionTokens: number) => ({ promptTokens, completionTokens, totalTokens: promptTokens + completionTokens });
-    vi.mocked(sendOpenAICompatibleChatCompletion).mockImplementation(async ({ messages, config, responseFormat }) => {
-      const isLint = messages.some(m => m.content.includes("continuity checker"));
-      const [content, usage] = responseFormat === "json_object"
-        ? ['{"updates":[]}', usageFor(1500, 90)]
-        : isLint
-          ? ["null", usageFor(400, 10)]
-          : ["The deadline is tonight. Mira waits by the gate.", usageFor(2000, 140)];
-      reportProviderUsage(config, usage); // what the real adapter does for every billed call
-      return { content, raw: {}, usage };
-    });
-    const { result } = setup();
-    await act(async () => { await result.current.runtime.submitTurn("Mira explains."); });
-    const firstEntry = result.current.adventure!.messages.at(-1)!;
-    // Entry = story call + continuity check; the memory pass is attributed separately.
-    expect(firstEntry.usage).toMatchObject({ promptTokens: 2400, completionTokens: 150 });
-    await waitFor(() => expect(result.current.adventure?.messages.at(-1)?.backgroundUsage).toMatchObject({ promptTokens: 1500, completionTokens: 90 }));
-
-    // Regenerating discards the first entry, but not what it cost.
-    await act(async () => { await result.current.runtime.regenerateLastResponse(); });
-    expect(result.current.adventure?.messages.at(-1)?.id).not.toBe(firstEntry.id);
-    expect(result.current.adventure?.messages.at(-1)?.usage).toMatchObject({ promptTokens: 2400, completionTokens: 150 });
-    await waitFor(() => expect(result.current.adventure?.activeState.spendTotal).toMatchObject({ promptTokens: 6300, completionTokens: 390 }));
-    expect(sendOpenAICompatibleChatCompletion).toHaveBeenCalledTimes(5);
   });
 });

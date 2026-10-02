@@ -1,8 +1,6 @@
-import { parseOnePassMemory } from "../memory/onePassMemory";
+import { ONE_PASS_MEMORY_ID, onePassMemoryActions, parseOnePassMemory } from "../memory/onePassMemory";
 import { buildContext, extractInlineThoughts } from "../contextBuilder/contextBuilder";
-import { continuityCanon, runContinuityCheck, scanForRiskyClaims } from "../continuityLint";
-import { matchPatterns } from "../triggers/matching";
-import { cardMatchesName } from "./defaults";
+import { runContinuityCheck, scanForRiskyClaims } from "../continuityLint";
 import { evaluateTriggerRules, type TriggerEvaluationEvent } from "../triggers/triggerEngine";
 import type {
   Adventure,
@@ -14,14 +12,11 @@ import type {
   ProviderUsage,
 } from "../types/adventure";
 import { createId } from "../utils/id";
-import { combineProviderUsage } from "../providers/usage";
 import { adventureReducer } from "./adventureReducer";
 
 export interface MockableProviderResponse {
   content: string;
   usage?: ProviderUsage;
-  /** Why the draft was rewritten before it was kept (length, agency), when it was. */
-  repairNotes?: string[];
 }
 
 export interface RunTurnPipelineOptions {
@@ -62,28 +57,6 @@ export function applyRuntimeEngines(adventure: Adventure, event: TriggerEvaluati
   return reduceActions(adventure, triggerResult.actions);
 }
 
-/** Adds a cue to the trailing user turn (e.g. the [TURN CONTEXT] block) instead of sending two user turns in a row. */
-export function appendUserCue(messages: ChatMessage[], cue: string): ChatMessage[] {
-  const last = messages.at(-1);
-  if (last && last.role === "user") return [...messages.slice(0, -1), { ...last, content: `${last.content}\n\n${cue}` }];
-  return [...messages, { role: "user" as const, content: cue }];
-}
-
-/**
- * Arc thread ids (Story Cards / Brains) whose trigger patterns match this turn's text.
- * A Brain and a Story Card for the same character are one participant and count once.
- */
-export function currentTurnThreadIds(adventure: Adventure, turnText: string): string[] {
-  const threadKeys = new Set(adventure.components.filter((c) => c.type === "currentArc").flatMap((c) => c.arcThreadKeys ?? []));
-  if (threadKeys.size === 0 || !turnText.trim()) return [];
-  const cards = adventure.storyCards.filter((card) =>
-    threadKeys.has(card.id) && card.active && matchPatterns(turnText, [card.title, ...card.keys], card.matchType ?? "phrase").matched);
-  const brains = adventure.brains.filter((brain) =>
-    threadKeys.has(brain.id) && brain.active && matchPatterns(turnText, [brain.characterName, ...brain.triggers].filter(Boolean), "phrase").matched
-    && !cards.some((card) => cardMatchesName(card, brain.characterName)));
-  return [...cards.map((card) => card.id), ...brains.map((brain) => brain.id)];
-}
-
 export function latestAssistantOutput(adventure: Adventure): string | undefined {
   return [...adventure.messages].reverse().find((message) => message.role === "assistant")?.content;
 }
@@ -113,7 +86,7 @@ export async function applyProviderResponse({
 }: ApplyProviderResponseOptions): Promise<{ adventure: Adventure; responseContent: string; continuityCorrected: boolean }> {
   let next = adventure;
 
-  // The narrator is no longer asked for memory output; strip any stray envelope or tags defensively.
+  // Extract inline thought tags and memory tags from the response before the player sees it.
   const memory = parseOnePassMemory(response.content);
   const { cleanContent: thoughtCleanContent } = extractInlineThoughts(memory.story);
   if (!thoughtCleanContent.trim()) throw new Error("The model returned no visible story. No memory was applied.");
@@ -121,25 +94,37 @@ export async function applyProviderResponse({
 
   // Continuity lint: scan for risky claims and, if found, run a targeted LLM check.
   // Uses only the last 8 messages as context to keep tokens low.
-  // The check is part of producing this entry, so its usage belongs on the entry, not in background.
   let finalContent = thoughtCleanContent;
   let continuityCorrected = false;
-  let entryUsage = response.usage;
   if (mode !== "comms" && providerConfig && scanForRiskyClaims(rawContentForLint)) {
-    const lintResult = await runContinuityCheck(next, providerConfig, rawContentForLint, undefined, continuityCanon(preProviderContext));
+    const lintAccum = { promptTokens: 0, completionTokens: 0 };
+    const lintResult = await runContinuityCheck(next, providerConfig, rawContentForLint, lintAccum);
     if (lintResult.correctedText) {
       finalContent = lintResult.correctedText;
       continuityCorrected = true;
     }
-    entryUsage = combineProviderUsage(entryUsage, lintResult.usage);
+    if (lintAccum.promptTokens > 0 || lintAccum.completionTokens > 0) {
+      next = adventureReducer(next, { type: "ACCUMULATE_BACKGROUND_TOKENS", ...lintAccum });
+    }
   }
 
-  // This turn's own text: the player's input (when recorded) plus the response. Used for arc engagement.
-  const lastMessage = next.messages.at(-1);
-  const currentTurnText = [lastMessage?.role === "user" ? lastMessage.content : "", finalContent].filter(Boolean).join("\n");
-
   const messageId = assistantMessageId ?? createId("message");
-  // Memory is written by the background memory pass (see compactMemoryFallback.ts), never inline.
+  const memoryEnabled = mode !== "comms" && next.memoryDetectionSettings.enabled
+    && preProviderContext.sections.some(s => s.items.some(i => i.id === ONE_PASS_MEMORY_ID));
+  if (memoryEnabled) {
+    // Never apply memory from a discarded draft after a continuity rewrite.
+    const actions = onePassMemoryActions(next, preProviderContext, continuityCorrected ? [] : memory.updates,
+      finalContent, messageId, continuityCorrected ? "Memory skipped after continuity correction." : memory.error);
+    const before = next;
+    next = reduceActions(next, actions);
+    const visibleThoughts = next.brains.filter(b => b.printThoughts).flatMap(b => {
+      const old = before.brains.find(previous => previous.id === b.id);
+      return Object.entries(b.thoughts).filter(([key, value]) => old?.thoughts[key] !== value)
+        .map(([, value]) => "*[" + b.characterName + "]: " + value + "*");
+    });
+    if (visibleThoughts.length) finalContent += "\n\n" + visibleThoughts.join("\n");
+  }
+
 
   next = adventureReducer(next, {
     type: "ADD_MESSAGE",
@@ -148,28 +133,16 @@ export async function applyProviderResponse({
     inputMode: undefined,
     id: messageId,
     createdAt,
-    usage: entryUsage,
+    usage: response.usage,
   });
   next = adventureReducer(next, { type: "CONSUME_NEXT_TURN_NOTE" });
-  // Every rewrite of the narrator's draft is logged, so its effect on the prose can be judged.
-  const repairs = [
-    ...(response.repairNotes ?? []).map((note) => `Narration rewritten: ${note}`),
-    ...(continuityCorrected ? ["Narration rewritten by the continuity check"] : []),
-  ];
-  if (repairs.length) {
-    next = adventureReducer(next, { type: "LOG_EVALUATION_RESULT", entry: {
-      id: createId("eval"), turn: next.activeState.turn, createdAt: new Date().toISOString(), conditionsEvaluated: [],
-      conditionsFired: [], actionsExecuted: repairs, generatedContent: [], errors: [],
-    } });
-  }
 
   next = applyRuntimeEngines(next, { source: "output", text: finalContent });
 
-  // Arc Director: count only arc threads that took part in THIS turn's text. A mention lingering in
-  // the recent-history window is not new engagement, and pinned context never counts. The pacing step
-  // runs every story turn so a break that has played out can ask whether it resolved.
-  if (advanceArcPacing) {
-    const triggeredIds = currentTurnThreadIds(next, currentTurnText);
+  // Arc Director: count only Story Card / Brain ids whose trigger patterns matched turn text.
+  // Pinned or always-on context can be included without counting as engagement.
+  const triggeredIds = preProviderContext.triggeredThreadIds;
+  if (advanceArcPacing && triggeredIds.length > 0) {
     next = adventureReducer(next, { type: "ADVANCE_ARC_PACING", triggeredIds, turn: next.activeState.turn });
   }
 
@@ -209,12 +182,12 @@ export async function runTurnPipeline({
   }
 
   const preProviderContext = buildContext(next, {
-    outOfCharacter: mode === "comms",
+    skipThoughtCapture: mode === "comms",
     currentInput: currentInputForContext ?? (recordUserInput ? text : undefined),
     latestModelOutput: latestAssistantOutput(next),
   });
   const providerPayload = providerCue
-    ? appendUserCue(preProviderContext.messages, providerCue)
+    ? [...preProviderContext.messages, { role: "user" as const, content: providerCue }]
     : preProviderContext.messages;
   const response = await sendChatCompletion(providerPayload, next, preProviderContext);
 

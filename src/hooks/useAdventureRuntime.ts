@@ -1,18 +1,17 @@
-import { requiresGlmReasoning } from "../providers/openAICompatible";
+import { ONE_PASS_MEMORY_ID, MEMORY_OUTPUT_RESERVE } from "../memory/onePassMemory";
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { buildContext } from "../contextBuilder/contextBuilder";
 import { saveAdventure } from "../db/adventureDb";
 import { scanEventMemories } from "../memory/eventMemoryScan";
 import { regenerateProposalContent } from "../memory/memoryDetection";
-import { runBackgroundMemoryPass, type BackgroundMemoryPassResult } from "../memory/compactMemoryFallback";
+import { runCompactMemoryFallback } from "../memory/compactMemoryFallback";
 import { generateArcContinuations, generateArcDirector, generateArcFromHistory, generateBrainFromName as generateBrainEntry, generateComponentContent, pickConvergentContinuation } from "../ai/generators";
 import { PLOT_ESSENTIALS_BEST_PRACTICES } from "../ai/authoringBestPractices";
 import { runStoryCardAudit, type AuditRecommendation } from "../memory/storyCardAudit";
 import { runComponentAudit, type ComponentAuditRecommendation } from "../memory/componentAudit";
 import { runBrainAudit, type BrainAuditRecommendation } from "../memory/brainAudit";
-import { isNativeDeepSeekProvider, sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
+import { sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
 import { resolveBackgroundProviderConfig } from "../providers/backgroundProvider";
-import { adventureIdFromSessionId, combineProviderUsage, sessionIdForAdventure, subscribeProviderUsage } from "../providers/usage";
 import { adventureReducer } from "../state/adventureReducer";
 import {
   applyProviderResponse,
@@ -30,6 +29,7 @@ import {
   runManualPEComponentUpdate,
   runManualPlotEssentialsUpdate,
   runManualStoryCardsUpdate,
+  runMemoryCycle,
   runMemoryReconcile,
   runPlotAIBuilder,
   runRememberThis,
@@ -53,17 +53,14 @@ import { createId, nowIso } from "../utils/id";
 import type { RuntimeProviderSettings } from "../pages/pageTypes";
 
 function mergeProviderConfig(adventure: Adventure, settings: RuntimeProviderSettings): RuntimeProviderSettings {
-  const sessionId = sessionIdForAdventure(adventure.id);
+  const sessionId = `ai-story-teller:${adventure.id}`.slice(0, 256);
   return { ...adventure.modelConfig, ...settings, apiKey: settings.apiKey, sessionId };
 }
 
 export function applyResponseLengthHint(config: RuntimeProviderSettings, hint: number, hiddenReserveTokens = 0): RuntimeProviderSettings {
-  // Keep the user's total reasoning + answer budget; prompts and the response guard
-  // still enforce visible story length. Never silently increase the configured ceiling.
-  if (requiresGlmReasoning(config) && Number.isFinite(config.maxOutputTokens) && config.maxOutputTokens > 0) return config;
   const wordTarget = Number.isFinite(hint) ? Math.max(50, Math.min(500, Math.round(hint))) : 250;
   const visibleTokenCap = Math.ceil(wordTarget * 1.5) + 80;
-  const hiddenReserve = Math.max(0, Math.ceil(hiddenReserveTokens));
+  const hiddenReserve = Math.max(0, Math.min(MEMORY_OUTPUT_RESERVE, Math.ceil(hiddenReserveTokens)));
   const lengthBoundedCap = visibleTokenCap + hiddenReserve;
   const configuredCap = Number.isFinite(config.maxOutputTokens) && config.maxOutputTokens > 0
     ? config.maxOutputTokens
@@ -71,12 +68,8 @@ export function applyResponseLengthHint(config: RuntimeProviderSettings, hint: n
   return { ...config, maxOutputTokens: Math.min(configuredCap, lengthBoundedCap) };
 }
 
-/** Extra output budget for DeepSeek reasoning on out-of-character correction turns. */
-export const CORRECTION_REASONING_RESERVE = 2500;
-
-/** The narrator no longer writes hidden memory output, so no extra output budget is reserved. */
-function hiddenOutputReserveTokens(_context: ContextBuildResult): number {
-  return 0;
+function hiddenOutputReserveTokens(context: ContextBuildResult): number {
+  return context.sections.some(s => s.items.some(i => i.id === ONE_PASS_MEMORY_ID)) ? MEMORY_OUTPUT_RESERVE : 0;
 }
 
 function correctionConfig(config: RuntimeProviderSettings, responseLengthHint: number): RuntimeProviderSettings {
@@ -90,17 +83,28 @@ function correctionConfig(config: RuntimeProviderSettings, responseLengthHint: n
     responseLengthHint,
     0,
   );
-  if (requiresGlmReasoning(config)) return bounded;
   const correctionCap = Math.ceil(storyResponseWordLimit(responseLengthHint) * 1.15) + 35;
   return { ...bounded, maxOutputTokens: Math.min(bounded.maxOutputTokens, correctionCap) };
 }
 
-export { combineProviderUsage };
-
-/** Background token counts as a usage object, for attaching to the entry that triggered them. */
-function backgroundUsage(tokens: { promptTokens: number; completionTokens: number } | undefined): ProviderUsage | undefined {
-  if (!tokens || (tokens.promptTokens === 0 && tokens.completionTokens === 0)) return undefined;
-  return { ...tokens, totalTokens: tokens.promptTokens + tokens.completionTokens };
+export function combineProviderUsage(...usages: Array<ProviderUsage | undefined>): ProviderUsage | undefined {
+  const present = usages.filter((usage): usage is ProviderUsage => usage !== undefined);
+  if (present.length === 0) return undefined;
+  const promptTokens = present.reduce((sum, usage) => sum + usage.promptTokens, 0);
+  const completionTokens = present.reduce((sum, usage) => sum + usage.completionTokens, 0);
+  const totalTokens = present.reduce(
+    (sum, usage) => sum + (usage.totalTokens || usage.promptTokens + usage.completionTokens),
+    0,
+  );
+  const cacheRead = present.reduce((sum, usage) => sum + (usage.cacheReadTokens ?? 0), 0);
+  const cacheWrite = present.reduce((sum, usage) => sum + (usage.cacheCreationTokens ?? 0), 0);
+  return {
+    promptTokens,
+    completionTokens,
+    totalTokens,
+    ...(present.some((usage) => usage.cacheReadTokens !== undefined) ? { cacheReadTokens: cacheRead } : {}),
+    ...(present.some((usage) => usage.cacheCreationTokens !== undefined) ? { cacheCreationTokens: cacheWrite } : {}),
+  };
 }
 
 async function sendStoryCompletionWithGuard({
@@ -113,7 +117,7 @@ async function sendStoryCompletionWithGuard({
   config: RuntimeProviderSettings;
   responseLengthHint: number;
   playerInput: string;
-}): Promise<{ content: string; usage?: ProviderUsage; repairNotes?: string[] }> {
+}): Promise<{ content: string; usage?: ProviderUsage }> {
   const response = await sendOpenAICompatibleChatCompletion({ messages, config });
   const guard = evaluateStoryResponseGuard(response.content, responseLengthHint, playerInput);
   if (!guard.needsCorrection) return response;
@@ -131,7 +135,7 @@ async function sendStoryCompletionWithGuard({
     // default thinking mode can otherwise consume the entire small correction budget.
     thinking: "disabled",
   });
-  return { content: corrected.content, usage: combineProviderUsage(response.usage, corrected.usage), repairNotes: guard.reasons };
+  return { content: corrected.content, usage: combineProviderUsage(response.usage, corrected.usage) };
 }
 
 function stripThinkTags(text: string): string {
@@ -147,31 +151,6 @@ const CHALLENGE_PHRASES = [
   /that was never (said|established|agreed)/i,
   /where did (you|that) come from/i,
 ];
-
-/** A backlog drains at most this many bounded chunks per scheduled pass; the rest waits for the next slot. */
-export const MEMORY_PASS_MAX_CHUNKS_PER_RUN = 3;
-
-/**
- * Reducer actions for one memory-pass chunk. The marker advances only to the last message of a chunk
- * whose reply parsed completely; an unusable or cut-off reply counts a failure, which halves the next
- * chunk. A transport failure keeps both the marker and the chunk size.
- */
-export function memoryPassActions(snapshot: Adventure, pass: BackgroundMemoryPassResult): AdventureAction[] {
-  const usage = backgroundUsage(pass.tokenUsage);
-  const entry = [...snapshot.messages].reverse().find((message) => message.role === "assistant");
-  return [
-    ...pass.actions,
-    ...(pass.valid && pass.correctionIds.length ? [{ type: "MARK_CORRECTIONS_SEEN" as const, correctionIds: pass.correctionIds }] : []),
-    {
-      type: "SET_LAST_MEMORY_CYCLE_TURN",
-      turn: snapshot.activeState.turn,
-      messageId: pass.valid ? pass.processedThroughMessageId : undefined,
-      failed: pass.status === "invalid" || pass.status === "partial",
-    },
-    { type: "ACCUMULATE_BACKGROUND_TOKENS", promptTokens: pass.tokenUsage.promptTokens, completionTokens: pass.tokenUsage.completionTokens },
-    ...(usage && entry ? [{ type: "ADD_MESSAGE_BACKGROUND_USAGE" as const, messageId: entry.id, usage }] : []),
-  ];
-}
 
 function buildBackgroundConfig(adventure: Adventure, settings: RuntimeProviderSettings): RuntimeProviderSettings {
   const base = mergeProviderConfig(adventure, settings);
@@ -201,10 +180,6 @@ export function useAdventureRuntime(
   const wasHiddenRef = useRef(false);
   const pendingRetryRef = useRef(false);
   const continueTurnRef = useRef<(() => Promise<void>) | undefined>(undefined);
-  // Provider usage reported since the last write, keyed by adventure id. Folded into the adventure's
-  // lifetime spendTotal at the next persist, so no call is ever counted twice or dropped mid-turn.
-  const unrecordedSpendRef = useRef(new Map<string, ProviderUsage>());
-  const spendFlushTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => { adventureRef.current = adventure; }, [adventure]);
   useEffect(() => { providerSettingsRef.current = providerSettings; }, [providerSettings]);
@@ -225,44 +200,15 @@ export function useAdventureRuntime(
     return () => document.removeEventListener("visibilitychange", onVisibilityChange);
   }, []);
 
-  useEffect(() => {
-    // Every provider call lands here once. Calls made during a turn wait for the turn to finish and
-    // are merged into its result; anything else (background passes, manual tools) is written shortly after.
-    const unsubscribe = subscribeProviderUsage(({ sessionId, usage }) => {
-      const adventureId = adventureIdFromSessionId(sessionId);
-      if (!adventureId) return;
-      const pending = unrecordedSpendRef.current;
-      pending.set(adventureId, combineProviderUsage(pending.get(adventureId), usage)!);
-      scheduleSpendFlush();
-    });
-    return () => {
-      unsubscribe();
-      if (spendFlushTimerRef.current !== undefined) clearTimeout(spendFlushTimerRef.current);
-      spendFlushTimerRef.current = undefined;
-    };
-    // scheduleSpendFlush reads only refs, so the first render's copy stays correct.
-  }, []);
-
   const activeProviderConfig = useMemo(
     () => adventure ? mergeProviderConfig(adventure, providerSettings) : providerSettings,
     [adventure, providerSettings],
   );
 
-  /** Remove and return unrecorded spend for an adventure as a RECORD_SPEND action. */
-  function takeSpendActions(adventureId: string | undefined): AdventureAction[] {
-    if (!adventureId) return [];
-    const usage = unrecordedSpendRef.current.get(adventureId);
-    if (!usage) return [];
-    unrecordedSpendRef.current.delete(adventureId);
-    return [{ type: "RECORD_SPEND", usage }];
-  }
-
   const applyActionsAndPersist = useCallback((actions: AdventureAction[]) => {
-    // Mid-turn, the turn's own result will overwrite React state; leave spend for the turn to merge.
-    const spendActions = isSubmittingRef.current ? [] : takeSpendActions(adventureRef.current?.id);
     setAdventure((current) => {
       if (!current) return current;
-      const next = reduceActions(current, [...spendActions, ...actions]);
+      const next = reduceActions(current, actions);
       adventureRef.current = next;
       void saveAdventure(next).then(() => {
         setSaveStatus("saved");
@@ -271,23 +217,6 @@ export function useAdventureRuntime(
       return next;
     });
   }, [setAdventure, setSaveStatus, refreshAdventures]);
-  const applyActionsAndPersistRef = useRef(applyActionsAndPersist);
-  applyActionsAndPersistRef.current = applyActionsAndPersist;
-
-  /**
-   * Write unrecorded spend soon, unless a turn is running (the turn merges it into its own result).
-   * Also called when a turn ends, to catch spend from a turn that failed after a billed call.
-   * Reads only refs, so a stale closure is safe.
-   */
-  function scheduleSpendFlush() {
-    if (spendFlushTimerRef.current !== undefined) return;
-    spendFlushTimerRef.current = setTimeout(() => {
-      spendFlushTimerRef.current = undefined;
-      if (isSubmittingRef.current) return;
-      const id = adventureRef.current?.id;
-      if (id && unrecordedSpendRef.current.has(id)) applyActionsAndPersistRef.current([]);
-    }, 250);
-  }
 
   function queuePendingUpdate(actions: AdventureAction[], source: PendingAdventureUpdate["source"]) {
     const update: PendingAdventureUpdate = {
@@ -301,8 +230,8 @@ export function useAdventureRuntime(
   }
 
   function mergeQueuedUpdates(adventureState: Adventure): Adventure {
-    let next = reduceActions(adventureState, takeSpendActions(adventureState.id));
-    if (queuedUpdatesRef.current.length === 0) return next;
+    if (queuedUpdatesRef.current.length === 0) return adventureState;
+    let next = adventureState;
     for (const update of queuedUpdatesRef.current) {
       next = adventureReducer(next, { type: "QUEUE_PENDING_UPDATE", update });
     }
@@ -315,47 +244,37 @@ export function useAdventureRuntime(
     return { ...next, memoryDetectionSettings: { ...globalMemorySettingsRef.current } };
   }
 
-  /** Attribute a background pass to the story entry whose turn triggered it. */
-  function entryBackgroundUsageActions(
-    snapshot: Adventure,
-    tokens: { promptTokens: number; completionTokens: number } | undefined,
-  ): AdventureAction[] {
-    const usage = backgroundUsage(tokens);
-    const entry = [...snapshot.messages].reverse().find((message) => message.role === "assistant");
-    return usage && entry ? [{ type: "ADD_MESSAGE_BACKGROUND_USAGE", messageId: entry.id, usage }] : [];
-  }
-
-  /**
-   * The single automatic memory writer: one background call every `everyNTurns` story turns.
-   * It never cascades into the multi-call semantic memory cycle; a failed pass waits for the next slot.
-   */
-  async function startMemoryPass(snapshot: Adventure) {
+  async function startMemoryFallback(snapshot: Adventure) {
     if (!snapshot.memoryDetectionSettings.enabled || memoryFallbackInFlight.current.has(snapshot.id)) return;
-    const everyN = Math.max(1, snapshot.memoryDetectionSettings.everyNTurns ?? 3);
+    const latest = snapshot.activeState.evaluationLog[0];
+    const onePassFailed = latest?.actionsExecuted.includes("One-pass memory: no additional API call")
+      && latest.errors.some(message => /Memory envelope missing|Incomplete or oversized memory envelope|Invalid memory JSON/.test(message));
+    if (!onePassFailed) return;
+    const everyN = Math.max(1, snapshot.memoryDetectionSettings.everyNTurns ?? 1);
     const last = snapshot.activeState.lastMemoryCycleTurn;
-    // An author correction no pass has read yet runs the pass now, so rejected material is retracted promptly.
-    const unreadCorrection = (snapshot.activeState.corrections ?? []).some((c) => c.status === "active" && !c.seenByPass);
-    if (!unreadCorrection && last !== undefined && snapshot.activeState.turn - last < everyN) return;
+    if (last !== undefined && snapshot.activeState.turn - last < everyN) return;
 
     memoryFallbackInFlight.current.add(snapshot.id);
     try {
-      // A backlog is processed in bounded chunks, oldest first. Each chunk is acknowledged only by a
-      // complete reply; the first failure stops this run and the same start is retried next time.
-      let current = snapshot;
-      for (let chunk = 0; chunk < MEMORY_PASS_MAX_CHUNKS_PER_RUN; chunk += 1) {
-        const config = buildBackgroundConfig(current, providerSettingsRef.current);
-        const pass = await runBackgroundMemoryPass(current, config);
-        if (pass.status === "skipped") break;
-        const actions = memoryPassActions(snapshot, pass);
-        if (adventureRef.current?.id !== snapshot.id) return;
-        if (isSubmittingRef.current) queuePendingUpdate(actions, "memoryCycle");
-        else applyActionsAndPersist(actions);
-        if (!pass.valid || pass.remainingMessages === 0) break;
-        current = reduceActions(current, actions);
+      const config = buildBackgroundConfig(snapshot, providerSettingsRef.current);
+      const compact = await runCompactMemoryFallback(snapshot, config);
+      const compactUsage: AdventureAction = {
+        type: "ACCUMULATE_BACKGROUND_TOKENS",
+        promptTokens: compact.tokenUsage.promptTokens,
+        completionTokens: compact.tokenUsage.completionTokens,
+      };
+      const actions = compact.valid
+        ? [...compact.actions, { type: "SET_LAST_MEMORY_CYCLE_TURN" as const, turn: snapshot.activeState.turn }, compactUsage]
+        : [...(await runMemoryCycle(snapshot, config)).actions, compactUsage];
+      if (adventureRef.current?.id !== snapshot.id) return;
+      if (isSubmittingRef.current) {
+        queuePendingUpdate(actions, "memoryCycle");
+        return;
       }
-    } catch (passError) {
+      applyActionsAndPersist(actions);
+    } catch (fallbackError) {
       if (adventureRef.current?.id === snapshot.id) {
-        setError(passError instanceof Error ? passError.message : "Background memory pass failed.");
+        setError(fallbackError instanceof Error ? fallbackError.message : "Automatic memory fallback failed.");
       }
     } finally {
       memoryFallbackInFlight.current.delete(snapshot.id);
@@ -380,7 +299,7 @@ export function useAdventureRuntime(
       const tokenAction: AdventureAction | undefined = result.tokenUsage
         ? { type: "ACCUMULATE_BACKGROUND_TOKENS", promptTokens: result.tokenUsage.promptTokens, completionTokens: result.tokenUsage.completionTokens }
         : undefined;
-      const allActions = [...result.actions, stampAction, ...(tokenAction ? [tokenAction] : []), ...entryBackgroundUsageActions(snapshot, result.tokenUsage)];
+      const allActions = [...result.actions, stampAction, ...(tokenAction ? [tokenAction] : [])];
       if (isSubmittingRef.current) {
         queuePendingUpdate(allActions, "semanticEvaluation");
         return;
@@ -459,15 +378,7 @@ export function useAdventureRuntime(
             hiddenOutputReserveTokens(context),
           );
           if (mode === "comms") {
-            const reasoning = Boolean(storyConfig.reasoningForCorrections) && isNativeDeepSeekProvider(storyConfig);
-            return sendOpenAICompatibleChatCompletion({
-              messages,
-              // Reasoning tokens count as output, so give them room beyond the visible length cap.
-              config: reasoning
-                ? applyResponseLengthHint(mergeProviderConfig(snapshot, providerSettings), snapshot.activeState.responseLengthHint, CORRECTION_REASONING_RESERVE)
-                : storyConfig,
-              ...(reasoning ? { thinking: "enabled" as const } : {}),
-            });
+            return sendOpenAICompatibleChatCompletion({ messages, config: storyConfig });
           }
           return sendStoryCompletionWithGuard({
             messages,
@@ -485,7 +396,7 @@ export function useAdventureRuntime(
       setSaveStatus("saved");
       isSubmittingRef.current = false;
       if (mode !== "comms") {
-        void startMemoryPass(next);
+        void startMemoryFallback(next);
         void startSemanticEvaluation(next);
         void checkArcContinuation(next);
       }
@@ -512,7 +423,6 @@ export function useAdventureRuntime(
     } finally {
       setLoading(false);
       isSubmittingRef.current = false;
-      scheduleSpendFlush();
       void refreshAdventures();
     }
   }
@@ -523,9 +433,8 @@ export function useAdventureRuntime(
     setLoading(true);
     setError(undefined);
 
-    // Built outside the try so a failed continue keeps flushed updates and recorded spend.
-    const base = flushPendingBeforeContext(adventure);
     try {
+      const base = flushPendingBeforeContext(adventure);
       const result = await runTurnPipeline({
         adventure: base,
         text: "[continue]",
@@ -556,17 +465,16 @@ export function useAdventureRuntime(
       await saveAdventure(next);
       setSaveStatus("saved");
       isSubmittingRef.current = false;
-      void startMemoryPass(next);
+      void startMemoryFallback(next);
       void startSemanticEvaluation(next);
       void checkArcContinuation(next);
     } catch (providerError) {
       setError(providerError instanceof Error ? providerError.message : "Continue failed.");
-      setAdventure(base);
-      await saveAdventure(base);
+      setAdventure(adventure);
+      await saveAdventure(adventure);
     } finally {
       setLoading(false);
       isSubmittingRef.current = false;
-      scheduleSpendFlush();
       void refreshAdventures();
     }
   }
@@ -611,7 +519,7 @@ export function useAdventureRuntime(
       await saveAdventure(next);
       setSaveStatus("saved");
       isSubmittingRef.current = false;
-      void startMemoryPass(next);
+      void startMemoryFallback(next);
       void startSemanticEvaluation(next);
     } catch (providerError) {
       setError(providerError instanceof Error ? providerError.message : "Regeneration failed.");
@@ -619,7 +527,6 @@ export function useAdventureRuntime(
     } finally {
       setLoading(false);
       isSubmittingRef.current = false;
-      scheduleSpendFlush();
     }
   }
 

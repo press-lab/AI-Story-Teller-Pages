@@ -11,10 +11,7 @@ export interface Message {
   role: MessageRole;
   content: string;
   inputMode?: InputMode;
-  /** Every call that produced this entry: story call, length/agency rewrite, and continuity check. */
   usage?: ProviderUsage;
-  /** Background calls this entry triggered (memory pass, rule evaluation). Can land after the next turn starts. */
-  backgroundUsage?: ProviderUsage;
   createdAt: ISODateString;
 }
 
@@ -27,8 +24,6 @@ export type ComponentType =
   | "immediateMomentum"
   | "authorNote"
   | "memory"
-  | "storyState"
-  | "sceneDirection"
   | "custom";
 
 export type MemoryUpdateOperation = "create" | "replace" | "append" | "patch";
@@ -45,10 +40,8 @@ export interface ArcPacingState {
   threadEngagement: Record<string, number>;
   /** Ask-mode: the break gate has opened and is awaiting the player's confirmation. */
   pendingBreak: boolean;
-  /** Turn the arc entered the break phase. Elapsed turns surface a resolve prompt; they never resolve the arc alone. */
+  /** Turn the arc entered the break phase, used to time the transition to aftermath. */
   brokeAtTurn?: number;
-  /** The break has run its minimum length; awaiting an explicit Resolve (or an approved resolution suggestion). */
-  pendingResolution?: boolean;
 }
 
 export type ArcPace = "short" | "medium" | "long" | "epic";
@@ -236,12 +229,6 @@ export interface BrainEntry {
   lastGeneratedUpdatePreview?: string;
   /** When true, thought tags captured from this character are appended visibly to the story output. */
   printThoughts?: boolean;
-  /**
-   * Knowledge boundary: short "Knows: … / Does not know: …" lines maintained by the background
-   * memory pass (full replacement, never appended). Injected with the brain so the narrator keeps
-   * the character inside what they actually witnessed or were told.
-   */
-  knowledge?: string;
   createdAt: ISODateString;
   updatedAt: ISODateString;
 }
@@ -315,8 +302,6 @@ export interface TokenBudgetSettings {
   allowSystemToDropUnpinnedTriggeredCards: boolean;
   allowSystemToTruncateSummary: boolean;
   recentMessageWindow: number;
-  /** Newest messages kept ahead of unprotected memory when the budget is tight. 0 = drop recent messages first (legacy). */
-  minRecentMessages?: number;
   sectionBudgets: Partial<Record<ContextSectionKind, number>>;
   /** Automatically regenerate the rolling summary in the background every N turns. */
   autoSummarize: boolean;
@@ -351,11 +336,6 @@ export interface ProviderConfig {
   sessionId?: string;
   /** OpenRouter-only provider routing preference. Empty/undefined keeps OpenRouter's balanced default. */
   openRouterProviderSort?: OpenRouterProviderSort;
-  /**
-   * DeepSeek only: turn on the model's reasoning mode for out-of-character (comms) turns, where the
-   * narrator must reconcile a correction with continuity. Story turns keep reasoning off.
-   */
-  reasoningForCorrections?: boolean;
 }
 
 export interface ProviderRequestThrottle {
@@ -406,10 +386,6 @@ export interface MemoryDetectionSettings {
   enabled: boolean;
   generateContent: boolean;
   everyNTurns: number;
-  /** The background memory pass may suggest one exceptional Event Memory per pass (always reviewed). Default true. */
-  suggestEventMemories?: boolean;
-  /** Debug: store the raw memory-pass request and reply on each evaluation log entry (truncated). Default false. */
-  debugCapture?: boolean;
 }
 
 export type ForceIncludeTargetType = "component" | "storyCard" | "brain";
@@ -462,50 +438,10 @@ export type MemoryProposalType =
   | "arcProposal"
   | "plotPressureUpdate"
   | "plotMomentumUpdate"
-  | "storyStateUpdate"
-  | "sceneDirectionUpdate"
   | "summaryUpdate"
   | "ignore";
 
 export type MemoryProposalStatus = "pending" | "approved" | "rejected" | "ignored";
-
-/**
- * An author correction: an out-of-character instruction, or a story edit that removed text memory had
- * already recorded. The narrator sees active corrections for a few turns; the memory pass uses them as
- * evidence to retract or rewrite affected memory, then marks them seen.
- */
-export interface CorrectionEntry {
-  id: string;
-  text: string;
-  source: "outOfCharacter" | "messageEdited" | "messageErased";
-  messageId?: string;
-  turn: number;
-  createdAt: ISODateString;
-  status: "active" | "reconciled" | "dismissed";
-  /** A valid memory pass has read it. It retires once seen and a few turns old. */
-  seenByPass?: boolean;
-}
-
-/**
- * One live situation the story has not settled yet ("Open threads"). Kept as data beside the Story State
- * text so each thread has a stable id, can be resolved without matching prose, and keeps its history.
- */
-export interface StoryThread {
-  /** Stable short id, "t1", "t2", … */
-  id: string;
-  text: string;
-  status: "open" | "resolved";
-  createdTurn: number;
-  resolvedTurn?: number;
-  /** Message the thread was recorded from, when the memory pass opened it. */
-  sourceTurnId?: string;
-  createdAt: ISODateString;
-  updatedAt: ISODateString;
-}
-
-/** The labeled lines of a Story State block, in their canonical order. */
-export const STORY_STATE_LABELS = ["Day/Time", "Location", "Relationships", "Arrangements", "Has met", "Open threads"] as const;
-export type StoryStateLabel = typeof STORY_STATE_LABELS[number];
 
 export interface MemoryProposal {
   /** Consequential automatic changes require explicit review, regardless of generic auto-approval. */
@@ -529,27 +465,6 @@ export interface MemoryProposal {
   autoUpdateCooldownTurns?: number;
   storyCardPatch?: Partial<Pick<StoryCard, "active" | "pinned" | "protected" | "inclusionPolicy" | "priority" | "state" | "compactKind" | "compactStatus">>;
   componentPatch?: Partial<Pick<ComponentEntry, "active" | "pinned" | "protected" | "inclusionPolicy" | "priority" | "state" | "autoUpdate" | "autoUpdateCooldownTurns">>;
-  /**
-   * Replacement proposals only: the target's content when the suggestion was drafted. If the target
-   * changed since, auto-approval holds the proposal for review instead of overwriting the newer edit.
-   */
-  baseContent?: string;
-  /** Living-card fact supersession, re-applied against the card's current content at approval time. */
-  supersedes?: { oldFact: string; newFact: string };
-  /** How the source text supports the update: an established fact, a character's belief, a stated intention, or an author correction. */
-  claim?: "fact" | "belief" | "intention" | "correction";
-  /**
-   * storyStateUpdate only: a targeted edit of one labeled Story State line instead of a full rewrite.
-   * "set" replaces the line; "add" / "remove" change one item of a list line (Has met, Open threads).
-   */
-  stateLine?: { label: StoryStateLabel; op: "set" | "add" | "remove" };
-  /**
-   * storyStateUpdate only: a change to the structured open-thread list (`Adventure.storyThreads`).
-   * "add" opens a thread with `content`; "update" rewrites one thread; "resolve" closes the listed threads.
-   */
-  threadOp?: { op: "add" } | { op: "update"; threadId: string } | { op: "resolve"; threadIds: string[] };
-  /** currentArcUpdate only: the memory pass judged the arc's climax resolved. Approval moves the arc to aftermath. */
-  resolvesArc?: boolean;
   createdAt: ISODateString;
   updatedAt: ISODateString;
 }
@@ -615,10 +530,6 @@ export interface EvaluationLogEntry {
   actionsExecuted: string[];
   generatedContent: GeneratedContentPreview[];
   errors: string[];
-  /** Background memory pass request/response facts: route, budgets, finish reason, parse result, turn range. */
-  diagnostics?: string[];
-  /** Raw request and reply, only when Settings → Automatic memory → "Capture raw memory-pass requests" is on. */
-  rawCapture?: { request: string; response: string };
 }
 
 export interface PendingAdventureUpdate {
@@ -669,24 +580,10 @@ export interface ActiveState {
   responseLengthHint: ResponseLengthHint;
   /** Cumulative token usage for background calls (brain updates, evaluation, summary, scene state). */
   backgroundTokenUsage: { promptTokens: number; completionTokens: number };
-  /**
-   * Lifetime spend: every provider call billed to this adventure, counted once at the provider.
-   * Includes discarded regenerations, failed rewrites, and manual AI tools. Never decreases.
-   */
-  spendTotal?: ProviderUsage;
   /** Set when the player's input matches a continuity challenge phrase. Consumed after one turn. */
   challengeMode: boolean;
   /** Turn number when the memory cycle last ran for this adventure. */
   lastMemoryCycleTurn?: number;
-  /** Id of the newest message a completed memory pass processed; the next pass starts after it. */
-  lastMemoryPassMessageId?: string;
-  /**
-   * Consecutive memory passes since the marker last moved whose reply was unusable or cut off.
-   * Each failure halves the next chunk; it never widens it. Reset when the marker advances.
-   */
-  memoryPassFailures?: number;
-  /** Author corrections the memory pass and narrator must honor until reconciled. */
-  corrections?: CorrectionEntry[];
   /** Turn number when semantic evaluation last ran. */
   lastSemanticEvalTurn?: number;
   /** Turn number when scene state last ran. */
@@ -706,8 +603,6 @@ export interface Adventure {
   components: ComponentEntry[];
   storyCards: StoryCard[];
   brains: BrainEntry[];
-  /** Open threads, kept as data beside the Story State text. Resolved threads stay for history. */
-  storyThreads: StoryThread[];
   triggerRules: TriggerRule[];
   rollingSummary: RollingSummary;
   sceneState?: RollingSummary;
@@ -730,10 +625,6 @@ export interface MemoryAutoApproveSettings {
   plotMomentumUpdate: boolean;
   storyCard: boolean;
   brainUpdate: boolean;
-  /** Story State rewrites from the background memory pass. Default true: the block is only useful if it stays current. */
-  storyStateUpdate: boolean;
-  /** Scene Direction rewrites from the background memory pass. Default true: it is short-lived steering, replaced every pass. */
-  sceneDirectionUpdate?: boolean;
 }
 
 export interface AdventureThumbnailImage {
@@ -787,13 +678,7 @@ export type ContextSectionKind =
   | "nextTurnNote"    // J. Next Output Bias
   | "recentMessages"  // K. Recent Messages
   | "sceneState"      // L. Scene State — current location, characters, situation (deprecated)
-  | "pinnedStoryCards" // F0. Pinned / always Story Cards — stable prefix, cache-friendly
-  | "storyState"      // S. Story State — authoritative current facts, rewritten by the background memory pass
-  | "sceneDirection"  // S2. Scene Direction — who is present, NPC aims, the open choice; per-turn block
-  | "activePressure"  // P. Active Pressure — per-turn block so stake changes do not break the cached prefix
-  | "arcProgress"     // C3. Arc Progress — the current arc's development log, per-turn block
-  | "challengeMode"   // M. Continuity Challenge — one-turn verification instruction
-  | "corrections";    // N. Author Corrections — recent out-of-character corrections, per-turn block
+  | "challengeMode";  // M. Continuity Challenge — one-turn verification instruction
 
 export type ExcludedReason = "budget_exceeded" | "inactive" | "cooldown" | "not_triggered";
 
@@ -877,8 +762,6 @@ export type BrainPatch = {
   emotionalInterpretation?: string;
   recentDevelopments?: string;
   notes?: string;
-  /** Replaces the brain's knowledge-boundary text. Always applied as a replacement, never appended. */
-  knowledge?: string;
   thoughts?: Record<string, string | null>;
 };
 
@@ -955,23 +838,13 @@ export type AdventureAction =
   | { type: "SET_STATE_FLAG"; key: string; value: string | number | boolean }
   | { type: "SET_RESPONSE_LENGTH_HINT"; hint: number }
   | { type: "ACCUMULATE_BACKGROUND_TOKENS"; promptTokens: number; completionTokens: number }
-  | { type: "RECORD_SPEND"; usage: ProviderUsage }
-  | { type: "ADD_MESSAGE_BACKGROUND_USAGE"; messageId: string; usage: ProviderUsage }
   | { type: "SET_NEXT_TURN_NOTE"; note: Partial<NextTurnNote> }
   | { type: "CLEAR_NEXT_TURN_NOTE" }
   | { type: "CONSUME_NEXT_TURN_NOTE" }
   | { type: "QUEUE_PENDING_UPDATE"; update: PendingAdventureUpdate }
   | { type: "FLUSH_PENDING_UPDATES" }
   | { type: "SET_CHALLENGE_MODE" }
-  /** messageId advances the memory-pass marker (and clears failures); failed counts a content failure on the current chunk. */
-  | { type: "SET_LAST_MEMORY_CYCLE_TURN"; turn: number; messageId?: string; failed?: boolean }
-  | { type: "MARK_CORRECTIONS_SEEN"; correctionIds: string[] }
-  | { type: "ADD_STORY_THREAD"; text: string }
-  | { type: "UPDATE_STORY_THREAD"; threadId: string; text: string }
-  | { type: "RESOLVE_STORY_THREAD"; threadId: string }
-  | { type: "REOPEN_STORY_THREAD"; threadId: string }
-  | { type: "DELETE_STORY_THREAD"; threadId: string }
-  | { type: "DISMISS_CORRECTION"; correctionId: string }
+  | { type: "SET_LAST_MEMORY_CYCLE_TURN"; turn: number }
   | { type: "SET_LAST_SEMANTIC_EVAL_TURN"; turn: number }
   | { type: "SET_LAST_SCENE_STATE_TURN"; turn: number }
   | { type: "RESET_RUNTIME_STATE" }

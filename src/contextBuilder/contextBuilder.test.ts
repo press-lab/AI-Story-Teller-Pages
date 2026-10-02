@@ -3,7 +3,7 @@ import type { Adventure, MemoryPriorityMode, TokenBudgetSettings } from "../type
 import { createDefaultAdventure, defaultNarrationRulesContent, makeBrain, makeComponent, makeStoryCard } from "../state/defaults";
 import { approximateTokenCount } from "../tokenizer/approximateTokenCount";
 import { goldenAdventure, makeMemoryProposal } from "../test/goldenAdventure";
-import { buildContext, extractInlineThoughts, TURN_CONTEXT_CLOSE, TURN_CONTEXT_OPEN, TURN_CONTEXT_SECTIONS } from "./contextBuilder";
+import { buildContext, buildMemoryTagInstruction, extractInlineThoughts } from "./contextBuilder";
 
 function adventureForContext(): Adventure {
   const always = makeComponent({ title: "Always", content: "Always component", alwaysOn: true, active: true, priority: 100 });
@@ -48,16 +48,16 @@ function expectPreviewMatchesPayload(adventure: Adventure, mode: MemoryPriorityM
     }),
   } satisfies Adventure;
   const result = buildContext(configured, { currentInput: "signal" });
-  const payloadText = result.messages.map((message) => message.content).join("\n");
+  const systemPayload = result.messages[0].content;
   for (const section of result.sections.filter((entry) => entry.id !== "recentMessages" && entry.content.length > 0)) {
-    const target = TURN_CONTEXT_SECTIONS.has(section.id) ? payloadText : result.messages[0].content;
-    expect(target).toContain(section.content);
+    expect(systemPayload).toContain(section.content);
   }
   const includedRecent = [...(result.sections.find((section) => section.id === "recentMessages")?.items ?? [])]
     .reverse()
     .map((item) => item.content);
   const recentPayload = result.messages.slice(1, 1 + includedRecent.length).map((message) => message.content);
-  recentPayload.forEach((content, index) => expect(content.endsWith(includedRecent[index])).toBe(true));
+  expect(recentPayload).toEqual(includedRecent);
+  expect(result.messages).toHaveLength(1 + includedRecent.length);
 }
 
 function expectExactPayloadFromPreview(adventure: Adventure, mode: MemoryPriorityMode) {
@@ -73,25 +73,17 @@ function expectExactPayloadFromPreview(adventure: Adventure, mode: MemoryPriorit
     currentInput: "Margo repeats hedge prince to Seth.",
     latestModelOutput: "The Beast howls at the ward.",
   });
-  const render = (filter: (id: string) => boolean) => result.sections
-    .filter((entry) => entry.id !== "recentMessages" && entry.content.length > 0 && filter(entry.id))
-    .sort((a, b) => a.order - b.order)
+  const contextText = result.sections
+    .filter((entry) => entry.id !== "recentMessages" && entry.content.length > 0)
     .map((entry) => `# ${entry.label}\n${entry.content}`)
     .join("\n\n");
-  const expectedSystem = render((id) => !TURN_CONTEXT_SECTIONS.has(id as never));
-  const turnText = render((id) => TURN_CONTEXT_SECTIONS.has(id as never));
+  const expectedSystem = contextText;
   const recentItems = [...(result.sections.find((section) => section.id === "recentMessages")?.items ?? [])].reverse();
   const expectedRecent = recentItems.flatMap((item) => {
     if (item.id === "opening-scene") return [{ role: "assistant" as const, content: configured.openingScene }];
     const message = configured.messages.find((entry) => entry.id === item.id);
     return message ? [{ role: message.role, content: message.content }] : [];
   });
-  if (turnText) {
-    const block = `${TURN_CONTEXT_OPEN}\n${turnText}\n${TURN_CONTEXT_CLOSE}`;
-    const last = expectedRecent.at(-1);
-    if (last?.role === "user") expectedRecent[expectedRecent.length - 1] = { ...last, content: `${block}\n\n${last.content}` };
-    else expectedRecent.push({ role: "user" as const, content: block });
-  }
 
   expect(result.messages[0].role).toBe("system");
   expect(result.messages[0].content).toBe(expectedSystem);
@@ -99,89 +91,6 @@ function expectExactPayloadFromPreview(adventure: Adventure, mode: MemoryPriorit
 }
 
 describe("buildContext", () => {
-  describe("current-truth, knowledge and cache invariants", () => {
-    function storyStateAdventure(content: string): Adventure {
-      const base = createDefaultAdventure("Current truth");
-      const state = base.components.find((component) => component.type === "storyState")!;
-      return {
-        ...base,
-        components: base.components.map((component) => component.id === state.id ? { ...component, content } : component),
-        messages: [{ id: "m1", role: "user", content: "I head upstairs.", createdAt: "2026-01-01T00:00:00.000Z" }],
-      };
-    }
-
-    it("always includes a filled Story State in the turn context, never in the cached prefix", () => {
-      const result = buildContext(storyStateAdventure("Relationships: Seth and Edythe are together.\nArrangements: Seth sleeps in Edythe's room."), { currentInput: "Nothing that triggers anything." });
-      expect(result.sections.find((section) => section.id === "storyState")?.items).toHaveLength(1);
-      expect(result.messages[0].content).not.toContain("sleeps in Edythe's room");
-      expect(result.messages.at(-1)?.content).toContain("sleeps in Edythe's room");
-      expect(result.messages.at(-1)?.content.startsWith(TURN_CONTEXT_OPEN)).toBe(true);
-      expect(result.messages.at(-1)?.content.endsWith("I head upstairs.")).toBe(true);
-    });
-
-    it("omits an empty Story State and protects a filled one from budget cuts", () => {
-      expect(buildContext(storyStateAdventure(""), {}).sections.find((section) => section.id === "storyState")?.items).toHaveLength(0);
-      const tight = { ...storyStateAdventure("Day/Time: Monday night."), tokenBudgetSettings: budget({ maxContextTokens: 10 }) };
-      expect(buildContext(tight, {}).sections.find((section) => section.id === "storyState")?.items).toHaveLength(1);
-    });
-
-    it("injects each triggered character's knowledge boundary with their thoughts", () => {
-      const brain = makeBrain({ characterName: "Edythe", thoughts: { t1: "1 → I watched the street." }, knowledge: "Knows: Seth's office address.\nDoes not know: whether Marcus drives.", active: true });
-      const adventure = { ...createDefaultAdventure("Knowledge"), brains: [brain] } satisfies Adventure;
-      const content = buildContext(adventure, { currentInput: "Edythe waits by the car." }).sections.find((section) => section.id === "brains")?.items[0]?.content ?? "";
-      expect(content).toContain("I watched the street.");
-      expect(content).toContain("Does not know: whether Marcus drives.");
-    });
-
-    it("keeps the system prefix and the start of the history byte-identical from one turn to the next", () => {
-      const messages = Array.from({ length: 40 }, (_, i) => ({
-        id: `m${i}`,
-        role: (i % 2 === 0 ? "user" : "assistant") as "user" | "assistant",
-        content: `Turn ${i}: ${"words ".repeat(20)}`,
-        createdAt: "2026-01-01T00:00:00.000Z",
-      }));
-      const card = makeStoryCard({ id: "card-lantern", title: "Lantern", content: "The lantern is cursed.", keys: ["lantern"], active: true });
-      const pinned = makeStoryCard({ id: "card-core", title: "Core", content: "Core identity.", pinned: true, active: true });
-      const base = {
-        ...createDefaultAdventure("Cache"),
-        storyCards: [card, pinned],
-        messages,
-        tokenBudgetSettings: budget({ maxContextTokens: 50000, maxRecentMessages: 80, recentMessageWindow: 12, sectionBudgets: { recentMessages: 800 } }),
-      } satisfies Adventure;
-      const turnA = buildContext(base, { currentInput: "I light the lantern." });
-      const next = {
-        ...base,
-        messages: [
-          ...messages,
-          { id: "m40", role: "user" as const, content: "I set it down.", createdAt: "2026-01-01T00:00:00.000Z" },
-          { id: "m41", role: "assistant" as const, content: "The flame gutters.", createdAt: "2026-01-01T00:00:00.000Z" },
-        ],
-      };
-      const turnB = buildContext(next, { currentInput: "Something unrelated." });
-      // The triggered card changed between turns, yet the prefix did not.
-      expect(turnA.sections.find((section) => section.id === "storyCards")?.items).toHaveLength(1);
-      expect(turnB.sections.find((section) => section.id === "storyCards")?.items).toHaveLength(0);
-      expect(turnB.messages[0]).toEqual(turnA.messages[0]);
-      expect(turnB.messages[1]).toEqual(turnA.messages[1]);
-      expect(turnA.messages[0].content).toContain("Core identity.");
-    });
-
-    it("withholds arc direction and injects the continuity check on an out-of-character turn", () => {
-      const arc = {
-        ...makeComponent({ title: "Current Story Arc", type: "currentArc", content: "The hunter circles.", active: true }),
-        arcSimmerInstruction: "Keep the hunter off-screen and simmering.",
-        arcState: { phase: "simmer" as const, tier: 0, threadEngagement: {}, pendingBreak: false },
-      };
-      const adventure = { ...createDefaultAdventure("OOC"), components: [arc] } satisfies Adventure;
-      const inCharacter = buildContext(adventure, { currentInput: "I wait." });
-      const outOfCharacter = buildContext(adventure, { currentInput: "[Out of Character: complete the arc already]", outOfCharacter: true });
-      expect(inCharacter.messages[0].content).toContain("Keep the hunter off-screen");
-      expect(outOfCharacter.messages.map((message) => message.content).join("\n")).not.toContain("Keep the hunter off-screen");
-      expect(outOfCharacter.messages.at(-1)?.content).toContain("[CONTINUITY CHALLENGE]");
-      expect(outOfCharacter.messages[0].content).toContain("OUT-OF-CHARACTER MESSAGES");
-    });
-  });
-
   it("uses Narration Rules as a complete system contract without requiring AI Instructions", () => {
     const narrationRules = makeComponent({
       id: "narration-only",
@@ -220,7 +129,7 @@ describe("buildContext", () => {
     } satisfies Adventure;
 
     const result = buildContext(adventure, { currentInput: "Jinx waits beside the archive desk." });
-    const payload = result.messages.map((message) => message.content).join("\n");
+    const payload = result.messages[0].content;
 
     expect(payload).toContain("Treat this adventure's context as the only canon");
     expect(payload).toContain("Do not import biography, relationships, motives, powers, locations, or events from model training data.");
@@ -231,28 +140,23 @@ describe("buildContext", () => {
     expect(defaultNarrationRulesContent).not.toContain("the player decides what happens next");
   });
 
-  it("assembles sections in the required deterministic order: stable prefix, history, then turn context", () => {
+  it("assembles sections in the required deterministic order (A–M)", () => {
     const result = buildContext(adventureForContext(), { currentInput: "lantern" });
-    // Stable sections form the cached system prefix; per-turn sections follow the history so the
-    // prefix stays byte-identical across turns. Author's Note stays closest to the newest turn.
+    // All 13 sections must exist in the correct order
+    // Author's Note is placed just before recent messages (AID-style) for maximum recency influence
+    // Continuity Challenge (M) sits between Next Output Bias and Recent Messages when active
     expect(result.sections.map((section) => section.id)).toEqual([
       "system",
       "aiInstructions",
       "plotEssentials",
       "currentArc",
       "components",
-      "pinnedStoryCards",
-      "recentMessages",
-      "storyState",
-      "sceneDirection",
-      "activePressure",
-      "arcProgress",
       "storyCards",
       "brains",
       "authorNote",
       "nextTurnNote",
-      "corrections",
       "challengeMode",
+      "recentMessages",
     ]);
     expect(result.messages[0].role).toBe("system");
     // adventureForContext uses generic custom-type components (always + pinned), so they land in "components"
@@ -279,6 +183,7 @@ describe("buildContext", () => {
     expect(result.sections.find((section) => section.id === "system")?.items.map((item) => item.id)).toEqual([
       "system-shell",
       "turn-scope-contract",
+      "one-pass-memory",
     ]);
     // Each type has its own section
     expect(result.sections.find((section) => section.id === "aiInstructions")?.items.map((item) => item.id)).toEqual(["c-ai"]);
@@ -343,9 +248,7 @@ describe("buildContext", () => {
       latestModelOutput: "The moon bell rings.",
     });
     const triggeredIds = result.sections.find((section) => section.id === "storyCards")?.items.map((item) => item.id);
-    expect(triggeredIds).toEqual(["card-input", "card-output", "card-history", "card-regex"]);
-    // Pinned cards do not depend on this turn's text, so they live in the cached prefix.
-    expect(result.sections.find((section) => section.id === "pinnedStoryCards")?.items.map((item) => item.id)).toEqual(["card-pinned"]);
+    expect(triggeredIds).toEqual(["card-input", "card-output", "card-history", "card-pinned", "card-regex"]);
     expect(result.triggeredThreadIds).toEqual(["card-input", "card-output", "card-history", "card-regex"]);
     expect(result.excludedItems).toContainEqual(expect.objectContaining({ id: "card-inactive", reason: "inactive" }));
     expect(result.excludedItems).toContainEqual(expect.objectContaining({ id: "card-unmatched", reason: "not_triggered" }));
@@ -391,7 +294,7 @@ describe("buildContext", () => {
     const adventure = { ...createDefaultAdventure("Compact Context"), storyCards: [pact] };
 
     const result = buildContext(adventure);
-    const content = result.sections.find((section) => section.id === "pinnedStoryCards")?.items[0]?.content ?? "";
+    const content = result.sections.find((section) => section.id === "storyCards")?.items[0]?.content ?? "";
 
     expect(content).toContain("Compact: pact (active)");
     expect(content).toContain("Core facts:");
@@ -422,7 +325,7 @@ describe("buildContext", () => {
     const result = buildContext(adventure);
     const recentIds = result.sections.find((section) => section.id === "recentMessages")?.items.map((item) => item.id);
     expect(recentIds).toEqual(["new"]);
-    expect(result.excludedItems.filter((item) => item.reason === "budget_exceeded").map((item) => item.id)).toEqual(["old", "middle"]);
+    expect(result.excludedItems.filter((item) => item.reason === "budget_exceeded").map((item) => item.id)).toEqual(["old", "middle", "one-pass-memory"]);
   });
 
   it("rolling summary is not injected into context (deprecated)", () => {
@@ -452,14 +355,11 @@ describe("buildContext", () => {
       brains: [],
       messages: [],
       rollingSummary: { content: "", updatedAt: "2026-01-01T00:00:00.000Z" },
-      tokenBudgetSettings: budget({ maxContextTokens: 100000, maxRecentMessages: 0, recentMessageWindow: 0, sectionBudgets: {} }),
+      // Budget sized to fit system rows + the high-priority card only.
+      tokenBudgetSettings: budget({ maxContextTokens: 920, maxRecentMessages: 0, recentMessageWindow: 0, sectionBudgets: {} }),
     } satisfies Adventure;
-    // Budget sized to fit system rows + the high-priority card only.
-    const unbounded = buildContext(adventure, { currentInput: "signal" });
-    const lowTokens = unbounded.sections.flatMap((section) => section.items).find((entry) => entry.id === low.id)?.tokenEstimate ?? 0;
-    adventure.tokenBudgetSettings = budget({ ...adventure.tokenBudgetSettings, maxContextTokens: unbounded.totalEstimatedTokens - lowTokens });
 
-    const result = buildContext(adventure, { currentInput: "signal" });
+    const result = buildContext(adventure, { currentInput: "signal", skipThoughtCapture: true });
     const remainingTitles = result.sections.find((section) => section.id === "storyCards")?.items.map((item) => item.title);
     expect(remainingTitles).toEqual(["High Priority"]);
     expect(result.excludedItems).toContainEqual(
@@ -482,7 +382,7 @@ describe("buildContext", () => {
       tokenBudgetSettings: budget({ maxContextTokens: 10, maxRecentMessages: 0, recentMessageWindow: 0, sectionBudgets: {} }),
     } satisfies Adventure;
 
-    const result = buildContext(adventure, {});
+    const result = buildContext(adventure, { skipThoughtCapture: true });
     // Total will exceed budget because protected items can't be dropped
     expect(result.totalEstimatedTokens).toBeGreaterThan(10);
     // System shell always present
@@ -525,8 +425,7 @@ describe("buildContext", () => {
         { id: "old", role: "user", content: "old ".repeat(80), createdAt: "2026-01-01T00:00:00.000Z" },
         { id: "new", role: "assistant", content: "new ".repeat(80), createdAt: "2026-01-01T00:01:00.000Z" },
       ],
-      // minRecentMessages: 0 exercises the legacy order, where older recent messages drop before memory.
-      tokenBudgetSettings: budget({ maxContextTokens: 260, maxRecentMessages: 2, recentMessageWindow: 2, minRecentMessages: 0 }),
+      tokenBudgetSettings: budget({ maxContextTokens: 260, maxRecentMessages: 2, recentMessageWindow: 2 }),
     } satisfies Adventure;
 
     const userLocked = buildContext({ ...base, tokenBudgetSettings: budget({ ...base.tokenBudgetSettings, memoryPriorityMode: "userLocked" }) }, { currentInput: "signal" });
@@ -570,10 +469,10 @@ describe("buildContext", () => {
       brains: [],
       rollingSummary: { content: "", updatedAt: "2026-01-01T00:00:00.000Z" },
       messages: [{ id: "m1", role: "user", content: "signal", createdAt: "2026-01-01T00:00:00.000Z" }],
-      tokenBudgetSettings: budget({ maxContextTokens: 3000, maxRecentMessages: 1, recentMessageWindow: 1 }),
+      tokenBudgetSettings: budget({ maxContextTokens: 1000, maxRecentMessages: 1, recentMessageWindow: 1 }),
     } satisfies Adventure;
 
-    const result = buildContext(adventure, { currentInput: "signal" });
+    const result = buildContext(adventure, { currentInput: "signal", skipThoughtCapture: true });
     expect(result.sections.find((section) => section.id === "storyCards")?.items.map((item) => item.id)).toEqual(["high-priority", "low-priority"]);
     expectPreviewMatchesPayload(adventure, "userLocked");
     expectPreviewMatchesPayload(adventure, "systemSuggested");
@@ -647,7 +546,7 @@ describe("buildContext", () => {
     const result = buildContext(adventure, { currentInput: "lantern" });
     const noteSection = result.sections.find((section) => section.id === "nextTurnNote");
 
-    expect(result.sections.map((section) => section.id).slice(-3)).toEqual(["nextTurnNote", "corrections", "challengeMode"]);
+    expect(result.sections.map((section) => section.id).slice(-3)).toEqual(["nextTurnNote", "challengeMode", "recentMessages"]);
     expect(noteSection?.label).toBe("J. Next Output Bias");
     expect(noteSection?.items).toHaveLength(1);
     expect(noteSection?.items[0]).toMatchObject({
@@ -660,11 +559,8 @@ describe("buildContext", () => {
       generatedBy: "user",
     });
     expect(noteSection?.tokenEstimate).toBe(approximateTokenCount(noteSection?.content ?? ""));
-    // Next Output Bias is per-turn context: it rides in the [TURN CONTEXT] block of the newest user message.
-    const turnMessage = result.messages.at(-1)?.content ?? "";
-    expect(result.messages[0].content).not.toContain("# J. Next Output Bias");
-    expect(turnMessage).toContain("# J. Next Output Bias");
-    expect(turnMessage).toContain("Keep the next output focused on the oath's consequences.");
+    expect(result.messages[0].content).toContain("# J. Next Output Bias");
+    expect(result.messages[0].content).toContain("Keep the next output focused on the oath's consequences.");
   });
 
   it("can budget-drop unprotected Next Output Bias but preserves it when protected", () => {
@@ -770,18 +666,17 @@ describe("buildContext", () => {
 
     const result = buildContext(adventure);
 
-    // K. Recent Messages holds at most maxRecentMessages items (newest first). The oldest kept
-    // message is chunk-aligned (window of 5 → chunks of 2) so the prompt prefix stays stable.
+    // J. Recent Messages section contains exactly maxRecentMessages items (newest first)
     const recentSection = result.sections.find((s) => s.id === "recentMessages");
-    expect(recentSection?.items).toHaveLength(4);
+    expect(recentSection?.items).toHaveLength(5);
     expect(recentSection?.items[0].id).toBe("msg-49"); // newest
-    expect(recentSection?.items[3].id).toBe("msg-46"); // oldest of the aligned window
+    expect(recentSection?.items[4].id).toBe("msg-45"); // oldest of the window
 
-    // Provider payload: 1 system message + 4 recent messages in chronological order.
-    expect(result.messages.length).toBeGreaterThanOrEqual(5);
+    // Provider payload: 1 system message + 5 recent messages in chronological order.
+    expect(result.messages.length).toBeGreaterThanOrEqual(6);
     expect(result.messages[0].role).toBe("system");
-    expect(result.messages[1].content).toBe("Turn 46 content.");
-    expect(result.messages[4].content).toContain("Turn 49 content.");
+    expect(result.messages[1].content).toBe("Turn 45 content.");
+    expect(result.messages[5].content).toBe("Turn 49 content.");
 
     // System payload does NOT contain the older 45 messages
     const systemText = result.messages[0].content;
@@ -829,9 +724,9 @@ describe("buildContext", () => {
     // adventureForContext has no aiInstructions/plotEssentials/authorNote/sceneState content
     const result = buildContext(adventureForContext(), { currentInput: "lantern" });
     // All section IDs always present in result.sections
-    expect(result.sections.map((s) => s.id)).toHaveLength(17);
-    // Empty typed sections do not appear in the payload
-    const payload = result.messages.map((message) => message.content).join("\n");
+    expect(result.sections.map((s) => s.id)).toHaveLength(11);
+    // Empty typed sections do not appear in the system payload
+    const payload = result.messages[0].content;
     expect(payload).not.toContain("# B. AI Instructions");
     expect(payload).not.toContain("# C. Plot Essentials");
     expect(payload).not.toContain("# D. Author's Note");
@@ -852,18 +747,12 @@ describe("buildContext", () => {
       "plotEssentials",
       "currentArc",
       "components",
-      "pinnedStoryCards",
-      "recentMessages",
-      "storyState",
-      "sceneDirection",
-      "activePressure",
-      "arcProgress",
       "storyCards",
       "brains",
       "authorNote",
       "nextTurnNote",
-      "corrections",
       "challengeMode",
+      "recentMessages",
     ]);
     expect(result.sections.find((section) => section.id === "aiInstructions")?.items.map((item) => item.id)).toEqual(["component-ai"]);
     expect(result.sections.find((section) => section.id === "plotEssentials")?.items.map((item) => item.id)).toEqual(["component-plot"]);
@@ -890,10 +779,8 @@ describe("buildContext", () => {
     expect(result.messages[0].role).toBe("system");
     expect(result.messages[0].content).toContain("# A. System Shell / Global Generation Rules");
     expect(result.messages[0].content).toContain("# B. AI Instructions");
-    const turnContext = result.messages.at(-1)?.content ?? "";
-    expect(turnContext.startsWith("[TURN CONTEXT")).toBe(true);
-    expect(turnContext).toContain("# F. Story Cards");
-    expect(turnContext).toContain("## Hedge Prince Joke");
+    expect(result.messages[0].content).toContain("# F. Story Cards");
+    expect(result.messages[0].content).toContain("## Hedge Prince Joke");
     expect(result.messages[0].content).not.toContain("# I. Rolling Summary");
     const expectedRecent = [
       "Rain tapped against the glass.",
@@ -903,10 +790,8 @@ describe("buildContext", () => {
       "The Beast howls somewhere below.",
       "We hurry toward the threshold.",
     ];
-    // Runtime instructions are part of the system section; recent messages still follow in order,
-    // with the per-turn context block leading the newest user message (or trailing as its own user turn).
-    const stripTurnContext = (content: string) => content.includes(TURN_CONTEXT_CLOSE) ? content.slice(content.indexOf(TURN_CONTEXT_CLOSE) + TURN_CONTEXT_CLOSE.length).trim() : content;
-    expect(result.messages.slice(1, 1 + expectedRecent.length).map((message) => stripTurnContext(message.content))).toEqual(expectedRecent);
+    // Runtime instructions are part of the system section; recent messages still follow in order.
+    expect(result.messages.slice(1, 1 + expectedRecent.length).map((message) => message.content)).toEqual(expectedRecent);
 
     // E. Components is present because the golden adventure has a pinned weather component
     // Single-item sections render content directly under the section header (no ## sub-header)
@@ -995,5 +880,14 @@ describe("buildContext", () => {
 
     expect(result.cleanContent).toBe("You don't say anything as you travel. The silence is comfortable.");
     expect(result.memoryTags).toEqual([]);
+  });
+
+  it("asks inline memory tagging to capture durable updates to existing subjects", () => {
+    const instruction = buildMemoryTagInstruction(["relationship", "plot_beat"], ["Setu and Nyxa"]);
+
+    expect(instruction).toContain("durable new fact or meaningful update");
+    expect(instruction).toContain("REUSE that card's EXACT title");
+    expect(instruction).toContain("Worth tagging");
+    expect(instruction).toContain("one-off banter");
   });
 });

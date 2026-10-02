@@ -1,7 +1,5 @@
 # AI Dungeon Best Practices
 
-> **Status:** Reference (AI Dungeon platform, not AI Story Teller) · **Audience:** agents producing AID scenario packs · Not app behavior; AIST differs (for example, Story State and the background memory pass have no AID equivalent).
-
 Updated: 2026-07-02
 
 This is repo-local context for building AI Dungeon scenario packs, especially

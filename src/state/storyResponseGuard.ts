@@ -35,8 +35,6 @@ const PLAYER_ACTION_VERBS = [
 ];
 
 const PLAYER_ACTION_RE_GLOBAL = new RegExp(`\\byou\\s+(?:${PLAYER_ACTION_VERBS.join("|")})\\b`, "gi");
-// Player input is often first person ("I follow her") while narration is second person ("You follow her").
-const FIRST_PERSON_ACTION_RE_GLOBAL = new RegExp(`\\b(?:i|we)\\s+(${PLAYER_ACTION_VERBS.join("|")})\\b`, "gi");
 
 export interface StoryResponseGuardResult {
   visibleWordCount: number;
@@ -76,15 +74,8 @@ function playerActionPhrases(text: string): string[] {
   return [...stripped.matchAll(PLAYER_ACTION_RE_GLOBAL)].map((match) => match[0].toLowerCase());
 }
 
-/** Actions the player authorized this turn, in the narrator's second-person form. */
-function playerAuthorizedPhrases(playerInput: string): Set<string> {
-  const stripped = stripQuotedText(stripHiddenTags(playerInput));
-  const firstPerson = [...stripped.matchAll(FIRST_PERSON_ACTION_RE_GLOBAL)].map((match) => `you ${match[1].toLowerCase()}`);
-  return new Set([...playerActionPhrases(playerInput), ...firstPerson]);
-}
-
 export function hasPlayerAgencyViolation(text: string, playerInput = ""): boolean {
-  const playerAuthoredActions = playerAuthorizedPhrases(playerInput);
+  const playerAuthoredActions = new Set(playerActionPhrases(playerInput));
   return playerActionPhrases(text).some((phrase) => !playerAuthoredActions.has(phrase));
 }
 
@@ -125,9 +116,9 @@ export function buildStoryResponseCorrectionMessages({
         `You are a strict rewrite pass for AI Story Teller. Return only the corrected visible story response.\n` +
         `Hard limit: ${wordLimit} words maximum.\n` +
         `Fix these violations: ${reasons.join("; ") || "turn scope"}.\n` +
-        `Make the smallest change that fixes the listed problems. Keep the draft's voice, its events, and every NPC action, including actions the player already asked for or authorized. Do not add new events, plans, locations, or consequences.\n` +
-        `Remove only the player's unspoken actions, reactions, dialogue, consent, movement, decisions, acceptance, or internal conclusions; NPCs and the world keep acting.\n` +
-        `If the draft is too long, trim description and repetition first, and end at a natural point where the player can respond.\n` +
+        `Do not add new events, new plans, new locations, or extra consequences. Preserve only the earliest playable beat from the draft.\n` +
+        `Do not narrate the player's unspoken actions, reactions, dialogue, consent, movement, decisions, acceptance, or internal conclusions.\n` +
+        `NPCs and the world may react. Stop as soon as the player can reasonably answer, interrupt, refuse, choose, or redirect.\n` +
         `Do not include OOC commentary, explanations, word counts, option menus, <thought> tags, or <memory> tags.`,
     },
     {

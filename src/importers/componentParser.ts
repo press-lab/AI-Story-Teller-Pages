@@ -48,8 +48,6 @@ const componentTypeLabels: Record<ComponentType, string> = {
   immediateMomentum: "Immediate Momentum",
   authorNote: "Author's Note",
   memory: "Lore Block",
-  storyState: "Story State",
-  sceneDirection: "Scene Direction",
   custom: "Custom Component",
 };
 

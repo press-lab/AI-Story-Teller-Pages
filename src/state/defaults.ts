@@ -14,14 +14,10 @@ import type {
   TokenBudgetSettings,
   TriggerRule,
   ProviderRequestThrottle,
-  Message,
-  ProviderUsage,
 } from "../types/adventure";
-import { combineProviderUsage } from "../providers/usage";
 import { dedupeBrainThoughts } from "../memory/thoughtDedupe";
 import { applyGuardedStoryCardPolicy, restoreGuardedFactsToLiveContent } from "../memory/storyCardPolicy";
 import { createId, nowIso } from "../utils/id";
-import { migrateOpenThreads } from "../memory/storyThreads";
 
 export const defaultTokenBudgetSettings: TokenBudgetSettings = {
   maxContextTokens: 16000,
@@ -31,7 +27,6 @@ export const defaultTokenBudgetSettings: TokenBudgetSettings = {
   allowSystemToDropUnpinnedTriggeredCards: true,
   allowSystemToTruncateSummary: true,
   recentMessageWindow: 12,
-  minRecentMessages: 6,
   sectionBudgets: {
     rollingSummary: 1800,
     sceneState: 400,
@@ -94,8 +89,7 @@ export const defaultSemanticEvaluationSettings: SemanticEvaluationSettings = {
 export const defaultMemoryDetectionSettings: MemoryDetectionSettings = {
   enabled: true,
   generateContent: true,
-  everyNTurns: 3,
-  suggestEventMemories: true,
+  everyNTurns: 1,
 };
 
 export const defaultMemoryAutoApproveSettings: MemoryAutoApproveSettings = {
@@ -107,46 +101,7 @@ export const defaultMemoryAutoApproveSettings: MemoryAutoApproveSettings = {
   plotMomentumUpdate: false,
   storyCard: false,
   brainUpdate: false,
-  storyStateUpdate: false,
-  sceneDirectionUpdate: true,
 };
-
-export const STORY_STATE_TITLE = "Story State";
-
-/** The always-included current-truth block. Empty until the background memory pass (or the player) fills it. */
-export function makeStoryStateComponent(): ComponentEntry {
-  return makeComponent({
-    title: STORY_STATE_TITLE,
-    type: "storyState",
-    content: "",
-    priority: 240,
-    active: true,
-    alwaysOn: true,
-    protected: true,
-    inclusionPolicy: "always",
-    autoUpdate: true,
-  });
-}
-
-export const SCENE_DIRECTION_TITLE = "Scene Direction";
-
-/**
- * Short per-scene steering written by the background memory pass: who is present, what each NPC is
- * trying to do, and the choice left open to the player. Visible, editable, replaced every pass.
- */
-export function makeSceneDirectionComponent(): ComponentEntry {
-  return makeComponent({
-    title: SCENE_DIRECTION_TITLE,
-    type: "sceneDirection",
-    content: "",
-    priority: 238,
-    active: true,
-    alwaysOn: true,
-    protected: false,
-    inclusionPolicy: "always",
-    autoUpdate: true,
-  });
-}
 
 export const defaultSystemTriggerSettings: SystemTriggerSettings = {
   enabled: true,
@@ -171,21 +126,6 @@ export function defaultNextTurnNote(): NextTurnNote {
     priority: 85,
     expiresAfterUse: true,
   };
-}
-
-/**
- * Saves from before lifetime spend tracking: start the ledger from what the adventure still
- * remembers (per-entry usage plus background totals). Spend on entries that were already
- * regenerated or erased is gone, so this is a floor, not an exact history.
- */
-function seedSpendTotal(
-  messages: Message[],
-  background: { promptTokens: number; completionTokens: number } | undefined,
-): ProviderUsage | undefined {
-  const bg = background && (background.promptTokens > 0 || background.completionTokens > 0)
-    ? { ...background, totalTokens: background.promptTokens + background.completionTokens }
-    : undefined;
-  return combineProviderUsage(...messages.map((message) => message.usage), bg);
 }
 
 function clampSummaryIndex(index: number | undefined, messageCount: number): number | undefined {
@@ -267,12 +207,9 @@ export function createDefaultAdventure(title = "Untitled Adventure"): Adventure 
         pinned: true,
       }),
       makeComponent({ title: "Active Pressure", type: "activePressure", content: "", priority: 245, active: true }),
-      makeStoryStateComponent(),
-      makeSceneDirectionComponent(),
     ],
     storyCards: [],
     brains: [],
-    storyThreads: [],
     triggerRules: [],
     rollingSummary: { content: "", updatedAt: timestamp },
     sceneState: { content: "", updatedAt: timestamp },
@@ -308,7 +245,7 @@ export function makeComponent(
 ): ComponentEntry {
   const timestamp = nowIso();
   const type = overrides.type ?? "custom";
-  const defaultProtected = type === "narrationRules" || type === "aiInstructions" || type === "plotEssentials" || type === "authorNote" || type === "storyState";
+  const defaultProtected = type === "narrationRules" || type === "aiInstructions" || type === "plotEssentials" || type === "authorNote";
   const alwaysOn = overrides.alwaysOn ?? false;
   return {
     id: overrides.id ?? createId("component"),
@@ -426,7 +363,6 @@ export function makeBrain(overrides: Partial<BrainEntry> & Pick<BrainEntry, "cha
     lastUpdatedAt: overrides.lastUpdatedAt,
     lastGeneratedUpdatePreview: overrides.lastGeneratedUpdatePreview,
     printThoughts: overrides.printThoughts ?? false,
-    ...(overrides.knowledge !== undefined ? { knowledge: overrides.knowledge } : {}),
     createdAt: overrides.createdAt ?? timestamp,
     updatedAt: overrides.updatedAt ?? timestamp,
   };
@@ -562,29 +498,7 @@ export function sanitizeAdventureForPersistence(adventure: Adventure): Adventure
   };
 }
 
-/**
- * Saves from before structured threads keep their open threads as an "Open threads:" line inside the
- * Story State text. Move that line into `storyThreads` once; afterwards the text holds no thread list.
- */
-function withStoryThreads(adventure: Adventure, original: Partial<Adventure>): Adventure {
-  if (Array.isArray(original.storyThreads)) return { ...adventure, storyThreads: original.storyThreads };
-  const state = adventure.components.find((component) => component.type === "storyState");
-  if (!state) return { ...adventure, storyThreads: [] };
-  const migrated = migrateOpenThreads(state.content, adventure.activeState.turn);
-  return {
-    ...adventure,
-    storyThreads: migrated.threads,
-    components: migrated.threads.length === 0 && migrated.content === state.content.trim()
-      ? adventure.components
-      : adventure.components.map((component) => component.id === state.id ? { ...component, content: migrated.content } : component),
-  };
-}
-
 export function normalizeAdventure(adventure: Adventure): Adventure {
-  return withStoryThreads(normalizeAdventureFields(adventure), adventure);
-}
-
-function normalizeAdventureFields(adventure: Adventure): Adventure {
   const baseline = createDefaultAdventure(adventure.title || "Untitled Adventure");
   const messages = removeMirroredOpeningMessage(adventure);
   const migrateGuardedStoryCards = !adventure.activeState?.stateFlags?.compactStoryCardsMigrated;
@@ -614,7 +528,6 @@ function normalizeAdventureFields(adventure: Adventure): Adventure {
         brainsAppendMigrated: true,
         guardedStoryCardsMigrated: true,
         compactStoryCardsMigrated: true,
-        storyStateReviewMigrated: true,
       },
       triggerLog: adventure.activeState?.triggerLog ?? [],
       forceIncludeNextTurn: adventure.activeState?.forceIncludeNextTurn ?? [],
@@ -625,12 +538,8 @@ function normalizeAdventureFields(adventure: Adventure): Adventure {
         : adventure.activeState?.responseLengthHint === "long" ? 175
         : 150,
       backgroundTokenUsage: adventure.activeState?.backgroundTokenUsage ?? { promptTokens: 0, completionTokens: 0 },
-      spendTotal: adventure.activeState?.spendTotal ?? seedSpendTotal(messages, adventure.activeState?.backgroundTokenUsage),
       challengeMode: adventure.activeState?.challengeMode ?? false,
       lastMemoryCycleTurn: adventure.activeState?.lastMemoryCycleTurn,
-      lastMemoryPassMessageId: adventure.activeState?.lastMemoryPassMessageId,
-      memoryPassFailures: adventure.activeState?.memoryPassFailures,
-      corrections: Array.isArray(adventure.activeState?.corrections) ? adventure.activeState.corrections : [],
       lastSemanticEvalTurn: adventure.activeState?.lastSemanticEvalTurn,
       lastSceneStateTurn: adventure.activeState?.lastSceneStateTurn,
     },
@@ -684,7 +593,7 @@ function normalizeAdventureFields(adventure: Adventure): Adventure {
       // Deduplicate singleton types: keep the first occurrence of each singleton type.
       // This fixes adventures that were created with duplicate narrationRules (or other
       // singleton) components due to a bug in createAdventure merging baseline + setup.
-      const singletonTypes = new Set(["narrationRules", "aiInstructions", "plotEssentials", "authorNote", "currentArc", "storyState", "sceneDirection"]);
+      const singletonTypes = new Set(["narrationRules", "aiInstructions", "plotEssentials", "authorNote", "currentArc"]);
       const seenSingletons = new Set<string>();
       const deduped = normalized.filter((component) => {
         if (!singletonTypes.has(component.type)) return true;
@@ -693,14 +602,9 @@ function normalizeAdventureFields(adventure: Adventure): Adventure {
         return true;
       });
       const hasActivePressure = deduped.some((c) => c.type === "activePressure");
-      const hasStoryState = deduped.some((c) => c.type === "storyState");
-      const hasSceneDirection = deduped.some((c) => c.type === "sceneDirection");
       return [
         ...deduped,
         ...(hasActivePressure ? [] : [makeComponent({ title: "Active Pressure", type: "activePressure", content: "", priority: 245, active: true })]),
-        // Older saves predate Story State; give them an empty one so the background pass can fill it.
-        ...(hasStoryState ? [] : [makeStoryStateComponent()]),
-        ...(hasSceneDirection ? [] : [makeSceneDirectionComponent()]),
       ];
     })(),
     triggerRules: (adventure.triggerRules ?? []).map((rule) => ({
@@ -714,9 +618,6 @@ function normalizeAdventureFields(adventure: Adventure): Adventure {
       ...defaultMemoryAutoApproveSettings,
       ...(adventure.memoryAutoApprove ?? {}),
       plotMomentumUpdate: false,
-      // Story State briefly shipped auto-approved. Route it through Memory Suggestions once for
-      // saves normalized before that change; afterwards the player's own toggle is kept.
-      ...(adventure.activeState?.stateFlags?.storyStateReviewMigrated ? {} : { storyStateUpdate: false }),
     },
     memoryDetectionSettings: {
       ...defaultMemoryDetectionSettings,

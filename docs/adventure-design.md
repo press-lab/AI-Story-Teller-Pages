@@ -1,7 +1,5 @@
 # Designing a Durable Adventure
 
-> **Status:** Guide (design rationale) · **Audience:** scenario authors and contributors · **Verified against:** `e768262`
-
 This is the distilled design theory behind AI Story Teller's arc, brain, and
 component systems — what actually makes an adventure stay fun for hundreds or
 thousands of turns, and how the app's features map onto it. Written from a
@@ -298,6 +296,6 @@ a capable model (V3.2-class) owns whether the cost actually lands.**
 
 ### Memory accuracy and pacing setup
 
-The background memory pass sees the recent messages plus the reference sections of the current context: Plot Essentials, Current Arc, components, pinned and triggered Story Cards, Story State, and Brains. Pending proposals are not references, and the arc break instruction stays gated. Each suggested update must quote evidence from the recent messages. New adventures require approval for Current Arc updates by default; saved explicit auto-approval choices are preserved. Review remains important: grounding reduces ambiguity but cannot guarantee model factual accuracy.
+Background memory updates receive named active narration rules, AI Instructions, Plot Essentials, always-on custom rules, character cards, and relevant lore alongside recent story evidence. Private brains, pending proposals, and gated arc instructions are excluded from these references. Generated entries retain their source excerpt for review. New adventures require approval for Current Arc updates by default; saved explicit auto-approval choices are preserved. Review remains important: grounding reduces ambiguity but cannot guarantee model factual accuracy.
 
 Arc pacing counts each selected card/brain match, not verified breakthroughs. Multiple selected matches in one turn add multiple engagements. Select specific threats or evidence rather than ever-present companions or broad topic cards; selecting nothing leaves pacing manual. Per-thread counts are visible in the Arc Director. The climax instruction remains gated until the break phase.

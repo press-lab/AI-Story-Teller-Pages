@@ -1,12 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   isNativeDeepSeekProvider,
-  providerRouteLabel,
-  structuredOutputMode,
   resetProviderThrottleForTests,
   sendOpenAICompatibleChatCompletion,
 } from "./openAICompatible";
-import { subscribeProviderUsage, type ProviderUsageEvent } from "./usage";
 import type { ProviderConfig } from "../types/adventure";
 
 const config: ProviderConfig = {
@@ -34,21 +31,6 @@ afterEach(() => {
 });
 
 describe("sendOpenAICompatibleChatCompletion", () => {
-  it.each([undefined, "disabled"] as const)("uses supported OpenRouter GLM reasoning for %s", async (thinking) => {
-    const spy = mockFetch(200, { choices: [{ message: { content: "A story." } }] });
-    await sendOpenAICompatibleChatCompletion({ messages: [], config: { ...config, baseUrl: "https://openrouter.ai/api/v1", model: "z-ai/glm-5.3-flash", maxOutputTokens: 24000 }, thinking });
-    const body = JSON.parse(spy.mock.calls[0][1]?.body as string);
-    expect(body.reasoning).toEqual({ effort: thinking === "disabled" ? "low" : "high" });
-    expect(body.thinking).toBeUndefined();
-    expect(body.max_tokens).toBe(24000);
-  });
-
-  it.each([null, "", "   "])("reports exhausted reasoning budget for empty content %s", async (content) => {
-    const spy = mockFetch(200, { choices: [{ finish_reason: "length", message: { content } }], usage: { completion_tokens: 455, completion_tokens_details: { reasoning_tokens: 455 } } });
-    await expect(sendOpenAICompatibleChatCompletion({ messages: [], config })).rejects.toThrow("finish reason: length; output tokens: 455; reasoning tokens: 455");
-    expect(spy).toHaveBeenCalledOnce();
-  });
-
   it("recognizes only native DeepSeek API hosts", () => {
     expect(isNativeDeepSeekProvider({ baseUrl: "https://api.deepseek.com" })).toBe(true);
     expect(isNativeDeepSeekProvider({ baseUrl: "https://deepseek.com/v1" })).toBe(true);
@@ -263,30 +245,6 @@ describe("sendOpenAICompatibleChatCompletion", () => {
     });
   });
 
-  it("reads DeepSeek prompt_cache_hit_tokens as cache reads", async () => {
-    mockFetch(200, {
-      choices: [{ message: { content: "ok" } }],
-      usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120, prompt_cache_hit_tokens: 64, prompt_cache_miss_tokens: 36 },
-    });
-    const result = await sendOpenAICompatibleChatCompletion({ messages: [{ role: "user", content: "Hi" }], config: { ...config, baseUrl: "https://api.deepseek.com" } });
-    expect(result.usage?.cacheReadTokens).toBe(64);
-  });
-
-  it("reports every billed response to usage listeners, including ones with no usable content", async () => {
-    const events: ProviderUsageEvent[] = [];
-    const unsubscribe = subscribeProviderUsage((event) => events.push(event));
-    try {
-      mockFetch(200, { choices: [{ message: {} }], usage: { prompt_tokens: 50, completion_tokens: 5, total_tokens: 55 } });
-      await expect(sendOpenAICompatibleChatCompletion({
-        messages: [{ role: "user", content: "Hi" }],
-        config: { ...config, sessionId: "ai-story-teller:adv-test" },
-      })).rejects.toThrow("no content");
-      expect(events).toEqual([{ sessionId: "ai-story-teller:adv-test", usage: { promptTokens: 50, completionTokens: 5, totalTokens: 55 } }]);
-    } finally {
-      unsubscribe();
-    }
-  });
-
   it("uses Anthropic system cache blocks and reports cache usage", async () => {
     const spy = mockFetch(200, {
       content: [{ type: "text", text: "ok" }],
@@ -315,11 +273,10 @@ describe("sendOpenAICompatibleChatCompletion", () => {
       { type: "text", text: "Stable context", cache_control: { type: "ephemeral" } },
     ]);
     expect(body.messages).toEqual([{ role: "user", content: "Continue." }]);
-    // Anthropic input_tokens exclude cache reads/writes; promptTokens is normalized to all input tokens.
     expect(result.usage).toEqual({
-      promptTokens: 200,
+      promptTokens: 100,
       completionTokens: 20,
-      totalTokens: 220,
+      totalTokens: 120,
       cacheReadTokens: 70,
       cacheCreationTokens: 30,
     });
@@ -412,28 +369,5 @@ describe("sendOpenAICompatibleChatCompletion", () => {
     await vi.advanceTimersByTimeAsync(1);
     await second;
     expect(spy).toHaveBeenCalledTimes(2);
-  });
-});
-
-describe("finish reason, reasoning tokens, and structured-output capability", () => {
-  it("reports OpenAI-format finish reason and reasoning tokens billed inside the ceiling", async () => {
-    mockFetch(200, { choices: [{ finish_reason: "length", message: { content: '{"updates":[' } }], usage: { prompt_tokens: 9000, completion_tokens: 2000, completion_tokens_details: { reasoning_tokens: 1800 } } });
-    const response = await sendOpenAICompatibleChatCompletion({ messages: [], config: { ...config, baseUrl: "https://openrouter.ai/api/v1", model: "z-ai/glm-5.3" } });
-    expect(response).toMatchObject({ finishReason: "length", reasoningTokens: 1800 });
-  });
-
-  it("normalizes an Anthropic-format max_tokens stop to length, so truncation is detected on that route too", async () => {
-    mockFetch(200, { content: [{ type: "text", text: '{"updates":[' }], stop_reason: "max_tokens", usage: { input_tokens: 10, output_tokens: 2000 } });
-    const response = await sendOpenAICompatibleChatCompletion({ messages: [], config: { ...config, baseUrl: "https://api.deepseek.com/anthropic" } });
-    expect(response.finishReason).toBe("length");
-  });
-
-  it("never sends response_format to an Anthropic-format endpoint, and labels it prompt-only", async () => {
-    const spy = mockFetch(200, { content: [{ type: "text", text: "{}" }], stop_reason: "end_turn" });
-    await sendOpenAICompatibleChatCompletion({ messages: [], config: { ...config, baseUrl: "https://api.deepseek.com/anthropic" }, responseFormat: "json_object" });
-    expect(JSON.parse(spy.mock.calls[0][1]?.body as string).response_format).toBeUndefined();
-    expect(structuredOutputMode({ baseUrl: "https://api.deepseek.com/anthropic" })).toBe("prompt_only");
-    expect(structuredOutputMode({ baseUrl: "https://openrouter.ai/api/v1" })).toBe("json_object");
-    expect(providerRouteLabel({ baseUrl: "https://api.deepseek.com/anthropic", model: "deepseek-flash" })).toBe("api.deepseek.com (Anthropic format) · deepseek-flash");
   });
 });

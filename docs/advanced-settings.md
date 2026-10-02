@@ -1,22 +1,6 @@
 # Advanced Settings Reference
 
-> **Status:** Guide (user-facing reference) · **Audience:** players · **Verified against:** `e768262`
-
-Settings has one always-visible memory panel, **Automatic memory**. Settings → Advanced adds three more: **Context Budget**, **LLM Evaluation**, and **Memory Detection**. Context budget and auto-approve choices are per adventure and saved in the adventure JSON. Automatic memory on/off and its cadence are app-wide.
-
----
-
-## Automatic memory (always visible)
-
-The narrator only writes the story. Every N story turns, one background call reads the turns since the last update and suggests updates to Story State, character thoughts and knowledge boundaries, Story Cards, and plot surfaces (Active Pressure, Current Arc, Plot Essentials). It uses the Background Provider when one is set. Out-of-character turns never trigger it.
-
-### Automatic memory
-
-Master switch for the background memory pass. On by default.
-
-### Update memory every N story turns
-
-How often the pass runs. The default is **3** (one background call every three story turns). 1 gives the freshest memory at one extra call per turn; higher values cost less but memory lags further behind. At any N, each pass reads every message since the previous one, plus two for continuity, so no turns are skipped. The only limit is a catch-up ceiling of 60 messages (or 2N + 2, if larger) after automatic memory has been off for a while. A value already saved in your browser is kept, including the old default of 1, so check this field if you want 3. A failed pass waits for the next scheduled turn instead of retrying.
+Settings → Advanced unlocks four panels. All settings are per-adventure and saved in the adventure JSON.
 
 ---
 
@@ -89,52 +73,82 @@ Per-section hard token caps. Expert setting. Lets you constrain a specific secti
 
 ## LLM Evaluation
 
-Controls the **semantic engine**, which evaluates the natural-language conditions on trigger rules you configure yourself (Automation page). It does not run the automatic memory pass above. If you have no semantic trigger rules, it makes no calls.
+Controls the semantic engine — the background AI that reads your story after each turn and fires Automations such as brain updates, story card updates, Plot Essentials updates, Current Arc updates, and one-sentence Active Pressure updates.
 
 ### Evaluation Model Override
 
-Model used for semantic evaluation calls. Leave blank to inherit from the active preset.
+By default the semantic engine uses the same model as your main provider. Enter a model name here to use a different one for all background evaluation calls. Leave blank to inherit from the active preset.
 
 ### Messages Included In Evaluation
 
-How many recent messages the evaluator reads. 5–10 is usually enough.
-
-### Semantic eval every N turns
-
-0 disables semantic evaluation, 1 runs it every turn. Only matters when semantic trigger rules exist.
+How many recent messages the evaluator reads. More messages = more context for accurate decisions, more tokens per background call. 5–10 is usually sufficient; the evaluator doesn't need the full history.
 
 ### Enable semantic triggers
 
-Master switch for semantic trigger rules. Keyword and regex rules run regardless.
+Master switch for all Automations. Must be on for brain updates, story card updates, Plot Essentials tracking, Current Arc tracking, and Active Pressure updates to fire automatically after each turn.
 
 ### Show evaluation log on Automations page
 
-Debug log of what the evaluator saw and decided. Leave off in normal use.
+Turns on a debug log showing what the evaluator saw and decided. Useful for diagnosing why an Automation isn't firing. Leave off in normal use.
 
 ### Max Parallel Update Calls
 
-When several semantic rules fire on the same turn, how many generated-update calls run at once. Default 3.
+When multiple Automations trigger on the same turn, how many update LLM calls run simultaneously. Default 3. Higher is faster but increases peak API load.
 
-### Review updates from custom semantic rules
+### Require approval before applying auto-updates
 
-When on, updates produced by your semantic rules go to Memory Suggestions instead of applying directly. The automatic memory pass ignores this switch and uses the per-type auto-approve toggles instead.
+When on, all AI-generated Automation updates (brain updates, plot essentials, etc.) go to Memory Suggestions for your review instead of applying directly. Recommended if you're protective of brain or plot essentials data.
 
 ### Background Provider
 
-Routes background work — the automatic memory pass, semantic evaluation, manual memory updates, and continuity checks — through a separate endpoint. Leave blank to use the active preset for everything. Typical pattern: a cheap, fast model for background work and a stronger model for the story. An invalid base URL is ignored with a visible warning and background calls fall back to the active provider.
+Route background tasks (evaluation, brain updates, story card updates, Plot Essentials/Current Arc/Active Pressure updates, and memory detection) through a separate provider endpoint. Leave blank to use your main preset for everything.
+
+Useful if you have a fast/cheap API (e.g., Groq + Llama 3.3 70B) for background work and a better model for story generation. The model field here overrides the evaluation model override above.
 
 ---
 
-## Memory Detection (auto-approve)
+## Auto-Cards
 
-Repeats the Automatic memory switch and holds the per-type **auto-approve** toggles: Legacy Summary, Plot Essentials, Active Pressure, Current Arc, Arc Proposals, Story Cards, Characters, and Story State. The same toggles appear under Memory Suggestions → Rules & auto-approve.
+Auto-Cards are a removed legacy surface. Use Memory Detection or the Story Cards page to create new Story Card proposals instead.
 
-- A type that is auto-approved applies as soon as it is suggested. Anything else waits in Memory Suggestions.
-- **Story State** is off by default: each rewrite waits for review, and a newer suggestion replaces an older pending one, so there is at most one to review. To stop suggestions entirely, turn off "Background memory pass suggests Story State updates" on the Story State block (Plot page).
-- Plot Essentials changes, plot cards, and protected-card changes always require review, whatever the toggles say.
+### Enable Auto-Cards
+
+Legacy setting if present in old saves. It has no active product behavior.
+
+### Detection Condition
+
+Legacy field retained only for old data.
+
+Example: `"A new named character appears who doesn't have a story card yet."`
+
+### Generation Prompt
+
+Legacy field retained only for old data.
+
+Example: `"Write a concise story card for the new character: appearance, role, and personality in 2–3 sentences."`
+
+### Cooldown Between Generations (turns)
+
+Legacy field retained only for old data.
 
 ---
 
-## Removed: Auto-Cards
+## Memory Detection
 
-Auto-Cards were removed. Old saves may still carry Auto-Card fields; they have no effect. New Story Cards come from the automatic memory pass (only in the categories enabled under Automation → System triggers), the Story Cards page's AI-assisted creation, or Remember This.
+After each turn, a separate AI call reads the assistant's response and asks: "Is there a new durable fact here worth storing?" If yes, it creates a proposal in Memory Suggestions.
+
+A novelty pre-filter runs first — it checks for new proper nouns not already in your card keys or brain names, and skips the AI call if nothing novel is detected. The actual extra-call rate is lower than one-per-turn in practice.
+
+### Enable AI memory detection
+
+Master switch. Off by default. When on, costs one additional API call per turn (filtered by the novelty pre-filter). Uses the background provider if configured.
+
+### Generate card content
+
+When **on**: the AI writes the full proposal body (title + content + triggers) in the same detection call. More useful, costs more tokens.
+
+When **off**: the AI only identifies *what* to store (title and type), leaving the body blank for you to fill in. Useful if you prefer to write card content yourself and just want the AI to flag *that* something is noteworthy.
+
+### Auto-approve brain state updates
+
+Brain state (Brains panel — character mental state) is typically lower-stakes than story cards. When on, brain update proposals skip your inbox and apply directly. Story cards and plot essentials still go to Memory Suggestions for review.

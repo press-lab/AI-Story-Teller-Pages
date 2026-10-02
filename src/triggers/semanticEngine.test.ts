@@ -117,7 +117,8 @@ describe("runSemanticPostTurnEvaluation", () => {
     expect(result.actions.some((a) => a.type === "MARK_TRIGGER_FIRED")).toBe(true);
   });
 
-  // Automatic Brain updates come from the background memory pass (memory/compactMemoryFallback.ts), not semantic evaluation.
+  // Brain updates are handled inline during story generation (zero extra API calls), not via semantic evaluation.
+  // See contextBuilder.ts: eligibleBrainsForCapture + buildThoughtCaptureInstruction.
 
   it("records a parse error in the log when the LLM returns invalid JSON for conditions", async () => {
     const adventure = {

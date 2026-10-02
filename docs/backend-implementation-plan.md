@@ -1,7 +1,5 @@
 # Backend Implementation Plan
 
-> **Status:** Proposal — nothing here is implemented; the app has no backend · **Audience:** architects and contributors · **Verified against:** `e768262`
-
 This is the implementation plan for adding a locally hosted backend, accounts, invite-only signup, Google login, email/password login, scenario/adventure sharing, subscriptions, deterministic content policy, account safety restrictions, and prompt-injection defenses without breaking the current local setup.
 
 The companion architecture document is `docs/backend-architecture.md`.

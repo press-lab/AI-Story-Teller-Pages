@@ -1,7 +1,5 @@
 # BetterRepository Context Notes
 
-> **Status:** Reference (external AI Dungeon community guides) · **Audience:** scenario authors and agents · Not app behavior.
-
 Source pass over BetterRepository for AI Story Teller authoring guidance.
 
 Primary site: https://better-repository.netlify.app

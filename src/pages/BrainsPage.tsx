@@ -533,14 +533,6 @@ export function BrainsPage({ adventure, dispatch, loading, onUpdateBrainNow, onA
               </Field>
             </div>
             </details>
-            <Field label="Knowledge boundary (injected with thoughts; rewritten by the background memory pass)">
-              <textarea
-                rows={3}
-                value={brain.knowledge ?? ""}
-                placeholder={"Knows: …\nDoes not know: …"}
-                onChange={(event) => dispatch({ type: "UPDATE_BRAIN", brainId: brain.id, patch: { knowledge: event.target.value } })}
-              />
-            </Field>
             <Field label="Notes (manual freetext — not injected into context)">
               <textarea
                 rows={3}
@@ -594,6 +586,11 @@ export function BrainsPage({ adventure, dispatch, loading, onUpdateBrainNow, onA
                   label="Protected from truncation"
                   checked={brain.protected}
                   onChange={(checked) => dispatch({ type: "UPDATE_BRAIN", brainId: brain.id, patch: { protected: checked } })}
+                />
+                <CheckboxField
+                  label="Print thoughts in story"
+                  checked={!!brain.printThoughts}
+                  onChange={(checked) => dispatch({ type: "UPDATE_BRAIN", brainId: brain.id, patch: { printThoughts: checked } })}
                 />
                 <Field label="Update Mode">
                   <select

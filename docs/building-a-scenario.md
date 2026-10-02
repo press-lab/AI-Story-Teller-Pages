@@ -1,7 +1,5 @@
 # Building a Scenario
 
-> **Status:** Guide · **Audience:** scenario authors · **Verified against:** `e768262`
-
 The hands-on recipe for authoring an adventure that runs long and well. This is
 the *how*; for the *why* behind every choice, read
 [`adventure-design.md`](./adventure-design.md). The worked example throughout is
@@ -19,12 +17,11 @@ its shape.
 
 ## The shape of a scenario
 
-A scenario is seven things working together:
+A scenario is six things working together:
 
 | Piece | Component / object | Job |
 |---|---|---|
-| **Premise** | Plot Essentials | Overarching premise, long-term conflict, story-wide constraints |
-| **Current truth** | Story State | Day/time, location, relationships, who has met whom, open threads |
+| **Current truth + premise** | Plot Essentials | What is happening now + always-on constraints |
 | **The cast** | Story Cards (`character`) **+ Voice Contracts** | Who's fun in a room |
 | **Interior life** | Brains | Hidden agendas that simmer and persist |
 | **The engine** | a custom "missions" component | The repeatable loop that prints scenes |
@@ -79,13 +76,10 @@ enjoy**. Decide the one-line premise *and* the slow-burn arc it builds toward.
 *Heir of the Dragon Throne:* post-war Avatar world (backdrop), an overpowered
 dragon-fire crown prince (fantasy), and a premise where the antagonist is
 **personal and convergent** — the conspiracy is run by the love interest's
-father. Write this into **Plot Essentials** (always-on, protected): the overarching
-premise, the central long-term conflict, and the story-wide constraints that
-must shape every scene. Keep it tight; this is what the model writes *toward*.
-What is true *right now* (day, place, who is where, who knows whom) goes in
-**Story State** instead. Seed it with the opening situation; the background
-memory pass suggests rewrites as play moves on, and you approve them in Memory
-Suggestions.
+father. Write this into **Plot Essentials** (always-on, protected) as the
+current operating truth: what is happening now, open tensions, obligations, and
+major constraints that must shape every scene. Keep it tight; this is what the
+model writes *toward*.
 
 Two rules from experience:
 - **Let the player be OP.** State it in AI Instructions: *"NPCs respect, fear,
@@ -300,10 +294,8 @@ Set the **response length** to a target (slider on the Play page) — V3.2 write
 ## Quick checklist
 
 - [ ] Backdrop you like + OP fantasy stated in AI Instructions.
-- [ ] Plot Essentials: tight premise and long-term conflict, antagonist
-      personal/convergent, no current state, no chronological log.
-- [ ] Story State: seeded with the opening truth (day/time, place, who has met
-      whom); rewrites reviewed in Memory Suggestions.
+- [ ] Plot Essentials: tight current operating truth, antagonist
+      personal/convergent, no chronological log.
 - [ ] Active Pressure: exactly one sentence naming the external force pressing
       right now.
 - [ ] One `character` card per recurring figure; **Voice Contract on every NPC**,

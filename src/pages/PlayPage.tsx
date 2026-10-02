@@ -59,50 +59,24 @@ function isMobileComposerKeyboard(): boolean {
   return window.innerWidth <= 640;
 }
 
-type Usage = NonNullable<Message["usage"]>;
-
-function usageLines(usage: Usage): string[] {
+function usageTooltip(usage: NonNullable<Message["usage"]>): string {
   const total = usage.totalTokens || usage.promptTokens + usage.completionTokens;
   return [
-    `Prompt: ${usage.promptTokens.toLocaleString()}`,
-    `Completion: ${usage.completionTokens.toLocaleString()}`,
-    `Total: ${total.toLocaleString()}`,
-    usage.cacheReadTokens !== undefined ? `Cache read (included in prompt): ${usage.cacheReadTokens.toLocaleString()}` : undefined,
-    usage.cacheCreationTokens !== undefined ? `Cache write (included in prompt): ${usage.cacheCreationTokens.toLocaleString()}` : undefined,
-  ].filter((line): line is string => Boolean(line));
+    `Prompt: ${usage.promptTokens}`,
+    `Completion: ${usage.completionTokens}`,
+    `Total: ${total}`,
+    usage.cacheReadTokens !== undefined ? `Cache read: ${usage.cacheReadTokens}` : undefined,
+    usage.cacheCreationTokens !== undefined ? `Cache write: ${usage.cacheCreationTokens}` : undefined,
+  ].filter(Boolean).join(" | ");
 }
 
-function usageTooltip(usage: Usage): string {
+function usageInlineText(usage: NonNullable<Message["usage"]>): string {
   return [
-    "This entry: the story call plus any length/agency rewrite and continuity check it needed.",
-    ...usageLines(usage),
-  ].join("\n");
-}
-
-function usageInlineText(usage: Usage): string {
-  return [
-    `in ${usage.promptTokens.toLocaleString()}`,
-    `out ${usage.completionTokens.toLocaleString()}`,
-    usage.cacheReadTokens ? `cache ${usage.cacheReadTokens.toLocaleString()}` : undefined,
-    usage.cacheCreationTokens ? `write ${usage.cacheCreationTokens.toLocaleString()}` : undefined,
+    `in ${usage.promptTokens}`,
+    `out ${usage.completionTokens}`,
+    usage.cacheReadTokens ? `cache ${usage.cacheReadTokens}` : undefined,
+    usage.cacheCreationTokens ? `write ${usage.cacheCreationTokens}` : undefined,
   ].filter(Boolean).join(" ");
-}
-
-function backgroundUsageTooltip(usage: Usage): string {
-  return [
-    "Background calls this entry triggered (memory pass, rule evaluation). Not included in in/out.",
-    "May appear after the next turn starts if the pass was still running.",
-    ...usageLines(usage),
-  ].join("\n");
-}
-
-function spendTotalTooltip(usage: Usage): string {
-  return [
-    "Adventure total: every call billed so far — all entries, rewrites, continuity checks, background passes,",
-    "regenerations you discarded, and manual AI tools. Saves from before this counter existed start from",
-    "what their entries still recorded, so older discarded spend is missing.",
-    ...usageLines(usage),
-  ].join("\n");
 }
 
 export function PlayPage({
@@ -180,7 +154,6 @@ export function PlayPage({
   const latestMessageId = adventure.messages.at(-1)?.id;
   const nextTurnNote = adventure.activeState.nextTurnNote;
   const pendingMemoryCount = adventure.activeState.memoryProposals.filter((p) => p.status === "pending").length;
-  const spendTotal = adventure.activeState.spendTotal;
 
   const budgetDropped = contextResult?.excludedItems.filter((i) => i.reason === "budget_exceeded") ?? [];
   const droppedMessages = budgetDropped.filter((i) => i.sourceType === "message").length;
@@ -440,21 +413,16 @@ export function PlayPage({
                       </button>
                     )}
                   />
-                  {message.role === "assistant" && (message.usage || message.backgroundUsage || (message.id === lastAssistant?.id && (pendingMemoryCount > 0 || spendTotal))) && (
+                  {message.role === "assistant" && (message.usage || (message.id === lastAssistant?.id && pendingMemoryCount > 0)) && (
                     <span className="message-usage muted">
                       {message.usage && (
                         <span title={usageTooltip(message.usage)}>
                           {usageInlineText(message.usage)}
                         </span>
                       )}
-                      {message.backgroundUsage && (
-                        <span title={backgroundUsageTooltip(message.backgroundUsage)}>
-                          {" · "}bg ↑{message.backgroundUsage.promptTokens.toLocaleString()} ↓{message.backgroundUsage.completionTokens.toLocaleString()}
-                        </span>
-                      )}
-                      {message.id === lastAssistant?.id && spendTotal && (
-                        <span title={spendTotalTooltip(spendTotal)}>
-                          {" · "}total ↑{spendTotal.promptTokens.toLocaleString()} ↓{spendTotal.completionTokens.toLocaleString()}
+                      {message.id === lastAssistant?.id && adventure.activeState.backgroundTokenUsage.promptTokens > 0 && (
+                        <span title={`Background (cumulative): ${adventure.activeState.backgroundTokenUsage.promptTokens} prompt + ${adventure.activeState.backgroundTokenUsage.completionTokens} completion`}>
+                          {" · "}bg ↑{adventure.activeState.backgroundTokenUsage.promptTokens} ↓{adventure.activeState.backgroundTokenUsage.completionTokens}
                         </span>
                       )}
                       {message.id === lastAssistant?.id && pendingMemoryCount > 0 && (

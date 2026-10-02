@@ -88,7 +88,7 @@ npm.cmd run test:live   # optional, uses .env.test.local`}</pre>
     title: "Play",
     category: "Side Menu",
     summary: "The focused story screen for taking turns and editing the transcript.",
-    tags: ["play", "turn", "continue", "retry", "undo", "redo", "tokens", "usage", "spend"],
+    tags: ["play", "turn", "continue", "retry", "undo", "redo"],
     body: (
       <>
         <p>
@@ -98,13 +98,6 @@ npm.cmd run test:live   # optional, uses .env.test.local`}</pre>
         <p>
           Transcript entries are editable inline. Changes go through the reducer and persist with the
           adventure.
-        </p>
-        <p>
-          The small line under each generated entry shows token usage. <code>in / out</code> is everything it
-          took to write that entry, including any rewrite or continuity check. <code>bg</code> is the memory pass
-          or rule evaluation that turn triggered, which runs afterward. <code>total</code>, on the newest entry,
-          is everything this adventure has spent, including retries you threw away and manual AI tools. Hover
-          any number for the breakdown.
         </p>
       </>
     ),
@@ -141,10 +134,8 @@ npm.cmd run test:live   # optional, uses .env.test.local`}</pre>
           text, proposed type, rationale, confidence, and suggested triggers.
         </p>
         <p>
-          Pending proposals are not active context. Approving a proposal routes it to a Story State rewrite,
-          Story Card, Brain update, Plot Essentials update, Active Pressure update, Current Arc entry, or legacy
-          Rolling Summary update through reducer-backed paths. A newer Story State suggestion replaces an older
-          one that is still pending.
+          Pending proposals are not active context. Approving a proposal routes it to a Story Card, Brain
+          update, Plot Essentials update, Active Pressure update, or legacy Rolling Summary update through reducer-backed paths.
         </p>
       </>
     ),
@@ -200,7 +191,7 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
         <p><strong>The example lines carry the most weight.</strong> The model pattern-matches prose style from examples far more reliably than it follows trait descriptions. Three lines in the character's actual voice do more than three paragraphs of personality description.</p>
         <p><strong>"Never sounds like"</strong> is the second most important field. Negative constraints are strong — "never warm, never offers choices, never says what she's feeling directly" is harder for the model to ignore than "emotionally guarded."</p>
         <p><strong>What not to put in AI Instructions.</strong> Per-character voice belongs on the character's card, not in AI Instructions. AI Instructions apply to every turn globally — character-specific rules dilute them and create two sources of truth. If Nyx needs to sound a specific way, that goes on Nyx's card.</p>
-        <p><strong>Auto-generated cards</strong> from "Generate with AI" automatically use Voice Contract format for character cards. For existing cards, paste the Voice Contract section in below the existing content — don't overwrite it.</p>
+        <p><strong>Auto-generated cards</strong> from "Generate with AI" and inline memory tagging automatically use Voice Contract format for character cards. For existing cards, paste the Voice Contract section in below the existing content — don't overwrite it.</p>
       </>
     ),
   },
@@ -269,9 +260,9 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
             by relevant keywords — keeping the resolved arc as referenced backstory.
           </li>
           <li>
-            <strong>Arc updates are reviewed by default.</strong> New arc entries wait in Memory Suggestions
-            until you approve them. To let them apply on their own, turn on "Current Arc" under Memory
-            Suggestions → Rules &amp; auto-approve.
+            <strong>Auto-approval is on by default.</strong> Arc updates go through Memory Inbox but are
+            auto-approved, so they apply without you touching them. If you want to review each entry,
+            turn off "currentArcUpdate" in Memory Auto-Approve settings.
           </li>
         </ul>
       </>
@@ -293,9 +284,8 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
           Custom components can be active, pinned, protected, prioritized, or manual.
         </p>
         <p>
-          AI-generated updates may only touch Plot Essentials, Active Pressure, Current Arc, and Story State
-          content, and only through approved mutation paths. Story State is listed first under Current Story
-          State on the Plot page; its "Background memory pass suggests Story State updates" switch freezes it.
+          AI-generated updates may only touch component content when the component type is Plot Essentials,
+          and only through approved mutation paths.
         </p>
       </>
     ),
@@ -336,11 +326,11 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
           directly.
         </p>
         <p>
-          System memory triggers choose which kinds of new Story Card the background memory pass may suggest.
+          System memory triggers are the zero-cost inline memory tags the model can append after a response.
           Use <strong>Quiet entity-only</strong> when you only want new characters and world facts. Use{" "}
           <strong>Balanced story memory</strong> when you also want relationship milestones, plot beats, and
-          status changes to create Memory Suggestions. The pass suggests at most one new card at a time, and
-          duplicate proposals are filtered by the reducer.
+          status changes to create Memory Suggestions. The prompt still asks for only the strongest durable
+          memory per response, and duplicate proposals are filtered by the reducer.
         </p>
       </>
     ),
@@ -373,15 +363,8 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
       <>
         <p>
           Settings stores tiny app preferences in localStorage, including provider API key, selected model,
-          and dark mode. <strong>Automatic memory</strong> turns the background memory pass on or off and sets
-          how often it runs (every N story turns; default 3). Each pass reads the turns not yet processed, oldest
-          first, in chunks of at most six turns. It returns only what changed. A chunk counts as done only when
-          its reply arrives complete; a failed chunk is retried smaller, so falling behind never produces one
-          huge request. The Evaluation Log on the Triggers page shows each pass's model, token budget, finish
-          reason, and parse result. If your narrator model is unreliable at JSON, set a Background Provider
-          (advanced settings) so memory runs on a dependable model.
-          Adventure-specific settings control token budgets, semantic evaluation, auto-approve toggles, and the
-          background provider.
+          and dark mode. Adventure-specific settings control token budgets, semantic evaluation, memory
+          detection, and background update behavior.
         </p>
         <p>
           The Provider section includes an API throttle. Enable it to enforce a minimum delay between
@@ -422,16 +405,15 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
     body: (
       <>
         <ol>
-          <li>Flush queued background updates.</li>
+          <li>Flush queued semantic updates.</li>
           <li>Add the user message through <code>adventureReducer</code>.</li>
           <li>Run keyword and regex automations synchronously.</li>
           <li>Build deterministic context with <code>buildContext</code>.</li>
-          <li>Send <code>ContextBuildResult.messages</code> to the provider. The narrator only narrates.</li>
-          <li>Strip any stray memory or thought tags, then run the continuity check if the reply makes risky claims.</li>
-          <li>Add assistant output through the reducer and consume the Next Output Bias.</li>
-          <li>Run output-side keyword and regex automations and advance Arc Director pacing. Only Story Cards and Brains named in this turn's own text count, and a break never resolves on a timer: after six turns it asks whether the confrontation resolved.</li>
-          <li>Increment the turn and persist.</li>
-          <li>In the background: every N story turns, one memory pass suggests Story State, character, Story Card, and plot updates; semantic evaluation runs only if you configured semantic rules.</li>
+          <li>Send <code>ContextBuildResult.messages</code> to the provider.</li>
+          <li>Add assistant output through the reducer.</li>
+          <li>Create Memory Suggestions proposals when classifier output is significant.</li>
+          <li>Run output-side keyword and regex automations.</li>
+          <li>Increment the turn, persist, and start async semantic evaluation.</li>
         </ol>
         <p>
           The smoke tests in <code>src/state/turnPipeline.smoke.test.ts</code> exercise this path with a
@@ -448,18 +430,23 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
     tags: ["context", "payload", "preview", "tokens"],
     body: (
       <>
-        <p>The payload is ordered so providers can cache the stable part:</p>
+        <p>Context is assembled in this fixed section order:</p>
         <ol>
-          <li>System message (stable prefix): System Shell with Narration Rules, AI Instructions, Plot Essentials, the Current Story Arc premise and phase direction, Components, Pinned Story Cards (except living cards).</li>
-          <li>Recent Messages, sent chronologically and trimmed in chunks of 10.</li>
-          <li>Turn context, at the start of the newest user message: Story State, Active Pressure, Arc Progress (the arc's development log), triggered and pinned living Story Cards, Brains, Author's Note, Next Turn Note, Continuity Challenge. These change often, so keeping them out of the prefix lets providers reuse the cache.</li>
+          <li>System Shell</li>
+          <li>AI Instructions</li>
+          <li>Plot Essentials</li>
+          <li>Components</li>
+          <li>Story Cards</li>
+          <li>Brains</li>
+          <li>Author's Note</li>
+          <li>Next Turn Note</li>
+          <li>Continuity Challenge</li>
+          <li>Recent Messages</li>
         </ol>
-        <p>Out-of-character corrections are kept as Author Corrections: the narrator follows them for a few turns, and the next memory pass removes what they reject from Story State, cards (static ones included), and character knowledge. Memory Suggestions lists them, and its Memory health panel explains settings or limits that stop memory from staying current. Story State is capped at about 400 words and 8 open threads; when it grows past that, the memory pass suggests a consolidated version for your review. Open threads are their own list under Story State on the Plot page: each has an id, and you can add, reword, resolve, reopen, or delete them. Scene Direction (also on the Plot page) is a short note the memory pass writes for the current scene: who is present, what each character is trying to do, and the choice left to you. Edit or switch it off there.</p>
-        <p>Story State is usually updated one line at a time (for example just Location, or one item added to Open threads); each line edit appears in Memory Suggestions with its previous value, and "Approve all Story State edits" applies them together. Settings → Context Budget → "Minimum recent dialogue" keeps the newest messages ahead of lower-priority memory when the context is full.</p>
         <p>
-          Context Preview must match the provider payload. Recent messages are shown newest-first in preview
-          but sent chronologically. Per-turn material never goes in the system message, because that would
-          break the provider cache for everything after it.
+          Context Preview must match the provider payload. Non-message sections are joined into the first
+          system message. Recent messages are shown newest-first in preview but sent chronologically in
+          the chat payload.
         </p>
         <p>
           There is no hidden "adventure memory" bucket. Memory Proposals are visible in preview, but they
@@ -515,10 +502,6 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
           <dd>Opt-in state for major characters only. AI may update a Brain only if it already exists.</dd>
           <dt>Plot Essentials</dt>
           <dd>Overarching premise, long-term conflict, and persistent story-wide constraints.</dd>
-          <dt>Story State</dt>
-          <dd>Authoritative current truth: day/time, location, relationships, who has met whom, open threads. Always included. The background memory pass suggests full rewrites for review.</dd>
-          <dt>Active Pressure</dt>
-          <dd>One sentence naming the external force pressing on the player character right now.</dd>
           <dt>Memory Suggestions</dt>
           <dd>Pending proposals. Nothing in the inbox becomes active context until approved.</dd>
         </dl>
@@ -537,8 +520,7 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
         <ul>
           <li>Durable recurring facts go to Story Cards.</li>
           <li>Character-specific evolving internal state goes to Brains only for existing BrainEntries.</li>
-          <li>What is true right now (time, place, arrangements, who knows whom) goes to Story State.</li>
-          <li>Premise, long-term conflict, and story-wide constraints go to Plot Essentials.</li>
+          <li>Tiny always-on current constraints go to Plot Essentials.</li>
           <li>Current external pressure goes to Active Pressure; active arc history goes to Current Arc.</li>
           <li>Ephemeral scenery, one-off room layouts, movement, and throwaway details are ignored.</li>
         </ul>
@@ -546,8 +528,7 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
 "Margo feels jealous but hides it" -> brainUpdate only if Margo Brain exists
 "The couch is against the west wall" -> ignore
 "Magic cannot cross the warded threshold" -> storyCard
-"The Beast is actively hunting Seth tonight" -> plotPressureUpdate
-"It is now the morning after the gala" -> storyStateUpdate`}</pre>
+"The Beast is actively hunting Seth tonight" -> plotEssentialsUpdate`}</pre>
       </>
     ),
   },
@@ -649,7 +630,7 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
         <p><strong>Good:</strong> <code>margo_on_setu_ward_question: "She asked about the ward the same way she asked about the knife last winter. She already knows. I need to decide before the delegation arrives whether to tell her or redirect."</code></p>
         <p><strong>Bad:</strong> <code>mood: "Margo is anxious and protective."</code></p>
         <p>
-          Thoughts are suggested by the background memory pass every few story turns, along with a knowledge boundary (what the character knows and does not know). Each thought should have a descriptive snake_case key. Old thoughts are automatically archived when the brain grows long.
+          Thoughts are captured inline during story generation at zero extra API cost. Each thought should have a descriptive snake_case key. Old thoughts are automatically archived when the brain grows long.
         </p>
       </>
     ),
@@ -773,7 +754,7 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
           <li>"There is tension between Margo and Seth." (relationship state, not a story-level threat)</li>
           <li>"Setu is uncertain about what to do next." (internal state, not external force)</li>
         </ul>
-        <p>Active Pressure is updated by the background memory pass and auto-approved by default. You can also edit it directly if the model's version misses the real threat.</p>
+        <p>Active Pressure is auto-updated by the semantic engine. You can also edit it directly if the model's version misses the real threat.</p>
       </>
     ),
   },
@@ -859,8 +840,6 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
           <li>BrainEntry fields for existing BrainEntries.</li>
           <li>StoryCard content, triggers, and state.</li>
           <li>Component content only when the component type is <code>plotEssentials</code>.</li>
-          <li>Active Pressure only through the <code>plotPressureUpdate</code> path.</li>
-          <li>Story State only through the <code>storyStateUpdate</code> path (full replacement).</li>
         </ul>
         <p>Rejected AI writes include AI Instructions, Author's Note, provider config, trigger definitions, raw imports, quest definitions, and the system shell.</p>
       </>
@@ -884,9 +863,8 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
           trigger logs are visible in Automations.
         </p>
         <p>
-          Generated content actions include Story Card, Brain, and Plot Essentials updates. Automatic memory
-          does not depend on semantic triggers: the background memory pass handles it, and semantic evaluation
-          makes no calls unless you have configured semantic rules.
+          Generated content actions include Story Card updates and Plot Essentials updates. Brain updates
+          are handled inline during story generation at zero extra API cost.
         </p>
       </>
     ),

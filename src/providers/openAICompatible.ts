@@ -1,5 +1,4 @@
 import type { ChatMessage, ProviderConfig, ProviderRequestThrottle, ProviderUsage } from "../types/adventure";
-import { reportProviderUsage } from "./usage";
 
 type CacheBlock = { type: "text"; text: string; cache_control?: { type: "ephemeral" } };
 type CacheableContent = string | CacheBlock[];
@@ -19,11 +18,6 @@ function applyPromptCaching(messages: ChatMessage[]): CacheableMessage[] {
   );
 }
 
-/** GLM 5.3 requires reasoning even for short visible replies. */
-export function requiresGlmReasoning(config: Pick<ProviderConfig, "model">): boolean {
-  return /^(?:z-ai\/)?glm-5\.3(?:-flash(?:x)?|)(?::[^/]+)?$/i.test(config.model);
-}
-
 export interface SendChatCompletionOptions {
   messages: ChatMessage[];
   config: ProviderConfig;
@@ -36,29 +30,6 @@ export interface ProviderResponse {
   content: string;
   raw: unknown;
   usage?: ProviderUsage;
-  /** Normalized stop reason: "length" means the output ceiling cut the reply off (OpenAI and Anthropic formats). */
-  finishReason?: string;
-  /** Hidden reasoning tokens billed inside the output ceiling, when the provider reports them. */
-  reasoningTokens?: number;
-}
-
-/**
- * How a JSON-only request is enforced on this route. Anthropic-format endpoints have no
- * response_format parameter, so JSON there rests on the prompt alone and the caller must parse
- * defensively. OpenAI-format endpoints (including OpenRouter) receive json_object; OpenRouter may
- * still route to an upstream that ignores it, so callers parse defensively everywhere.
- */
-export type StructuredOutputMode = "json_object" | "prompt_only";
-
-export function structuredOutputMode(config: Pick<ProviderConfig, "baseUrl">): StructuredOutputMode {
-  return isAnthropicFormat(config.baseUrl) ? "prompt_only" : "json_object";
-}
-
-/** Short route description for diagnostics: endpoint host, format, and model. */
-export function providerRouteLabel(config: Pick<ProviderConfig, "baseUrl" | "model">): string {
-  let host = config.baseUrl;
-  try { host = new URL(config.baseUrl).host; } catch { /* keep raw */ }
-  return `${host}${isAnthropicFormat(config.baseUrl) ? " (Anthropic format)" : ""} · ${config.model}`;
 }
 
 let throttleQueue: Promise<void> = Promise.resolve();
@@ -205,11 +176,7 @@ async function sendOpenAIRequest(
         ...(config.presencePenalty !== undefined ? { presence_penalty: config.presencePenalty } : {}),
         ...(config.frequencyPenalty !== undefined ? { frequency_penalty: config.frequencyPenalty } : {}),
         ...(responseFormat ? { response_format: { type: responseFormat } } : {}),
-        ...(requiresGlmReasoning(config)
-          ? (isOpenRouterProvider(config)
-            ? { reasoning: { effort: thinking === "disabled" ? "low" : "high" } }
-            : { thinking: { type: "enabled" }, reasoning_effort: thinking === "disabled" ? "low" : "high" })
-          : (thinking ? { thinking: { type: thinking } } : {})),
+        ...(thinking ? { thinking: { type: thinking } } : {}),
         ...(sessionId ? { session_id: sessionId } : {}),
         ...(provider ? { provider } : {}),
       }),
@@ -220,7 +187,7 @@ async function sendOpenAIRequest(
   }
 
   const rawText = await response.text().catch(() => "");
-  let raw: { error?: { message?: string }; choices?: Array<{ finish_reason?: string; message?: { content?: string | null } }>; usage?: { prompt_tokens?: number; completion_tokens?: number; completion_tokens_details?: { reasoning_tokens?: number }; total_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number; prompt_cache_hit_tokens?: number; prompt_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number } } };
+  let raw: { error?: { message?: string }; choices?: Array<{ message?: { content?: string } }>; usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number; prompt_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number } } };
   try {
     raw = JSON.parse(rawText) as typeof raw;
   } catch {
@@ -232,32 +199,20 @@ async function sendOpenAIRequest(
     throw new Error(`Provider error ${response.status} (${endpoint}): ${detail}`);
   }
 
-  // prompt_tokens already includes cached tokens on OpenAI-style APIs. Cache hits are reported as
-  // prompt_tokens_details.cached_tokens (OpenAI/OpenRouter) or prompt_cache_hit_tokens (DeepSeek).
+  const content = raw.choices?.[0]?.message?.content;
+  if (content == null) throw new Error(`Provider returned no content. Body: ${rawText.slice(0, 300)}`);
+
   const usage: ProviderUsage | undefined = raw.usage
     ? {
         promptTokens: raw.usage.prompt_tokens ?? 0,
         completionTokens: raw.usage.completion_tokens ?? 0,
         totalTokens: raw.usage.total_tokens ?? 0,
-        cacheReadTokens: raw.usage.cache_read_input_tokens ?? raw.usage.prompt_tokens_details?.cached_tokens ?? raw.usage.prompt_cache_hit_tokens,
+        cacheReadTokens: raw.usage.cache_read_input_tokens ?? raw.usage.prompt_tokens_details?.cached_tokens,
         cacheCreationTokens: raw.usage.cache_creation_input_tokens ?? raw.usage.prompt_tokens_details?.cache_write_tokens,
       }
     : undefined;
-  // Report before validating content: an empty or unusable reply is still billed.
-  reportProviderUsage(config, usage);
 
-  const content = raw.choices?.[0]?.message?.content;
-  if (typeof content !== "string" || !content.trim()) {
-    const finish = raw.choices?.[0]?.finish_reason ?? "unknown";
-    const reasoningTokens = raw.usage?.completion_tokens_details?.reasoning_tokens;
-    const detail = `Model: ${config.model}; finish reason: ${finish}; output tokens: ${usage?.completionTokens ?? "unknown"}; reasoning tokens: ${reasoningTokens ?? "unknown"}; requested limit: ${config.maxOutputTokens}.`;
-    const advice = finish === "length"
-      ? " The output limit was reached before visible text was returned. Increase Max Output Tokens or reduce reasoning effort."
-      : " Try another provider route if this persists.";
-    throw new Error(`Provider returned no content. ${detail}${advice}`);
-  }
-
-  return { content, raw, usage, finishReason: raw.choices?.[0]?.finish_reason, reasoningTokens: raw.usage?.completion_tokens_details?.reasoning_tokens };
+  return { content, raw, usage };
 }
 
 async function sendAnthropicRequest(
@@ -308,7 +263,7 @@ async function sendAnthropicRequest(
   }
 
   const rawText = await response.text().catch(() => "");
-  let raw: { error?: { message?: string }; stop_reason?: string; content?: Array<{ type: string; text?: string }>; usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } };
+  let raw: { error?: { message?: string }; content?: Array<{ type: string; text?: string }>; usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } };
   try {
     raw = JSON.parse(rawText) as typeof raw;
   } catch {
@@ -320,27 +275,20 @@ async function sendAnthropicRequest(
     throw new Error(`Provider error ${response.status} (${endpoint}): ${detail}`);
   }
 
-  // Anthropic reports input_tokens EXCLUDING cache reads/writes. Normalize to the OpenAI meaning
-  // (promptTokens = every input token, cacheReadTokens = the cached subset) so usage from both
-  // adapters is comparable and cache-hit rates are not overstated.
-  const promptTokens = (raw.usage?.input_tokens ?? 0) + (raw.usage?.cache_read_input_tokens ?? 0) + (raw.usage?.cache_creation_input_tokens ?? 0);
+  const content = raw.content?.find((c) => c.type === "text")?.text;
+  if (content == null) throw new Error(`Provider returned no content. Body: ${rawText.slice(0, 300)}`);
+
   const usage: ProviderUsage | undefined = raw.usage
     ? {
-        promptTokens,
+        promptTokens: raw.usage.input_tokens ?? 0,
         completionTokens: raw.usage.output_tokens ?? 0,
-        totalTokens: promptTokens + (raw.usage.output_tokens ?? 0),
+        totalTokens: (raw.usage.input_tokens ?? 0) + (raw.usage.output_tokens ?? 0),
         cacheReadTokens: raw.usage.cache_read_input_tokens,
         cacheCreationTokens: raw.usage.cache_creation_input_tokens,
       }
     : undefined;
-  reportProviderUsage(config, usage);
 
-  const content = raw.content?.find((c) => c.type === "text")?.text;
-  if (content == null) throw new Error(`Provider returned no content. Body: ${rawText.slice(0, 300)}`);
-
-  // Anthropic reports a cut-off as stop_reason "max_tokens"; normalize to the OpenAI "length".
-  const finishReason = raw.stop_reason === "max_tokens" ? "length" : raw.stop_reason;
-  return { content, raw, usage, finishReason };
+  return { content, raw, usage };
 }
 
 export async function sendOpenAICompatibleChatCompletion({

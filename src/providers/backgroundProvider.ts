@@ -11,7 +11,7 @@ export function isUsableProviderBaseUrl(value: string | undefined): boolean {
   }
 }
 
-export function backgroundProviderConfigIssue(adventure: Pick<Adventure, "semanticEvaluationSettings">): string | undefined {
+export function backgroundProviderConfigIssue(adventure: Adventure): string | undefined {
   const bg = adventure.semanticEvaluationSettings.backgroundProviderConfig;
   if (!bg?.baseUrl?.trim()) return undefined;
   return isUsableProviderBaseUrl(bg.baseUrl)

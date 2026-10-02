@@ -1,8 +1,6 @@
 import { useState } from "react";
 import { classifyMemory } from "../memory/classificationPolicy";
 import { resolveMemoryTarget } from "../memory/resolveMemoryTarget";
-import { proposalTargetChanged } from "../state/adventureReducer";
-import { memoryHealthIssues } from "../memory/memoryHealth";
 import type { MemoryAutoApproveSettings, MemoryProposal, MemoryProposalType, MemoryReconcileRequest, StoryCardType } from "../types/adventure";
 import { createId, nowIso } from "../utils/id";
 import type { AdventurePageProps } from "./pageTypes";
@@ -15,8 +13,6 @@ const proposalTypes: MemoryProposalType[] = [
   "currentArcUpdate",
   "arcProposal",
   "plotPressureUpdate",
-  "storyStateUpdate",
-  "sceneDirectionUpdate",
   "plotMomentumUpdate",
   "summaryUpdate",
   "ignore",
@@ -47,12 +43,6 @@ export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onR
     || proposal.rationale.toLowerCase().includes(searchLower));
   const pending = visibleProposals.filter((p) => p.status === "pending");
   const resolved = visibleProposals.filter((p) => p.status !== "pending");
-  const pendingStoryState = allProposals.filter((p) => p.status === "pending" && p.proposedType === "storyStateUpdate" && !p.requiresReview);
-
-  function approveAllStoryState() {
-    // Oldest first, so a later full rewrite or line edit lands last.
-    [...pendingStoryState].reverse().forEach((proposal) => dispatch({ type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id }));
-  }
   const totalPending = allProposals.filter((p) => p.status === "pending").length;
   const totalResolved = allProposals.length - totalPending;
 
@@ -109,8 +99,6 @@ export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onR
   }
 
   const autoApprove = adventure.memoryAutoApprove;
-  const healthIssues = memoryHealthIssues(adventure);
-  const activeCorrections = (adventure.activeState.corrections ?? []).filter((correction) => correction.status === "active");
 
   function setAutoApprove(patch: Partial<MemoryAutoApproveSettings>) {
     dispatch({ type: "SET_MEMORY_AUTO_APPROVE", settings: { ...autoApprove, ...patch } });
@@ -128,38 +116,6 @@ export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onR
           {searchLower && <span>{visibleProposals.length} shown</span>}
         </div>
       </div>
-
-      {healthIssues.length > 0 && (
-        <details className="panel memory-health-panel" open={healthIssues.some((issue) => issue.severity === "warning")}>
-          <summary>Memory health ({healthIssues.length})</summary>
-          <ul className="memory-health-list">
-            {healthIssues.map((issue) => (
-              <li key={issue.id}>
-                <strong>{issue.severity === "warning" ? "⚠ " : ""}{issue.title}</strong>
-                <p className="muted" style={{ margin: "0.15rem 0 0.5rem" }}>{issue.detail}</p>
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
-
-      {activeCorrections.length > 0 && (
-        <div className="panel">
-          <strong>Author corrections in effect</strong>
-          <p className="muted" style={{ margin: "0.25rem 0" }}>
-            Your out-of-character corrections, and story edits that removed recorded text. The narrator follows them for a few turns, and the next memory pass retracts what they reject from Story State, cards, and knowledge.
-          </p>
-          <ul>
-            {activeCorrections.map((correction) => (
-              <li key={correction.id}>
-                <span className="muted">Turn {correction.turn}{correction.seenByPass ? " · read by memory" : " · waiting for the memory pass"}: </span>
-                {correction.text.length > 300 ? `${correction.text.slice(0, 300)}…` : correction.text}
-                {" "}<button type="button" onClick={() => dispatch({ type: "DISMISS_CORRECTION", correctionId: correction.id })}>Dismiss</button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
 
       {onFindEventMemories && <div className="panel">
         <button type="button" disabled={loading || Boolean(eventScan)} onClick={async () => {
@@ -185,9 +141,8 @@ export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onR
         <summary>Rules &amp; auto-approve</summary>
         <h3>Memory Suggestions</h3>
         <p className="muted">
-          Memory Suggestions holds AI-proposed changes to your story data — Story State rewrites, new Story Cards, Character Self updates
-          (thoughts and knowledge boundaries), Plot Essentials rewrites, Active Pressure updates, and legacy Summary changes.
-          A newer Story State suggestion replaces an older one that is still pending. The AI generates these automatically after turns or when
+          Memory Suggestions holds AI-proposed changes to your story data — new Story Cards, Character Self updates,
+          Plot Essentials rewrites, Active Pressure updates, and legacy Summary changes. The AI generates these automatically after turns or when
           you use <strong>Remember This</strong>. Review each proposal and <strong>Approve</strong> to apply it,
           <strong> Reject</strong> to dismiss it cleanly, or <strong>Ignore</strong> to remove it from view without applying.
           You can edit the content before approving.
@@ -204,8 +159,6 @@ export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onR
           <CheckboxField label="Arc Proposals" checked={autoApprove.arcProposal} onChange={(v) => setAutoApprove({ arcProposal: v })} />
           <CheckboxField label="Story Cards" checked={autoApprove.storyCard} onChange={(v) => setAutoApprove({ storyCard: v })} />
           <CheckboxField label="Characters" checked={autoApprove.brainUpdate} onChange={(v) => setAutoApprove({ brainUpdate: v })} />
-          <CheckboxField label="Story State" checked={autoApprove.storyStateUpdate} onChange={(v) => setAutoApprove({ storyStateUpdate: v })} />
-          <CheckboxField label="Scene Direction" checked={autoApprove.sceneDirectionUpdate !== false} onChange={(v) => setAutoApprove({ sceneDirectionUpdate: v })} />
         </div>
       </details>
 
@@ -253,17 +206,10 @@ export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onR
         </button>
       </details>
 
-      {pendingStoryState.length > 1 && (
-        <div className="row" style={{ gap: "0.5rem", alignItems: "center", margin: "0.5rem 0" }}>
-          <button type="button" onClick={approveAllStoryState}>Approve all Story State edits ({pendingStoryState.length})</button>
-          <span className="muted">Applies oldest first; line edits only change their own line.</span>
-        </div>
-      )}
-
       <div className="list">
         {pending.length === 0 && <p className="muted">No pending memory suggestions.</p>}
         {pending.map((proposal) => (
-          <ProposalCard key={proposal.id} proposal={proposal} targetChanged={proposal.status === "pending" && proposalTargetChanged(adventure, proposal)} dispatch={dispatch} onUpdate={updateProposal} onRegenerate={onRegenerateProposal} />
+          <ProposalCard key={proposal.id} proposal={proposal} dispatch={dispatch} onUpdate={updateProposal} onRegenerate={onRegenerateProposal} />
         ))}
       </div>
 
@@ -272,7 +218,7 @@ export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onR
           <summary>History ({resolved.length})</summary>
           <div className="list" style={{ marginTop: "0.75rem" }}>
             {resolved.map((proposal) => (
-              <ProposalCard key={proposal.id} proposal={proposal} targetChanged={proposal.status === "pending" && proposalTargetChanged(adventure, proposal)} dispatch={dispatch} onUpdate={updateProposal} onRegenerate={onRegenerateProposal} />
+              <ProposalCard key={proposal.id} proposal={proposal} dispatch={dispatch} onUpdate={updateProposal} onRegenerate={onRegenerateProposal} />
             ))}
           </div>
         </details>
@@ -283,13 +229,12 @@ export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onR
 
 interface ProposalCardProps {
   proposal: MemoryProposal;
-  targetChanged?: boolean;
   dispatch: AdventurePageProps["dispatch"];
   onUpdate: (proposal: MemoryProposal, patch: Partial<MemoryProposal>) => void;
   onRegenerate?: (proposalId: string) => Promise<void>;
 }
 
-function ProposalCard({ proposal, targetChanged = false, dispatch, onUpdate, onRegenerate }: ProposalCardProps) {
+function ProposalCard({ proposal, dispatch, onUpdate, onRegenerate }: ProposalCardProps) {
   const isPending = proposal.status === "pending";
   const [regenerating, setRegenerating] = useState(false);
 
@@ -311,8 +256,6 @@ function ProposalCard({ proposal, targetChanged = false, dispatch, onUpdate, onR
         <span className="story-card-badges">
           <span className="badge badge-type">{Math.round(proposal.confidence * 100)}%</span>
             {isPending && proposal.requiresReview && <span className="badge">Review required</span>}
-          {targetChanged && <span className="badge badge-protected" title="The target was edited after this suggestion was drafted. Approving replaces those edits.">Target edited since</span>}
-          {proposal.claim && proposal.claim !== "fact" && <span className="badge">{proposal.claim}</span>}
           {!isPending && <span className="badge badge-inactive">{proposal.status}</span>}
           {proposal.suggestedTriggers.length > 0 && <span className="badge">{proposal.suggestedTriggers.length} keys</span>}
         </span>
@@ -364,19 +307,8 @@ function ProposalCard({ proposal, targetChanged = false, dispatch, onUpdate, onR
         </div>
       </div>
 
-      {proposal.stateLine?.op === "set" && proposal.baseContent !== undefined && (
-        <p className="muted" style={{ margin: "0.25rem 0" }}>Before: {proposal.baseContent || "(line not present)"}</p>
-      )}
-      {proposal.threadOp && (
-        <p className="muted" style={{ margin: "0.25rem 0" }}>
-          {proposal.threadOp.op === "add" ? "Opens a new thread:" : proposal.threadOp.op === "update" ? `Rewords thread ${proposal.threadOp.threadId} (was: ${proposal.baseContent ?? "?"}):` : `Resolves ${proposal.threadOp.threadIds.length} thread${proposal.threadOp.threadIds.length === 1 ? "" : "s"}:`}
-        </p>
-      )}
-      {proposal.stateLine && proposal.stateLine.op !== "set" && (
-        <p className="muted" style={{ margin: "0.25rem 0" }}>{proposal.stateLine.op === "add" ? "Adds this item to" : "Removes this item from"} {proposal.stateLine.label}:</p>
-      )}
       <textarea
-        rows={proposal.stateLine ? 2 : 5}
+        rows={5}
         value={proposal.content}
         onChange={(event) => onUpdate(proposal, { content: event.target.value })}
         placeholder="Proposed content..."

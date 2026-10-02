@@ -58,18 +58,12 @@ describe("development adventure seed", () => {
       "plotEssentials",
       "currentArc",
       "components",
-      "pinnedStoryCards",
-      "recentMessages",
-      "storyState",
-      "sceneDirection",
-      "activePressure",
-      "arcProgress",
       "storyCards",
       "brains",
       "authorNote",
       "nextTurnNote",
-      "corrections",
       "challengeMode",
+      "recentMessages",
     ]);
 
     const storyCardIds = result.sections.find((section) => section.id === "storyCards")?.items.map((item) => item.id) ?? [];
@@ -84,7 +78,7 @@ describe("development adventure seed", () => {
 
     expect(result.messages[0].content).toContain("# B. AI Instructions");
     expect(result.messages[0].content).toContain("# C. Plot Essentials");
-    expect(result.messages.at(-1)?.content).toContain("# F. Story Cards");
+    expect(result.messages[0].content).toContain("# F. Story Cards");
     expect(result.sections.find((section) => section.id === "components")?.items.map((item) => item.id)).toEqual([
       "dev-component-mission-loop",
       "dev-component-dragon-fire",

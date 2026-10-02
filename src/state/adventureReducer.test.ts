@@ -81,8 +81,6 @@ const testedActionTypes = [
   "SET_LAST_SCENE_STATE_TURN",
   "RESET_RUNTIME_STATE",
   "ACCUMULATE_BACKGROUND_TOKENS",
-  "RECORD_SPEND",
-  "ADD_MESSAGE_BACKGROUND_USAGE",
   "SET_AUTO_SAVE_SETTINGS",
   "MARK_COMPONENT_UPDATED",
   "ADVANCE_ARC_PACING",
@@ -90,13 +88,6 @@ const testedActionTypes = [
   "SET_ARC_CONTINUATIONS",
   "COMPLETE_ARC_TO_STORY_CARD",
   "APPLY_ARC_CONTINUATION",
-  "MARK_CORRECTIONS_SEEN",
-  "ADD_STORY_THREAD",
-  "UPDATE_STORY_THREAD",
-  "RESOLVE_STORY_THREAD",
-  "REOPEN_STORY_THREAD",
-  "DELETE_STORY_THREAD",
-  "DISMISS_CORRECTION",
 ] as const satisfies AdventureAction["type"][];
 
 type MissingActionCoverage = Exclude<AdventureAction["type"], (typeof testedActionTypes)[number]>;
@@ -1689,7 +1680,7 @@ describe("adventureReducer", () => {
     expect(state.rollingSummary.lastSummarizedMessageIndex).toBeUndefined();
   });
 
-  it("advances arc pacing from engagement, auto-fires the break, then asks before resolving", () => {
+  it("advances arc pacing from engagement, auto-fires the break, then settles into aftermath", () => {
     let state = baseAdventure();
     const arc = makeComponent({
       title: "Current Story Arc",
@@ -1713,42 +1704,9 @@ describe("adventureReducer", () => {
     expect(get().arcState?.phase).toBe("break");
     expect(get().arcState?.brokeAtTurn).toBe(8);
 
-    // Elapsed turns never resolve the arc: after ARC_BREAK_DURATION (6) turns it asks instead.
-    state = reduce(state, { type: "ADVANCE_ARC_PACING", triggeredIds: [], turn: 13 });
-    expect(get().arcState?.pendingResolution).toBeFalsy();
+    // break settles into aftermath after ARC_BREAK_DURATION (6) turns
     state = reduce(state, { type: "ADVANCE_ARC_PACING", triggeredIds: [], turn: 14 });
-    expect(get().arcState?.phase).toBe("break");
-    expect(get().arcState?.pendingResolution).toBe(true);
-    state = reduce(state, { type: "ADVANCE_ARC_PACING", triggeredIds: [], turn: 40 });
-    expect(get().arcState?.phase).toBe("break");
-
-    // An explicit Resolve moves it on and clears the prompt.
-    state = reduce(state, { type: "SET_ARC_PHASE", componentId: arc.id, phase: "aftermath", turn: 41 });
     expect(get().arcState?.phase).toBe("aftermath");
-    expect(get().arcState?.pendingResolution).toBe(false);
-  });
-
-  it("resolves a break only through an approved, evidence-backed resolution suggestion", () => {
-    let state = baseAdventure();
-    const arc = makeComponent({
-      title: "Current Story Arc", type: "currentArc", content: "", arcPremise: "The duke's coup",
-      arcThreadKeys: ["baddie"], arcPace: "short", arcTriggerMode: "auto",
-    });
-    state = reduce(state, { type: "UPSERT_COMPONENT", component: arc });
-    state = reduce(state, { type: "SET_ARC_PHASE", componentId: arc.id, phase: "break", turn: 3 });
-    state = reduce(state, { type: "SET_MEMORY_AUTO_APPROVE", settings: { ...state.memoryAutoApprove, currentArcUpdate: true } });
-    state = reduce(state, { type: "ADD_MEMORY_PROPOSAL", proposal: {
-      id: "resolve", sourceTurnId: "turn-4", sourceText: "The duke kneels and surrenders his seal.", proposedType: "currentArcUpdate",
-      title: "Current Story Arc", content: "The duke surrendered his seal; the coup is over.", suggestedTriggers: [], confidence: 0.75,
-      rationale: "Memory pass", status: "pending", targetId: arc.id, appendContent: true, requiresReview: true, resolvesArc: true,
-      createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z",
-    } });
-    const get = () => state.components.find((component) => component.id === arc.id)!;
-    // Review is required even with arc auto-approve on.
-    expect(get().arcState?.phase).toBe("break");
-    state = reduce(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: "resolve" });
-    expect(get().arcState?.phase).toBe("aftermath");
-    expect(get().content).toContain("coup is over");
   });
 
   it("holds the break in ask mode until the player confirms it", () => {
@@ -1798,24 +1756,5 @@ describe("adventureReducer", () => {
     state = reduce(state, { type: "SET_ARC_PHASE", componentId: arc.id, phase: "simmer", turn: 15 });
     expect(get().arcState?.threadEngagement).toEqual({});
     expect(get().arcState?.tier).toBe(0);
-  });
-
-  it("keeps a lifetime spend total that survives erasing the entry that spent it", () => {
-    let state = baseAdventure();
-    state = reduce(state, { type: "RECORD_SPEND", usage: { promptTokens: 1000, completionTokens: 100, totalTokens: 1100, cacheReadTokens: 800 } });
-    state = reduce(state, { type: "RECORD_SPEND", usage: { promptTokens: 500, completionTokens: 50, totalTokens: 550 } });
-    state = reduce(state, { type: "REMOVE_LAST_ASSISTANT_MESSAGE" });
-    expect(state.activeState.spendTotal).toEqual({ promptTokens: 1500, completionTokens: 150, totalTokens: 1650, cacheReadTokens: 800 });
-  });
-
-  it("attributes background usage to its entry without touching undo history", () => {
-    let state = baseAdventure();
-    const undoDepth = state.activeState.storyUndoStack.length;
-    const usage = { promptTokens: 300, completionTokens: 30, totalTokens: 330 };
-    state = reduce(state, { type: "ADD_MESSAGE_BACKGROUND_USAGE", messageId: "msg-assistant", usage });
-    state = reduce(state, { type: "ADD_MESSAGE_BACKGROUND_USAGE", messageId: "msg-assistant", usage });
-    expect(state.messages.find((m) => m.id === "msg-assistant")?.backgroundUsage).toEqual({ promptTokens: 600, completionTokens: 60, totalTokens: 660 });
-    expect(state.activeState.storyUndoStack.length).toBe(undoDepth);
-    expect(reduce(state, { type: "ADD_MESSAGE_BACKGROUND_USAGE", messageId: "gone", usage })).toBe(state);
   });
 });

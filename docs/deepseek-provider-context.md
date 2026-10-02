@@ -1,7 +1,5 @@
 # DeepSeek provider request contract
 
-> **Status:** History (incident record, September 2026) plus a still-valid wire-format rule · **Audience:** contributors · **Verified against:** `e768262`
-
 The public frontend is this repository, press-lab/AI-Story-Teller-Pages.
 Pushes to main automatically deploy GitHub Pages; verify the deployment result.
 

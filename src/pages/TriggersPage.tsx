@@ -87,9 +87,8 @@ export function TriggersPage({ adventure, dispatch }: AdventurePageProps) {
       <details className="panel editor-tools-panel" open>
         <summary>System memory triggers</summary>
         <p className="muted">
-          These categories decide which new Story Cards the background memory pass may suggest. It suggests at most one
-          new card per pass, only in an enabled category, and it goes to Memory Suggestions for approval. With system
-          triggers off, the pass still updates existing cards but suggests no new ones.
+          Inline story card detection runs without extra API calls. The model flags permanent story facts while writing
+          each response, then proposals go to Memory Suggestions for approval.
         </p>
         {(() => {
           const st = adventure.systemTriggers;
@@ -123,8 +122,8 @@ export function TriggersPage({ adventure, dispatch }: AdventurePageProps) {
                 </button>
               </div>
               <p className="muted">
-                Quiet tracks new characters and world facts. Balanced also tracks relationship, plot, and status milestones.
-                Either way the pass suggests at most one new card at a time.
+                Quiet tracks new characters and world facts. Balanced also tracks relationship, plot, and status milestones;
+                the prompt still asks for only the strongest durable memory tag per response.
               </p>
               <div className="grid two disabled-when-off" data-disabled={!enabled}>
                 {categories.map(({ key, label, description }) => (
@@ -329,21 +328,6 @@ export function TriggersPage({ adventure, dispatch }: AdventurePageProps) {
                   <pre>{JSON.stringify(entry.generatedContent, null, 2)}</pre>
                   <h4>Errors</h4>
                   <pre>{JSON.stringify(entry.errors, null, 2)}</pre>
-                  {entry.diagnostics && entry.diagnostics.length > 0 && (
-                    <>
-                      <h4>Diagnostics</h4>
-                      <pre>{entry.diagnostics.join("\n")}</pre>
-                    </>
-                  )}
-                  {entry.rawCapture && (
-                    <details>
-                      <summary>Raw request and reply (debug capture)</summary>
-                      <h4>Request</h4>
-                      <pre>{entry.rawCapture.request}</pre>
-                      <h4>Reply</h4>
-                      <pre>{entry.rawCapture.response || "(empty)"}</pre>
-                    </details>
-                  )}
                   <h4>Conditions Evaluated</h4>
                   <pre>{JSON.stringify(entry.conditionsEvaluated, null, 2)}</pre>
                 </details>

@@ -14,7 +14,6 @@ import type {
 import type { GlobalAdventureSettings, ProviderPreset, RuntimeProviderSettings, UiPreferences } from "./pageTypes";
 import { defaultUiPreferences } from "./pageTypes";
 import { CheckboxField, Field, JsonTextarea, NumberInput } from "./shared";
-import { backgroundProviderConfigIssue } from "../providers/backgroundProvider";
 import {
   lightTokenBudgetPreset,
   defaultTokenBudgetSettings,
@@ -330,15 +329,6 @@ export function SettingsPage({
                           checked={preset.promptCaching ?? false}
                           onChange={(promptCaching) => updatePreset(preset.id, { promptCaching })}
                         />
-                        <CheckboxField
-                          label="Use reasoning on out-of-character corrections (DeepSeek only)"
-                          checked={preset.reasoningForCorrections ?? false}
-                          onChange={(reasoningForCorrections) => updatePreset(preset.id, { reasoningForCorrections })}
-                        />
-                        <p className="muted" style={{ fontSize: "0.8em", margin: "0.25rem 0 0" }}>
-                          When you send an [Out of Character] correction, the model thinks before rewriting. Costs extra output
-                          tokens on those turns only. This switch does not control reasoning for other models.
-                        </p>
                         <Field label="OpenRouter routing preference">
                           <select
                             value={preset.openRouterProviderSort ?? ""}
@@ -393,26 +383,8 @@ export function SettingsPage({
 
         <article className="panel settings-card settings-section-full">
           <h3>Automatic memory</h3>
-          <CheckboxField label="Automatic memory" checked={globalAdventureSettings.memoryDetectionSettings.enabled} onChange={(enabled) => updateMemoryDetection({ enabled })} />
-          <Field label="Update memory every N story turns">
-            <NumberInput
-              min={1}
-              value={globalAdventureSettings.memoryDetectionSettings.everyNTurns ?? 3}
-              onChange={(value) => updateMemoryDetection({ everyNTurns: Math.max(1, Math.round(value || 1)) })}
-            />
-          </Field>
-          <CheckboxField
-            label="Suggest Event Memories for turning points"
-            checked={globalAdventureSettings.memoryDetectionSettings.suggestEventMemories !== false}
-            onChange={(suggestEventMemories) => updateMemoryDetection({ suggestEventMemories })}
-          />
-          <CheckboxField
-            label="Capture raw memory-pass requests (debug)"
-            checked={globalAdventureSettings.memoryDetectionSettings.debugCapture === true}
-            onChange={(debugCapture) => updateMemoryDetection({ debugCapture })}
-          />
-          <p className="muted">Every memory pass logs its route, token budget, finish reason, and parse result in the Evaluation Log (Triggers page). With debug capture on, each entry also stores the full request and raw reply (truncated), which makes saves larger.</p>
-          <p className="muted">The narrator only writes the story. Every N story turns, background calls read the unprocessed turns in small chunks (at most 6 turns each) and suggest Story State, character thought and knowledge, Story Card, and plot updates. Suggestions follow the auto-approve toggles in Memory Suggestions; anything not auto-approved waits there for review. Out-of-character turns never trigger it. With Event Memories on, the pass may also suggest one completed turning point (a revelation, a costly choice, a promise) per pass; those always wait for your review.</p>
+          <CheckboxField label="Remember while narrating (one pass)" checked={globalAdventureSettings.memoryDetectionSettings.enabled} onChange={(enabled) => updateMemoryDetection({ enabled })} />
+          <p className="muted">Story and small memory updates share one response. Unchanged memory needs no update. Routine memory checks no longer make separate API calls. Explicit custom rules, continuity corrections, and next-arc generation can still use additional calls.</p>
         </article>
         {/* ── Context Budget (advanced) ─────────────── */}
         {advanced && (
@@ -447,13 +419,6 @@ export function SettingsPage({
                   <option value="systemSuggested">systemSuggested</option>
                   <option value="hybrid">hybrid</option>
                 </select>
-              </Field>
-              <Field label="Minimum recent dialogue (messages)">
-                <NumberInput
-                  min={0}
-                  value={activeSettings.tokenBudgetSettings.minRecentMessages ?? 6}
-                  onChange={(value) => updateBudget({ minRecentMessages: Math.max(0, Math.round(value || 0)) })}
-                />
               </Field>
               <Field label="Trigger Recent Message Window">
                 <NumberInput
@@ -560,18 +525,13 @@ export function SettingsPage({
               onChange={(requireApprovalForAutoUpdates) => updateSemanticSettings({ requireApprovalForAutoUpdates })}
             />
             <p className="muted">
-              When on, updates from custom semantic rules go to Memory Suggestions. The background memory pass uses the per-type approval controls below.
+              When on, updates from custom semantic rules go to Memory Suggestions. Automatic one-pass memory uses the per-type approval controls below.
             </p>
             <h4>Background Provider</h4>
             <p className="muted">
               Route background tasks (evaluation, brain updates, story card updates, and plot updates) through a
-              separate provider. Leave blank to use the active preset for all tasks. The background memory pass
-              also uses this route, so a dependable JSON model here keeps memory working whatever the narrator model is.
+              separate provider. Leave blank to use the active preset for all tasks.
             </p>
-            {(() => {
-              const issue = backgroundProviderConfigIssue(activeSettings);
-              return issue ? <p className="error" role="alert">{issue}</p> : null;
-            })()}
             <Field label="Base URL">
               <input
                 value={activeSettings.semanticEvaluationSettings.backgroundProviderConfig?.baseUrl ?? ""}
@@ -627,10 +587,10 @@ export function SettingsPage({
           <article className="panel settings-card">
             <h3>Memory Detection</h3>
             <p className="muted">
-              One background call every few story turns suggests memory updates grounded in quotes from recent play. Local checks reject malformed, duplicate, or unsupported updates.
+              The narrator returns evidenced memory suggestions with the story. Local checks reject malformed, duplicate, or unsupported updates without another API call.
             </p>
             <CheckboxField
-              label="Automatic memory"
+              label="Remember while narrating"
               checked={globalAdventureSettings.memoryDetectionSettings.enabled}
               onChange={(enabled) => updateMemoryDetection({ enabled })}
             />
@@ -645,12 +605,10 @@ export function SettingsPage({
                   <CheckboxField label="Arc Proposals" checked={activeSettings.memoryAutoApprove.arcProposal} onChange={(arcProposal) => updateMemoryAutoApprove({ arcProposal })} />
                   <CheckboxField label="Story Cards" checked={activeSettings.memoryAutoApprove.storyCard} onChange={(storyCard) => updateMemoryAutoApprove({ storyCard })} />
                   <CheckboxField label="Characters" checked={activeSettings.memoryAutoApprove.brainUpdate} onChange={(brainUpdate) => updateMemoryAutoApprove({ brainUpdate })} />
-                  <CheckboxField label="Story State" checked={activeSettings.memoryAutoApprove.storyStateUpdate} onChange={(storyStateUpdate) => updateMemoryAutoApprove({ storyStateUpdate })} />
-                  <CheckboxField label="Scene Direction" checked={activeSettings.memoryAutoApprove.sceneDirectionUpdate !== false} onChange={(sceneDirectionUpdate) => updateMemoryAutoApprove({ sceneDirectionUpdate })} />
                 </div>
                 <p className="muted">
-                  These toggles apply to Memory Suggestions created by the background memory pass and manual builders.
-                  Plot Essentials, plot cards, and protected-card changes always require review. Plot Essentials holds the overarching story; Active Pressure holds immediate external stakes; Current Arc holds the ongoing storyline and pacing.
+                  These toggles apply to Memory Suggestions created by automatic detection, manual builders,
+                  and one-pass memory. One-pass Plot Essentials, plot cards, and protected-card changes always require review. Plot Essentials holds the overarching story; Active Pressure holds immediate external stakes; Current Arc holds the ongoing storyline and pacing.
                 </p>
               </>
             )}
