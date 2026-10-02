@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import type { Adventure, CloudSyncSettings, GitHubSaveSettings, GitHubSaveSlot } from "../types/adventure";
-import { deleteGitHubSave, listGitHubSaves, loadGitHubSave, saveToGitHub, shouldAutoSave } from "../sync/githubSaves";
+import { deleteGitHubAdventureSaves, deleteGitHubSave, listGitHubSaves, loadGitHubSave, saveToGitHub, shouldAutoSave } from "../sync/githubSaves";
 
 const DEFAULT_TIMER_SAVE_MINUTES = 5;
 
@@ -103,6 +103,20 @@ export function useGitHubSaves(cloudSettings: CloudSyncSettings, saveSettings: G
     [cloudSettings, saveSettings],
   );
 
+  const deleteAdventureSaves = useCallback(
+    async (adventureId: string): Promise<void> => {
+      setSavesStatus("Deleting play…");
+      try {
+        const removed = await deleteGitHubAdventureSaves(cloudSettings, saveSettings, adventureId);
+        setSaveSlots((current) => current.filter((s) => s.adventureId !== adventureId));
+        setSavesStatus(`Play deleted (${removed} ${removed === 1 ? "save" : "saves"})`);
+      } catch (error) {
+        setSavesStatus(error instanceof Error ? error.message : "Delete failed.");
+      }
+    },
+    [cloudSettings, saveSettings],
+  );
+
   const pullLatestForAdventure = useCallback(
     async (adventureId: string): Promise<Adventure | undefined> => {
       setSavesStatus("Checking for latest save…");
@@ -127,5 +141,5 @@ export function useGitHubSaves(cloudSettings: CloudSyncSettings, saveSettings: G
     [cloudSettings, saveSettings],
   );
 
-  return { saveSlots, savesStatus, listSaves, saveNow, loadSave, deleteSave, autoSaveIfDue, timedAutoSave, pullLatestForAdventure };
+  return { saveSlots, savesStatus, listSaves, saveNow, loadSave, deleteSave, deleteAdventureSaves, autoSaveIfDue, timedAutoSave, pullLatestForAdventure };
 }

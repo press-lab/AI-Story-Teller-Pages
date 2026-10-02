@@ -889,6 +889,11 @@ pre {
   box-shadow: 0 1px 0 color-mix(in srgb, var(--border) 55%, transparent);
 }
 
+.save-slot-tabs {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 0.75rem;
+}
+
 .import-export-status {
   order: 2;
   border: 1px solid color-mix(in srgb, var(--active-bg) 38%, var(--border));

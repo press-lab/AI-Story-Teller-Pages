@@ -45,6 +45,7 @@ interface AdventuresPageProps {
   onListSaves?: () => void;
   onLoadSave?: (slot: GitHubSaveSlot) => void;
   onDeleteSave?: (slot: GitHubSaveSlot) => void;
+  onDeleteAdventureSaves?: (adventureId: string) => Promise<void>;
   providerConfig?: ProviderConfig;
   premadeAdventures?: PremadeAdventureDefinition[];
   onLoadPremadeAdventure?: (id: PremadeAdventureId) => Promise<void>;
@@ -214,6 +215,39 @@ function formatCount(count: number | undefined, singular: string, plural = `${si
   return `${normalized.toLocaleString()} ${normalized === 1 ? singular : plural}`;
 }
 
+interface SavedPlay {
+  adventureId: string;
+  title: string;
+  saveCount: number;
+  latestTurn: number;
+  latestSavedAt: string;
+}
+
+/** Group save slots by adventure into "plays", newest play first. */
+function groupSavesIntoPlays(slots: GitHubSaveSlot[]): SavedPlay[] {
+  const plays = new Map<string, SavedPlay>();
+  for (const slot of slots) {
+    const play = plays.get(slot.adventureId);
+    if (!play) {
+      plays.set(slot.adventureId, {
+        adventureId: slot.adventureId,
+        title: slot.title,
+        saveCount: 1,
+        latestTurn: slot.turnCount,
+        latestSavedAt: slot.savedAt,
+      });
+      continue;
+    }
+    play.saveCount += 1;
+    if (slot.savedAt > play.latestSavedAt) {
+      play.title = slot.title;
+      play.latestTurn = slot.turnCount;
+      play.latestSavedAt = slot.savedAt;
+    }
+  }
+  return [...plays.values()].sort((a, b) => b.latestSavedAt.localeCompare(a.latestSavedAt));
+}
+
 function downloadText(filename: string, text: string) {
   const blob = new Blob([text], { type: "application/json" });
   const url = URL.createObjectURL(blob);
@@ -242,11 +276,14 @@ export function AdventuresPage({
   onListSaves,
   onLoadSave,
   onDeleteSave,
+  onDeleteAdventureSaves,
   providerConfig,
   premadeAdventures = [],
   onLoadPremadeAdventure,
 }: AdventuresPageProps) {
   const [view, setView] = useState<"list" | "create" | "aistImport" | "github" | "premade">("list");
+  const [githubTab, setGithubTab] = useState<"saves" | "plays">("saves");
+  const [deletingPlayId, setDeletingPlayId] = useState<string | undefined>();
   const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
   function toggleExpand(id: string) { setExpandedIds((prev) => ({ ...prev, [id]: !prev[id] })); }
 
@@ -948,8 +985,77 @@ export function AdventuresPage({
             </div>
           )}
 
+          <div className="import-export-mode-switch save-slot-tabs" role="tablist" aria-label="GitHub save view">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={githubTab === "saves"}
+              className={githubTab === "saves" ? "active" : ""}
+              onClick={() => setGithubTab("saves")}
+            >
+              <span>Saves</span>
+              <small>Load or delete individual save slots.</small>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={githubTab === "plays"}
+              className={githubTab === "plays" ? "active" : ""}
+              onClick={() => setGithubTab("plays")}
+            >
+              <span>Delete plays</span>
+              <small>Remove every save for an adventure at once.</small>
+            </button>
+          </div>
+
           {(!saveSlots || saveSlots.length === 0) ? (
             <p className="muted">{savesStatus?.startsWith("Loading") ? "Loading…" : "No saves found."}</p>
+          ) : githubTab === "plays" ? (
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
+              <thead>
+                <tr style={{ textAlign: "left", borderBottom: "1px solid var(--border)" }}>
+                  <th style={{ padding: "0.35rem 0.5rem" }}>Adventure</th>
+                  <th style={{ padding: "0.35rem 0.5rem" }}>Saves</th>
+                  <th style={{ padding: "0.35rem 0.5rem" }}>Latest turn</th>
+                  <th style={{ padding: "0.35rem 0.5rem" }}>Last saved (UTC)</th>
+                  <th style={{ padding: "0.35rem 0.5rem" }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {groupSavesIntoPlays(saveSlots).map((play) => {
+                  const isDeleting = deletingPlayId === play.adventureId;
+                  return (
+                    <tr key={play.adventureId} style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+                      <td style={{ padding: "0.35rem 0.5rem" }}>{play.title}</td>
+                      <td style={{ padding: "0.35rem 0.5rem" }}>{play.saveCount}</td>
+                      <td style={{ padding: "0.35rem 0.5rem" }}>{play.latestTurn}</td>
+                      <td style={{ padding: "0.35rem 0.5rem", fontFamily: "monospace" }}>{formatUtc(play.latestSavedAt)}</td>
+                      <td style={{ padding: "0.35rem 0.5rem" }}>
+                        <button
+                          type="button"
+                          className="danger"
+                          disabled={!onDeleteAdventureSaves || !!deletingPlayId || !!loadingSlotId}
+                          onClick={async () => {
+                            const confirmed = window.confirm(
+                              `Delete ALL ${formatCount(play.saveCount, "GitHub save")} for "${play.title}"? This cannot be undone. Your local copy in the Library is not affected.`,
+                            );
+                            if (!confirmed || !onDeleteAdventureSaves) return;
+                            setDeletingPlayId(play.adventureId);
+                            try {
+                              await onDeleteAdventureSaves(play.adventureId);
+                            } finally {
+                              setDeletingPlayId(undefined);
+                            }
+                          }}
+                        >
+                          {isDeleting ? "Deleting…" : "Delete play"}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           ) : (
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
               <thead>

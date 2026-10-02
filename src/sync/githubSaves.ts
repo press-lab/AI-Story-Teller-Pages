@@ -233,6 +233,66 @@ export async function deleteGitHubSave(
   }, sha);
 }
 
+function isNotFound(error: unknown): boolean {
+  return error instanceof Error && /not found/i.test(error.message);
+}
+
+/**
+ * Delete every save for one adventure (a whole "play"): all files in the
+ * adventure's save folder plus all of its index slots. Files are deleted one at
+ * a time because parallel Contents API commits on one branch conflict.
+ * Returns the number of index slots removed.
+ */
+export async function deleteGitHubAdventureSaves(
+  cloudSettings: CloudSyncSettings,
+  saveSettings: GitHubSaveSettings,
+  adventureId: string,
+): Promise<number> {
+  assertSettings(cloudSettings);
+  const owner = await resolveOwner(cloudSettings);
+  const branch = cloudSettings.branch.trim();
+  const folderPath = `${repoBase(cloudSettings, owner)}/${encodePath(saveSettings.savesBasePath)}/${encodeURIComponent(adventureId)}`;
+
+  // List the folder rather than trusting the index alone, so files orphaned by a
+  // failed prune or partial delete are removed too. A missing folder is fine.
+  let entries: Array<{ type: string; name: string; sha: string }> = [];
+  try {
+    const listing = await githubRequest<unknown>(cloudSettings, `${folderPath}?ref=${encodeURIComponent(branch)}`);
+    if (Array.isArray(listing)) entries = listing as typeof entries;
+  } catch (error) {
+    if (!isNotFound(error)) throw error;
+  }
+
+  for (const entry of entries) {
+    if (entry.type !== "file") continue;
+    try {
+      await githubRequest(cloudSettings, `${folderPath}/${encodeURIComponent(entry.name)}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: `Delete save file ${entry.name} for adventure ${adventureId}`,
+          sha: entry.sha,
+          branch,
+        }),
+      });
+    } catch (error) {
+      if (!isNotFound(error)) throw error;
+    }
+  }
+
+  const { index, sha } = await fetchIndex(cloudSettings, saveSettings, owner);
+  const remaining = index.slots.filter((s) => s.adventureId !== adventureId);
+  const removed = index.slots.length - remaining.length;
+  if (removed > 0) {
+    await writeIndex(cloudSettings, saveSettings, owner, {
+      ...index,
+      updatedAt: new Date().toISOString() as typeof index.updatedAt,
+      slots: remaining,
+    }, sha);
+  }
+  return removed;
+}
+
 export async function loadGitHubSave(
   cloudSettings: CloudSyncSettings,
   saveSettings: GitHubSaveSettings,

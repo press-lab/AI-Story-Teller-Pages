@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDefaultAdventure } from "../state/defaults";
 import type { Adventure, CloudSyncSettings, GitHubSaveSettings, GitHubSaveSlot } from "../types/adventure";
-import { deleteGitHubSave, listGitHubSaves, loadGitHubSave, saveToGitHub, shouldAutoSave } from "./githubSaves";
+import { deleteGitHubAdventureSaves, deleteGitHubSave, listGitHubSaves, loadGitHubSave, saveToGitHub, shouldAutoSave } from "./githubSaves";
 
 const cloudSettings: CloudSyncSettings = {
   token: "github-test-token",
@@ -320,5 +320,64 @@ describe("deleteGitHubSave", () => {
 
     const written = JSON.parse(atob(indexPutBody!.content));
     expect(written.slots.map((s: GitHubSaveSlot) => s.saveId)).toEqual(["keep"]);
+  });
+});
+
+describe("deleteGitHubAdventureSaves", () => {
+  const slots: GitHubSaveSlot[] = [
+    { saveId: "a1", adventureId: "adv1", title: "Play One", savedAt: "2026-01-01T00:00:00.000Z", turnCount: 3, saveType: "auto" },
+    { saveId: "a2", adventureId: "adv1", title: "Play One", savedAt: "2026-01-02T00:00:00.000Z", turnCount: 8, saveType: "manual" },
+    { saveId: "b1", adventureId: "adv2", title: "Play Two", savedAt: "2026-01-03T00:00:00.000Z", turnCount: 2, saveType: "manual" },
+  ];
+
+  it("deletes every file in the adventure folder (including orphans) and drops all its slots from the index", async () => {
+    const index = { app: "ai-story-teller", version: 1, updatedAt: "2026-01-03T00:00:00.000Z", slots };
+    const deletedFiles: string[] = [];
+    let indexPutBody: { content: string } | undefined;
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url, init) => {
+      const u = String(url);
+      if (u.includes("/sync/saves/index.json")) {
+        if (init?.method === "PUT") { indexPutBody = JSON.parse(init.body as string); return response(200, { content: { sha: "new" } }); }
+        return response(200, { sha: "index-sha", content: encode(JSON.stringify(index)) });
+      }
+      if (init?.method === "DELETE" && u.includes("/sync/saves/adv1/")) {
+        deletedFiles.push(u.split("/").pop()!);
+        return response(200, {});
+      }
+      if (u.includes("/sync/saves/adv1?")) {
+        return response(200, [
+          { type: "file", name: "a1.json", sha: "s1" },
+          { type: "file", name: "a2.json", sha: "s2" },
+          { type: "file", name: "orphan.json", sha: "s3" },
+        ]);
+      }
+      return response(404, { message: "Not Found" });
+    });
+
+    const removed = await deleteGitHubAdventureSaves(cloudSettings, saveSettings, "adv1");
+
+    expect(removed).toBe(2);
+    expect(deletedFiles).toEqual(["a1.json", "a2.json", "orphan.json"]);
+    const written = JSON.parse(atob(indexPutBody!.content));
+    expect(written.slots.map((s: GitHubSaveSlot) => s.saveId)).toEqual(["b1"]);
+  });
+
+  it("still cleans the index when the adventure folder is already gone", async () => {
+    const index = { app: "ai-story-teller", version: 1, updatedAt: "2026-01-03T00:00:00.000Z", slots };
+    let indexPutBody: { content: string } | undefined;
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url, init) => {
+      const u = String(url);
+      if (u.includes("/sync/saves/index.json")) {
+        if (init?.method === "PUT") { indexPutBody = JSON.parse(init.body as string); return response(200, { content: { sha: "new" } }); }
+        return response(200, { sha: "index-sha", content: encode(JSON.stringify(index)) });
+      }
+      return response(404, { message: "Not Found" });
+    });
+
+    await expect(deleteGitHubAdventureSaves(cloudSettings, saveSettings, "adv1")).resolves.toBe(2);
+    const written = JSON.parse(atob(indexPutBody!.content));
+    expect(written.slots.map((s: GitHubSaveSlot) => s.saveId)).toEqual(["b1"]);
   });
 });

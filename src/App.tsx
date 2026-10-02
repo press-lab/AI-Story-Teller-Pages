@@ -442,6 +442,7 @@ export default function App() {
           onListSaves={() => void gitHubSaves.listSaves()}
           onLoadSave={(slot) => void gitHubSaveLoad.initiateLoad(slot)}
           onDeleteSave={(slot) => void gitHubSaves.deleteSave(slot)}
+          onDeleteAdventureSaves={gitHubSaves.deleteAdventureSaves}
           providerConfig={runtime.activeProviderConfig}
           premadeAdventures={premadeAdventures}
           onLoadPremadeAdventure={library.loadPremadeAdventure}
