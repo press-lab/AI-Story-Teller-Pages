@@ -5,3 +5,4 @@ dist
 *.local
 *.tsbuildinfo
 .codex-firefox-profile-test/
+memory-pass-live-report.json

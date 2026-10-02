@@ -408,6 +408,8 @@ export interface MemoryDetectionSettings {
   everyNTurns: number;
   /** The background memory pass may suggest one exceptional Event Memory per pass (always reviewed). Default true. */
   suggestEventMemories?: boolean;
+  /** Debug: store the raw memory-pass request and reply on each evaluation log entry (truncated). Default false. */
+  debugCapture?: boolean;
 }
 
 export type ForceIncludeTargetType = "component" | "storyCard" | "brain";
@@ -613,6 +615,10 @@ export interface EvaluationLogEntry {
   actionsExecuted: string[];
   generatedContent: GeneratedContentPreview[];
   errors: string[];
+  /** Background memory pass request/response facts: route, budgets, finish reason, parse result, turn range. */
+  diagnostics?: string[];
+  /** Raw request and reply, only when Settings → Automatic memory → "Capture raw memory-pass requests" is on. */
+  rawCapture?: { request: string; response: string };
 }
 
 export interface PendingAdventureUpdate {
@@ -672,8 +678,13 @@ export interface ActiveState {
   challengeMode: boolean;
   /** Turn number when the memory cycle last ran for this adventure. */
   lastMemoryCycleTurn?: number;
-  /** Id of the newest message the background memory pass had seen; the next pass reads everything after it. */
+  /** Id of the newest message a completed memory pass processed; the next pass starts after it. */
   lastMemoryPassMessageId?: string;
+  /**
+   * Consecutive memory passes since the marker last moved whose reply was unusable or cut off.
+   * Each failure halves the next chunk; it never widens it. Reset when the marker advances.
+   */
+  memoryPassFailures?: number;
   /** Author corrections the memory pass and narrator must honor until reconciled. */
   corrections?: CorrectionEntry[];
   /** Turn number when semantic evaluation last ran. */
@@ -952,7 +963,8 @@ export type AdventureAction =
   | { type: "QUEUE_PENDING_UPDATE"; update: PendingAdventureUpdate }
   | { type: "FLUSH_PENDING_UPDATES" }
   | { type: "SET_CHALLENGE_MODE" }
-  | { type: "SET_LAST_MEMORY_CYCLE_TURN"; turn: number; messageId?: string }
+  /** messageId advances the memory-pass marker (and clears failures); failed counts a content failure on the current chunk. */
+  | { type: "SET_LAST_MEMORY_CYCLE_TURN"; turn: number; messageId?: string; failed?: boolean }
   | { type: "MARK_CORRECTIONS_SEEN"; correctionIds: string[] }
   | { type: "ADD_STORY_THREAD"; text: string }
   | { type: "UPDATE_STORY_THREAD"; threadId: string; text: string }

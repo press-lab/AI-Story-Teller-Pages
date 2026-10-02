@@ -374,7 +374,12 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
         <p>
           Settings stores tiny app preferences in localStorage, including provider API key, selected model,
           and dark mode. <strong>Automatic memory</strong> turns the background memory pass on or off and sets
-          how often it runs (every N story turns; default 3). Each pass reads every message since the previous one.
+          how often it runs (every N story turns; default 3). Each pass reads the turns not yet processed, oldest
+          first, in chunks of at most six turns. It returns only what changed. A chunk counts as done only when
+          its reply arrives complete; a failed chunk is retried smaller, so falling behind never produces one
+          huge request. The Evaluation Log on the Triggers page shows each pass's model, token budget, finish
+          reason, and parse result. If your narrator model is unreliable at JSON, set a Background Provider
+          (advanced settings) so memory runs on a dependable model.
           Adventure-specific settings control token budgets, semantic evaluation, auto-approve toggles, and the
           background provider.
         </p>

@@ -14,6 +14,7 @@ import type {
 import type { GlobalAdventureSettings, ProviderPreset, RuntimeProviderSettings, UiPreferences } from "./pageTypes";
 import { defaultUiPreferences } from "./pageTypes";
 import { CheckboxField, Field, JsonTextarea, NumberInput } from "./shared";
+import { backgroundProviderConfigIssue } from "../providers/backgroundProvider";
 import {
   lightTokenBudgetPreset,
   defaultTokenBudgetSettings,
@@ -405,7 +406,13 @@ export function SettingsPage({
             checked={globalAdventureSettings.memoryDetectionSettings.suggestEventMemories !== false}
             onChange={(suggestEventMemories) => updateMemoryDetection({ suggestEventMemories })}
           />
-          <p className="muted">The narrator only writes the story. Every N story turns, one background call reads the turns since the last update and suggests Story State, character thought and knowledge, Story Card, and plot updates. Suggestions follow the auto-approve toggles in Memory Suggestions; anything not auto-approved waits there for review. Out-of-character turns never trigger it. With Event Memories on, the pass may also suggest one completed turning point (a revelation, a costly choice, a promise) per pass; those always wait for your review.</p>
+          <CheckboxField
+            label="Capture raw memory-pass requests (debug)"
+            checked={globalAdventureSettings.memoryDetectionSettings.debugCapture === true}
+            onChange={(debugCapture) => updateMemoryDetection({ debugCapture })}
+          />
+          <p className="muted">Every memory pass logs its route, token budget, finish reason, and parse result in the Evaluation Log (Triggers page). With debug capture on, each entry also stores the full request and raw reply (truncated), which makes saves larger.</p>
+          <p className="muted">The narrator only writes the story. Every N story turns, background calls read the unprocessed turns in small chunks (at most 6 turns each) and suggest Story State, character thought and knowledge, Story Card, and plot updates. Suggestions follow the auto-approve toggles in Memory Suggestions; anything not auto-approved waits there for review. Out-of-character turns never trigger it. With Event Memories on, the pass may also suggest one completed turning point (a revelation, a costly choice, a promise) per pass; those always wait for your review.</p>
         </article>
         {/* ── Context Budget (advanced) ─────────────── */}
         {advanced && (
@@ -558,8 +565,13 @@ export function SettingsPage({
             <h4>Background Provider</h4>
             <p className="muted">
               Route background tasks (evaluation, brain updates, story card updates, and plot updates) through a
-              separate provider. Leave blank to use the active preset for all tasks.
+              separate provider. Leave blank to use the active preset for all tasks. The background memory pass
+              also uses this route, so a dependable JSON model here keeps memory working whatever the narrator model is.
             </p>
+            {(() => {
+              const issue = backgroundProviderConfigIssue(activeSettings);
+              return issue ? <p className="error" role="alert">{issue}</p> : null;
+            })()}
             <Field label="Base URL">
               <input
                 value={activeSettings.semanticEvaluationSettings.backgroundProviderConfig?.baseUrl ?? ""}

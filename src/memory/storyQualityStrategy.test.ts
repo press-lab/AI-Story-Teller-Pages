@@ -6,7 +6,7 @@ import { evaluateStoryResponseGuard } from "../state/storyResponseGuard";
 import { currentTurnThreadIds } from "../state/turnPipeline";
 import { continuityCanon } from "../continuityLint";
 import type { Adventure, AdventureAction, MemoryProposal } from "../types/adventure";
-import { memoryPassConfig, memoryPassCoverage, MEMORY_PASS_MAX_MESSAGES } from "./compactMemoryFallback";
+import { memoryPassConfig, memoryPassPlan, MEMORY_PASS_CHUNK_MAX_MESSAGES, MEMORY_PASS_MAX_MESSAGES } from "./compactMemoryFallback";
 import { memoryUpdateActions, MEMORY_OUTPUT_RESERVE } from "./onePassMemory";
 import { applyStoryStateLine, storyStateLineValue } from "./storyStateLines";
 
@@ -56,17 +56,18 @@ function proposal(patch: Partial<MemoryProposal>): MemoryProposal {
 }
 
 describe("memory pass coverage", () => {
-  it("re-reads every unprocessed message after a failed pass, and reports what no longer fits", () => {
+  it("retries from the same place after a failed pass in a bounded chunk, and reports what no longer fits", () => {
     const adventure = fixture();
     adventure.messages = Array.from({ length: 80 }, (_, i) => ({ id: `message_${i}`, role: i % 2 ? "assistant" : "user", content: `turn ${i}`, createdAt: "2026-01-01T00:00:00.000Z" })) as Adventure["messages"];
     adventure.activeState.lastMemoryPassMessageId = "message_70";
-    expect(memoryPassCoverage(adventure)).toMatchObject({ uncoveredMessages: 0 });
-    expect(memoryPassCoverage(adventure).window[0].id).toBe("message_69");
+    expect(memoryPassPlan(adventure)).toMatchObject({ uncoveredMessages: 0 });
+    expect(memoryPassPlan(adventure).chunk[0].id).toBe("message_71");
 
     adventure.activeState.lastMemoryPassMessageId = "message_5";
-    const coverage = memoryPassCoverage(adventure);
-    expect(coverage.window).toHaveLength(MEMORY_PASS_MAX_MESSAGES);
-    expect(coverage.uncoveredMessages).toBe(74 - MEMORY_PASS_MAX_MESSAGES);
+    const plan = memoryPassPlan(adventure);
+    expect(plan.chunk.length).toBeLessThanOrEqual(MEMORY_PASS_CHUNK_MAX_MESSAGES);
+    expect(plan.chunk.length + plan.remainingMessages).toBe(MEMORY_PASS_MAX_MESSAGES);
+    expect(plan.uncoveredMessages).toBe(74 - MEMORY_PASS_MAX_MESSAGES);
   });
 
   it("uses a bookkeeping profile instead of the narrator's sampling settings", () => {

@@ -629,6 +629,7 @@ function normalizeAdventureFields(adventure: Adventure): Adventure {
       challengeMode: adventure.activeState?.challengeMode ?? false,
       lastMemoryCycleTurn: adventure.activeState?.lastMemoryCycleTurn,
       lastMemoryPassMessageId: adventure.activeState?.lastMemoryPassMessageId,
+      memoryPassFailures: adventure.activeState?.memoryPassFailures,
       corrections: Array.isArray(adventure.activeState?.corrections) ? adventure.activeState.corrections : [],
       lastSemanticEvalTurn: adventure.activeState?.lastSemanticEvalTurn,
       lastSceneStateTurn: adventure.activeState?.lastSceneStateTurn,

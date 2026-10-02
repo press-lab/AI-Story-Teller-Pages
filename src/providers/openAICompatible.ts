@@ -36,6 +36,29 @@ export interface ProviderResponse {
   content: string;
   raw: unknown;
   usage?: ProviderUsage;
+  /** Normalized stop reason: "length" means the output ceiling cut the reply off (OpenAI and Anthropic formats). */
+  finishReason?: string;
+  /** Hidden reasoning tokens billed inside the output ceiling, when the provider reports them. */
+  reasoningTokens?: number;
+}
+
+/**
+ * How a JSON-only request is enforced on this route. Anthropic-format endpoints have no
+ * response_format parameter, so JSON there rests on the prompt alone and the caller must parse
+ * defensively. OpenAI-format endpoints (including OpenRouter) receive json_object; OpenRouter may
+ * still route to an upstream that ignores it, so callers parse defensively everywhere.
+ */
+export type StructuredOutputMode = "json_object" | "prompt_only";
+
+export function structuredOutputMode(config: Pick<ProviderConfig, "baseUrl">): StructuredOutputMode {
+  return isAnthropicFormat(config.baseUrl) ? "prompt_only" : "json_object";
+}
+
+/** Short route description for diagnostics: endpoint host, format, and model. */
+export function providerRouteLabel(config: Pick<ProviderConfig, "baseUrl" | "model">): string {
+  let host = config.baseUrl;
+  try { host = new URL(config.baseUrl).host; } catch { /* keep raw */ }
+  return `${host}${isAnthropicFormat(config.baseUrl) ? " (Anthropic format)" : ""} · ${config.model}`;
 }
 
 let throttleQueue: Promise<void> = Promise.resolve();
@@ -234,7 +257,7 @@ async function sendOpenAIRequest(
     throw new Error(`Provider returned no content. ${detail}${advice}`);
   }
 
-  return { content, raw, usage };
+  return { content, raw, usage, finishReason: raw.choices?.[0]?.finish_reason, reasoningTokens: raw.usage?.completion_tokens_details?.reasoning_tokens };
 }
 
 async function sendAnthropicRequest(
@@ -285,7 +308,7 @@ async function sendAnthropicRequest(
   }
 
   const rawText = await response.text().catch(() => "");
-  let raw: { error?: { message?: string }; content?: Array<{ type: string; text?: string }>; usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } };
+  let raw: { error?: { message?: string }; stop_reason?: string; content?: Array<{ type: string; text?: string }>; usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } };
   try {
     raw = JSON.parse(rawText) as typeof raw;
   } catch {
@@ -315,7 +338,9 @@ async function sendAnthropicRequest(
   const content = raw.content?.find((c) => c.type === "text")?.text;
   if (content == null) throw new Error(`Provider returned no content. Body: ${rawText.slice(0, 300)}`);
 
-  return { content, raw, usage };
+  // Anthropic reports a cut-off as stop_reason "max_tokens"; normalize to the OpenAI "length".
+  const finishReason = raw.stop_reason === "max_tokens" ? "length" : raw.stop_reason;
+  return { content, raw, usage, finishReason };
 }
 
 export async function sendOpenAICompatibleChatCompletion({

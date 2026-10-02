@@ -4,7 +4,7 @@ import { buildContext } from "../contextBuilder/contextBuilder";
 import { saveAdventure } from "../db/adventureDb";
 import { scanEventMemories } from "../memory/eventMemoryScan";
 import { regenerateProposalContent } from "../memory/memoryDetection";
-import { runBackgroundMemoryPass } from "../memory/compactMemoryFallback";
+import { runBackgroundMemoryPass, type BackgroundMemoryPassResult } from "../memory/compactMemoryFallback";
 import { generateArcContinuations, generateArcDirector, generateArcFromHistory, generateBrainFromName as generateBrainEntry, generateComponentContent, pickConvergentContinuation } from "../ai/generators";
 import { PLOT_ESSENTIALS_BEST_PRACTICES } from "../ai/authoringBestPractices";
 import { runStoryCardAudit, type AuditRecommendation } from "../memory/storyCardAudit";
@@ -147,6 +147,31 @@ const CHALLENGE_PHRASES = [
   /that was never (said|established|agreed)/i,
   /where did (you|that) come from/i,
 ];
+
+/** A backlog drains at most this many bounded chunks per scheduled pass; the rest waits for the next slot. */
+export const MEMORY_PASS_MAX_CHUNKS_PER_RUN = 3;
+
+/**
+ * Reducer actions for one memory-pass chunk. The marker advances only to the last message of a chunk
+ * whose reply parsed completely; an unusable or cut-off reply counts a failure, which halves the next
+ * chunk. A transport failure keeps both the marker and the chunk size.
+ */
+export function memoryPassActions(snapshot: Adventure, pass: BackgroundMemoryPassResult): AdventureAction[] {
+  const usage = backgroundUsage(pass.tokenUsage);
+  const entry = [...snapshot.messages].reverse().find((message) => message.role === "assistant");
+  return [
+    ...pass.actions,
+    ...(pass.valid && pass.correctionIds.length ? [{ type: "MARK_CORRECTIONS_SEEN" as const, correctionIds: pass.correctionIds }] : []),
+    {
+      type: "SET_LAST_MEMORY_CYCLE_TURN",
+      turn: snapshot.activeState.turn,
+      messageId: pass.valid ? pass.processedThroughMessageId : undefined,
+      failed: pass.status === "invalid" || pass.status === "partial",
+    },
+    { type: "ACCUMULATE_BACKGROUND_TOKENS", promptTokens: pass.tokenUsage.promptTokens, completionTokens: pass.tokenUsage.completionTokens },
+    ...(usage && entry ? [{ type: "ADD_MESSAGE_BACKGROUND_USAGE" as const, messageId: entry.id, usage }] : []),
+  ];
+}
 
 function buildBackgroundConfig(adventure: Adventure, settings: RuntimeProviderSettings): RuntimeProviderSettings {
   const base = mergeProviderConfig(adventure, settings);
@@ -314,28 +339,20 @@ export function useAdventureRuntime(
 
     memoryFallbackInFlight.current.add(snapshot.id);
     try {
-      const config = buildBackgroundConfig(snapshot, providerSettingsRef.current);
-      const pass = await runBackgroundMemoryPass(snapshot, config);
-      const actions: AdventureAction[] = [
-        ...pass.actions,
-        ...(pass.valid ? [] : [{ type: "LOG_EVALUATION_RESULT" as const, entry: {
-          id: createId("eval"), turn: snapshot.activeState.turn, createdAt: nowIso(), conditionsEvaluated: [],
-          conditionsFired: [], actionsExecuted: ["Background memory pass: one API call"], generatedContent: [],
-          errors: [`Background memory pass returned no usable JSON${pass.failure ? ` (${pass.failure})` : ""}; the next scheduled pass re-reads these turns.`],
-        } }]),
-        ...(pass.valid && pass.correctionIds.length ? [{ type: "MARK_CORRECTIONS_SEEN" as const, correctionIds: pass.correctionIds }] : []),
-        // A failed pass waits for the next slot but does not count as coverage: the marker stays put, so
-        // the next pass re-reads every unprocessed message instead of skipping them.
-        { type: "SET_LAST_MEMORY_CYCLE_TURN", turn: snapshot.activeState.turn, messageId: pass.valid ? snapshot.messages.at(-1)?.id : undefined },
-        { type: "ACCUMULATE_BACKGROUND_TOKENS", promptTokens: pass.tokenUsage.promptTokens, completionTokens: pass.tokenUsage.completionTokens },
-        ...entryBackgroundUsageActions(snapshot, pass.tokenUsage),
-      ];
-      if (adventureRef.current?.id !== snapshot.id) return;
-      if (isSubmittingRef.current) {
-        queuePendingUpdate(actions, "memoryCycle");
-        return;
+      // A backlog is processed in bounded chunks, oldest first. Each chunk is acknowledged only by a
+      // complete reply; the first failure stops this run and the same start is retried next time.
+      let current = snapshot;
+      for (let chunk = 0; chunk < MEMORY_PASS_MAX_CHUNKS_PER_RUN; chunk += 1) {
+        const config = buildBackgroundConfig(current, providerSettingsRef.current);
+        const pass = await runBackgroundMemoryPass(current, config);
+        if (pass.status === "skipped") break;
+        const actions = memoryPassActions(snapshot, pass);
+        if (adventureRef.current?.id !== snapshot.id) return;
+        if (isSubmittingRef.current) queuePendingUpdate(actions, "memoryCycle");
+        else applyActionsAndPersist(actions);
+        if (!pass.valid || pass.remainingMessages === 0) break;
+        current = reduceActions(current, actions);
       }
-      applyActionsAndPersist(actions);
     } catch (passError) {
       if (adventureRef.current?.id === snapshot.id) {
         setError(passError instanceof Error ? passError.message : "Background memory pass failed.");

@@ -32,21 +32,27 @@ const KNOWLEDGE_WORD_LIMIT = 140;
 const THOUGHT_WORD_LIMIT = 60;
 /** Thoughts are optional colour; they must not crowd out state, knowledge, and corrections. */
 const MAX_THOUGHTS_PER_PASS = 2;
+/** Knowledge rewrites are full replacements (up to 140 words each); only characters who learned something consequential. */
+export const MAX_KNOWS_PER_PASS = 2;
+/** A normal pass is a small delta; the reply should stay far below the output ceiling. */
+export const MEMORY_PASS_TARGET_WORDS = 300;
 
 /** Fixed rules for the background memory pass. Kept free of per-turn data so providers can cache it. */
 export function memoryPassRules(categories: string[], options: { events?: boolean } = {}): string {
   return `[BACKGROUND MEMORY PASS]
-The story turns below are already written. Your job is bookkeeping: keep the story's memory current and SHORT so the narrator never forgets or contradicts what happened. Return ONLY a JSON object {"updates":[...]}. An empty array is valid when nothing changed. Maximum ${MEMORY_PASS_MAX_UPDATES} updates; return fewer complete updates rather than many long ones. Every update must stay within its word limit; longer updates are discarded.
-Each update has: kind, target, content, evidence, reason, claim. evidence is an EXACT quote copied from the RECENT TURNS or from an AUTHOR CORRECTION that establishes the change. reason says why it matters later. claim is one of "fact" (the story established it), "belief" (a character thinks or suspects it), "intention" (someone plans, offers, or proposes it), or "correction" (an author correction requires it).
+The story turns below are already written. Your job is bookkeeping: record the persistent changes the NEW TURNS caused, so the narrator never forgets or contradicts them.
+Analyze only the NEW TURNS. Return only changes those turns caused. Do not restate unchanged facts, do not rewrite a memory that did not change, and do not echo the canon. An ordinary scene usually changes little: {"updates":[]} is a normal, correct answer, and one or two small updates is typical. Never manufacture memory to fill the list.
+Return ONLY a JSON object {"updates":[...]}, with no prose, markdown, or code fences. Maximum ${MEMORY_PASS_MAX_UPDATES} updates. Keep the whole reply under about ${MEMORY_PASS_TARGET_WORDS} words; a reply longer than 900 words is wrong. Every update must stay within its word limit; longer updates are discarded.
+Each update has: kind, target, content, evidence, claim, and optionally reason. evidence is the SHORTEST exact quote (a phrase or one sentence, at most 25 words) copied from the NEW TURNS or from an AUTHOR CORRECTION that establishes the change. claim is one of "fact" (the story established it), "belief" (a character thinks or suspects it), "intention" (someone plans, offers, or proposes it), or "correction" (an author correction requires it). reason, if given, is at most 12 words.
 Never record a suggestion, offer, possibility, or plan as an accomplished fact: keep conditional wording ("offered the spare room if he wants it" is not "moved in"). A belief must read as a belief ("the captain suspects the duke"), never as proof. Dialogue can lie and attempts can fail: record what the text establishes, not what a character claims. Never give a character knowledge they did not receive.
 Keep the meaning, not just the label: when a relationship, promise, debt, or trust changes, include the cause in one clause. Routine movement and small talk are not memory.
 AUTHOR CORRECTIONS, when shown, are the author's out-of-character instructions and override the canon and the story text. If a correction rejects something (a character, event, revelation, or mechanic), remove it from every place it appears: "retract" it from cards, "remove" it from Open threads, and rewrite affected knowledge. A correction that is only a question or discussion changes nothing.
 PENDING drafts, when shown, are unapproved suggestions from earlier passes: they are not evidence and not canon. Do not repeat them.
 
-Work in this order and stop when the remaining changes are minor:
+Kinds, in priority order. Write higher-priority updates first, and skip any kind where nothing changed:
 1. Corrections: "retract" or rewrite whatever an AUTHOR CORRECTION rejects.
 2. Open threads and Story State, using these kinds:
-- "thread": the open-thread list, shown in Story State as "- [t3] …". FIRST resolve every thread the recent turns finished, made impossible, or that a correction rejected; only then add new ones. Threads are live, unresolved situations (at most ${MAX_OPEN_THREADS} open): never completed actions, past dialogue, or plans already carried out. op is:
+- "thread": the open-thread list, shown in Story State as "- [t3] …". FIRST resolve every thread the new turns finished, made impossible, or that a correction rejected; only then add new ones. Threads are live, unresolved situations (at most ${MAX_OPEN_THREADS} open): never completed actions, past dialogue, or plans already carried out. op is:
     "resolve": target is the thread id, or several ids separated by commas ("t3, t7, t9"); content says in a few words what settled them. One resolve may close many threads.
     "add": target is "new"; content is ONE new live situation (max ${STATE_LINE_WORD_LIMIT} words).
     "update": target is one thread id; content is its new wording when the situation changed but is still open.
@@ -59,10 +65,10 @@ Work in this order and stop when the remaining changes are minor:
     Arrangements: living and sleeping arrangements and other standing routines.
     Has met: one bullet per character the player character has met in person, a few words each.
   Keep what is still true, update what changed, drop what is over. Completed events belong in the Chronicle, not in Story State.
-- "scene": target is the EXACT title of the Scene Direction component. content (max ${SCENE_WORD_LIMIT} words) is three labeled lines for the scene now: "Present: …" (who is here), "Aims: …" (what each NPC present is actively trying to do next, from canon and the recent turns), and "Open choice: …" (the decision left to the player). Never decide outcomes or the player's actions, and never invent new antagonists. Return one whenever the scene, who is present, or what they want changed.
-3. "knows": target is an eligible character name. content is the COMPLETE replacement of that character's knowledge boundary (max ${KNOWLEDGE_WORD_LIMIT} words) as two lines: "Knows: …" and "Does not know: …". When the recent turns show the character WITNESSED or was TOLD something listed under "Does not know", move it to "Knows". Only characters who were present or were told; never assume a whole household shares knowledge. Keep "Does not know" to consequential secrets.
+- "scene": target is the EXACT title of the Scene Direction component. content (max ${SCENE_WORD_LIMIT} words) is three labeled lines for the scene now: "Present: …" (who is here), "Aims: …" (what each NPC present is actively trying to do next, from canon and the new turns), and "Open choice: …" (the decision left to the player). Never decide outcomes or the player's actions, and never invent new antagonists. Return one only when it is EMPTY or the scene, who is present, or what they want changed.
+3. "knows": target is an eligible character name. Only for a character who WITNESSED or was TOLD something consequential in the NEW TURNS (at most ${MAX_KNOWS_PER_PASS} per pass); never to restate knowledge that did not change. content is the COMPLETE replacement of that character's knowledge boundary (max ${KNOWLEDGE_WORD_LIMIT} words) as two lines: "Knows: …" and "Does not know: …". When the new turns show the character WITNESSED or was TOLD something listed under "Does not know", move it to "Knows". Only characters who were present or were told; never assume a whole household shares knowledge. Keep "Does not know" to consequential secrets.
 4. "pressure": target is the EXACT title of the Active Pressure component; content is its full replacement, ONE sentence (max 45 words) naming the external threat or obligation pressing on the player, or stating that it is resolved. Only when it materially changed or resolved.
-5. "arc": target is the EXACT title of the Current Arc; content is one concise completed development (max 45 words) relevant to its premise, appended to its log. Never change the premise or pacing. Only while the arc is in its BREAK phase, add "resolved": true when the recent turns show its central conflict actually concluded (the confrontation ended and its outcome is settled), not merely that the climax began; the player reviews it before the arc moves on.
+5. "arc": target is the EXACT title of the Current Arc; content is one concise completed development (max 45 words) relevant to its premise, appended to its log. Never change the premise or pacing. Only while the arc is in its BREAK phase, add "resolved": true when the new turns show its central conflict actually concluded (the confrontation ended and its outcome is settled), not merely that the climax began; the player reviews it before the arc moves on.
 6. Story Cards:
 - "card": target is the EXACT title of an existing Story Card shown in the canon. content is ONE new durable fact (max 70 words). If the new fact makes an existing fact on a LIVING card untrue, also set "replaces" to that old fact copied exactly from the card. On a static card, "replaces" is allowed only when an AUTHOR CORRECTION requires it. Never touch a VOICE CONTRACT. Omit already-known facts and rephrasings.
 - "retract": target is the EXACT title of an existing Story Card; content is the false fact copied EXACTLY from that card (one sentence or line). Use it when an AUTHOR CORRECTION or the story rejects that fact. evidence must quote the correction or story text that rejects it.
@@ -71,7 +77,7 @@ Work in this order and stop when the remaining changes are minor:
 ${options.events ? `- "event": a COMPLETED turning point worth remembering for the rest of the story: a revelation, a costly choice, a promise made or broken, a first meeting that matters, or the origin of a recurring personal symbol. Ordinary pleasant conversations, routine scenes, and anything still in progress do NOT qualify; most passes have none. target is a short distinctive title (max 8 words). content (max ${EVENT_WORD_LIMIT} words) states what happened, what caused it, and what it changed. Also provide eventKind ("first", "commitment", "revelation", "choice", or "sharedExperience"), participants (1-4 character names who were there), and recallCues (2-3 concrete phrases likely to appear when this memory matters later, such as an object or place; not "remember when"). At most ONE per pass; it always waits for review.
 ` : ""}7. Optional, only if room remains: "thought": target is an eligible character name. content is ONE new first-person private reaction, belief, or plan (max ${THOUGHT_WORD_LIMIT} words) after a significant moment for that character. At most ${MAX_THOUGHTS_PER_PASS} per pass. Never repeat an existing thought.
 
-Story State holds what is true NOW. Story Cards hold durable facts about recurring subjects. Brains hold private thoughts and knowledge boundaries. Only output changes supported by the recent turns or an author correction and consistent with the canon.`;
+Story State holds what is true NOW. Story Cards hold durable facts about recurring subjects. Brains hold private thoughts and knowledge boundaries. Only output changes supported by the NEW TURNS or an author correction and consistent with the canon.`;
 }
 /** A broken/truncated tail must never leak JSON into the story or discard good prose. */
 export function parseOnePassMemory(text: string): { story: string; updates: unknown[]; error?: string } {
@@ -181,11 +187,18 @@ export function memoryUpdateActions(
   let newCards = 0;
   let events = 0;
   let thoughts = 0;
+  let knows = 0;
   for (const raw of updates.slice(0, MEMORY_PASS_MAX_UPDATES)) {
     const reject = (reason: string) => errors.push(`Memory pass skipped: ${reason}`);
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) { reject("invalid update"); continue; }
     const u = raw as Record<string, unknown>;
-    if (![u.kind, u.target, u.content, u.evidence].every(v => typeof v === "string" && v.trim())) { reject("missing fields"); continue; }
+    const missing = (["kind", "target", "content", "evidence"] as const).filter(field => typeof u[field] !== "string" || !(u[field] as string).trim());
+    if (missing.length) {
+      // Name the fields and what arrived instead, so a provider that renames or nests them is diagnosable.
+      const got = Object.keys(u).slice(0, 8).join(", ") || "none";
+      reject(`missing fields (${missing.map(field => u[field] === undefined ? field : `${field} is ${Array.isArray(u[field]) ? "an array" : typeof u[field]}`).join(", ")}; got keys: ${got})`);
+      continue;
+    }
     const kind = u.kind as string, target = (u.target as string).trim(), content = (u.content as string).trim(), quoted = (u.evidence as string).trim();
     const reason = typeof u.reason === "string" ? u.reason.trim() : "";
     const claim = u.claim === "fact" || u.claim === "belief" || u.claim === "intention" || u.claim === "correction" ? u.claim : undefined;
@@ -222,6 +235,7 @@ export function memoryUpdateActions(
       if (kind === "knows") {
         if (!/\bknows\s*:/i.test(content)) { reject(`${target}: knowledge must use Knows / Does not know lines`); continue; }
         if (norm(brain.knowledge ?? "") === norm(content)) continue;
+        if (++knows > MAX_KNOWS_PER_PASS) { reject(`${target}: more than ${MAX_KNOWS_PER_PASS} knowledge rewrites in one pass`); continue; }
         // A replacement: carried as a proposal with its base so a newer edit is never silently overwritten.
         // The reducer auto-approves it under the Brain auto-approve setting when the base is still current.
         actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal: {

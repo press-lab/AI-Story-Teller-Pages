@@ -329,6 +329,21 @@ export function TriggersPage({ adventure, dispatch }: AdventurePageProps) {
                   <pre>{JSON.stringify(entry.generatedContent, null, 2)}</pre>
                   <h4>Errors</h4>
                   <pre>{JSON.stringify(entry.errors, null, 2)}</pre>
+                  {entry.diagnostics && entry.diagnostics.length > 0 && (
+                    <>
+                      <h4>Diagnostics</h4>
+                      <pre>{entry.diagnostics.join("\n")}</pre>
+                    </>
+                  )}
+                  {entry.rawCapture && (
+                    <details>
+                      <summary>Raw request and reply (debug capture)</summary>
+                      <h4>Request</h4>
+                      <pre>{entry.rawCapture.request}</pre>
+                      <h4>Reply</h4>
+                      <pre>{entry.rawCapture.response || "(empty)"}</pre>
+                    </details>
+                  )}
                   <h4>Conditions Evaluated</h4>
                   <pre>{JSON.stringify(entry.conditionsEvaluated, null, 2)}</pre>
                 </details>

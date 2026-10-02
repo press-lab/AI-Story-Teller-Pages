@@ -1,4 +1,6 @@
+import { backgroundProviderConfigIssue } from "../providers/backgroundProvider";
 import type { Adventure } from "../types/adventure";
+import { MEMORY_PASS_CHUNK_MAX_MESSAGES, memoryPassPlan } from "./compactMemoryFallback";
 import { MAX_OPEN_THREADS, STORY_STATE_MAX_WORDS, storyStateWordCount } from "./storyStateLines";
 import { openStoryThreads } from "./storyThreads";
 
@@ -85,10 +87,34 @@ export function memoryHealthIssues(adventure: Adventure): MemoryHealthIssue[] {
     });
   }
 
+  const routeIssue = backgroundProviderConfigIssue(adventure);
+  if (routeIssue) {
+    issues.push({ id: "background-route", severity: "warning", title: "Background provider setting is invalid", detail: `${routeIssue} Fix or clear it in Settings → Semantic Evaluation → Background Provider.` });
+  }
+
+  if (adventure.memoryDetectionSettings.enabled) {
+    const plan = memoryPassPlan(adventure);
+    const behind = plan.chunk.length + plan.remainingMessages;
+    const failures = adventure.activeState.memoryPassFailures ?? 0;
+    // On schedule, up to 2N + 2 messages wait between passes; only more than that (or repeated failures) means falling behind.
+    const scheduled = Math.max(1, adventure.memoryDetectionSettings.everyNTurns ?? 3) * 2 + 2;
+    if (failures >= 2 || behind > Math.max(MEMORY_PASS_CHUNK_MAX_MESSAGES, scheduled)) {
+      issues.push({
+        id: "memory-backlog",
+        severity: "warning",
+        title: `Automatic memory is ${Math.ceil(behind / 2)} turns behind`,
+        detail: `${behind} messages since message ${plan.fromIndex + 1} are not yet processed${failures ? ` after ${failures} failed attempt(s) in a row` : ""}${plan.uncoveredMessages ? `, and ${plan.uncoveredMessages} older ones exceeded the backlog ceiling` : ""}. Passes retry in chunks of at most ${plan.chunkLimit} messages, oldest first. The Evaluation Log diagnostics show the route, finish reason, and parse result of each attempt.`,
+      });
+    }
+  }
+
   const recentErrors = adventure.activeState.evaluationLog.slice(-RECENT_LOG_ENTRIES).flatMap((entry) => entry.errors);
   const counts = new Map<string, number>();
   for (const error of recentErrors) {
-    const reason = /no usable JSON/.test(error) ? "the memory pass returned no usable JSON" : rejectionReason(error);
+    const reason = /no usable JSON/.test(error) ? "the memory pass returned no usable JSON"
+      : /^Background memory pass request failed/.test(error) ? "the memory pass request failed"
+      : /^Background memory pass reply was incomplete/.test(error) ? "the memory pass reply was cut off"
+      : rejectionReason(error)?.replace(/ \(.*$/, "");
     if (reason) counts.set(reason, (counts.get(reason) ?? 0) + 1);
   }
   for (const [reason, count] of [...counts].sort((a, b) => b[1] - a[1])) {

@@ -1568,7 +1568,9 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
         activeState: {
           ...state.activeState,
           lastMemoryCycleTurn: action.turn,
-          ...(action.messageId ? { lastMemoryPassMessageId: action.messageId } : {}),
+          ...(action.messageId
+            ? { lastMemoryPassMessageId: action.messageId, memoryPassFailures: 0 }
+            : action.failed ? { memoryPassFailures: (state.activeState.memoryPassFailures ?? 0) + 1 } : {}),
         },
       });
     case "SET_LAST_SEMANTIC_EVAL_TURN":

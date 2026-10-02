@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   isNativeDeepSeekProvider,
+  providerRouteLabel,
+  structuredOutputMode,
   resetProviderThrottleForTests,
   sendOpenAICompatibleChatCompletion,
 } from "./openAICompatible";
@@ -410,5 +412,28 @@ describe("sendOpenAICompatibleChatCompletion", () => {
     await vi.advanceTimersByTimeAsync(1);
     await second;
     expect(spy).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("finish reason, reasoning tokens, and structured-output capability", () => {
+  it("reports OpenAI-format finish reason and reasoning tokens billed inside the ceiling", async () => {
+    mockFetch(200, { choices: [{ finish_reason: "length", message: { content: '{"updates":[' } }], usage: { prompt_tokens: 9000, completion_tokens: 2000, completion_tokens_details: { reasoning_tokens: 1800 } } });
+    const response = await sendOpenAICompatibleChatCompletion({ messages: [], config: { ...config, baseUrl: "https://openrouter.ai/api/v1", model: "z-ai/glm-5.3" } });
+    expect(response).toMatchObject({ finishReason: "length", reasoningTokens: 1800 });
+  });
+
+  it("normalizes an Anthropic-format max_tokens stop to length, so truncation is detected on that route too", async () => {
+    mockFetch(200, { content: [{ type: "text", text: '{"updates":[' }], stop_reason: "max_tokens", usage: { input_tokens: 10, output_tokens: 2000 } });
+    const response = await sendOpenAICompatibleChatCompletion({ messages: [], config: { ...config, baseUrl: "https://api.deepseek.com/anthropic" } });
+    expect(response.finishReason).toBe("length");
+  });
+
+  it("never sends response_format to an Anthropic-format endpoint, and labels it prompt-only", async () => {
+    const spy = mockFetch(200, { content: [{ type: "text", text: "{}" }], stop_reason: "end_turn" });
+    await sendOpenAICompatibleChatCompletion({ messages: [], config: { ...config, baseUrl: "https://api.deepseek.com/anthropic" }, responseFormat: "json_object" });
+    expect(JSON.parse(spy.mock.calls[0][1]?.body as string).response_format).toBeUndefined();
+    expect(structuredOutputMode({ baseUrl: "https://api.deepseek.com/anthropic" })).toBe("prompt_only");
+    expect(structuredOutputMode({ baseUrl: "https://openrouter.ai/api/v1" })).toBe("json_object");
+    expect(providerRouteLabel({ baseUrl: "https://api.deepseek.com/anthropic", model: "deepseek-flash" })).toBe("api.deepseek.com (Anthropic format) · deepseek-flash");
   });
 });
