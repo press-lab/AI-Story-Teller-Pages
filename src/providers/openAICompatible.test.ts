@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  GLM_REASONING_RESERVE_TOKENS,
+  GLM_RETRY_REASONING_RESERVE_TOKENS,
+  isGlmReasoningModel,
   isNativeDeepSeekProvider,
   resetProviderThrottleForTests,
   sendOpenAICompatibleChatCompletion,
@@ -335,6 +338,87 @@ describe("sendOpenAICompatibleChatCompletion", () => {
     const body = JSON.parse(spy.mock.calls[0][1]?.body as string);
     expect(body.reasoning).toBeUndefined();
     expect(body.thinking).toBeUndefined();
+  });
+
+  it("recognizes GLM 5.x reasoning models", () => {
+    expect(isGlmReasoningModel({ model: "z-ai/glm-5.3-flash" })).toBe(true);
+    expect(isGlmReasoningModel({ model: "glm-5.3" })).toBe(true);
+    expect(isGlmReasoningModel({ model: "glm-5" })).toBe(true);
+    expect(isGlmReasoningModel({ model: "deepseek-chat" })).toBe(false);
+    expect(isGlmReasoningModel({ model: "deepseek/deepseek-v3.2" })).toBe(false);
+    expect(isGlmReasoningModel({ model: "glm-50-turbo" })).toBe(false);
+  });
+
+  it("reserves hidden reasoning headroom and low OpenRouter effort for GLM 5.3 Flash", async () => {
+    const spy = mockFetch(200, { choices: [{ finish_reason: "stop", message: { content: "The door creaks." } }] });
+    const result = await sendOpenAICompatibleChatCompletion({
+      messages: [{ role: "user", content: "Continue." }],
+      config: { ...config, baseUrl: "https://openrouter.ai/api/v1", model: "z-ai/glm-5.3-flash" },
+      thinking: "disabled",
+    });
+
+    const body = JSON.parse(spy.mock.calls[0][1]?.body as string);
+    expect(body.max_tokens).toBe(256 + GLM_REASONING_RESERVE_TOKENS);
+    expect(body.reasoning).toEqual({ effort: "low" });
+    expect(body.thinking).toBeUndefined();
+    expect(result.content).toBe("The door creaks.");
+  });
+
+  it("retries a GLM reply that ran out of tokens while reasoning, with more headroom", async () => {
+    const lengthBody = {
+      model: "z-ai/glm-5.3-flash",
+      choices: [{ finish_reason: "length", message: { content: null, reasoning: "Let me think..." } }],
+      usage: { prompt_tokens: 100, completion_tokens: 2304, total_tokens: 2404 },
+    };
+    const okBody = {
+      choices: [{ finish_reason: "stop", message: { content: "Rain hammers the roof." } }],
+      usage: { prompt_tokens: 100, completion_tokens: 900, total_tokens: 1000 },
+    };
+    const spy = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce({ ok: true, status: 200, text: () => Promise.resolve(JSON.stringify(lengthBody)) } as Response)
+      .mockResolvedValueOnce({ ok: true, status: 200, text: () => Promise.resolve(JSON.stringify(okBody)) } as Response);
+
+    const result = await sendOpenAICompatibleChatCompletion({
+      messages: [{ role: "user", content: "Continue." }],
+      config: { ...config, baseUrl: "https://openrouter.ai/api/v1", model: "z-ai/glm-5.3-flash" },
+    });
+
+    expect(spy).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(spy.mock.calls[1][1]?.body as string).max_tokens).toBe(256 + GLM_RETRY_REASONING_RESERVE_TOKENS);
+    expect(result.content).toBe("Rain hammers the roof.");
+    expect(result.usage).toMatchObject({ promptTokens: 200, completionTokens: 3204, totalTokens: 3404 });
+  });
+
+  it("explains the failure when GLM still returns no visible text after the retry", async () => {
+    const lengthBody = { choices: [{ finish_reason: "length", message: { content: null } }] };
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: () => Promise.resolve(JSON.stringify(lengthBody)),
+    } as Response);
+
+    await expect(
+      sendOpenAICompatibleChatCompletion({
+        messages: [],
+        config: { ...config, baseUrl: "https://openrouter.ai/api/v1", model: "z-ai/glm-5.3-flash" },
+      }),
+    ).rejects.toThrow(/hidden reasoning/);
+  });
+
+  it("leaves native DeepSeek OpenAI-format requests unchanged", async () => {
+    const spy = mockFetch(200, { choices: [{ finish_reason: "length", message: { content: "Partial" } }] });
+    const result = await sendOpenAICompatibleChatCompletion({
+      messages: [{ role: "user", content: "Continue." }],
+      config: { ...config, baseUrl: "https://api.deepseek.com", model: "deepseek-chat" },
+      thinking: "disabled",
+    });
+
+    expect(spy).toHaveBeenCalledOnce();
+    const body = JSON.parse(spy.mock.calls[0][1]?.body as string);
+    expect(body.max_tokens).toBe(256);
+    expect(body.thinking).toEqual({ type: "disabled" });
+    expect(body.reasoning).toBeUndefined();
+    expect(result.content).toBe("Partial");
   });
 
   it("does not modify messages when promptCaching is false or unset", async () => {

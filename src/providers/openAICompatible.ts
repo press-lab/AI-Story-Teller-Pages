@@ -18,6 +18,20 @@ function applyPromptCaching(messages: ChatMessage[]): CacheableMessage[] {
   );
 }
 
+/**
+ * GLM 5.x models (e.g. z-ai/glm-5.3-flash) always reason before writing, and that hidden
+ * reasoning is billed against max_tokens. With the app's tight story caps the model can
+ * spend the whole budget thinking and return finish_reason "length" with null content.
+ */
+export function isGlmReasoningModel(config: Pick<ProviderConfig, "model">): boolean {
+  return /(?:^|\/)glm-5(?:[.\-:]|$)/i.test(config.model.trim());
+}
+
+/** Extra max_tokens headroom for GLM hidden reasoning, on top of the visible-output cap. */
+export const GLM_REASONING_RESERVE_TOKENS = 2048;
+/** Larger headroom used for the single retry after a GLM reply ran out mid-reasoning. */
+export const GLM_RETRY_REASONING_RESERVE_TOKENS = 8192;
+
 export interface SendChatCompletionOptions {
   messages: ChatMessage[];
   config: ProviderConfig;
@@ -146,6 +160,33 @@ export function resetProviderThrottleForTests(): void {
   recentRequestStarts = [];
 }
 
+/**
+ * Reasoning controls for the OpenAI-format body. Non-GLM models keep the plain `thinking`
+ * passthrough. GLM on OpenRouter uses OpenRouter's `reasoning` field (it ignores `thinking`)
+ * and asks for low effort unless the caller explicitly wants thinking.
+ */
+function openAIReasoningFields(
+  config: ProviderConfig,
+  thinking: SendChatCompletionOptions["thinking"],
+): Record<string, unknown> {
+  if (isGlmReasoningModel(config) && isOpenRouterProvider(config)) {
+    return { reasoning: { effort: thinking === "enabled" ? "medium" : "low" } };
+  }
+  return thinking ? { thinking: { type: thinking } } : {};
+}
+
+function addUsage(a: ProviderUsage | undefined, b: ProviderUsage | undefined): ProviderUsage | undefined {
+  if (!a || !b) return a ?? b;
+  const sumOptional = (x?: number, y?: number) => (x === undefined && y === undefined ? undefined : (x ?? 0) + (y ?? 0));
+  return {
+    promptTokens: a.promptTokens + b.promptTokens,
+    completionTokens: a.completionTokens + b.completionTokens,
+    totalTokens: a.totalTokens + b.totalTokens,
+    cacheReadTokens: sumOptional(a.cacheReadTokens, b.cacheReadTokens),
+    cacheCreationTokens: sumOptional(a.cacheCreationTokens, b.cacheCreationTokens),
+  };
+}
+
 async function sendOpenAIRequest(
   endpoint: string,
   messages: ChatMessage[],
@@ -154,6 +195,39 @@ async function sendOpenAIRequest(
   responseFormat?: SendChatCompletionOptions["responseFormat"],
   thinking?: SendChatCompletionOptions["thinking"],
 ): Promise<ProviderResponse> {
+  if (!isGlmReasoningModel(config) || isNativeDeepSeekProvider(config)) {
+    const result = await sendOpenAIRequestOnce(endpoint, messages, config, 0, signal, responseFormat, thinking);
+    if (result.content == null) throw new Error(`Provider returned no content. Body: ${result.rawText.slice(0, 300)}`);
+    return { content: result.content, raw: result.raw, usage: result.usage };
+  }
+
+  // GLM: reserve room for hidden reasoning, and retry once with more room if the reply
+  // still ran out of tokens before any visible text was written.
+  const first = await sendOpenAIRequestOnce(endpoint, messages, config, GLM_REASONING_RESERVE_TOKENS, signal, responseFormat, thinking);
+  if (first.content?.trim()) return { content: first.content, raw: first.raw, usage: first.usage };
+  if (first.finishReason !== "length") {
+    throw new Error(`Provider returned no content. Body: ${first.rawText.slice(0, 300)}`);
+  }
+
+  const retry = await sendOpenAIRequestOnce(endpoint, messages, config, GLM_RETRY_REASONING_RESERVE_TOKENS, signal, responseFormat, thinking);
+  const usage = addUsage(first.usage, retry.usage);
+  if (retry.content?.trim()) return { content: retry.content, raw: retry.raw, usage };
+  throw new Error(
+    `Provider returned no content. ${config.model} used its whole output budget on hidden reasoning ` +
+      `(finish reason: ${retry.finishReason ?? "unknown"}, max_tokens: ${config.maxOutputTokens + GLM_RETRY_REASONING_RESERVE_TOKENS}). ` +
+      `Try again, raise Max Output Tokens, or pick a non-reasoning model. Body: ${retry.rawText.slice(0, 300)}`,
+  );
+}
+
+async function sendOpenAIRequestOnce(
+  endpoint: string,
+  messages: ChatMessage[],
+  config: ProviderConfig,
+  reasoningReserveTokens: number,
+  signal?: AbortSignal,
+  responseFormat?: SendChatCompletionOptions["responseFormat"],
+  thinking?: SendChatCompletionOptions["thinking"],
+): Promise<{ content: string | null | undefined; finishReason?: string; raw: unknown; rawText: string; usage?: ProviderUsage }> {
   const outMessages = shouldApplyOpenAIMessageCacheControl(config) ? applyPromptCaching(messages) : messages;
   const sessionId = openRouterSessionId(config);
   const provider = openRouterProviderPreferences(config);
@@ -170,13 +244,13 @@ async function sendOpenAIRequest(
         model: config.model,
         messages: outMessages,
         temperature: config.temperature,
-        max_tokens: config.maxOutputTokens,
+        max_tokens: config.maxOutputTokens + reasoningReserveTokens,
         ...(config.topP !== undefined ? { top_p: config.topP } : {}),
         ...(config.topK !== undefined && config.topK > 0 ? { top_k: config.topK } : {}),
         ...(config.presencePenalty !== undefined ? { presence_penalty: config.presencePenalty } : {}),
         ...(config.frequencyPenalty !== undefined ? { frequency_penalty: config.frequencyPenalty } : {}),
         ...(responseFormat ? { response_format: { type: responseFormat } } : {}),
-        ...(thinking ? { thinking: { type: thinking } } : {}),
+        ...openAIReasoningFields(config, thinking),
         ...(sessionId ? { session_id: sessionId } : {}),
         ...(provider ? { provider } : {}),
       }),
@@ -187,7 +261,7 @@ async function sendOpenAIRequest(
   }
 
   const rawText = await response.text().catch(() => "");
-  let raw: { error?: { message?: string }; choices?: Array<{ message?: { content?: string } }>; usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number; prompt_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number } } };
+  let raw: { error?: { message?: string }; choices?: Array<{ finish_reason?: string; message?: { content?: string | null } }>; usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number; prompt_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number } } };
   try {
     raw = JSON.parse(rawText) as typeof raw;
   } catch {
@@ -200,7 +274,7 @@ async function sendOpenAIRequest(
   }
 
   const content = raw.choices?.[0]?.message?.content;
-  if (content == null) throw new Error(`Provider returned no content. Body: ${rawText.slice(0, 300)}`);
+  const finishReason = raw.choices?.[0]?.finish_reason;
 
   const usage: ProviderUsage | undefined = raw.usage
     ? {
@@ -212,7 +286,7 @@ async function sendOpenAIRequest(
       }
     : undefined;
 
-  return { content, raw, usage };
+  return { content, finishReason, raw, rawText, usage };
 }
 
 async function sendAnthropicRequest(
