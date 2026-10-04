@@ -1206,6 +1206,12 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
       return touchAdventure(state, { openingScene: action.content });
     case "UPDATE_METADATA":
       return touchAdventure(state, { metadata: { ...state.metadata, ...action.metadata } });
+    case "REMOVE_METADATA_FIELD": {
+      if (!(action.key in state.metadata)) return state;
+      const metadata = { ...state.metadata };
+      delete metadata[action.key];
+      return touchAdventure(state, { metadata });
+    }
     case "ADD_MESSAGE": {
       const message = addMessage(state, action);
       const index = state.messages.length;

@@ -40,6 +40,63 @@ function renderWithAdventure(
   render(<StatefulPage />);
 }
 
+describe("ContextPreviewPage adventure details", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("edits, adds, and removes top-level metadata through reducer actions without sending it to the model", async () => {
+    const user = userEvent.setup();
+    let latest: Adventure | undefined;
+    const adventure: Adventure = {
+      ...createDefaultAdventure("Titans: Saiyan"),
+      metadata: {
+        scenarioDescription: "Adult Teen Titans AU centered on an established found-family superhero team in Jump City.",
+        scenarioAuthorContentRating: "everyone",
+        localRevisionLabel: "Initial adult Titans Saiyan AU",
+        localRevisionNotes: "Built from the Seattle AIST JSON structure.",
+        premadeAdventure: true,
+        thumbnailImage: { dataUrl: "data:image/png;base64,AAAA", updatedAt: "2026-10-02T07:15:00.000Z" },
+      },
+    };
+
+    renderWithAdventure((current, dispatch) => {
+      latest = current;
+      return <ContextPreviewPage adventure={current} dispatch={dispatch} onBuildContext={() => undefined} />;
+    }, adventure);
+
+    await user.click(screen.getByText("Adventure details"));
+    expect(screen.getByText(/Not sent to the model/)).toBeInTheDocument();
+    expect(screen.getByText(/cover image/)).toBeInTheDocument();
+
+    const rating = screen.getByLabelText("Scenario author content rating");
+    await user.clear(rating);
+    await user.type(rating, "mature");
+    expect(latest?.metadata.scenarioAuthorContentRating).toBe("mature");
+
+    const title = screen.getByLabelText("Title");
+    await user.clear(title);
+    await user.type(title, "Titans");
+    expect(latest?.title).toBe("Titans");
+
+    await user.click(screen.getByLabelText("Premade adventure"));
+    expect(latest?.metadata.premadeAdventure).toBe(false);
+
+    await user.click(screen.getByRole("button", { name: "Remove Local revision notes" }));
+    expect(latest?.metadata).not.toHaveProperty("localRevisionNotes");
+    expect(screen.queryByLabelText("Local revision notes")).not.toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("New field name"), "seriesName");
+    await user.click(screen.getByRole("button", { name: "Add field" }));
+    await user.type(screen.getByLabelText("Series name"), "Titans");
+    expect(latest?.metadata.seriesName).toBe("Titans");
+    expect(latest?.metadata.thumbnailImage).toEqual(adventure.metadata.thumbnailImage);
+
+    const payload = buildContext(latest!).messages.map((message) => message.content).join("\n");
+    expect(payload).not.toContain("found-family superhero team in Jump City");
+  });
+});
+
 describe("ContextPreviewPage condense", () => {
   const mockRunContextDedup = vi.mocked(runContextDedup);
 

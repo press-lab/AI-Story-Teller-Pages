@@ -814,6 +814,36 @@ pre {
   order: 4;
 }
 
+/* Author-facing adventure details sit above the context table, collapsed by default. */
+.context-preview-page > details.panel.adventure-details-panel {
+  order: 1;
+}
+
+.adventure-details-grid {
+  display: grid;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.adventure-details-readonly {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0;
+}
+
+.adventure-details-field,
+.adventure-details-add {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.adventure-details-field textarea {
+  resize: vertical;
+}
+
 .disabled-when-off {
   margin-top: 8px;
 }

@@ -770,6 +770,7 @@ export type AdventureAction =
   | { type: "SET_TITLE"; title: string }
   | { type: "SET_OPENING_SCENE"; content: string }
   | { type: "UPDATE_METADATA"; metadata: JsonObject }
+  | { type: "REMOVE_METADATA_FIELD"; key: string }
   | { type: "ADD_MESSAGE"; role: MessageRole; content: string; id?: string; createdAt?: ISODateString; inputMode?: InputMode; usage?: ProviderUsage }
   | { type: "UPDATE_MESSAGE"; messageId: string; content: string }
   | { type: "DELETE_MESSAGE"; messageId: string }

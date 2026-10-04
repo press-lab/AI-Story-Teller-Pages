@@ -362,7 +362,10 @@ Syncs all local adventures as a single JSON blob to a GitHub repo (owner/repo/br
 
 ## 17. Context Preview and Dedup Tools
 
-**Files:** `pages/ContextPreviewPage.tsx`, `ai/contextAI.ts`
+**Files:** `pages/ContextPreviewPage.tsx`, `pages/AdventureDetailsPanel.tsx`, `ai/contextAI.ts`
+
+### Adventure details:
+Collapsible panel at the top of the Context page for the adventure's top-level details: title (`SET_TITLE`), read-only ID and timestamps, and every string/number/boolean field of the free-form `metadata` object (e.g. `scenarioDescription`, `scenarioAuthorContentRating`, `localRevisionLabel`, `localRevisionNotes`). Fields are edited with `UPDATE_METADATA`, added by name, and removed with `REMOVE_METADATA_FIELD`. Structured values (the cover image) are listed but edited elsewhere. These details are saved and exported with the adventure but are not assembled into model context.
 
 ### Context Preview:
 Shows every section, item, token estimate, inclusion reason, protection/pin status, excluded items, pending proposals, raw provider payload JSON, and decision log. "Condense" button calls `runCondenseContent` (LLM shortens a single item with a budget target). Duplicate warning badge (>50% word overlap between two items).
