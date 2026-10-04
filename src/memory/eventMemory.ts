@@ -31,7 +31,8 @@ export function selectEventMemories(cards: StoryCard[], text: string): Map<strin
       const cue = [...(card.eventMemory?.recallCues ?? []), ...card.keys, card.title].find(phrase => {
         if (participants.some(p => normalize(p) === normalize(phrase))) return false;
         if (GENERIC_RECALL_CUES.has(normalize(phrase)) && !participant) return false;
-        if (mentions(text, phrase)) return true;
+        // Short anchors ("hot tub") are too common alone; they recall only alongside a participant.
+        if (mentions(text, phrase)) return Boolean(participant) || normalize(phrase).split(" ").length >= 3;
         const cueWords = words(phrase);
         return Boolean(participant) && cueWords.size >= 2 && [...cueWords].filter(w => textWords.has(w)).length / cueWords.size >= 0.75;
       });
