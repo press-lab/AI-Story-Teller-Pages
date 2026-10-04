@@ -58,6 +58,7 @@ Pure function — builds the provider payload each turn. Sections are assembled 
 | 10 | `nextTurnNote` | J. Next Output Bias | Active next-turn note |
 | 10.5 | `challengeMode` | M. Continuity Challenge | Injected instruction when `challengeMode` is active |
 | 11 | `recentMessages` | K. Recent Messages | Last N messages within token budget |
+| 12 | `memoryReminder` | N. Memory Reminder | Per-turn one-pass memory targets; sent after the conversation in the final user turn, not in the system prompt |
 
 ### Also injected as inspectable system-section items:
 - `Turn Scope Contract` - soft target from `responseLengthHint`

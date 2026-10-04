@@ -1,9 +1,18 @@
-import { ONE_PASS_MEMORY_ID, onePassMemoryInstruction } from "../memory/onePassMemory";
+import {
+  INLINE_MEMORY_PAUSE_AFTER,
+  INLINE_MEMORY_RETRY_TURNS,
+  ONE_PASS_MEMORY_ID,
+  ONE_PASS_REMINDER_ID,
+  inlineMemoryPaused,
+  onePassMemoryInstruction,
+  onePassMemoryReminder,
+} from "../memory/onePassMemory";
 import { selectEventMemories } from "../memory/eventMemory";
 import { PLOT_MEMORY_THRESHOLD } from "../ai/authoringBestPractices";
 import type {
   Adventure,
   BrainEntry,
+  ChatMessage,
   ContextBuildResult,
   ContextBuildDecision,
   ContextInclusionPolicy,
@@ -44,6 +53,8 @@ interface BuildOptions {
   currentInput?: string;
   latestModelOutput?: string;
   skipThoughtCapture?: boolean;
+  /** Build the memory instruction even while inline memory is paused (the memory-only fallback needs it). */
+  forceMemoryInstruction?: boolean;
 }
 
 function prioritySort<T extends { priority: number; id: string }>(items: T[]): T[] {
@@ -347,19 +358,31 @@ function buildTurnScopeContract(responseLengthHint: number | undefined): string 
   return `TURN SCOPE CONTRACT: The player's selected visible limit is ${wordTarget} words. Aim for ${minWords}-${wordTarget} visible words; shorter is acceptable when the next playable beat is clear. Do not mention word counts or pad prose. This is a scope ceiling, not a quota. If any other instruction asks for a fuller, substantial, complete, or cinematic scene, obey this turn scope contract first. Write only the next immediate exchange or consequence. Do not advance through multiple beats, tour multiple locations, wrap up the scene, or resolve a major outcome the player has not earned. Never narrate the player's unspoken actions, reactions, dialogue, consent, movement, commitments, or decisions. Stop as soon as the player could reasonably act, answer, interrupt, refuse, choose, or redirect. Hidden <thought> and <memory> tags do not count toward the visible limit, and they must not cause the visible prose to expand. End on a live in-scene moment, not an option menu or summary.`;
 }
 
-function buildPayload(sections: ContextSection[], recentMessagesNewestFirst: Message[], openingScene?: string) {
+/** Sections sent after the conversation rather than inside the system prompt. */
+const TAIL_SECTIONS = new Set<ContextSectionKind>(["recentMessages", "memoryReminder"]);
+
+function buildPayload(sections: ContextSection[], recentMessagesNewestFirst: Message[], openingScene?: string): ChatMessage[] {
   const contextText = sections
-    .filter((entry) => entry.id !== "recentMessages" && entry.content.length > 0)
+    .filter((entry) => !TAIL_SECTIONS.has(entry.id) && entry.content.length > 0)
     .sort((a, b) => a.order - b.order)
     .map((entry) => `# ${entry.label}\n${entry.content}`)
     .join("\n\n");
 
   const chronologicalRecent = [...recentMessagesNewestFirst].reverse();
-  return [
+  const payload: ChatMessage[] = [
     { role: "system" as const, content: contextText },
     ...(openingScene ? [{ role: "assistant" as const, content: openingScene }] : []),
     ...chronologicalRecent.map((message) => ({ role: message.role, content: message.content })),
   ];
+  // Anthropic-format providers hoist every system message into the top-level system prompt, so
+  // the reminder rides in the final user turn: joined to the player's input, or on its own.
+  const reminder = sections.find((entry) => entry.id === "memoryReminder")?.content;
+  if (reminder) {
+    const last = payload.at(-1);
+    if (last?.role === "user") payload[payload.length - 1] = { ...last, content: `${last.content}\n\n${reminder}` };
+    else payload.push({ role: "user", content: reminder });
+  }
+  return payload;
 }
 
 function sourceToGeneratedBy(source: "manual" | "imported" | "generated" | undefined): ContextItem["generatedBy"] {
@@ -374,8 +397,9 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
   const budgetSettings = adventure.tokenBudgetSettings;
   const turnScopeText = buildTurnScopeContract(adventure.activeState.responseLengthHint);
   const captureEligible = options.skipThoughtCapture ? [] : eligibleBrainsForCapture(adventure, triggerText);
-  const memoryText = !options.skipThoughtCapture && adventure.memoryDetectionSettings.enabled
-    ? onePassMemoryInstruction(captureEligible, enabledMemoryCategories(adventure)) : undefined;
+  const memoryWanted = !options.skipThoughtCapture && adventure.memoryDetectionSettings.enabled;
+  const memoryPaused = memoryWanted && !options.forceMemoryInstruction && inlineMemoryPaused(adventure);
+  const memoryText = memoryWanted && !memoryPaused ? onePassMemoryInstruction(enabledMemoryCategories(adventure)) : undefined;
   function pushExcluded(
     sourceType: ExcludedContextItem["sourceType"],
     id: string,
@@ -400,6 +424,10 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
     ? item(ONE_PASS_MEMORY_ID, "system", "One-pass Memory", memoryText, 900, false, false, true, "always", "system")
     : undefined;
   if (memoryItem) pushIncluded(memoryItem, "Narration and automatic memory share one response.");
+  if (memoryPaused) {
+    pushExcluded("system", ONE_PASS_MEMORY_ID, "One-pass Memory", "inactive",
+      `Paused: the story model omitted the memory envelope on ${INLINE_MEMORY_PAUSE_AFTER} consecutive turns, so memory runs as a separate memory-only call. Inline memory is retried after ${INLINE_MEMORY_RETRY_TURNS} turns.`);
+  }
 
   // Track which component IDs have already been logged as excluded to avoid double-logging
   const loggedExcluded = new Set<string>();
@@ -556,19 +584,22 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
     return [next];
   });
 
-  // J. Next Output Bias (+ response length hint)
+  // N. Memory Reminder — the per-turn half of one-pass memory. Explicit target names let the
+  // model address the correct entry without copying the full memory inventory. It changes every
+  // turn, so it travels after the latest message instead of breaking the cached system prefix.
+  const memoryReminderItems: ContextItem[] = [];
   if (memoryItem) {
-    // Single-item sections need not print their title. Explicit target names let the
-    // model address the correct entry without copying the full memory inventory.
     const editableComponents = [...plotEssentialItems, ...currentArcItems].filter(entry =>
       adventure.components.find(c => c.id === entry.id)?.autoUpdate !== false);
-    memoryItem.content += `\nEligible existing targets (use the exact title; omit updates if their content is absent): ${JSON.stringify({
+    const reminderItem = item(ONE_PASS_REMINDER_ID, "system", "Memory Reminder", onePassMemoryReminder(captureEligible, {
       cards: storyCardItems.map(entry => entry.title),
       components: editableComponents.map(entry => ({ title: entry.title, type: adventure.components.find(c => c.id === entry.id)?.type })),
-    })}`;
-    memoryItem.tokenEstimate = approximateTokenCount(memoryItem.content);
+    }), 900, false, false, true, "always", "system");
+    memoryReminderItems.push(reminderItem);
+    pushIncluded(reminderItem, "Per-turn memory targets, sent after the latest message.");
   }
 
+  // J. Next Output Bias (+ response length hint)
   const nextTurnNote = adventure.activeState.nextTurnNote;
   if (nextTurnNote?.content.trim() && !nextTurnNote.active) {
     pushExcluded("nextTurnNote", "next-turn-note", "Next Output Bias", "inactive", "Next Output Bias has content but is not active.");
@@ -651,6 +682,7 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
     section("nextTurnNote", "J. Next Output Bias", 10, nextTurnNoteItems),
     section("challengeMode", "M. Continuity Challenge", 10.5, challengeItems),
     section("recentMessages", "K. Recent Messages", 11, recentMessageItems),
+    section("memoryReminder", "N. Memory Reminder", 12, memoryReminderItems),
   ]);
 
   const budget = budgetSettings.maxContextTokens;
@@ -747,6 +779,14 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
           ? applyHybridBudget()
           : applyUserLockedBudget();
     if (!changed) break;
+  }
+
+  // The memory rules and their per-turn reminder only work together; never send one alone.
+  const has = (sectionId: ContextSectionKind, id: string) => sections.find(s => s.id === sectionId)?.items.some(entry => entry.id === id) ?? false;
+  if (memoryItem && has("system", ONE_PASS_MEMORY_ID) !== has("memoryReminder", ONE_PASS_REMINDER_ID)) {
+    const [orphanSection, orphanId] = has("system", ONE_PASS_MEMORY_ID) ? ["system", ONE_PASS_MEMORY_ID] as const : ["memoryReminder", ONE_PASS_REMINDER_ID] as const;
+    const orphan = sections.find(s => s.id === orphanSection)!.items.find(entry => entry.id === orphanId)!;
+    dropItem(orphanSection, orphan, "Dropped because its paired one-pass memory item was cut by the budget.");
   }
 
   sections.forEach((contextSection) => {

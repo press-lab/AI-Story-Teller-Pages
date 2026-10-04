@@ -1,4 +1,4 @@
-import { ONE_PASS_MEMORY_ID, onePassMemoryActions, parseOnePassMemory } from "../memory/onePassMemory";
+import { ONE_PASS_MEMORY_ID, ONE_PASS_PAUSED_LABEL, onePassMemoryActions, parseOnePassMemory } from "../memory/onePassMemory";
 import { buildContext, extractInlineThoughts } from "../contextBuilder/contextBuilder";
 import { runContinuityCheck, scanForRiskyClaims } from "../continuityLint";
 import { evaluateTriggerRules, type TriggerEvaluationEvent } from "../triggers/triggerEngine";
@@ -11,7 +11,7 @@ import type {
   ProviderConfig,
   ProviderUsage,
 } from "../types/adventure";
-import { createId } from "../utils/id";
+import { createId, nowIso } from "../utils/id";
 import { adventureReducer } from "./adventureReducer";
 
 export interface MockableProviderResponse {
@@ -55,6 +55,17 @@ export function reduceActions(adventure: Adventure, actions: AdventureAction[]):
 export function applyRuntimeEngines(adventure: Adventure, event: TriggerEvaluationEvent): Adventure {
   const triggerResult = evaluateTriggerRules(adventure, event);
   return reduceActions(adventure, triggerResult.actions);
+}
+
+/** A cue such as "[continue]" goes before the memory reminder so the reminder stays last. */
+function withProviderCue(context: ContextBuildResult, cue: string): ChatMessage[] {
+  const messages = context.messages;
+  const reminder = context.sections.find(s => s.id === "memoryReminder")?.content;
+  const last = messages.at(-1);
+  if (reminder && last?.role === "user" && last.content === reminder) {
+    return [...messages.slice(0, -1), { role: "user", content: `${cue}\n\n${reminder}` }];
+  }
+  return [...messages, { role: "user", content: cue }];
 }
 
 export function latestAssistantOutput(adventure: Adventure): string | undefined {
@@ -111,6 +122,15 @@ export async function applyProviderResponse({
   const messageId = assistantMessageId ?? createId("message");
   const memoryEnabled = mode !== "comms" && next.memoryDetectionSettings.enabled
     && preProviderContext.sections.some(s => s.items.some(i => i.id === ONE_PASS_MEMORY_ID));
+  const memoryPaused = mode !== "comms" && next.memoryDetectionSettings.enabled
+    && preProviderContext.decisions.some(d => d.itemId === ONE_PASS_MEMORY_ID && d.action === "excluded");
+  if (memoryPaused) {
+    // Visible record that memory was deliberately left to the memory-only call this turn.
+    next = adventureReducer(next, { type: "LOG_EVALUATION_RESULT", entry: {
+      id: createId("eval"), turn: next.activeState.turn, createdAt: nowIso(), conditionsEvaluated: [],
+      conditionsFired: [], actionsExecuted: [ONE_PASS_PAUSED_LABEL], generatedContent: [], errors: [],
+    } });
+  }
   if (memoryEnabled) {
     // Never apply memory from a discarded draft after a continuity rewrite.
     const actions = onePassMemoryActions(next, preProviderContext, continuityCorrected ? [] : memory.updates,
@@ -187,7 +207,7 @@ export async function runTurnPipeline({
     latestModelOutput: latestAssistantOutput(next),
   });
   const providerPayload = providerCue
-    ? [...preProviderContext.messages, { role: "user" as const, content: providerCue }]
+    ? withProviderCue(preProviderContext, providerCue)
     : preProviderContext.messages;
   const response = await sendChatCompletion(providerPayload, next, preProviderContext);
 

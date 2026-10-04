@@ -74,7 +74,7 @@ function expectExactPayloadFromPreview(adventure: Adventure, mode: MemoryPriorit
     latestModelOutput: "The Beast howls at the ward.",
   });
   const contextText = result.sections
-    .filter((entry) => entry.id !== "recentMessages" && entry.content.length > 0)
+    .filter((entry) => entry.id !== "recentMessages" && entry.id !== "memoryReminder" && entry.content.length > 0)
     .map((entry) => `# ${entry.label}\n${entry.content}`)
     .join("\n\n");
   const expectedSystem = contextText;
@@ -84,6 +84,13 @@ function expectExactPayloadFromPreview(adventure: Adventure, mode: MemoryPriorit
     const message = configured.messages.find((entry) => entry.id === item.id);
     return message ? [{ role: message.role, content: message.content }] : [];
   });
+  // The memory reminder travels last: joined to the final user turn, or as its own user turn.
+  const reminder = result.sections.find((section) => section.id === "memoryReminder")?.content;
+  if (reminder) {
+    const last = expectedRecent.at(-1);
+    if (last?.role === "user") expectedRecent[expectedRecent.length - 1] = { ...last, content: `${last.content}\n\n${reminder}` };
+    else expectedRecent.push({ role: "user", content: reminder });
+  }
 
   expect(result.messages[0].role).toBe("system");
   expect(result.messages[0].content).toBe(expectedSystem);
@@ -140,11 +147,12 @@ describe("buildContext", () => {
     expect(defaultNarrationRulesContent).not.toContain("the player decides what happens next");
   });
 
-  it("assembles sections in the required deterministic order (A–M)", () => {
+  it("assembles sections in the required deterministic order (A–N)", () => {
     const result = buildContext(adventureForContext(), { currentInput: "lantern" });
-    // All 13 sections must exist in the correct order
+    // All sections must exist in the correct order
     // Author's Note is placed just before recent messages (AID-style) for maximum recency influence
     // Continuity Challenge (M) sits between Next Output Bias and Recent Messages when active
+    // Memory Reminder (N) follows the conversation so its per-turn lists never break the cached system prefix
     expect(result.sections.map((section) => section.id)).toEqual([
       "system",
       "aiInstructions",
@@ -157,6 +165,7 @@ describe("buildContext", () => {
       "nextTurnNote",
       "challengeMode",
       "recentMessages",
+      "memoryReminder",
     ]);
     expect(result.messages[0].role).toBe("system");
     // adventureForContext uses generic custom-type components (always + pinned), so they land in "components"
@@ -325,7 +334,9 @@ describe("buildContext", () => {
     const result = buildContext(adventure);
     const recentIds = result.sections.find((section) => section.id === "recentMessages")?.items.map((item) => item.id);
     expect(recentIds).toEqual(["new"]);
-    expect(result.excludedItems.filter((item) => item.reason === "budget_exceeded").map((item) => item.id)).toEqual(["old", "middle", "one-pass-memory"]);
+    // The memory rules and their per-turn reminder are cut together, never one without the other.
+    expect(result.excludedItems.filter((item) => item.reason === "budget_exceeded").map((item) => item.id)).toEqual(["old", "middle", "one-pass-memory", "one-pass-memory-reminder"]);
+    expect(result.messages.map((message) => message.content).join("\n")).not.toContain("ONE-PASS MEMORY");
   });
 
   it("rolling summary is not injected into context (deprecated)", () => {
@@ -546,7 +557,7 @@ describe("buildContext", () => {
     const result = buildContext(adventure, { currentInput: "lantern" });
     const noteSection = result.sections.find((section) => section.id === "nextTurnNote");
 
-    expect(result.sections.map((section) => section.id).slice(-3)).toEqual(["nextTurnNote", "challengeMode", "recentMessages"]);
+    expect(result.sections.map((section) => section.id).slice(-4)).toEqual(["nextTurnNote", "challengeMode", "recentMessages", "memoryReminder"]);
     expect(noteSection?.label).toBe("J. Next Output Bias");
     expect(noteSection?.items).toHaveLength(1);
     expect(noteSection?.items[0]).toMatchObject({
@@ -724,7 +735,7 @@ describe("buildContext", () => {
     // adventureForContext has no aiInstructions/plotEssentials/authorNote/sceneState content
     const result = buildContext(adventureForContext(), { currentInput: "lantern" });
     // All section IDs always present in result.sections
-    expect(result.sections.map((s) => s.id)).toHaveLength(11);
+    expect(result.sections.map((s) => s.id)).toHaveLength(12);
     // Empty typed sections do not appear in the system payload
     const payload = result.messages[0].content;
     expect(payload).not.toContain("# B. AI Instructions");
@@ -753,6 +764,7 @@ describe("buildContext", () => {
       "nextTurnNote",
       "challengeMode",
       "recentMessages",
+      "memoryReminder",
     ]);
     expect(result.sections.find((section) => section.id === "aiInstructions")?.items.map((item) => item.id)).toEqual(["component-ai"]);
     expect(result.sections.find((section) => section.id === "plotEssentials")?.items.map((item) => item.id)).toEqual(["component-plot"]);
@@ -790,8 +802,15 @@ describe("buildContext", () => {
       "The Beast howls somewhere below.",
       "We hurry toward the threshold.",
     ];
-    // Runtime instructions are part of the system section; recent messages still follow in order.
-    expect(result.messages.slice(1, 1 + expectedRecent.length).map((message) => message.content)).toEqual(expectedRecent);
+    // Runtime instructions are part of the system section; recent messages still follow in order,
+    // and the per-turn memory reminder is joined to the final player turn.
+    const reminder = result.sections.find((section) => section.id === "memoryReminder")?.content;
+    expect(reminder).toContain("Eligible existing targets");
+    expect(result.messages[0].content).not.toContain("Eligible existing targets");
+    expect(result.messages.slice(1).map((message) => message.content)).toEqual([
+      ...expectedRecent.slice(0, -1),
+      `${expectedRecent.at(-1)}\n\n${reminder}`,
+    ]);
 
     // E. Components is present because the golden adventure has a pinned weather component
     // Single-item sections render content directly under the section header (no ## sub-header)

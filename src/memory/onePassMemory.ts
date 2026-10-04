@@ -3,11 +3,50 @@ import { createId, nowIso } from "../utils/id";
 import { cardMatchesName } from "../state/defaults";
 import { applyAIMemoryUpdate } from "./applyAIMemoryUpdate";
 import { sanitizeStoryCardTriggers } from "./resolveMemoryTarget";
+import { stripRepeatedThoughtLines } from "./thoughtDedupe";
 
 export const ONE_PASS_MEMORY_ID = "one-pass-memory";
 export const MEMORY_OUTPUT_RESERVE = 1400;
 
-export function onePassMemoryInstruction(brains: BrainEntry[], categories: string[]): string {
+export const ONE_PASS_REMINDER_ID = "one-pass-memory-reminder";
+// Attempts logged before the end-of-turn reminder existed used "One-pass memory: no additional API
+// call". A new label keeps those older misses from pausing inline memory before the reminder is tried.
+export const ONE_PASS_LOG_LABEL = "One-pass memory: inline with the story call";
+export const ONE_PASS_PAUSED_LABEL = "One-pass memory paused: memory-only call instead";
+/** Consecutive missing envelopes before inline memory pauses, and turns before it is retried. */
+export const INLINE_MEMORY_PAUSE_AFTER = 3;
+export const INLINE_MEMORY_RETRY_TURNS = 20;
+const ENVELOPE_FAILURE = /Memory envelope missing|Incomplete or oversized memory envelope|Invalid memory JSON/;
+
+export function isEnvelopeFailure(message: string): boolean {
+  return ENVELOPE_FAILURE.test(message);
+}
+
+/**
+ * Some story models never append the hidden envelope. Paying for the instruction and output
+ * reserve on every story call is then pure waste, because the memory-only fallback call runs
+ * anyway. Derived from the evaluation log (no stored flag), and retried every
+ * INLINE_MEMORY_RETRY_TURNS turns so a better model or prompt recovers on its own.
+ */
+export function inlineMemoryPaused(adventure: Adventure): boolean {
+  const attempts = adventure.activeState.evaluationLog.filter(entry => entry.actionsExecuted[0] === ONE_PASS_LOG_LABEL);
+  if (attempts.length < INLINE_MEMORY_PAUSE_AFTER) return false;
+  if (!attempts.slice(0, INLINE_MEMORY_PAUSE_AFTER).every(entry => entry.errors.some(isEnvelopeFailure))) return false;
+  return adventure.activeState.turn - attempts[0].turn < INLINE_MEMORY_RETRY_TURNS;
+}
+
+/**
+ * Per-turn memory details, sent after the latest message: the story model follows a short
+ * format reminder there far more reliably than a rule block near the top of the prompt, and
+ * keeping these changing lists out of the system prompt lets its stable prefix be cached.
+ */
+export function onePassMemoryReminder(brains: BrainEntry[], targets: { cards: string[]; components: Array<{ title: string; type?: string }> }): string {
+  return `[ONE-PASS MEMORY — hidden system note, not the player's words] After the visible story, append exactly one <memory_updates>{"updates":[...]}</memory_updates> envelope following the One-pass Memory rules; use {"updates":[]} when nothing qualifies.
+Eligible thought targets: ${brains.map(b => JSON.stringify(b.characterName)).join(", ") || "none"}
+Eligible existing targets (use the exact title; omit updates if their content is absent): ${JSON.stringify(targets)}`;
+}
+
+export function onePassMemoryInstruction(categories: string[]): string {
   return `[ONE-PASS MEMORY]
 Write the requested narrative first, preserving its quality and visible word limit. Then append exactly one hidden JSON envelope:
 <memory_updates>{"updates":[]}</memory_updates>
@@ -23,7 +62,7 @@ Allowed kinds:
 - "essentials": target is the EXACT title of a Plot Essentials component; content is its full replacement (max 180 words), preserving still-valid foundations. Only when the overarching premise, central long-term conflict, or persistent story-wide constraint fundamentally changes. This always requires review. NOT scene summaries, temporary whereabouts, immediate threats, or current-arc progress.
 Current Arc holds the ongoing storyline and its authored pacing. Do not alter arc phases, break instructions, or create a new arc here. Record an arc development there instead of creating a plot/event recap card for the same beat. Plot Essentials is the overarching story; Active Pressure is what presses NOW. Story Cards hold durable subject facts; event cards hold what happened; Brains hold private internal state.
 For example: {"kind":"card","target":"Mira","content":"Mira is allergic to silver.","evidence":"Silver gives me a rash, Mira says.","reason":"Persistent vulnerability"} or {"kind":"newCard","target":"Mira's Gate Oath","cardType":"event","category":"relationship","participants":["Mira"],"eventKind":"commitment","triggers":["silver gate"],"content":"Mira swore at the silver gate to guard the road.","evidence":"I swear it on this gate, Mira says.","reason":"A binding promise"}.
-Eligible thought targets: ${brains.map(b => JSON.stringify(b.characterName)).join(", ") || "none"}.
+Eligible thought targets and existing targets are listed in the memory note after the latest message.
 Only output changes supported by this turn and consistent with ALL supplied canon. These hidden updates are not narrative and must never steer the scene merely to create memory.`;
 }
 
@@ -62,12 +101,12 @@ function onePassEventMemory(adventure: Adventure, title: string, u: Record<strin
 }
 
 /** Local structural/evidence checks, not a claim that a quote proves every inference. */
-export function onePassMemoryActions(adventure: Adventure, context: ContextBuildResult, updates: unknown[], story: string, sourceTurnId: string, error?: string, sourceLabel = "One-pass memory: no additional API call", playerInputOverride?: string): AdventureAction[] {
+export function onePassMemoryActions(adventure: Adventure, context: ContextBuildResult, updates: unknown[], story: string, sourceTurnId: string, error?: string, sourceLabel = ONE_PASS_LOG_LABEL, playerInputOverride?: string): AdventureAction[] {
   const actions: AdventureAction[] = [];
   const errors = error ? [error] : [];
   const executed: string[] = [];
   const visibleIds = new Set(context.sections.flatMap(s => s.items.map(i => i.id)));
-  const instruction = context.sections.flatMap(s => s.items).find(i => i.id === ONE_PASS_MEMORY_ID)?.content ?? "";
+  const reminder = context.sections.flatMap(s => s.items).find(i => i.id === ONE_PASS_REMINDER_ID)?.content ?? "";
   const lastMessage = adventure.messages.at(-1);
   const playerInput = playerInputOverride ?? (lastMessage?.role === "user" ? lastMessage.content : "");
   const evidenceSources = [norm(story), norm(playerInput)];
@@ -96,13 +135,15 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
       const brains = adventure.brains.filter(b => b.active && b.characterName === target);
       const brain = brains.length === 1 ? brains[0] : undefined;
       // The prompt's eligible names includes empty brains, which have no context item yet.
-      const eligibleNames = instruction.split("Eligible thought targets: ")[1]?.split(".\n")[0] ?? "";
+      const eligibleNames = reminder.split("Eligible thought targets: ")[1]?.split("\n")[0] ?? "";
       if (!brain || !eligibleNames.includes(JSON.stringify(target)) || (brain.lastUpdatedTurn !== undefined && adventure.activeState.turn - brain.lastUpdatedTurn < (brain.autoUpdateCooldownTurns ?? 0))) { reject(`${target}: brain not eligible`); continue; }
       if (Object.keys(brain.thoughts ?? {}).length && !visibleIds.has(brain.id)) { reject(`${target}: brain context was omitted`); continue; }
       if (!evidenceSources.some(s => s.includes(norm(target)))) { reject(`${target}: character absent from this turn`); continue; }
       if (Object.values({ ...brain.archivedThoughts, ...brain.thoughts }).some(t => norm(t).includes(norm(content)))) continue;
-      const patch = { thoughts: { [`${adventure.activeState.turn}_${sourceTurnId}`]: `${adventure.activeState.turn} → ${content}` } };
-      const boundary = applyAIMemoryUpdate(adventure, [{ type: "brainPatch", brainId: brain.id, patch, mode: "append", turn: adventure.activeState.turn, preview: content }]);
+      const thought = stripRepeatedThoughtLines(content, Object.values(brain.thoughts ?? {}));
+      if (!thought) { reject(`${target}: thought only repeats lines already in this character's thoughts`); continue; }
+      const patch = { thoughts: { [`${adventure.activeState.turn}_${sourceTurnId}`]: `${adventure.activeState.turn} → ${thought}` } };
+      const boundary = applyAIMemoryUpdate(adventure, [{ type: "brainPatch", brainId: brain.id, patch, mode: "append", turn: adventure.activeState.turn, preview: thought }]);
       if (adventure.memoryAutoApprove.brainUpdate) actions.push(...boundary.actions);
       else actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal: { ...proposal, proposedType: "brainUpdate", targetId: brain.id, content: JSON.stringify(patch) } });
       executed.push(`Thought: ${target}`);

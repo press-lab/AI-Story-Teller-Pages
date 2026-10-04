@@ -678,7 +678,8 @@ export type ContextSectionKind =
   | "nextTurnNote"    // J. Next Output Bias
   | "recentMessages"  // K. Recent Messages
   | "sceneState"      // L. Scene State — current location, characters, situation (deprecated)
-  | "challengeMode";  // M. Continuity Challenge — one-turn verification instruction
+  | "challengeMode"   // M. Continuity Challenge — one-turn verification instruction
+  | "memoryReminder"; // N. Memory Reminder — per-turn memory targets, sent after the latest message
 
 export type ExcludedReason = "budget_exceeded" | "inactive" | "cooldown" | "not_triggered";
 

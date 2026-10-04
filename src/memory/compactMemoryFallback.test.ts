@@ -3,6 +3,7 @@ import { createDefaultAdventure, defaultModelConfig, makeBrain, makeComponent, m
 import { adventureReducer } from "../state/adventureReducer";
 import { sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
 import { runCompactMemoryFallback } from "./compactMemoryFallback";
+import { INLINE_MEMORY_PAUSE_AFTER, ONE_PASS_LOG_LABEL, inlineMemoryPaused } from "./onePassMemory";
 
 vi.mock("../providers/openAICompatible", () => ({ sendOpenAICompatibleChatCompletion: vi.fn() }));
 
@@ -43,6 +44,23 @@ describe("compact memory fallback", () => {
     expect(Object.values(next.brains[0].thoughts).join(" ")).toContain("holding back");
     expect(next.components[0].content).toContain("calling card");
     expect(next.activeState.evaluationLog[0].actionsExecuted).toContain("Compact memory fallback: one API call");
+  });
+
+  it("still runs while inline memory is paused, with per-turn targets and no steer toward profile appends", async () => {
+    provider.mockResolvedValue({ content: JSON.stringify({ updates: [] }), raw: {} });
+    let adventure = adventureWithMissingEnvelope();
+    for (let i = 0; i < INLINE_MEMORY_PAUSE_AFTER; i++) {
+      adventure = adventureReducer(adventure, { type: "LOG_EVALUATION_RESULT", entry: { id: `miss-${i}`, turn: adventure.activeState.turn, createdAt: "2026-10-04T00:00:00Z", conditionsEvaluated: [], conditionsFired: [], actionsExecuted: [ONE_PASS_LOG_LABEL], generatedContent: [], errors: ["Memory envelope missing; story preserved."] } });
+    }
+    expect(inlineMemoryPaused(adventure)).toBe(true);
+    const result = await runCompactMemoryFallback(adventure, config);
+    expect(result.valid).toBe(true);
+    const prompt = provider.mock.calls[0][0].messages.map(message => message.content).join("\n");
+    expect(prompt).toContain('Eligible thought targets: "Edythe"');
+    expect(prompt).toContain("Eligible existing targets");
+    expect(prompt).not.toContain("After the visible story, append");
+    expect(prompt).not.toContain("prefer updates");
+    expect(prompt).toContain("record a completed occurrence as a new event card");
   });
 
   it("rejects an invalid recovery response so the caller can use the legacy cycle", async () => {

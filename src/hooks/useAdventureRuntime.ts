@@ -1,4 +1,4 @@
-import { ONE_PASS_MEMORY_ID, MEMORY_OUTPUT_RESERVE } from "../memory/onePassMemory";
+import { ONE_PASS_LOG_LABEL, ONE_PASS_MEMORY_ID, ONE_PASS_PAUSED_LABEL, MEMORY_OUTPUT_RESERVE, isEnvelopeFailure } from "../memory/onePassMemory";
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { buildContext } from "../contextBuilder/contextBuilder";
 import { saveAdventure } from "../db/adventureDb";
@@ -247,9 +247,9 @@ export function useAdventureRuntime(
   async function startMemoryFallback(snapshot: Adventure) {
     if (!snapshot.memoryDetectionSettings.enabled || memoryFallbackInFlight.current.has(snapshot.id)) return;
     const latest = snapshot.activeState.evaluationLog[0];
-    const onePassFailed = latest?.actionsExecuted.includes("One-pass memory: no additional API call")
-      && latest.errors.some(message => /Memory envelope missing|Incomplete or oversized memory envelope|Invalid memory JSON/.test(message));
-    if (!onePassFailed) return;
+    const onePassFailed = latest?.actionsExecuted.includes(ONE_PASS_LOG_LABEL) && latest.errors.some(isEnvelopeFailure);
+    const onePassPaused = latest?.actionsExecuted.includes(ONE_PASS_PAUSED_LABEL);
+    if (!onePassFailed && !onePassPaused) return;
     const everyN = Math.max(1, snapshot.memoryDetectionSettings.everyNTurns ?? 1);
     const last = snapshot.activeState.lastMemoryCycleTurn;
     if (last !== undefined && snapshot.activeState.turn - last < everyN) return;

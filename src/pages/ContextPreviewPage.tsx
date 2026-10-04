@@ -126,6 +126,7 @@ function sectionShortLabel(sectionId: string): string {
     sceneState: "Scene",
     nextTurnNote: "Bias",
     recentMessages: "Messages",
+    memoryReminder: "Memory",
   };
   return map[sectionId] ?? sectionId;
 }

@@ -171,6 +171,42 @@ describe("Seattle memory quality", () => {
     expect(discovery.actions).toContainEqual(expect.objectContaining({ type: "ADD_MEMORY_PROPOSAL", proposal: expect.objectContaining({ title: "Priya", targetId: undefined }) }));
   });
 
+  it("routes a discovered trait of an existing character to their card, keeping the sentence intact", async () => {
+    const a = seattle();
+    a.memoryDetectionSettings.enabled = true;
+    a.memoryAutoApprove.storyCard = true;
+    a.storyCards = [makeStoryCard({ id: "raven", title: "Rachel Roth / Raven", type: "character", keys: ["Raven", "Rachel"], protected: true, content: "Raven is an empathic sorcerer." })];
+    a.messages.push({ id: "paint", role: "assistant", content: "Raven admits she paints on actual canvases, and only Eliot has seen them.", createdAt: "2026-09-27T12:42:00Z" });
+    provider.mockResolvedValueOnce({ content: JSON.stringify([{ title: "Raven Paints", content: "Raven paints on actual canvases; only Eliot has seen them.", memoryMode: "static", storyCardType: "character", suggestedTriggers: ["actual canvases"], evidenceMessageIds: ["paint"] }]), raw: {} });
+    const discovery = await detectStoryCardProposals(a, config);
+    const state = discovery.actions.reduce(adventureReducer, a);
+    expect(state.storyCards.map(c => c.title)).toEqual(["Rachel Roth / Raven"]);
+    const proposal = state.activeState.memoryProposals[0];
+    expect(proposal).toMatchObject({ targetId: "raven", appendContent: true, requiresReview: true, status: "pending" });
+    const approved = adventureReducer(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id });
+    expect(approved.storyCards[0].content).toContain("Raven paints on actual canvases");
+  });
+
+  it("strips a card title only when it is a heading or label, never the opening words of a sentence", () => {
+    const add = (title: string, content: string) => adventureReducer(seattle(), { type: "ADD_MEMORY_PROPOSAL", proposal: makeMemoryProposal({ title, content, storyCardType: "custom" }) })
+      .activeState.memoryProposals[0]?.content;
+    expect(add("Raven Paints", "Raven paints on actual canvases.")).toBe("Raven paints on actual canvases.");
+    expect(add("Raven Paints", "**Raven Paints**\nShe paints on actual canvases.")).toBe("She paints on actual canvases.");
+    expect(add("Raven Paints", "Raven Paints: she paints on actual canvases.")).toBe("she paints on actual canvases.");
+  });
+
+  it("does not treat locations or event records as compacts because of incidental wording", () => {
+    const a = seattle();
+    a.memoryAutoApprove.storyCard = true;
+    const create = (title: string, storyCardType: "location" | "event" | "custom", content: string) =>
+      adventureReducer(a, { type: "ADD_MEMORY_PROPOSAL", proposal: makeMemoryProposal({ id: title, title, storyCardType, content, suggestedTriggers: ["coastline hotel"], ...(storyCardType === "event" ? { eventMemory: { sourceMessageIds: ["arrival"], participants: ["Seth"], recallCues: ["coastline hotel"], kind: "sharedExperience" as const } } : {}) }) })
+        .storyCards.find(c => c.title === title);
+    expect(create("Coastline Penthouse Hotel", "location", "Raven accepted the penthouse on her own terms.")?.compactKind).toBeUndefined();
+    expect(create("Rooftop Pact Night", "event", "They made a pact in the hot tub.")?.compactKind).toBeUndefined();
+    expect(create("Penthouse Lease", "custom", "Raven accepted the penthouse on her own terms.")?.compactKind).toBeUndefined();
+    expect(create("Car Loan", "custom", "Eleanor agreed to the terms of the car deal.")?.compactKind).toBe("pact");
+  });
+
   it("does not recycle corrected Plot Essentials into cards, even with auto-approval", () => {
     const a = seattle(); a.memoryAutoApprove.storyCard = true; a.memoryAutoApprove.plotEssentialsUpdate = true;
     const state = adventureReducer(a, { type: "ADD_MEMORY_PROPOSAL", proposal: makeMemoryProposal({ proposedType: "plotEssentialsUpdate", title: "Plot Essentials", targetId: "pe", content: "Seth is informed but unconvinced and has arrived at the Cullen home." }) });

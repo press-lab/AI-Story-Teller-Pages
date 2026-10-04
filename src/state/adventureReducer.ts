@@ -622,10 +622,11 @@ function stripThink(text: string): string {
   return text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
 }
 
+/** Strip a title used as a heading or label ("# Title", "**Title**" on its own line, "Title:"), never sentence-opening words. */
 function stripLeadingCardTitle(title: string, content: string): string {
   if (!title || !content) return content;
   const escaped = title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return content.replace(new RegExp(`^(?:#{1,3}\\s*|\\*{1,2})?${escaped}\\*{0,2}\\s*\\n?`, "i"), "").trimStart();
+  return content.replace(new RegExp(`^(?:#{1,3}\\s*|\\*{1,2})?${escaped}\\*{0,2}(?::\\*{0,2}[ \\t]*|[ \\t]*(?:\\r?\\n|$))`, "i"), "").trimStart();
 }
 
 /**
