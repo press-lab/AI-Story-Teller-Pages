@@ -14,12 +14,13 @@ An empty updates array is normal. Never invent changes to fill it. Maximum 4 sma
 Each update has: kind, target, content, evidence, reason. evidence is an EXACT quote from this turn's player input or your visible story, establishing the change. reason explains why it will matter beyond this scene. Do not treat a suggestion, possibility, or plan as an accomplished fact. Do not give absent characters knowledge they did not receive.
 Allowed kinds:
 - "thought": target is an eligible character name below; content is ONE new first-person internal reaction, belief, or private plan (max 45 words). Capture only if the character participated or learned something this turn. Never repeat existing thoughts or put generic world facts here.
-- "card": target is the EXACT title of an existing Story Card visible in context; content is only a NEW durable fact (max 70 words) to append. Preserve identity and existing facts. Never overwrite or contradict canon; corrections need explicit review outside this automatic path. Omit already-known facts and rephrasings.
+- "card": target is the EXACT title of an existing Story Card visible in context; content is only a NEW durable fact (max 70 words) to append. Character cards are profiles: add lasting abilities, traits, relationships, or obligations, never a recap of where someone went, what they said, kissed, ate, wore, or did in one scene. Preserve identity and existing facts. Never overwrite or contradict canon; corrections need explicit review outside this automatic path. Omit already-known facts and rephrasings.
+- "lore": target is the EXACT title of an existing lore/location/custom Story Card visible in context, or a narrow NEW subject title. Use this for a scene-specific fact ONLY when it establishes reusable history, a recurring place/object, or a lasting world rule. For a new subject also provide 1-3 narrow triggers and category "world_fact"; it becomes a reviewable lore card. Do not create a lore card for routine movement, a passing reaction, or a generic scene recap. Never target a character card with lore.
 - "newCard": target is a genuinely new recurring subject's name, content max 90 words. Also provide cardType (character, location, lore, custom, plot), memoryMode (static or living), triggers (1-3 narrow phrases), and category from: ${categories.join(", ") || "NONE (no new cards allowed)"}. Reuse existing subjects; never create sibling cards for a conversation, invitation, repeated affection, room movement, routine choice, or temporary mood. A plot card requires a consequential lasting obligation, alliance, betrayal, secret, or irreversible change; it will require review. Do not create event recap cards.
 - "pressure": target is the EXACT title of an active Active Pressure component; content is its full replacement, ONE sentence (max 45 words) identifying the external threat or obligation pressing on the player. Only when it materially changes or resolves; no cosmetic rewrites.
 - "arc": target is the EXACT title of the active Current Arc; content is one concise, completed development (max 45 words) directly relevant to its premise, to append to its log. Skip scene filler, repeated beats, possibilities, and future events. Never change the premise, phase, or pacing.
 - "essentials": target is the EXACT title of a Plot Essentials component; content is its full replacement (max 180 words), preserving still-valid foundations. Only when the overarching premise, central long-term conflict, or persistent story-wide constraint fundamentally changes. This always requires review. NOT scene summaries, temporary whereabouts, immediate threats, or current-arc progress.
-Current Arc holds the ongoing storyline and its authored pacing. Do not alter arc phases, break instructions, or create a new arc here. Record an arc development there instead of creating a plot/event recap card for the same beat. Plot Essentials is the overarching story; Active Pressure is what presses NOW. Story Cards hold durable subject facts; Brains hold private internal state.
+Current Arc holds the ongoing storyline and its authored pacing. Do not alter arc phases, break instructions, or create a new arc here. Record an arc development there instead of creating a plot/event recap card for the same beat. Plot Essentials is the overarching story; Active Pressure is what presses NOW. Character Story Cards hold profiles, lore cards hold reusable setting and shared history, and Brains hold private internal state. When the only fact is a completed scene beat, leave it in the transcript.
 For example: {"kind":"card","target":"Mira","content":"Mira is allergic to silver.","evidence":"Silver gives me a rash, Mira says.","reason":"Persistent vulnerability"}.
 Eligible thought targets: ${brains.map(b => JSON.stringify(b.characterName)).join(", ") || "none"}.
 Only output changes supported by this turn and consistent with ALL supplied canon. These hidden updates are not narrative and must never steer the scene merely to create memory.`;
@@ -45,6 +46,13 @@ export function parseOnePassMemory(text: string): { story: string; updates: unkn
 const norm = (text: string) => text.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 const words = (text: string) => text.trim().split(/\s+/).length;
 
+// A conservative backstop for obvious episode recaps. Ambiguous facts stay in
+// the model's chosen lane; this only prevents automatic character-card writes.
+export function isSceneRecapForCharacter(content: string): boolean {
+  return /\b(?:during|last night|last spring|that night|on (?:the|his|her|\w+(?:'s|’s))|at (?:the|his|her)|after (?:the|their|his|her)|from (?:the|his|her)|to (?:the|his|her))\b/i.test(content)
+    && /\b(?:asked|agreed|brought|destroyed|drank|invited|kissed|knocked|opened|ordered|reacted|sparred|traveled|used|watched|went|won)\b/i.test(content);
+}
+
 /** Local structural/evidence checks, not a claim that a quote proves every inference. */
 export function onePassMemoryActions(adventure: Adventure, context: ContextBuildResult, updates: unknown[], story: string, sourceTurnId: string, error?: string, sourceLabel = "One-pass memory: no additional API call", playerInputOverride?: string): AdventureAction[] {
   const actions: AdventureAction[] = [];
@@ -65,7 +73,7 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
     const kind = u.kind as string, target = (u.target as string).trim(), content = (u.content as string).trim(), evidence = (u.evidence as string).trim();
     const quote = norm(evidence);
     if (quote.length < 12 || !evidenceSources.some(s => s.includes(quote))) { reject(`${target}: evidence is not in this turn`); continue; }
-    if (words(content) > (kind === "essentials" ? 180 : kind === "newCard" ? 90 : kind === "card" ? 70 : 45)) { reject(`${target}: content exceeds limit`); continue; }
+    if (words(content) > (kind === "essentials" ? 180 : kind === "newCard" || kind === "lore" ? 90 : kind === "card" ? 70 : 45)) { reject(`${target}: content exceeds limit`); continue; }
     if (content.includes("<") || content.length > 4000 || target.length > 150 || (u.reason as string).length > 600) { reject(`${target}: invalid content`); continue; }
     const key = `${kind}:${norm(target)}`;
     if (seen.has(key)) { reject(`${target}: repeated target`); continue; }
@@ -92,13 +100,15 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
       executed.push(`Thought: ${target}`);
       continue;
     }
-    if (kind === "card" || kind === "newCard") {
+    if (kind === "card" || kind === "newCard" || kind === "lore") {
       const exact = adventure.storyCards.filter(c => c.title === target);
       const matches = exact.length ? exact : adventure.storyCards.filter(c => cardMatchesName(c, target));
       if (matches.length > 1) { reject(`${target}: ambiguous card target`); continue; }
       const existing = matches[0];
       if (existing) {
         if (!existing.active || !visibleIds.has(existing.id) || existing.type === "event" || existing.memoryMode === "historical") { reject(`${target}: target not editable in this context`); continue; }
+        if (kind === "lore" && !["lore", "location", "custom"].includes(existing.type)) { reject(`${target}: lore cannot update a character card`); continue; }
+        if (existing.type === "character" && isSceneRecapForCharacter(content)) { reject(`${target}: scene recap belongs in lore or transcript`); continue; }
         if (norm(existing.content).includes(norm(content))) continue;
         proposal.title = existing.title;
         proposal.targetId = existing.id;
@@ -109,12 +119,15 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
       } else {
         const allowedTypes: StoryCardType[] = ["character", "location", "lore", "custom", "plot"];
         const category = typeof u.category === "string" ? u.category : "";
-        if (kind !== "newCard" || ++newCards > 1 || !allowedTypes.includes(u.cardType as StoryCardType) || !adventure.systemTriggers?.enabled || !adventure.systemTriggers.categories[category as keyof typeof adventure.systemTriggers.categories]) { reject(`${target}: new card not allowed`); continue; }
+        const allowedCategory = kind === "lore"
+          ? category === "world_fact" && adventure.systemTriggers?.categories.world_fact
+          : allowedTypes.includes(u.cardType as StoryCardType) && adventure.systemTriggers?.categories[category as keyof typeof adventure.systemTriggers.categories];
+        if ((kind !== "newCard" && kind !== "lore") || ++newCards > 1 || !adventure.systemTriggers?.enabled || !allowedCategory) { reject(`${target}: new card not allowed`); continue; }
         if (!Array.isArray(u.triggers) || !u.triggers.length || u.triggers.length > 3 || u.triggers.some(t => typeof t !== "string" || t.trim().length < 3 || t.length > 80)) { reject(`${target}: invalid triggers`); continue; }
-        proposal.storyCardType = u.cardType as StoryCardType;
+        proposal.storyCardType = kind === "lore" ? "lore" : u.cardType as StoryCardType;
         proposal.memoryMode = u.memoryMode === "living" ? "living" : "static";
         proposal.suggestedTriggers = u.triggers as string[];
-        proposal.requiresReview = u.cardType === "plot";
+        proposal.requiresReview = kind === "lore" || u.cardType === "plot";
       }
     } else if (kind === "essentials" || kind === "pressure" || kind === "arc") {
       const type = kind === "essentials" ? "plotEssentials" : kind === "arc" ? "currentArc" : "activePressure";

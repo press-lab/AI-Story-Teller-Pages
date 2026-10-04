@@ -4,14 +4,14 @@ import { adventureReducer } from "../state/adventureReducer";
 import { createDefaultAdventure, makeBrain, makeComponent, makeStoryCard } from "../state/defaults";
 import { runTurnPipeline } from "../state/turnPipeline";
 import { evaluateStoryResponseGuard } from "../state/storyResponseGuard";
-import { ONE_PASS_MEMORY_ID, onePassMemoryActions, parseOnePassMemory } from "./onePassMemory";
+import { ONE_PASS_MEMORY_ID, isSceneRecapForCharacter, onePassMemoryActions, parseOnePassMemory } from "./onePassMemory";
 
 function fixture() {
   const adventure = createDefaultAdventure("One-pass quality checks");
   adventure.memoryDetectionSettings = { ...adventure.memoryDetectionSettings, enabled: true };
   adventure.memoryAutoApprove = { ...adventure.memoryAutoApprove, storyCard: true, brainUpdate: true, plotEssentialsUpdate: true };
   adventure.brains = [makeBrain({ id: "mira-brain", characterName: "Mira", active: true, thoughts: { old: "I distrust the duke." } })];
-  adventure.storyCards = [makeStoryCard({ id: "mira-card", title: "Mira", content: "Mira is a scout.", active: true, protected: false, pinned: true })];
+  adventure.storyCards = [makeStoryCard({ id: "mira-card", title: "Mira", type: "character", content: "Mira is a scout.", active: true, protected: false, pinned: true })];
   adventure.components = [
     makeComponent({ id: "essentials", title: "Foundations", type: "plotEssentials", content: "The exiles seek a safe home.", active: true }),
     makeComponent({ id: "pressure", title: "Pressure", type: "activePressure", content: "The duke demands tribute.", active: true }),
@@ -24,6 +24,11 @@ const update = { kind: "card", target: "Mira", content: "Silver burns Mira's ski
 const envelope = (updates: unknown[]) => `${story}\n<memory_updates>${JSON.stringify({ updates })}</memory_updates>`;
 
 describe("one-pass memory quality boundary", () => {
+  it("distinguishes durable character abilities from the saved scene examples", () => {
+    expect(isSceneRecapForCharacter("Raven can open personal portals for group travel.")).toBe(false);
+    expect(isSceneRecapForCharacter("Raven used a portal to move the group from the Tower rooftop to Verdant.")).toBe(true);
+    expect(isSceneRecapForCharacter("Mr. Satan watched the gym wall collapse on Buu's island.")).toBe(true);
+  });
   it("narrates and remembers with one provider call, preserving old facts and citing the saved story", async () => {
     const adventure = fixture();
     const provider = vi.fn(async () => ({ content: envelope([
@@ -120,6 +125,29 @@ describe("one-pass memory quality boundary", () => {
     const newCard = { ...update, kind: "newCard", target: "Silver", cardType: "lore", category: "world_fact", triggers: ["silver burn"] };
     const actions = onePassMemoryActions(adventure, buildContext(adventure), [newCard, { ...newCard, target: "Metal" }, { ...newCard, target: "Letter arrival", cardType: "event" }], story, "story-id");
     expect(actions.filter(a => a.type === "ADD_MEMORY_PROPOSAL")).toHaveLength(1);
+  });
+
+  it("keeps a scene recap off a character card and proposes reusable lore for review", () => {
+    const adventure = fixture();
+    adventure.storyCards.push(makeStoryCard({ id: "island-card", title: "Buu's Island", type: "lore", content: "Buu trains on a private island.", active: true, pinned: true }));
+    const scene = "On Buu's island, Mira opened the gym wall during training. The gym is now open to the sea.";
+    const updates = [
+      { kind: "card", target: "Mira", content: "On Buu's island, Mira opened the gym wall during training.", evidence: "Mira opened the gym wall during training.", reason: "Training history" },
+      { kind: "lore", target: "Buu's Island", content: "The island gym has an open wall facing the sea after Mira's training session.", evidence: "The gym is now open to the sea.", reason: "Lasting change to a recurring place" },
+    ];
+    const next = onePassMemoryActions(adventure, buildContext(adventure), updates, scene, "scene-id").reduce(adventureReducer, adventure);
+    expect(next.storyCards.find(c => c.id === "mira-card")?.content).toBe("Mira is a scout.");
+    expect(next.storyCards.find(c => c.id === "island-card")?.content).toContain("open wall");
+    expect(next.activeState.evaluationLog[0].errors).toContain("One-pass memory skipped: Mira: scene recap belongs in lore or transcript");
+  });
+
+  it("creates a narrow lore proposal instead of appending a shared scene to a character", () => {
+    const adventure = fixture();
+    const scene = "Mira and Raven signed a lasting pact at the old observatory.";
+    const updates = [{ kind: "lore", target: "Observatory Pact", content: "Mira and Raven signed a lasting pact at the old observatory.", evidence: scene, reason: "Lasting shared obligation", triggers: ["observatory pact"], category: "world_fact" }];
+    const next = onePassMemoryActions(adventure, buildContext(adventure), updates, scene, "scene-id").reduce(adventureReducer, adventure);
+    expect(next.storyCards).toEqual(adventure.storyCards);
+    expect(next.activeState.memoryProposals[0]).toMatchObject({ title: "Observatory Pact", storyCardType: "lore", status: "pending", requiresReview: true });
   });
 
   it.each(["disabled", "comms"])("strips but never applies unsolicited memory when %s", async condition => {
