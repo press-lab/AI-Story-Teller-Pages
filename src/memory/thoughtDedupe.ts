@@ -34,22 +34,6 @@ export function dedupeThoughtRecord(
   return Object.fromEntries(kept.reverse());
 }
 
-/**
- * Drop sentences (5+ words) that an existing thought already contains, so a character's stock
- * line ("I keep saying yes and meaning it") is not re-recorded every turn. Returns "" when too
- * little new remains to count as a new reaction.
- */
-export function stripRepeatedThoughtLines(thought: string, existingThoughts: string[]): string {
-  const known = existingThoughts.map(normalizeThoughtForDedupe);
-  const sentences = thought.match(/[^.!?]+[.!?]*/g) ?? [thought];
-  const kept = sentences.filter((sentence) => {
-    const line = normalizeThoughtForDedupe(sentence);
-    return line.split(" ").length < 5 || !known.some((existing) => existing.includes(line));
-  });
-  const result = kept.join("").trim();
-  return result.split(/\s+/).filter(Boolean).length >= 6 ? result : "";
-}
-
 export function dedupeBrainThoughts(
   thoughts: Record<string, string>,
   archivedThoughts: Record<string, string>,

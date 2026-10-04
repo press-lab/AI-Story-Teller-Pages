@@ -56,7 +56,6 @@ Context sections, in fixed order:
 | `nextTurnNote` | J. Next Output Bias | User-written short-term steering note for the next generation |
 | `challengeMode` | M. Continuity Challenge | One-turn correction instruction when the player challenges continuity |
 | `recentMessages` | K. Recent Messages | Short-term transcript window |
-| `memoryReminder` | N. Memory Reminder | Per-turn memory targets, sent after the latest message so the system prompt stays cacheable |
 
 Rolling Summary, Scene State, Quest State, Auto-Cards, and Immediate Momentum are legacy/save-compatible surfaces only. They are not assembled into the default model context.
 

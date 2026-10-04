@@ -64,7 +64,6 @@ describe("development adventure seed", () => {
       "nextTurnNote",
       "challengeMode",
       "recentMessages",
-      "memoryReminder",
     ]);
 
     const storyCardIds = result.sections.find((section) => section.id === "storyCards")?.items.map((item) => item.id) ?? [];

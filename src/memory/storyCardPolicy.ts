@@ -110,16 +110,10 @@ function uniqueFacts(values: Array<string | undefined>): string[] {
   return result;
 }
 
-// People, places, world lore and event records are subjects or history, never standing arrangements,
-// even when their text mentions a deal or a secret.
-const NON_COMPACT_CARD_TYPES = new Set<StoryCard["type"]>(["character", "location", "lore", "event"]);
-
 function inferredCompactKind(card: StoryCardPolicyInput, incomingContent = ""): StoryCardCompactKind | undefined {
   if (card.compactKind) return card.compactKind;
-  if (card.type && NON_COMPACT_CARD_TYPES.has(card.type)) return undefined;
-  const text = normalizePolicyText([card.title, ...(card.keys ?? []), card.content, card.archivedFacts, incomingContent].filter(Boolean).join(" "))
-    // "on her own terms" is an idiom, not the terms of an agreement.
-    .replace(/\bon (?:his|her|their|my|your|our|its) own terms\b/g, " ");
+  if (card.type === "character") return undefined;
+  const text = normalizePolicyText([card.title, ...(card.keys ?? []), card.content, card.archivedFacts, incomingContent].filter(Boolean).join(" "));
   if (/\b(cover story|official cover|official story|political shield|shield)\b/.test(text)) return "coverStory";
   if (/\b(pact|compact|deal|bargain|agreement|terms?)\b/.test(text)) return "pact";
   if (/\b(promise|promised|vow|oath)\b/.test(text)) return "promise";

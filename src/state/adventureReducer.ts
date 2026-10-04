@@ -622,11 +622,10 @@ function stripThink(text: string): string {
   return text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
 }
 
-/** Strip a title used as a heading or label ("# Title", "**Title**" on its own line, "Title:"), never sentence-opening words. */
 function stripLeadingCardTitle(title: string, content: string): string {
   if (!title || !content) return content;
   const escaped = title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return content.replace(new RegExp(`^(?:#{1,3}\\s*|\\*{1,2})?${escaped}\\*{0,2}(?::\\*{0,2}[ \\t]*|[ \\t]*(?:\\r?\\n|$))`, "i"), "").trimStart();
+  return content.replace(new RegExp(`^(?:#{1,3}\\s*|\\*{1,2})?${escaped}\\*{0,2}\\s*\\n?`, "i"), "").trimStart();
 }
 
 /**
@@ -1206,12 +1205,6 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
       return touchAdventure(state, { openingScene: action.content });
     case "UPDATE_METADATA":
       return touchAdventure(state, { metadata: { ...state.metadata, ...action.metadata } });
-    case "REMOVE_METADATA_FIELD": {
-      if (!(action.key in state.metadata)) return state;
-      const metadata = { ...state.metadata };
-      delete metadata[action.key];
-      return touchAdventure(state, { metadata });
-    }
     case "ADD_MESSAGE": {
       const message = addMessage(state, action);
       const index = state.messages.length;

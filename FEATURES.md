@@ -58,7 +58,6 @@ Pure function — builds the provider payload each turn. Sections are assembled 
 | 10 | `nextTurnNote` | J. Next Output Bias | Active next-turn note |
 | 10.5 | `challengeMode` | M. Continuity Challenge | Injected instruction when `challengeMode` is active |
 | 11 | `recentMessages` | K. Recent Messages | Last N messages within token budget |
-| 12 | `memoryReminder` | N. Memory Reminder | Per-turn one-pass memory targets; sent after the conversation in the final user turn, not in the system prompt |
 
 ### Also injected as inspectable system-section items:
 - `Turn Scope Contract` - soft target from `responseLengthHint`
@@ -362,10 +361,7 @@ Syncs all local adventures as a single JSON blob to a GitHub repo (owner/repo/br
 
 ## 17. Context Preview and Dedup Tools
 
-**Files:** `pages/ContextPreviewPage.tsx`, `pages/AdventureDetailsPanel.tsx`, `ai/contextAI.ts`
-
-### Adventure details:
-Collapsible panel at the top of the Context page for the adventure's top-level details: title (`SET_TITLE`), read-only ID and timestamps, and every string/number/boolean field of the free-form `metadata` object (e.g. `scenarioDescription`, `scenarioAuthorContentRating`, `localRevisionLabel`, `localRevisionNotes`). Fields are edited with `UPDATE_METADATA`, added by name, and removed with `REMOVE_METADATA_FIELD`. Structured values (the cover image) are listed but edited elsewhere. These details are saved and exported with the adventure but are not assembled into model context.
+**Files:** `pages/ContextPreviewPage.tsx`, `ai/contextAI.ts`
 
 ### Context Preview:
 Shows every section, item, token estimate, inclusion reason, protection/pin status, excluded items, pending proposals, raw provider payload JSON, and decision log. "Condense" button calls `runCondenseContent` (LLM shortens a single item with a budget target). Duplicate warning badge (>50% word overlap between two items).

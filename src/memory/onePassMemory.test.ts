@@ -4,17 +4,7 @@ import { adventureReducer } from "../state/adventureReducer";
 import { createDefaultAdventure, makeBrain, makeComponent, makeStoryCard } from "../state/defaults";
 import { runTurnPipeline } from "../state/turnPipeline";
 import { evaluateStoryResponseGuard } from "../state/storyResponseGuard";
-import {
-  INLINE_MEMORY_PAUSE_AFTER,
-  INLINE_MEMORY_RETRY_TURNS,
-  ONE_PASS_MEMORY_ID,
-  ONE_PASS_PAUSED_LABEL,
-  ONE_PASS_REMINDER_ID,
-  inlineMemoryPaused,
-  onePassMemoryActions,
-  parseOnePassMemory,
-} from "./onePassMemory";
-import { selectEventMemories } from "./eventMemory";
+import { ONE_PASS_MEMORY_ID, onePassMemoryActions, parseOnePassMemory } from "./onePassMemory";
 
 function fixture() {
   const adventure = createDefaultAdventure("One-pass quality checks");
@@ -32,7 +22,6 @@ function fixture() {
 const story = "Mira lowers the letter. The duke has ended the tribute demand. Silver burns her skin.";
 const update = { kind: "card", target: "Mira", content: "Silver burns Mira's skin.", evidence: "Silver burns her skin.", reason: "Lasting vulnerability" };
 const envelope = (updates: unknown[]) => `${story}\n<memory_updates>${JSON.stringify({ updates })}</memory_updates>`;
-const event = { kind: "newCard", target: "The Duke's Tribute Letter", cardType: "event", category: "plot_beat", participants: ["Mira"], eventKind: "revelation", triggers: ["tribute letter"], content: "Mira read the duke's letter ending the tribute demand.", evidence: "The duke has ended the tribute demand.", reason: "The exiles will remember when the tribute ended" };
 
 describe("one-pass memory quality boundary", () => {
   it("narrates and remembers with one provider call, preserving old facts and citing the saved story", async () => {
@@ -126,95 +115,11 @@ describe("one-pass memory quality boundary", () => {
     expect(second.adventure.activeState.memoryProposals).toHaveLength(1);
   });
 
-  it("does not create more than one new card per turn, events included", () => {
+  it("does not create new events or more than one new recurring subject", () => {
     const adventure = fixture();
     const newCard = { ...update, kind: "newCard", target: "Silver", cardType: "lore", category: "world_fact", triggers: ["silver burn"] };
-    const actions = onePassMemoryActions(adventure, buildContext(adventure), [newCard, { ...newCard, target: "Metal" }, { ...event, target: "Letter arrival" }], story, "story-id");
+    const actions = onePassMemoryActions(adventure, buildContext(adventure), [newCard, { ...newCard, target: "Metal" }, { ...newCard, target: "Letter arrival", cardType: "event" }], story, "story-id");
     expect(actions.filter(a => a.type === "ADD_MEMORY_PROPOSAL")).toHaveLength(1);
-  });
-
-  it("records a completed occurrence as its own event card instead of appending it to the character profile", async () => {
-    const adventure = fixture();
-    const result = await runTurnPipeline({ adventure, text: "Mira reads the letter.", assistantMessageId: "letter-story", sendChatCompletion: async () => ({ content: envelope([event]) }) });
-    const mira = result.adventure.storyCards.find(c => c.id === "mira-card")!;
-    expect(mira.content).toBe("Mira is a scout.");
-    const card = result.adventure.storyCards.find(c => c.type === "event")!;
-    expect(card).toMatchObject({ title: event.target, memoryMode: "historical", autoUpdate: false, keys: ["tribute letter"] });
-    expect(card.eventMemory).toEqual({ sourceMessageIds: ["letter-story"], participants: ["Mira"], recallCues: ["tribute letter"], kind: "revelation" });
-    // A short anchor recalls the event only alongside a participant.
-    expect(selectEventMemories(result.adventure.storyCards, "Mira folds the tribute letter away.").has(card.id)).toBe(true);
-    expect(selectEventMemories(result.adventure.storyCards, "The tribute letter lies on the table.").has(card.id)).toBe(false);
-  });
-
-  it.each([
-    ["participant absent from the turn", { participants: ["Absent NPC"] }],
-    ["only a participant name as trigger", { triggers: ["Mira"] }],
-    ["only sentence-length triggers", { triggers: ["the night Mira read the letter from the duke"] }],
-    ["title of an existing card", { target: "Mira" }],
-  ])("rejects an event with %s and leaves the profile untouched", (_label, patch) => {
-    const adventure = fixture();
-    const next = onePassMemoryActions(adventure, buildContext(adventure), [{ ...event, ...patch }], story, "story-id").reduce(adventureReducer, adventure);
-    expect(next.storyCards).toEqual(adventure.storyCards);
-    expect(next.activeState.memoryProposals).toHaveLength(0);
-  });
-
-  it("pauses inline memory after consecutive missing envelopes, logs it, and retries later", async () => {
-    let adventure = fixture();
-    const missing = vi.fn(async () => ({ content: story }));
-    for (let i = 0; i < INLINE_MEMORY_PAUSE_AFTER; i++) {
-      expect(inlineMemoryPaused(adventure)).toBe(false);
-      adventure = (await runTurnPipeline({ adventure, text: "Mira listens.", sendChatCompletion: missing })).adventure;
-    }
-    expect(inlineMemoryPaused(adventure)).toBe(true);
-
-    const paused = await runTurnPipeline({ adventure, text: "Mira waits.", sendChatCompletion: missing });
-    const sent = paused.providerPayload.map(m => m.content).join("\n");
-    expect(sent).not.toContain("ONE-PASS MEMORY");
-    expect(paused.preProviderContext.sections.find(s => s.id === "memoryReminder")?.items).toEqual([]);
-    expect(paused.preProviderContext.decisions).toContainEqual(expect.objectContaining({ itemId: ONE_PASS_MEMORY_ID, action: "excluded", detail: expect.stringContaining("Paused") }));
-    expect(paused.adventure.activeState.evaluationLog[0].actionsExecuted).toEqual([ONE_PASS_PAUSED_LABEL]);
-    // The memory-only fallback can still build the full instruction while paused.
-    expect(buildContext(paused.adventure, { forceMemoryInstruction: true }).sections.flatMap(s => s.items).map(i => i.id)).toEqual(expect.arrayContaining([ONE_PASS_MEMORY_ID, ONE_PASS_REMINDER_ID]));
-
-    const later = { ...paused.adventure, activeState: { ...paused.adventure.activeState, turn: paused.adventure.activeState.turn + INLINE_MEMORY_RETRY_TURNS } };
-    expect(inlineMemoryPaused(later)).toBe(false);
-  });
-
-  it("does not pause when an envelope arrives between misses", async () => {
-    let adventure = fixture();
-    const replies = [story, envelope([]), story, story];
-    for (const content of replies) adventure = (await runTurnPipeline({ adventure, text: "Mira listens.", sendChatCompletion: async () => ({ content }) })).adventure;
-    expect(inlineMemoryPaused(adventure)).toBe(false);
-  });
-
-  it("keeps the changing memory lists out of the cached system prompt", () => {
-    const adventure = adventureReducer(fixture(), { type: "ADD_MESSAGE", role: "user", content: "Mira listens." });
-    const result = buildContext(adventure, { currentInput: "Mira listens." });
-    expect(result.messages[0].content).toContain("[ONE-PASS MEMORY]");
-    expect(result.messages[0].content).not.toContain("Eligible existing targets");
-    expect(result.messages[0].content).not.toContain('Eligible thought targets: "Mira"');
-    // Joined to the player's turn (Anthropic-format providers would hoist a system message to the top).
-    const last = result.messages.at(-1)!;
-    expect(last.role).toBe("user");
-    expect(last.content.startsWith("Mira listens.\n\n[ONE-PASS MEMORY")).toBe(true);
-    expect(result.messages.filter(m => m.role === "user")).toHaveLength(1);
-    expect(last.content).toContain('Eligible thought targets: "Mira"');
-    expect(last.content).toContain('"cards":["Mira"]');
-  });
-
-  it("strips a character's repeated stock line from a new thought and skips pure repeats", () => {
-    const adventure = fixture();
-    adventure.brains[0].thoughts = { old: "3 → I keep saying yes and meaning it, whatever the duke wants." };
-    const thought = (content: string) => ({ kind: "thought", target: "Mira", content, evidence: "The duke has ended the tribute demand.", reason: "Changed belief" });
-    const fresh = onePassMemoryActions(adventure, buildContext(adventure, { currentInput: "Mira listens." }),
-      [thought("I keep saying yes and meaning it. With the tribute gone, the exiles finally owe the duke nothing.")], story, "story-id")
-      .reduce(adventureReducer, adventure);
-    const added = Object.values(fresh.brains[0].thoughts).find(t => t.includes("tribute gone"));
-    expect(added).toBeDefined();
-    expect(added).not.toContain("I keep saying yes");
-    const repeat = onePassMemoryActions(adventure, buildContext(adventure, { currentInput: "Mira listens." }),
-      [thought("I keep saying yes and meaning it.")], story, "story-id").reduce(adventureReducer, adventure);
-    expect(repeat.brains[0].thoughts).toEqual(adventure.brains[0].thoughts);
   });
 
   it.each(["disabled", "comms"])("strips but never applies unsolicited memory when %s", async condition => {

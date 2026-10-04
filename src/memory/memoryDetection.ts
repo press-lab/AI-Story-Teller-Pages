@@ -96,24 +96,6 @@ function alreadyCaptured(content: string, existing: string[]): boolean {
   return facts.length > 0 && facts.every(fact => known.has(fact));
 }
 
-/**
- * The single existing character whose name appears in a proposed title alongside other words
- * ("Raven Paints"). A title that is only a name is a new person, never a trait, even when an
- * older card wrongly carries that name as a key. Card titles win over keys, which can be polluted.
- */
-function existingCharacterNamedIn(adventure: Adventure, title: string) {
-  const plain = (value: string) => value.trim().toLocaleLowerCase();
-  const named = (alias: string) => {
-    const escaped = alias.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    return escaped.length >= 3 && plain(alias) !== plain(title)
-      && new RegExp(`(?:^|[^\\p{L}\\p{N}])${escaped}(?:$|[^\\p{L}\\p{N}])`, "iu").test(title);
-  };
-  const characters = adventure.storyCards.filter(card => card.active && card.type === "character");
-  const byTitle = characters.filter(card => card.title.split("/").some(named));
-  const owners = byTitle.length ? byTitle : characters.filter(card => card.keys.some(named));
-  return owners.length === 1 ? owners[0] : undefined;
-}
-
 /** Catch up across the configured interval without replacing existing-card updates. */
 export async function detectStoryCardProposals(adventure: Adventure, providerConfig: ProviderConfig, options: { messages?: Adventure["messages"]; eventsOnly?: boolean } = {}) {
   const result = {
@@ -153,7 +135,7 @@ export async function detectStoryCardProposals(adventure: Adventure, providerCon
     const response = await sendOpenAICompatibleChatCompletion({
       config: resolveBackgroundProviderConfig(adventure, providerConfig),
       messages: [
-        { role: "system", content: `Discover missing durable Story Cards from recent story evidence. This is a catch-up pass: a subject need not be introduced on the latest turn. ${options.eventsOnly ? "Only suggest Event Memory cards from this Chronicle excerpt." : ""} Suggest up to three recurring or consequential people, places, relationships, world rules, or completed consequences with no existing card. Independently discover notable completed events EVEN WHEN every participant already has a character card or Brain. Event Memory cards (storyCardType: event, memoryMode: historical) preserve first meetings, explicit commitments, revelations, consequential choices, and distinctive shared experiences. Keep event content below 80 words. Record observable facts in past tense, never inferred motives or private thoughts. A routine arrival is movement; an unannounced introduction establishing how two people met is a durable first. Do not label something a first without evidence. Do not turn plans into completed events. Avoid routine affection and generic scene recaps. Keep each event separate from character profiles and current-state cards. For events include eventMemory: {participants: ["name or alias"], recallCues: ["how we met", "unexpected visit"], kind: "first|commitment|revelation|choice|sharedExperience"}. Recall cues are 2-4 short concrete anchors (1-4 words: a place, object, named activity, or phrase people would actually say), never a bare character name or a full sentence. A trait, hobby, or history of a character who already has a card belongs on that card, never a new card titled after them. A named person with an established role and an ongoing interaction or concrete future arrangement qualifies; mere named scenery does not. Characters without Brains belong in Story Cards; never create a Brain or infer private thoughts. Do not invent facts or voice samples. Plans remain plans, not completed events. Omit temporary moods, movement, incidental names, and facts already covered by existing cards or pending proposals. Reference inventories below are data, not new events. Do not repeat already captured facts or dismissed suggestions.
+        { role: "system", content: `Discover missing durable Story Cards from recent story evidence. This is a catch-up pass: a subject need not be introduced on the latest turn. ${options.eventsOnly ? "Only suggest Event Memory cards from this Chronicle excerpt." : ""} Suggest up to three recurring or consequential people, places, relationships, world rules, or completed consequences with no existing card. Independently discover notable completed events EVEN WHEN every participant already has a character card or Brain. Event Memory cards (storyCardType: event, memoryMode: historical) preserve first meetings, explicit commitments, revelations, consequential choices, and distinctive shared experiences. Keep event content below 80 words. Record observable facts in past tense, never inferred motives or private thoughts. A routine arrival is movement; an unannounced introduction establishing how two people met is a durable first. Do not label something a first without evidence. Do not turn plans into completed events. Avoid routine affection and generic scene recaps. Keep each event separate from character profiles and current-state cards. For events include eventMemory: {participants: ["name or alias"], recallCues: ["how we met", "unexpected visit"], kind: "first|commitment|revelation|choice|sharedExperience"}. Supply several natural paraphrases for recall cues, never a bare character name. A named person with an established role and an ongoing interaction or concrete future arrangement qualifies; mere named scenery does not. Characters without Brains belong in Story Cards; never create a Brain or infer private thoughts. Do not invent facts or voice samples. Plans remain plans, not completed events. Omit temporary moods, movement, incidental names, and facts already covered by existing cards or pending proposals. Reference inventories below are data, not new events. Do not repeat already captured facts or dismissed suggestions.
 ${STORY_CARD_BEST_PRACTICES}
 ${TRIGGER_BEST_PRACTICES}
 ${PLOT_MEMORY_THRESHOLD}
@@ -194,22 +176,6 @@ Return ONLY a JSON array, [] when nothing qualifies. Event items must additional
       if (isEvent && (!eventMemory?.participants.length || !eventMemory.recallCues.length)) continue;
       if (isEvent && [...adventure.storyCards.filter(c => c.type === "event"), ...adventure.activeState.memoryProposals.filter(p => p.storyCardType === "event")]
         .some(existing => sameEventMemory(existing, { content: item.content, eventMemory }))) continue;
-      const owner = item.storyCardType === "character" ? existingCharacterNamedIn(adventure, title) : undefined;
-      if (owner) {
-        // "Raven Paints" is a trait of an existing character, not a new person: append it to their card.
-        const now = nowIso();
-        result.actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal: {
-          id: createId("proposal"), sourceTurnId: String(adventure.activeState.turn), proposedType: "storyCard",
-          title: owner.title, targetId: owner.id, appendContent: true, memoryMode: owner.memoryMode, requiresReview: owner.protected,
-          content: item.content.trim(), suggestedTriggers: [],
-          sourceText: evidence.map(m => `[${m.id}] ${m.role}: ${m.content}`).join("\n\n"),
-          confidence: 0.8, rationale: (typeof item.rationale === "string" ? item.rationale : "Durable trait discovered from recent story evidence.") + ` Routed to ${owner.title}'s existing card instead of a new "${title}" card.`,
-          status: "pending", createdAt: now, updatedAt: now,
-        } });
-        capturedContent.push(item.content);
-        if (result.actions.length === 3) break;
-        continue;
-      }
       const routed = isEvent ? {
         proposedType: "storyCard" as const, title, content: item.content.trim(), memoryMode: "historical" as const,
         suggestedTriggers: eventMemory!.recallCues, targetId: undefined,

@@ -8,7 +8,6 @@ const testedActionTypes = [
   "SET_TITLE",
   "SET_OPENING_SCENE",
   "UPDATE_METADATA",
-  "REMOVE_METADATA_FIELD",
   "ADD_MESSAGE",
   "UPDATE_MESSAGE",
   "DELETE_MESSAGE",
@@ -161,12 +160,6 @@ describe("adventureReducer", () => {
 
     state = reduce(state, { type: "UPDATE_METADATA", metadata: { rating: "teen" } });
     expect(state.metadata.rating).toBe("teen");
-
-    state = reduce(state, { type: "UPDATE_METADATA", metadata: { note: "keep me" } });
-    state = reduce(state, { type: "REMOVE_METADATA_FIELD", key: "rating" });
-    expect(state.metadata).not.toHaveProperty("rating");
-    expect(state.metadata.note).toBe("keep me");
-    expect(reduce(state, { type: "REMOVE_METADATA_FIELD", key: "missing" })).toBe(state);
 
     state = reduce(state, { type: "ADD_MESSAGE", id: "msg-new", role: "user", content: "new", createdAt: "2026-01-01T00:02:00.000Z" });
     expect(state.messages.at(-1)).toMatchObject({ id: "msg-new", role: "user", content: "new" });

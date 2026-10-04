@@ -60,23 +60,17 @@ function sectionItemIds(result: ContextBuildResult, sectionId: string): string[]
 
 function expectContextPreviewMatchesProviderPayload(result: ContextBuildResult) {
   const systemPayload = result.messages[0].content;
-  for (const section of result.sections.filter((entry) => entry.id !== "recentMessages" && entry.id !== "memoryReminder" && entry.content.length > 0)) {
+  for (const section of result.sections.filter((entry) => entry.id !== "recentMessages" && entry.content.length > 0)) {
     expect(systemPayload).toContain(section.content);
   }
 
   const recentItemsOldestFirst = [
     ...(result.sections.find((section) => section.id === "recentMessages")?.items ?? []),
-  ].reverse();
-  // Runtime instructions are part of the system section; recent messages still follow in order,
-  // and the per-turn memory reminder rides last (joined to a final user turn, or on its own).
-  const expected = recentItemsOldestFirst.map((item) => item.content);
-  const reminder = result.sections.find((section) => section.id === "memoryReminder")?.content;
-  if (reminder) {
-    if (recentItemsOldestFirst.at(-1)?.generatedBy === "user") expected[expected.length - 1] += `\n\n${reminder}`;
-    else expected.push(reminder);
-  }
-  expect(result.messages.slice(1).map((message) => message.content)).toEqual(expected);
-  expect(systemPayload).not.toContain("Eligible existing targets");
+  ]
+    .reverse()
+    .map((item) => item.content);
+  // Runtime instructions are part of the system section; recent messages still follow in order.
+  expect(result.messages.slice(1, 1 + recentItemsOldestFirst.length).map((message) => message.content)).toEqual(recentItemsOldestFirst);
 }
 
 describe("full turn smoke path", () => {
@@ -568,11 +562,7 @@ describe("full turn smoke path", () => {
       sendChatCompletion: provider,
     });
 
-    // The cue precedes the memory reminder so the reminder stays the last thing the model reads.
-    const reminder = result.preProviderContext.sections.find((section) => section.id === "memoryReminder")?.content;
-    expect(reminder).toContain("Eligible existing targets");
-    expect(capturedPayload?.at(-1)).toEqual({ role: "user", content: `[continue]\n\n${reminder}` });
-    expect(capturedPayload?.filter((message) => message.role === "user")).toHaveLength(1);
+    expect(capturedPayload?.at(-1)).toEqual({ role: "user", content: "[continue]" });
     expect(result.adventure.messages.map((message) => message.role)).toEqual(["assistant"]);
     expect(result.adventure.messages[0].content).not.toContain("<memory");
     const proposal = result.adventure.activeState.memoryProposals.find((p) => p.proposedType === "storyCard");

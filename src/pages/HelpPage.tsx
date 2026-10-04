@@ -442,13 +442,11 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
           <li>Next Turn Note</li>
           <li>Continuity Challenge</li>
           <li>Recent Messages</li>
-          <li>Memory Reminder</li>
         </ol>
         <p>
           Context Preview must match the provider payload. Non-message sections are joined into the first
           system message. Recent messages are shown newest-first in preview but sent chronologically in
-          the chat payload. The Memory Reminder (this turn's memory targets) is added to the end of the
-          final player turn so the stable system message can be cached.
+          the chat payload.
         </p>
         <p>
           There is no hidden "adventure memory" bucket. Memory Proposals are visible in preview, but they

@@ -678,8 +678,7 @@ export type ContextSectionKind =
   | "nextTurnNote"    // J. Next Output Bias
   | "recentMessages"  // K. Recent Messages
   | "sceneState"      // L. Scene State — current location, characters, situation (deprecated)
-  | "challengeMode"   // M. Continuity Challenge — one-turn verification instruction
-  | "memoryReminder"; // N. Memory Reminder — per-turn memory targets, sent after the latest message
+  | "challengeMode";  // M. Continuity Challenge — one-turn verification instruction
 
 export type ExcludedReason = "budget_exceeded" | "inactive" | "cooldown" | "not_triggered";
 
@@ -770,7 +769,6 @@ export type AdventureAction =
   | { type: "SET_TITLE"; title: string }
   | { type: "SET_OPENING_SCENE"; content: string }
   | { type: "UPDATE_METADATA"; metadata: JsonObject }
-  | { type: "REMOVE_METADATA_FIELD"; key: string }
   | { type: "ADD_MESSAGE"; role: MessageRole; content: string; id?: string; createdAt?: ISODateString; inputMode?: InputMode; usage?: ProviderUsage }
   | { type: "UPDATE_MESSAGE"; messageId: string; content: string }
   | { type: "DELETE_MESSAGE"; messageId: string }

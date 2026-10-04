@@ -6,7 +6,6 @@ import { approximateTokenCount } from "../tokenizer/approximateTokenCount";
 import type { AdventurePageProps } from "./pageTypes";
 import type { ContextBuildResult, ContextItem, ContextSection, ProviderConfig, StoryCard } from "../types/adventure";
 import { CheckboxField } from "./shared";
-import { AdventureDetailsPanel } from "./AdventureDetailsPanel";
 
 interface DuplicateWarning {
   a: ContextItem;
@@ -127,7 +126,6 @@ function sectionShortLabel(sectionId: string): string {
     sceneState: "Scene",
     nextTurnNote: "Bias",
     recentMessages: "Messages",
-    memoryReminder: "Memory",
   };
   return map[sectionId] ?? sectionId;
 }
@@ -319,8 +317,6 @@ export function ContextPreviewPage({ adventure, dispatch, contextResult, onBuild
           </span>
         )}
       </div>
-
-      <AdventureDetailsPanel adventure={adventure} dispatch={dispatch} />
 
       {/* AI dedup proposals */}
       {dedupProposals.length > 0 && (
