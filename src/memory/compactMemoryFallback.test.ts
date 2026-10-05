@@ -45,6 +45,33 @@ describe("compact memory fallback", () => {
     expect(next.activeState.evaluationLog[0].actionsExecuted).toContain("Compact memory fallback: one API call");
   });
 
+  it("grounds a historical lore proposal in an earlier exchange from the recent scene", async () => {
+    let adventure = adventureWithMissingEnvelope();
+    adventure = adventureReducer(adventure, { type: "ADD_MESSAGE", id: "player-2", role: "user", content: "I wait for the mechanism to finish." });
+    adventure = adventureReducer(adventure, { type: "ADD_MESSAGE", id: "story-2", role: "assistant", content: "The tower settles safely back onto its foundation." });
+    provider.mockResolvedValue({
+      content: JSON.stringify({ updates: [{
+        kind: "lore",
+        target: "The Returning Tower Working",
+        content: "An ancient underground working returned the severed tower to its foundation after preserving it in place.",
+        evidence: "Lucian says the cup was a calling card.",
+        reason: "The completed discovery establishes reusable magical history.",
+        triggers: ["returning tower", "ancient working"],
+        category: "plot_beat",
+      }] }),
+      raw: {},
+    });
+    const result = await runCompactMemoryFallback(adventure, config);
+    const next = result.actions.reduce(adventureReducer, adventure);
+    expect(next.activeState.memoryProposals[0]).toMatchObject({
+      title: "The Returning Tower Working",
+      storyCardType: "lore",
+      memoryMode: "historical",
+      requiresReview: true,
+      status: "pending",
+    });
+  });
+
   it("rejects an invalid recovery response so the caller can use the legacy cycle", async () => {
     provider.mockResolvedValue({ content: "not JSON", raw: {}, usage: { promptTokens: 90, completionTokens: 10, totalTokens: 100 } });
     const result = await runCompactMemoryFallback(adventureWithMissingEnvelope(), config);

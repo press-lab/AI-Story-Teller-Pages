@@ -15,7 +15,7 @@ Each update has: kind, target, content, evidence, reason. evidence is an EXACT q
 Allowed kinds:
 - "thought": target is an eligible character name below; content is ONE new first-person internal reaction, belief, or private plan (max 45 words). Capture only if the character participated or learned something this turn. Never repeat existing thoughts or put generic world facts here.
 - "card": target is the EXACT title of an existing Story Card visible in context; content is only a NEW durable fact (max 70 words) to append. Character cards are profiles: add lasting abilities, traits, relationships, or obligations, never a recap of where someone went, what they said, kissed, ate, wore, or did in one scene. Preserve identity and existing facts. Never overwrite or contradict canon; corrections need explicit review outside this automatic path. Omit already-known facts and rephrasings.
-- "lore": target is the EXACT title of an existing lore/location/custom Story Card visible in context, or a narrow NEW subject title. Use this for a scene-specific fact ONLY when it establishes reusable history, a recurring place/object, or a lasting world rule. For a new subject also provide 1-3 narrow triggers and category "world_fact"; it becomes a reviewable lore card. Do not create a lore card for routine movement, a passing reaction, or a generic scene recap. Never target a character card with lore.
+- "lore": target is the EXACT title of an existing lore/location/custom Story Card visible in context, or a narrow NEW subject title. Use this for a scene-specific fact ONLY when it establishes reusable history, a recurring place/object, or a lasting world rule. For a new subject also provide 1-3 narrow triggers. Use category "world_fact" for a reusable rule or subject; use category "plot_beat" for a completed consequential discovery, which will be stored as historical memory. It becomes a reviewable lore card. Do not create a lore card for routine movement, a passing reaction, or a generic scene recap. Never target a character card with lore.
 - "newCard": target is a genuinely new recurring subject's name, content max 90 words. Also provide cardType (character, location, lore, custom, plot), memoryMode (static or living), triggers (1-3 narrow phrases), and category from: ${categories.join(", ") || "NONE (no new cards allowed)"}. Reuse existing subjects; never create sibling cards for a conversation, invitation, repeated affection, room movement, routine choice, or temporary mood. A plot card requires a consequential lasting obligation, alliance, betrayal, secret, or irreversible change; it will require review. Do not create event recap cards.
 - "pressure": target is the EXACT title of an active Active Pressure component; content is its full replacement, ONE sentence (max 45 words) identifying the external threat or obligation pressing on the player. Only when it materially changes or resolves; no cosmetic rewrites.
 - "arc": target is the EXACT title of the active Current Arc; content is one concise, completed development (max 45 words) directly relevant to its premise, to append to its log. Skip scene filler, repeated beats, possibilities, and future events. Never change the premise, phase, or pacing.
@@ -62,7 +62,7 @@ export function isSceneRecapForCharacter(content: string): boolean {
 }
 
 /** Local structural/evidence checks, not a claim that a quote proves every inference. */
-export function onePassMemoryActions(adventure: Adventure, context: ContextBuildResult, updates: unknown[], story: string, sourceTurnId: string, error?: string, sourceLabel = "One-pass memory: no additional API call", playerInputOverride?: string): AdventureAction[] {
+export function onePassMemoryActions(adventure: Adventure, context: ContextBuildResult, updates: unknown[], story: string, sourceTurnId: string, error?: string, sourceLabel = "One-pass memory: no additional API call", playerInputOverride?: string, recentEvidence: string[] = []): AdventureAction[] {
   const actions: AdventureAction[] = [];
   const errors = error ? [error] : [];
   const executed: string[] = [];
@@ -70,7 +70,7 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
   const instruction = context.sections.flatMap(s => s.items).find(i => i.id === ONE_PASS_MEMORY_ID)?.content ?? "";
   const lastMessage = adventure.messages.at(-1);
   const playerInput = playerInputOverride ?? (lastMessage?.role === "user" ? lastMessage.content : "");
-  const evidenceSources = [norm(story), norm(playerInput)];
+  const evidenceSources = [norm(story), norm(playerInput), ...recentEvidence.map(norm)];
   const seen = new Set<string>();
   let newCards = 0;
   for (const raw of updates) {
@@ -128,12 +128,12 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
         const allowedTypes: StoryCardType[] = ["character", "location", "lore", "custom", "plot"];
         const category = typeof u.category === "string" ? u.category : "";
         const allowedCategory = kind === "lore"
-          ? category === "world_fact" && adventure.systemTriggers?.categories.world_fact
+          ? (category === "world_fact" || category === "plot_beat") && adventure.systemTriggers?.categories[category as "world_fact" | "plot_beat"]
           : allowedTypes.includes(u.cardType as StoryCardType) && adventure.systemTriggers?.categories[category as keyof typeof adventure.systemTriggers.categories];
         if ((kind !== "newCard" && kind !== "lore") || ++newCards > 1 || !adventure.systemTriggers?.enabled || !allowedCategory) { reject(`${target}: new card not allowed`); continue; }
         if (!Array.isArray(u.triggers) || !u.triggers.length || u.triggers.length > 3 || u.triggers.some(t => typeof t !== "string" || t.trim().length < 3 || t.length > 80)) { reject(`${target}: invalid triggers`); continue; }
         proposal.storyCardType = kind === "lore" ? "lore" : u.cardType as StoryCardType;
-        proposal.memoryMode = u.memoryMode === "living" ? "living" : "static";
+        proposal.memoryMode = category === "plot_beat" ? "historical" : u.memoryMode === "living" ? "living" : "static";
         proposal.suggestedTriggers = u.triggers as string[];
         proposal.requiresReview = kind === "lore" || u.cardType === "plot";
       }
