@@ -197,6 +197,29 @@ describe("one-pass memory quality boundary", () => {
     expect(next.activeState.memoryProposals[0]).toMatchObject({ title: "Observatory Pact", storyCardType: "lore", status: "pending", requiresReview: true });
   });
 
+  it("creates and recalls an independent historical lore card for Seth and Buu's first fight", () => {
+    const adventure = fixture();
+    adventure.storyCards.push(makeStoryCard({ id: "buu", title: "Good Buu / Majin Buu", type: "character", content: "Buu enjoys games.", pinned: true }));
+    const scene = "Seth and Buu fought for the first time on Hercule's property. Seth blasted Buu into orbit. Buu returned unharmed and asked to continue.";
+    const update = {
+      kind: "lore", target: "Seth and Buu's First Fight",
+      content: "Seth and Buu fought for the first time on Hercule's property. Seth blasted Buu into orbit; Buu returned unharmed and asked to continue.",
+      evidence: "Buu returned unharmed and asked to continue.", reason: "Distinct first fight worth recalling",
+      category: "plot_beat", triggers: ["Seth and Buu first fight", "Buu sent into orbit"],
+    };
+    const proposed = onePassMemoryActions(adventure, buildContext(adventure), [update], scene, "fight-scene").reduce(adventureReducer, adventure);
+    const proposal = proposed.activeState.memoryProposals[0];
+    expect(proposal).toMatchObject({ title: update.target, storyCardType: "lore", memoryMode: "historical", status: "pending", requiresReview: true });
+    expect(proposed.storyCards.find(card => card.id === "buu")?.content).toBe("Buu enjoys games.");
+    const approved = adventureReducer(proposed, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id });
+    const historical = approved.storyCards.find(card => card.title === update.target);
+    expect(historical).toMatchObject({ type: "lore", memoryMode: "historical", content: update.content });
+    expect(approved.storyCards.find(card => card.id === "buu")?.content).toBe("Buu enjoys games.");
+    const recalled = buildContext(approved, { currentInput: "Remember Seth and Buu first fight?" });
+    expect(recalled.sections.flatMap(section => section.items.map(item => item.id))).toContain(historical?.id);
+    expect(recalled.sections.flatMap(section => section.items).find(item => item.id === historical?.id)?.content).toContain("Historical reference; use only when relevant");
+  });
+
   it.each(["disabled", "comms"])("strips but never applies unsolicited memory when %s", async condition => {
     const adventure = fixture();
     if (condition === "disabled") adventure.memoryDetectionSettings.enabled = false;

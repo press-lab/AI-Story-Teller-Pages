@@ -516,7 +516,8 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
     if (match.matched) triggeredThreadIds.add(card.id);
     const matched = card.inclusionPolicy === "always" || card.pinned || forced || (card.inclusionPolicy !== "manual" && match.matched);
     if (matched) {
-      const next = item(card.id, "storyCard", card.title, (card.type === "event" ? "Historical reference; use only when relevant, do not force a callback.\n" : "") + storyCardContextContent(card), card.priority, card.protected, card.pinned, card.active, card.inclusionPolicy, "user");
+      const historical = card.type === "event" || card.memoryMode === "historical";
+      const next = item(card.id, "storyCard", card.title, (historical ? "Historical reference; use only when relevant, do not force a callback.\n" : "") + storyCardContextContent(card), card.priority, card.protected, card.pinned, card.active, card.inclusionPolicy, "user");
       pushIncluded(next, `Story card included by ${card.pinned ? "pin" : forced ? "manual force" : card.inclusionPolicy === "always" ? "always policy" : `trigger ${match.pattern}`}; priority=${card.priority}; protected=${card.protected}.`);
       storyCardItems.push(next);
     } else {
