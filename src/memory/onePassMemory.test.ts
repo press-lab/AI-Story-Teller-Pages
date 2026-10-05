@@ -26,8 +26,12 @@ const envelope = (updates: unknown[]) => `${story}\n<memory_updates>${JSON.strin
 describe("one-pass memory quality boundary", () => {
   it("distinguishes durable character abilities from the saved scene examples", () => {
     expect(isSceneRecapForCharacter("Raven can open personal portals for group travel.")).toBe(false);
+    expect(isSceneRecapForCharacter("Margo can bind and stabilize failing structural elements with telekinetic force.")).toBe(false);
     expect(isSceneRecapForCharacter("Raven used a portal to move the group from the Tower rooftop to Verdant.")).toBe(true);
     expect(isSceneRecapForCharacter("Mr. Satan watched the gym wall collapse on Buu's island.")).toBe(true);
+    expect(isSceneRecapForCharacter("Toshinori appreciates Seth cleaning the dishes.")).toBe(true);
+    expect(isSceneRecapForCharacter("Gar is editing a video montage of the previous night's events.")).toBe(true);
+    expect(isSceneRecapForCharacter("Gar's social media posts regularly go viral; a video of Seth posing hit two hundred thousand views.")).toBe(true);
   });
   it("narrates and remembers with one provider call, preserving old facts and citing the saved story", async () => {
     const adventure = fixture();

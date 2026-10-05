@@ -49,8 +49,16 @@ const words = (text: string) => text.trim().split(/\s+/).length;
 // A conservative backstop for obvious episode recaps. Ambiguous facts stay in
 // the model's chosen lane; this only prevents automatic character-card writes.
 export function isSceneRecapForCharacter(content: string): boolean {
-  return /\b(?:during|last night|last spring|that night|on (?:the|his|her|\w+(?:'s|’s))|at (?:the|his|her)|after (?:the|their|his|her)|from (?:the|his|her)|to (?:the|his|her))\b/i.test(content)
-    && /\b(?:asked|agreed|brought|destroyed|drank|invited|kissed|knocked|opened|ordered|reacted|sparred|traveled|used|watched|went|won)\b/i.test(content);
+  const sceneAnchor = /\b(?:during|last night|last spring|that night|yesterday|previous night|this morning|today|on (?:the|his|her|\w+(?:'s|’s))|at (?:the|his|her)|after (?:the|their|his|her)|from (?:the|his|her)|to (?:the|his|her))\b/i;
+  const completedAction = /\b(?:asked|agreed|brought|destroyed|drank|invited|kissed|knocked|opened|ordered|reacted|sparred|traveled|used|watched|went|won|cleaned|filmed|posted|edited|thanked|noticed|refused|insisted|surprised|hit)\b/i;
+  const temporaryActivity = /\b(?:is|are|was|were)\s+(?:currently\s+)?(?:editing|filming|posting|cleaning|watching|planning|preparing|waiting|heading|working on)\b/i;
+  const specificArtifact = /\b(?:video|montage|clip|post|quote|camera spot|views|likes|followers)\b/i;
+  const interpersonalMoment = /\b(?:appreciates?|thanked|noticed|surprised|refused|insisted)\b/i.test(content)
+    && /\b(?:cleaning|dishes|dinner|meal|coffee|gift|joke|comment|said|calling|helping)\b/i.test(content);
+  return (sceneAnchor.test(content) && completedAction.test(content))
+    || temporaryActivity.test(content)
+    || (specificArtifact.test(content) && /\b(?:edited|posted|filmed|hit|said|quote|spot|views)\b/i.test(content))
+    || interpersonalMoment;
 }
 
 /** Local structural/evidence checks, not a claim that a quote proves every inference. */
