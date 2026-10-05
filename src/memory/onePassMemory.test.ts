@@ -145,6 +145,49 @@ describe("one-pass memory quality boundary", () => {
     expect(next.activeState.evaluationLog[0].errors).toContain("One-pass memory skipped: Mira: scene recap belongs in lore or transcript");
   });
 
+  it("rejects the Dispatch sparring proposals without explicit durable character evidence", () => {
+    const adventure = fixture();
+    adventure.storyCards = [
+      makeStoryCard({ id: "buu", title: "Good Buu / Majin Buu", type: "character", content: "Buu enjoys games.", pinned: true }),
+      makeStoryCard({ id: "hercule", title: "Hercule / Mr. Satan", type: "character", content: "Hercule protects Buu.", pinned: true }),
+    ];
+    const scene = "Hercule, arms crossed at the edge of the field, says nothing. Buu lands and says, 'You sent me to the sky. Do it again.'";
+    const updates = [
+      { kind: "card", target: "Hercule / Mr. Satan", content: "Hercule watches Buu's serious fights with visible tension, staying silent and braced at the edge of the field rather than performing his usual showmanship.", evidence: "Hercule, arms crossed at the edge of the field, says nothing.", reason: "Lasting protective anxiety" },
+      { kind: "card", target: "Good Buu / Majin Buu", content: "Buu treats being blasted across the sky as a gift rather than an insult, immediately asking Seth to do it again; his cheerful tolerance for huge impacts is a stable trait, not a one-off reaction.", evidence: "You sent me to the sky. Do it again.", reason: "Stable trait" },
+    ];
+    const actions = onePassMemoryActions(adventure, buildContext(adventure), updates, scene, "scene-id");
+    expect(actions.map(action => action.type)).toEqual(["LOG_EVALUATION_RESULT"]);
+    expect(actions[0].type === "LOG_EVALUATION_RESULT" && actions[0].entry.errors).toEqual([
+      "One-pass memory skipped: Hercule / Mr. Satan: character fact lacks explicit durable evidence",
+      "One-pass memory skipped: Good Buu / Majin Buu: character fact lacks explicit durable evidence",
+    ]);
+  });
+
+  it("proposes an existing untriggered location for review instead of dropping the lore update", () => {
+    const adventure = fixture();
+    adventure.storyCards.push(makeStoryCard({
+      id: "estate", title: "Hercule and Buu's Estate", type: "location", content: "The private estate has a training field.",
+      keys: ["Hercule estate", "Buu estate"], pinned: false, inclusionPolicy: "triggered", active: true,
+    }));
+    const context = buildContext(adventure, { currentInput: "Buu and Seth spar." });
+    expect(context.sections.flatMap(section => section.items.map(item => item.id))).not.toContain("estate");
+    const scene = "The training field's east wall is gone, leaving the estate gym open to the air.";
+    const actions = onePassMemoryActions(adventure, context, [{
+      kind: "lore", target: "Hercule and Buu's Estate", content: "The estate gym's east wall is gone, leaving it open to the air.",
+      evidence: scene, reason: "Lasting change to a recurring place",
+    }], scene, "scene-id");
+    const next = actions.reduce(adventureReducer, adventure);
+    expect(next.storyCards.find(card => card.id === "estate")?.content).toBe("The private estate has a training field.");
+    expect(next.activeState.memoryProposals[0]).toMatchObject({ targetId: "estate", status: "pending", requiresReview: true });
+    adventure.storyCards[1].inclusionPolicy = "manual";
+    const manualActions = onePassMemoryActions(adventure, buildContext(adventure), [{
+      kind: "lore", target: "Hercule and Buu's Estate", content: "The estate gym's east wall is gone, leaving it open to the air.",
+      evidence: scene, reason: "Lasting change to a recurring place",
+    }], scene, "scene-id");
+    expect(manualActions.map(action => action.type)).toEqual(["LOG_EVALUATION_RESULT"]);
+  });
+
   it("creates a narrow lore proposal instead of appending a shared scene to a character", () => {
     const adventure = fixture();
     const scene = "Mira and Raven signed a lasting pact at the old observatory.";

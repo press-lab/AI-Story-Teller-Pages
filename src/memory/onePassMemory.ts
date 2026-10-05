@@ -14,8 +14,8 @@ An empty updates array is normal. Never invent changes to fill it. Maximum 4 sma
 Each update has: kind, target, content, evidence, reason. evidence is an EXACT quote from this turn's player input or your visible story, establishing the change. reason explains why it will matter beyond this scene. Do not treat a suggestion, possibility, or plan as an accomplished fact. Do not give absent characters knowledge they did not receive.
 Allowed kinds:
 - "thought": target is an eligible character name below; content is ONE new first-person internal reaction, belief, or private plan (max 45 words). Capture only if the character participated or learned something this turn. Never repeat existing thoughts or put generic world facts here.
-- "card": target is the EXACT title of an existing Story Card visible in context; content is only a NEW durable fact (max 70 words) to append. Character cards are profiles: add lasting abilities, traits, relationships, or obligations, never a recap of where someone went, what they said, kissed, ate, wore, or did in one scene. Preserve identity and existing facts. Never overwrite or contradict canon; corrections need explicit review outside this automatic path. Omit already-known facts and rephrasings.
-- "lore": target is the EXACT title of an existing lore/location/custom Story Card visible in context, or a narrow NEW subject title. Use this for a scene-specific fact ONLY when it establishes reusable history, a recurring place/object, or a lasting world rule. For a new subject also provide 1-3 narrow triggers. Use category "world_fact" for a reusable rule or subject; use category "plot_beat" for a completed consequential discovery, which will be stored as historical memory. It becomes a reviewable lore card. Do not create a lore card for routine movement, a passing reaction, or a generic scene recap. Never target a character card with lore.
+- "card": target is the EXACT title of an existing Story Card visible in context; content is only a NEW durable fact (max 70 words) to append. Character cards are profiles: add ONE lasting ability, trait, relationship, or obligation only when the quoted evidence EXPLICITLY establishes it as an enduring fact. A single action or reaction does not prove a habit or personality trait. Never generalize one fight, meal, joke, or exchange into what someone usually does. Put consequential shared history on lore/location cards; otherwise leave it in the transcript. Preserve identity and existing facts. Never overwrite or contradict canon; corrections need explicit review outside this automatic path. Omit already-known facts and rephrasings.
+- "lore": target is the EXACT title of an existing lore/location/custom Story Card, or a narrow NEW subject title. An existing lore/location card may be named in the supplied target inventory even when it was not triggered into model context this turn; such an update requires review. Use this for a scene-specific fact ONLY when it establishes reusable history, a recurring place/object, or a lasting world rule. For a new subject also provide 1-3 narrow triggers. Use category "world_fact" for a reusable rule or subject; use category "plot_beat" for a completed consequential discovery, which will be stored as historical memory. It becomes a reviewable lore card. Do not create a lore card for routine movement, a passing reaction, or a generic scene recap. Never target a character card with lore.
 - "newCard": target is a genuinely new recurring subject's name, content max 90 words. Also provide cardType (character, location, lore, custom, plot), memoryMode (static or living), triggers (1-3 narrow phrases), and category from: ${categories.join(", ") || "NONE (no new cards allowed)"}. Reuse existing subjects; never create sibling cards for a conversation, invitation, repeated affection, room movement, routine choice, or temporary mood. A plot card requires a consequential lasting obligation, alliance, betrayal, secret, or irreversible change; it will require review. Do not create event recap cards.
 - "pressure": target is the EXACT title of an active Active Pressure component; content is its full replacement, ONE sentence (max 45 words) identifying the external threat or obligation pressing on the player. Only when it materially changes or resolves; no cosmetic rewrites.
 - "arc": target is the EXACT title of the active Current Arc; content is one concise, completed development (max 45 words) directly relevant to its premise, to append to its log. Skip scene filler, repeated beats, possibilities, and future events. Never change the premise, phase, or pacing.
@@ -59,6 +59,16 @@ export function isSceneRecapForCharacter(content: string): boolean {
     || temporaryActivity.test(content)
     || (specificArtifact.test(content) && /\b(?:edited|posted|filmed|hit|said|quote|spot|views)\b/i.test(content))
     || interpersonalMoment;
+}
+
+/** Require explicit persistent evidence rather than a model's claim that one scene proves a habit. */
+export function hasDurableCharacterEvidence(evidence: string): boolean {
+  return /\b(?:can|cannot|can't|always|never|usually|regularly|habitually|tends? to|owns|knows|loves|hates|trusts|promised|agreed to|is allergic to|are allergic to|is able to|are able to|burns|weakens|heals)\b/i.test(evidence);
+}
+
+function isSingleCharacterFact(content: string): boolean {
+  const withoutHonorifics = content.replace(/\b(?:Mr|Mrs|Ms|Dr|Prof)\.\s+/g, "");
+  return !/[;\n]/.test(withoutHonorifics) && !/[.!?]\s+\p{Lu}/u.test(withoutHonorifics);
 }
 
 /** Local structural/evidence checks, not a claim that a quote proves every inference. */
@@ -114,16 +124,19 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
       if (matches.length > 1) { reject(`${target}: ambiguous card target`); continue; }
       const existing = matches[0];
       if (existing) {
-        if (!existing.active || !visibleIds.has(existing.id) || existing.type === "event" || existing.memoryMode === "historical") { reject(`${target}: target not editable in this context`); continue; }
+        const outOfContextLore = kind === "lore" && ["lore", "location", "custom"].includes(existing.type)
+          && existing.inclusionPolicy === "triggered" && !visibleIds.has(existing.id);
+        if (!existing.active || (!visibleIds.has(existing.id) && !outOfContextLore) || existing.type === "event" || existing.memoryMode === "historical") { reject(`${target}: target not editable in this context`); continue; }
         if (kind === "lore" && !["lore", "location", "custom"].includes(existing.type)) { reject(`${target}: lore cannot update a character card`); continue; }
         if (existing.type === "character" && isSceneRecapForCharacter(content)) { reject(`${target}: scene recap belongs in lore or transcript`); continue; }
+        if (existing.type === "character" && (!hasDurableCharacterEvidence(evidence) || !isSingleCharacterFact(content))) { reject(`${target}: character fact lacks explicit durable evidence`); continue; }
         if (norm(existing.content).includes(norm(content))) continue;
         proposal.title = existing.title;
         proposal.targetId = existing.id;
         proposal.appendContent = true;
         proposal.memoryMode = existing.memoryMode;
         // Sensitive identity records and evolving plot state need review, even with generic auto-approval.
-        proposal.requiresReview = existing.type === "plot" || existing.protected;
+        proposal.requiresReview = existing.type === "plot" || existing.protected || outOfContextLore;
       } else {
         const allowedTypes: StoryCardType[] = ["character", "location", "lore", "custom", "plot"];
         const category = typeof u.category === "string" ? u.category : "";
