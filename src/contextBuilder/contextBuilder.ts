@@ -1,4 +1,4 @@
-import { relationshipFocusCard, relationshipItemId, relationshipTargets, relationshipText } from "../memory/relationships";
+import { relationshipItemId, relationshipTargets, relationshipText } from "../memory/relationships";
 import { ONE_PASS_MEMORY_ID, onePassMemoryInstruction } from "../memory/onePassMemory";
 import { selectEventMemories } from "../memory/eventMemory";
 import { PLOT_MEMORY_THRESHOLD } from "../ai/authoringBestPractices";
@@ -549,19 +549,14 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
     // in the thought archive and in arc-graduated story cards, not in an ever-growing state blob.
     const relationshipItems = (brain.relationships ?? []).flatMap(r => {
       const id = relationshipItemId(brain.id, r.id);
-      const focusCard = relationshipFocusCard(adventure, r);
-      if (!focusCard) {
-        pushExcluded("brain", id, `${brain.characterName} → ${r.focus}`, "inactive", "Relationship needs an existing character Story Card link.");
-        return [];
-      }
-      if (!matchPatterns(triggerText, [focusCard.title, ...focusCard.keys], "phrase").matched) {
+      if (!matchPatterns(triggerText, [r.focus], "phrase").matched) {
         pushExcluded("brain", id, `${brain.characterName} → ${r.focus}`, "not_triggered", "Relationship focus is not relevant.");
         return [];
       }
-      const current = item(id, "brain", `${brain.characterName} → ${focusCard.title}: current relationship`, relationshipText(r, focusCard.title), brain.priority, brain.protected, brain.pinned, true, brain.inclusionPolicy, r.history.at(-1)?.sourceTurnId.startsWith("player-") ? "user" : "ai");
+      const current = item(id, "brain", `${brain.characterName} → ${r.focus}: current relationship`, relationshipText(r), brain.priority, brain.protected, brain.pinned, true, brain.inclusionPolicy, r.history.at(-1)?.sourceTurnId.startsWith("player-") ? "user" : "ai");
       pushIncluded(current, "Enrolled directional relationship; Brain and focus relevant. Current state only.");
       return [current, ...r.history.filter(h => r.recalledHistoryIds.includes(h.id)).slice(0, 3).map(h => {
-        const recalled = item(`${id}:history:${h.id}`, "brain", `${brain.characterName} → ${focusCard.title}: approved history (${h.sourceTurnId})`,
+        const recalled = item(`${id}:history:${h.id}`, "brain", `${brain.characterName} → ${r.focus}: approved history (${h.sourceTurnId})`,
           `Source turn: ${h.sourceTurnId}\n${JSON.stringify(h.state)}\nEvidence: ${h.evidence}`, brain.priority - 1, false, false, true, brain.inclusionPolicy, h.sourceTurnId.startsWith("player-") ? "user" : "ai");
         pushIncluded(recalled, "Player-selected approved relationship history; clear selection on Brain page to stop recall.");
         return recalled;

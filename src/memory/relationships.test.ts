@@ -6,7 +6,7 @@ import { createDefaultAdventure, defaultModelConfig, makeBrain, makeComponent, m
 import { adventureReducer } from "../state/adventureReducer";
 import { buildContext } from "../contextBuilder/contextBuilder";
 import { onePassMemoryActions, parseOnePassMemory } from "./onePassMemory";
-import { relationshipConflicts, relationshipItemId, relationshipTargets, validRelationshipState } from "./relationships";
+import { relationshipConflicts, relationshipItemId, validRelationshipState } from "./relationships";
 import { runTurnPipeline } from "../state/turnPipeline";
 import { runCompactMemoryFallback } from "./compactMemoryFallback";
 import { sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
@@ -24,12 +24,11 @@ const config = { ...defaultModelConfig, model: "test", apiKey: "test", baseUrl: 
 function fixture() {
   let a = structuredClone(createDefaultAdventure("Relationships"));
   a.brains = [makeBrain({ id: "kori", characterName: "Kori", thoughts: {} })];
-  a.storyCards = [makeStoryCard({ id: "seth-card", title: "Seth", type: "character", content: "Character profile." }), makeStoryCard({ id: "mira-card", title: "Mira", type: "character", content: "Character profile." })];
   a.memoryDetectionSettings.enabled = true;
-  a = adventureReducer(a, { type: "ENROLL_RELATIONSHIP", brainId: "kori", focusStoryCardId: "seth-card", state: initial });
+  a = adventureReducer(a, { type: "ENROLL_RELATIONSHIP", brainId: "kori", focus: "Seth", state: initial });
   return a;
 }
-function candidate(a = fixture()) { return { kind: "relationshipChange", target: "kori", relationshipId: a.brains[0].relationships[0].id, focus: "Seth", focusStoryCardId: "seth-card", revision: 0, proposed,
+function candidate(a = fixture()) { return { kind: "relationshipChange", target: "kori", relationshipId: a.brains[0].relationships[0].id, focus: "Seth", revision: 0, proposed,
   evidence: "Kori thanks Seth for keeping his promise.", knowledgeEvidence: "Kori watches Seth return the stolen keepsake.", reason: "Observed follow-through supports a small trust shift" }; }
 function propose(a = fixture(), u: unknown = candidate(a), text = story) {
   return onePassMemoryActions(a, buildContext(a, { currentInput: "Kori and Seth talk." }), [u], text, "story-1").reduce(adventureReducer, a);
@@ -44,9 +43,9 @@ describe("dynamic relationships", () => {
   });
   it("supports multiple directional focuses, keeps starting history and rejects duplicate enrollment and numeric meters", () => {
     let a = fixture();
-    a = adventureReducer(a, { type: "ENROLL_RELATIONSHIP", brainId: "kori", focusStoryCardId: "mira-card", state: initial });
+    a = adventureReducer(a, { type: "ENROLL_RELATIONSHIP", brainId: "kori", focus: "Mira", state: initial });
     expect(a.brains).toHaveLength(1); expect(a.brains[0].relationships).toHaveLength(2);
-    expect(adventureReducer(a, { type: "ENROLL_RELATIONSHIP", brainId: "kori", focusStoryCardId: "seth-card", state: initial })).toBe(a);
+    expect(adventureReducer(a, { type: "ENROLL_RELATIONSHIP", brainId: "kori", focus: "seth", state: initial })).toBe(a);
     a = adventureReducer(a, { type: "EDIT_RELATIONSHIP", brainId: "kori", relationshipId: a.brains[0].relationships[0].id, state: proposed });
     expect(a.brains[0].relationships[0].history.map(h => h.state)).toEqual([initial, proposed]);
     expect(a.brains[0].relationships[1].current).toEqual(initial);
@@ -181,39 +180,6 @@ describe("dynamic relationships", () => {
       expect(result.adventure.brains).toEqual(a.brains);
       expect(result.adventure.activeState.memoryProposals).toHaveLength(0);
     }
-  });
-  it("requires an existing character card at the reducer boundary", () => {
-    const a = fixture();
-    a.storyCards.push(makeStoryCard({ id: "place", title: "Tavern", type: "location", content: "A tavern." }));
-    for (const focusStoryCardId of ["free-text name", "missing", "place", "seth-card"]) {
-      expect(adventureReducer(a, { type: "ENROLL_RELATIONSHIP", brainId: "kori", focusStoryCardId, state: initial })).toBe(a);
-    }
-    expect(a.brains[0].relationships[0].focusStoryCardId).toBe("seth-card");
-  });
-  it("uses card identity across renames and stops context and approval when the card is deleted", () => {
-    const a = fixture();
-    const pending = propose(a); const p = pending.activeState.memoryProposals[0];
-    const r = a.brains[0].relationships[0];
-    a.storyCards[0].title = "Seth Renamed";
-    const context = buildContext(a, { currentInput: "Kori meets Seth Renamed." });
-    expect(context.sections.flatMap(s => s.items).some(i => i.title === "Kori → Seth Renamed: current relationship")).toBe(true);
-    expect(relationshipTargets(a, new Set([relationshipItemId("kori", r.id)]))[0]).toMatchObject({ focus: "Seth Renamed", focusStoryCardId: "seth-card" });
-    pending.storyCards = [];
-    expect(adventureReducer(pending, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: p.id })).toBe(pending);
-    expect(buildContext(pending, { currentInput: "Kori meets Seth." }).sections.flatMap(s => s.items).some(i => i.id === relationshipItemId("kori", r.id))).toBe(false);
-    expect(pending.brains[0].relationships[0].history).toEqual(r.history);
-  });
-  it("migrates only unique legacy name matches and lets the player link unresolved history", () => {
-    const a = fixture(); delete a.brains[0].relationships[0].focusStoryCardId;
-    expect(normalizeAdventure(a).brains[0].relationships[0].focusStoryCardId).toBe("seth-card");
-    a.storyCards.push(makeStoryCard({ id: "another-seth", title: "Seth", type: "character", content: "Another character." }));
-    const ambiguous = normalizeAdventure(a);
-    const r = ambiguous.brains[0].relationships[0];
-    expect(r.focusStoryCardId).toBeUndefined();
-    const linked = adventureReducer(ambiguous, { type: "LINK_RELATIONSHIP_FOCUS", brainId: "kori", relationshipId: r.id, focusStoryCardId: "seth-card" });
-    expect(linked.brains[0].relationships[0].focusStoryCardId).toBe("seth-card");
-    expect(linked.brains[0].relationships[0].history).toEqual(r.history);
-    expect(adventureReducer(linked, { type: "LINK_RELATIONSHIP_FOCUS", brainId: "kori", relationshipId: r.id, focusStoryCardId: "mira-card" })).toBe(linked);
   });
   it("flags duplicated status across authored surfaces without rewriting them", () => {
     const a = fixture(); a.storyCards = [makeStoryCard({ title: "Kori", content: "Kori and Seth are dating." })];

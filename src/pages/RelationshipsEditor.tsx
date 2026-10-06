@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { BrainEntry, DynamicRelationship, RelationshipState } from "../types/adventure";
 import type { AdventurePageProps } from "./pageTypes";
-import { relationshipConflicts, relationshipFocusCard, relationshipText, validRelationshipState } from "../memory/relationships";
+import { relationshipConflicts, relationshipText, validRelationshipState } from "../memory/relationships";
 
 function StateEditor({ initial, onSave }: { initial: RelationshipState; onSave: (s: RelationshipState) => void }) {
   const [bond, setBond] = useState(initial.bond);
@@ -18,18 +18,9 @@ function StateEditor({ initial, onSave }: { initial: RelationshipState; onSave: 
   </div>;
 }
 function RelationshipEditor({ adventure, dispatch, brain, relationship: r }: AdventurePageProps & { brain: BrainEntry; relationship: DynamicRelationship }) {
-  const focusCard = relationshipFocusCard(adventure, r);
-  const focus = focusCard?.title ?? r.focus;
-  const conflicts = relationshipConflicts(adventure, brain, focus);
-  return <details className="card"><summary>{brain.characterName} → {focus}</summary>
-    {focusCard ? <p>Linked character Story Card: {focusCard.title}</p> : <div>
-      <p role="alert">Select an existing character Story Card to restore this relationship's focus link. History is preserved; context and proposals are paused.</p>
-      <label>Link focus character <select value="" onChange={e => dispatch({ type: "LINK_RELATIONSHIP_FOCUS", brainId: brain.id, relationshipId: r.id, focusStoryCardId: e.target.value })}>
-        <option value="">Select a character Story Card</option>
-        {adventure.storyCards.filter(c => c.type === "character" && c.id !== brain.linkedStoryCardId && c.title.trim().toLowerCase() !== brain.characterName.trim().toLowerCase() && !brain.relationships.some(other => other.id !== r.id && other.focusStoryCardId === c.id)).map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
-      </select></label>
-    </div>}
-    <pre>{relationshipText(r, focus)}</pre>
+  const conflicts = relationshipConflicts(adventure, brain, r.focus);
+  return <details className="card"><summary>{brain.characterName} → {r.focus}</summary>
+    <pre>{relationshipText(r)}</pre>
     <StateEditor key={r.revision} initial={r.current} onSave={state => dispatch({ type: "EDIT_RELATIONSHIP", brainId: brain.id, relationshipId: r.id, state })} />
     {conflicts.length > 0 && <details open><summary>Review possible overlapping authored status</summary>
       <p>These sources mention this pair and may assert its status. Review them manually; enrollment does not rewrite them.</p>
@@ -45,23 +36,18 @@ function RelationshipEditor({ adventure, dispatch, brain, relationship: r }: Adv
   </details>;
 }
 export function RelationshipsEditor({ adventure, dispatch, brain }: AdventurePageProps & { brain: BrainEntry }) {
-  const [focusStoryCardId, setFocusStoryCardId] = useState("");
-  const cards = adventure.storyCards.filter(c => c.type === "character" && c.title.trim() && c.id !== brain.linkedStoryCardId
-    && c.title.trim().toLowerCase() !== brain.characterName.trim().toLowerCase()
-    && !(brain.relationships ?? []).some(r => r.focusStoryCardId === c.id));
-  const focusCard = cards.find(c => c.id === focusStoryCardId);
+  const [focus, setFocus] = useState("");
+  const names = [...new Set([...adventure.brains.map(b => b.characterName), ...adventure.storyCards.filter(c => c.type === "character").map(c => c.title)])].filter(n => n !== brain.characterName);
   return <section className="brain-focus-section"><h4>Dynamic relationships (optional)</h4>
     <p>Each entry records this NPC's view of one focus character. Story Cards retain character facts and untracked relationships. Up to twelve focuses per Brain.</p>
     {(brain.relationships ?? []).map(r => <RelationshipEditor key={r.id} adventure={adventure} dispatch={dispatch} brain={brain} relationship={r} />)}
     <details><summary>Enroll a relationship</summary>
-      <label>Focus character <select value={focusCard?.id ?? ""} onChange={e => setFocusStoryCardId(e.target.value)}>
-        <option value="">Select a character Story Card</option>
-        {cards.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
-      </select></label>
-      <p>{cards.length ? "Choose an existing character Story Card." : "No eligible character Story Cards. Create a character Story Card first."}</p>
-      {focusCard && (brain.relationships ?? []).length < 12 &&
-        <StateEditor key={focusCard.id} initial={{ bond: "", status: "", dimensions: { trust: "", respect: "", affection: "" } }} onSave={state => {
-          dispatch({ type: "ENROLL_RELATIONSHIP", brainId: brain.id, focusStoryCardId: focusCard.id, state }); setFocusStoryCardId("");
+      <label>Focus character <input list={`focus-${brain.id}`} value={focus} maxLength={100} onChange={e => setFocus(e.target.value)} /></label>
+      <datalist id={`focus-${brain.id}`}>{names.map(n => <option key={n} value={n} />)}</datalist>
+      <p>Select a known character or enter the player's name. Enrollment does not create a Brain.</p>
+      {focus.trim() && focus.trim().toLowerCase() !== brain.characterName.toLowerCase() && !(brain.relationships ?? []).some(r => r.focus.toLowerCase() === focus.trim().toLowerCase()) && (brain.relationships ?? []).length < 12 &&
+        <StateEditor key={focus} initial={{ bond: "", status: "", dimensions: { trust: "", respect: "", affection: "" } }} onSave={state => {
+          dispatch({ type: "ENROLL_RELATIONSHIP", brainId: brain.id, focus, state }); setFocus("");
         }} />}
     </details>
   </section>;

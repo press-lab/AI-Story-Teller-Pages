@@ -556,11 +556,7 @@ export function normalizeAdventure(adventure: Adventure): Adventure {
     sceneState: adventure.sceneState ?? { content: "", updatedAt: nowIso() },
     brains: (adventure.brains ?? []).map((brain) => ({
       ...brain,
-      relationships: (brain.relationships ?? []).map(r => {
-        if (r.focusStoryCardId) return r;
-        const matches = (adventure.storyCards ?? []).filter(c => c.type === "character" && c.title.trim().toLowerCase() === r.focus.trim().toLowerCase());
-        return matches.length === 1 ? { ...r, focusStoryCardId: matches[0].id } : r;
-      }),
+      relationships: brain.relationships ?? [],
       source: brain.source ?? "manual",
       protected: brain.protected ?? false,
       inclusionPolicy: brain.inclusionPolicy ?? "triggered",
