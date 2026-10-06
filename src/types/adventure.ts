@@ -200,7 +200,37 @@ export interface StoryCard {
   updatedAt: ISODateString;
 }
 
+export interface RelationshipState {
+  bond: string;
+  status: string;
+  dimensions: Record<string, string>;
+}
+export interface RelationshipHistoryEntry {
+  id: string;
+  sourceTurnId: string;
+  state: RelationshipState;
+  evidence: string;
+  createdAt: string;
+}
+export interface DynamicRelationship {
+  id: string;
+  focus: string;
+  current: RelationshipState;
+  revision: number;
+  history: RelationshipHistoryEntry[];
+  recalledHistoryIds: string[];
+}
+export interface RelationshipTransition {
+  relationshipId: string;
+  focus: string;
+  revision: number;
+  previous: RelationshipState;
+  proposed: RelationshipState;
+  knowledgeEvidence: string;
+}
+
 export interface BrainEntry {
+  relationships: DynamicRelationship[];
   id: string;
   characterName: string;
   triggers: string[];
@@ -433,6 +463,7 @@ export interface SystemTriggerSettings {
 export type MemoryProposalType =
   | "storyCard"
   | "brainUpdate"
+  | "relationshipUpdate"
   | "plotEssentialsUpdate"
   | "currentArcUpdate"
   | "arcProposal"
@@ -444,6 +475,7 @@ export type MemoryProposalType =
 export type MemoryProposalStatus = "pending" | "approved" | "rejected" | "ignored";
 
 export interface MemoryProposal {
+  relationship?: RelationshipTransition;
   /** Consequential automatic changes require explicit review, regardless of generic auto-approval. */
   requiresReview?: boolean;
   id: string;
@@ -467,6 +499,12 @@ export interface MemoryProposal {
   componentPatch?: Partial<Pick<ComponentEntry, "active" | "pinned" | "protected" | "inclusionPolicy" | "priority" | "state" | "autoUpdate" | "autoUpdateCooldownTurns">>;
   createdAt: ISODateString;
   updatedAt: ISODateString;
+}
+
+export interface RelationshipProposal extends MemoryProposal {
+  proposedType: "relationshipUpdate";
+  targetId: string;
+  relationship: RelationshipTransition;
 }
 
 export interface MemoryReconcileRequest {
@@ -625,6 +663,7 @@ export interface MemoryAutoApproveSettings {
   plotMomentumUpdate: boolean;
   storyCard: boolean;
   brainUpdate: boolean;
+  relationshipUpdate: boolean;
 }
 
 export interface AdventureThumbnailImage {
@@ -822,6 +861,9 @@ export type AdventureAction =
   | { type: "ADD_RAW_IMPORT"; rawImport: RawImportEntry }
   | { type: "UPDATE_RAW_IMPORT"; rawImportId: string; patch: Partial<RawImportEntry> }
   | { type: "DELETE_RAW_IMPORT"; rawImportId: string }
+  | { type: "ENROLL_RELATIONSHIP"; brainId: string; focus: string; state: RelationshipState }
+  | { type: "EDIT_RELATIONSHIP"; brainId: string; relationshipId: string; state: RelationshipState }
+  | { type: "RECALL_RELATIONSHIP_HISTORY"; brainId: string; relationshipId: string; historyIds: string[] }
   | { type: "ADD_MEMORY_PROPOSAL"; proposal: MemoryProposal }
   | { type: "UPDATE_MEMORY_PROPOSAL"; proposalId: string; patch: Partial<MemoryProposal> }
   | { type: "APPROVE_MEMORY_PROPOSAL"; proposalId: string; editedProposal?: Partial<MemoryProposal> }

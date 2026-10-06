@@ -49,7 +49,7 @@ export async function runCompactMemoryFallback(
     { role: "user", content: memoryRules },
     { role: "user", content: "Relevant current canon:\n" + references.join("\n\n") },
     { role: "user", content: "Existing lore, location, and shared-history targets (prefer the appropriate subject; these titles may be used even if the card was not triggered into context): " + JSON.stringify(reusableTargets) + "\nCharacter titles (update only for an explicitly evidenced enduring profile fact): " + JSON.stringify(characterTitles) + "\nPending Story Card titles (do not duplicate): " + JSON.stringify(pendingTitles) },
-    { role: "user", content: "Recent story context; quoted evidence may come from any supplied exchange:\n" + recent },
+    { role: "user", content: "Recent story context; relationshipChange evidence and knowledgeEvidence MUST come from the latest player/story exchange only; other memory evidence may come from any supplied exchange:\n" + recent },
   ];
   let response;
   try {

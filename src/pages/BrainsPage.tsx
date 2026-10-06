@@ -1,3 +1,4 @@
+import { RelationshipsEditor } from "./RelationshipsEditor";
 import type { BrainEntry, ContextInclusionPolicy } from "../types/adventure";
 import type { BrainAuditRecommendation } from "../memory/brainAudit";
 import { dedupeThoughtRecord } from "../memory/thoughtDedupe";
@@ -470,6 +471,7 @@ export function BrainsPage({ adventure, dispatch, loading, onUpdateBrainNow, onA
               </Field>
             </div>
 
+            <RelationshipsEditor adventure={adventure} dispatch={dispatch} brain={brain} />
             <section className="brain-focus-section">
               <div className="brain-section-heading">
                 <div>

@@ -1,12 +1,15 @@
+import { relationshipIsCurrent } from "./relationships";
 import type {
   Adventure,
   AdventureAction,
   BrainPatch,
+  RelationshipProposal,
   ComponentEntry,
   StoryCard,
 } from "../types/adventure";
 
 export type AIMemoryUpdate =
+  | { type: "relationshipProposal"; proposal: RelationshipProposal }
   | {
       type: "brainPatch";
       brainId: string;
@@ -55,7 +58,7 @@ export interface AIMemoryUpdateResult {
 function reject(update: AIMemoryUpdate, reason: string): RejectedAIMemoryUpdate {
   return {
     updateType: update.type,
-    targetId: "brainId" in update ? update.brainId : "storyCardId" in update ? update.storyCardId : "componentId" in update ? update.componentId : update.targetId,
+    targetId: "brainId" in update ? update.brainId : "storyCardId" in update ? update.storyCardId : "componentId" in update ? update.componentId : "targetId" in update ? update.targetId : undefined,
     reason,
   };
 }
@@ -79,6 +82,12 @@ export function applyAIMemoryUpdate(adventure: Adventure, updates: AIMemoryUpdat
   const changedItemIds: string[] = [];
 
   for (const update of updates) {
+    if (update.type === "relationshipProposal") {
+      if (update.proposal.proposedType === "relationshipUpdate" && relationshipIsCurrent(adventure, update.proposal))
+        actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal: update.proposal });
+      else rejectedUpdates.push({ updateType: update.type, reason: "Invalid or stale relationship proposal." });
+      continue;
+    }
     if (update.type === "brainPatch") {
       const brain = adventure.brains.find((entry) => entry.id === update.brainId);
       if (!brain) {
