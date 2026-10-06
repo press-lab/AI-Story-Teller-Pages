@@ -1,6 +1,6 @@
 # Dynamic relationships
 
-On a Brain page, enroll a focus character and author a starting bond, status, and up to five named descriptive dimensions. Each Brain can track up to twelve directional relationships; no Brain is created by enrollment. The starting state remains the first history entry. Player edits and approved changes append entries rather than overwrite history. Story Cards retain durable character facts and untracked relationships; thoughts remain internal reactions.
+On a Brain page, select an existing character Story Card as the focus (no free-text names) and author a starting bond, status, and up to five named descriptive dimensions. Each Brain can track up to twelve directional relationships; no Brain is created by enrollment. The starting state remains the first history entry. Player edits and approved changes append entries rather than overwrite history. Story Cards retain durable character facts and untracked relationships; thoughts remain internal reactions.
 
 Current relationships are individually named items in section G when the Brain and focus are relevant. They are token-counted and droppable under the existing context budget. Select up to three history entries per pair on the Brain page for deliberate recall; source turn IDs appear in both the editor and Context Preview. Clear those selections to stop recall. The full history is never sent automatically.
 
@@ -11,3 +11,5 @@ Local validation rejects unknown targets, absent context, stale revisions, uncha
 Inbox review shows both states, NPC, focus, evidence, knowledge evidence and source turn. Approval checks the revision again and atomically updates state and history. Rejection changes neither. Stale proposals are visibly disabled. A continuity replacement discards all candidates from the replaced draft. Custom semantic rules continue to work, but legacy Brain patches cannot write relationship collections. Discovery and reconciliation do not produce relationship proposals.
 
 Enrollment displays possible overlapping pair mentions in Story Cards, Plot Essentials and AI Instructions for manual review. These are broad review hints, not a semantic determination that the text conflicts. No authored text or exported saves are rewritten. Relationships and their history persist through the existing adventure database and JSON import/export.
+
+Focus links use stable Story Card IDs, so card renames are reflected in the editor and context. Legacy free-text focuses are linked only when exactly one character card has a matching title. Unmatched, ambiguous, deleted or retyped card links keep their history but are excluded from context and proposals until the player selects an existing character card.

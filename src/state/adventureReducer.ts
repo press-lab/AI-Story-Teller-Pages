@@ -1,4 +1,4 @@
-import { applyRelationship, duplicateRelationship, relationshipIsCurrent, stateKey, validRelationshipState } from "../memory/relationships";
+import { applyRelationship, duplicateRelationship, relationshipFocusCard, relationshipIsCurrent, stateKey, validRelationshipState } from "../memory/relationships";
 import { sameEventMemory } from "../memory/eventMemory";
 import type {
   Adventure,
@@ -1557,12 +1557,24 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
       });
     case "ENROLL_RELATIONSHIP": {
       const brain = state.brains.find(b => b.id === action.brainId);
-      const focus = action.focus.trim();
+      const card = state.storyCards.find(c => c.id === action.focusStoryCardId && c.type === "character");
+      if (!card || card.id === brain?.linkedStoryCardId) return state;
+      const focus = card.title.trim();
       if (!brain || !focus || focus.length > 100 || focus.toLowerCase() === brain.characterName.toLowerCase() || !validRelationshipState(action.state)
-        || (brain.relationships ?? []).length >= 12 || brain.relationships?.some(r => r.focus.toLowerCase() === focus.toLowerCase())) return state;
-      const relationship = { id: createId("relationship"), focus, current: action.state, revision: 0,
+        || (brain.relationships ?? []).length >= 12 || brain.relationships?.some(r => r.focusStoryCardId === card.id)) return state;
+      const relationship = { id: createId("relationship"), focus, focusStoryCardId: card.id, current: action.state, revision: 0,
         recalledHistoryIds: [], history: [{ id: createId("relationship-history"), state: action.state, sourceTurnId: "player-setup", evidence: "Player-authored starting relationship", createdAt: nowIso() }] };
       return touchAdventure(state, { brains: state.brains.map(b => b.id === brain.id ? { ...b, relationships: [...(b.relationships ?? []), relationship] } : b) });
+    }
+    case "LINK_RELATIONSHIP_FOCUS": {
+      const brain = state.brains.find(b => b.id === action.brainId);
+      const r = brain?.relationships.find(r => r.id === action.relationshipId);
+      const card = state.storyCards.find(c => c.id === action.focusStoryCardId && c.type === "character");
+      if (!brain || !r || relationshipFocusCard(state, r) || !card || !card.title.trim() || card.id === brain.linkedStoryCardId
+        || card.title.trim().toLowerCase() === brain.characterName.trim().toLowerCase()
+        || brain.relationships.some(other => other.id !== r.id && other.focusStoryCardId === card.id)) return state;
+      return touchAdventure(state, { brains: state.brains.map(b => b.id !== brain.id ? b : { ...b,
+        relationships: b.relationships.map(entry => entry.id !== r.id ? entry : { ...entry, focusStoryCardId: card.id, focus: card.title, revision: entry.revision + 1 }) }) });
     }
     case "EDIT_RELATIONSHIP":
     case "RECALL_RELATIONSHIP_HISTORY": {

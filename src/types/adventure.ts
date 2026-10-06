@@ -213,6 +213,8 @@ export interface RelationshipHistoryEntry {
   createdAt: string;
 }
 export interface DynamicRelationship {
+  /** Absent only on legacy relationships awaiting a character-card link. */
+  focusStoryCardId?: string;
   id: string;
   focus: string;
   current: RelationshipState;
@@ -221,6 +223,7 @@ export interface DynamicRelationship {
   recalledHistoryIds: string[];
 }
 export interface RelationshipTransition {
+  focusStoryCardId?: string;
   relationshipId: string;
   focus: string;
   revision: number;
@@ -861,7 +864,8 @@ export type AdventureAction =
   | { type: "ADD_RAW_IMPORT"; rawImport: RawImportEntry }
   | { type: "UPDATE_RAW_IMPORT"; rawImportId: string; patch: Partial<RawImportEntry> }
   | { type: "DELETE_RAW_IMPORT"; rawImportId: string }
-  | { type: "ENROLL_RELATIONSHIP"; brainId: string; focus: string; state: RelationshipState }
+  | { type: "ENROLL_RELATIONSHIP"; brainId: string; focusStoryCardId: string; state: RelationshipState }
+  | { type: "LINK_RELATIONSHIP_FOCUS"; brainId: string; relationshipId: string; focusStoryCardId: string }
   | { type: "EDIT_RELATIONSHIP"; brainId: string; relationshipId: string; state: RelationshipState }
   | { type: "RECALL_RELATIONSHIP_HISTORY"; brainId: string; relationshipId: string; historyIds: string[] }
   | { type: "ADD_MEMORY_PROPOSAL"; proposal: MemoryProposal }
