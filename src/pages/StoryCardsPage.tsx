@@ -112,6 +112,10 @@ function cardFactLines(text: string | undefined): string[] {
     .filter(Boolean);
 }
 
+function hasStructuredFacts(card: StoryCard): boolean {
+  return Boolean(card.coreFacts?.length || card.currentFacts?.length || card.recentDevelopments?.length);
+}
+
 function factListText(facts: string[] | undefined): string {
   return (facts ?? []).join("\n");
 }
@@ -913,6 +917,12 @@ export function StoryCardsPage({
                       </div>
                       {card.compactKind && <span className="badge badge-priority">{card.compactStatus ?? "active"}</span>}
                     </div>
+                    <p className="muted">
+                      When this card is included by a trigger, pin, Always policy, or manual force, these facts are sent
+                      in Core, Current, Recent order. Kind and Status label that text; they do not trigger the card.
+                      A one-time save migration or a Story Card memory update can sort text into these fields;
+                      editing Content directly does not.
+                    </p>
                     <div className="grid two">
                       <Field label="Compact Kind">
                         <select
@@ -984,11 +994,16 @@ export function StoryCardsPage({
                   <section className="item-focus-section">
                     <div className="item-section-heading">
                       <div>
-                        <p className="eyebrow">live memory</p>
-                        <h4>Card text sent when triggered</h4>
+                        <p className="eyebrow">content field</p>
+                        <h4>{hasStructuredFacts(card) ? "Additional notes sent with structured facts" : "Card text sent when included"}</h4>
                       </div>
                       <span className="muted">{cardFactLines(card.content).length} line{cardFactLines(card.content).length === 1 ? "" : "s"}</span>
                     </div>
+                  <p className="muted">
+                    {hasStructuredFacts(card)
+                      ? "The structured facts above are the main card text. Content is appended as Notes; an empty box here does not mean the card is empty."
+                      : "With no structured facts, Content is the entire card text sent when this card is included."}
+                  </p>
                   <Field label="Content">
                     <textarea
                       rows={6}
@@ -996,6 +1011,10 @@ export function StoryCardsPage({
                       onChange={(event) => dispatch({ type: "UPDATE_STORY_CARD", storyCardId: card.id, patch: { content: event.target.value } })}
                     />
                   </Field>
+                  <details>
+                    <summary>Preview assembled Story Card fields (before context budgeting)</summary>
+                    <pre className="context-item-text">{storyCardContextContent(card) || "(empty card)"}</pre>
+                  </details>
                   </section>
                   <StoryCardFactHistory
                     card={card}
