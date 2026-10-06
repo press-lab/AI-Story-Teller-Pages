@@ -1,4 +1,3 @@
-import { relationshipCandidate, type RelationshipTarget } from "./relationships";
 import type { Adventure, AdventureAction, BrainEntry, ContextBuildResult, MemoryProposal, StoryCardType } from "../types/adventure";
 import { createId, nowIso } from "../utils/id";
 import { cardMatchesName } from "../state/defaults";
@@ -7,14 +6,13 @@ import { applyAIMemoryUpdate } from "./applyAIMemoryUpdate";
 export const ONE_PASS_MEMORY_ID = "one-pass-memory";
 export const MEMORY_OUTPUT_RESERVE = 1400;
 
-export function onePassMemoryInstruction(brains: BrainEntry[], categories: string[], relationships: RelationshipTarget[] = []): string {
+export function onePassMemoryInstruction(brains: BrainEntry[], categories: string[]): string {
   return `[ONE-PASS MEMORY]
 Write the requested narrative first, preserving its quality and visible word limit. Then append exactly one hidden JSON envelope:
 <memory_updates>{"updates":[]}</memory_updates>
 An empty updates array is normal. Never invent changes to fill it. Maximum 4 small updates and at most ONE new card per turn. No other thought/memory tags.
 Each update has: kind, target, content, evidence, reason. evidence is an EXACT quote from this turn's player input or your visible story, establishing the change. reason explains why it will matter beyond this scene. Do not treat a suggestion, possibility, or plan as an accomplished fact. Do not give absent characters knowledge they did not receive.
 Allowed kinds:
-- "relationshipChange": only for an enrolled pair in the eligible relationship target inventory below. target is the exact Brain ID, relationshipId and focus must match exactly, revision is the supplied current revision, use proposed instead of content: proposed is the COMPLETE {bond,status,dimensions} state with the same named dimensions. Also provide evidence, knowledgeEvidence (an exact quote showing this NPC witnessed or learned the event), and reason. No numeric meters. Propose only an actual small change warranted by observed events. Bond/status changes need explicit in-story evidence naming the resulting bond/status and require review; rudeness does not imply a breakup. Quoted provenance alone does not establish NPC knowledge. Uncertain knowledge/interpretation requires review. Relationship changes count toward the SAME four-update limit. Use only this kind for enrolled relationship state; thoughts remain internal reactions and cards remain durable character facts and untracked relationships. Never use relationshipPressure.
 - "thought": target is an eligible character name below; content is ONE new first-person internal reaction, belief, or private plan (max 45 words). Capture only if the character participated or learned something this turn. Never repeat existing thoughts or put generic world facts here.
 - "card": target is the EXACT title of an existing Story Card visible in context; content is only a NEW durable fact (max 70 words) to append. Character cards are profiles: add ONE lasting ability, trait, relationship, or obligation only when the quoted evidence EXPLICITLY establishes it as an enduring fact. A single action or reaction does not prove a habit or personality trait. Never generalize one fight, meal, joke, or exchange into what someone usually does. Put consequential shared history on lore/location cards; otherwise leave it in the transcript. Preserve identity and existing facts. Never overwrite or contradict canon; corrections need explicit review outside this automatic path. Omit already-known facts and rephrasings.
 - "lore": target is the EXACT title of an existing lore/location/custom Story Card, or a narrow NEW subject title. An existing lore/location card may be named in the supplied target inventory even when it was not triggered into model context this turn; such an update requires review. Create an INDEPENDENT historical lore card for a distinctive completed shared event worth recalling later, such as a first fight, first meeting, major battle, revelation, or consequential choice. It need not establish a new rule or ongoing obligation. Give the new card a specific event title, concise past-tense facts naming participants, place, and outcome, 1-3 narrow recall triggers, and category "plot_beat". It becomes a reviewable lore card with historical memory mode. Use category "world_fact" for a reusable rule, place, or subject instead. Do not create lore for routine movement, a passing reaction, or generic scene filler. Never append the event to a participant's character card.
@@ -25,7 +23,6 @@ Allowed kinds:
 Current Arc holds the ongoing storyline and its authored pacing. Do not alter arc phases, break instructions, or create a new arc here. Record arc progress there; a distinct completed event may also earn its own historical lore card when users will want to recall the occurrence itself. Plot Essentials is the overarching story; Active Pressure is what presses NOW. Character Story Cards hold profiles, lore cards hold reusable setting and shared history, and Brains hold private internal state. Routine scene beats stay in the transcript.
 For example: {"kind":"card","target":"Mira","content":"Mira is allergic to silver.","evidence":"Silver gives me a rash, Mira says.","reason":"Persistent vulnerability"}.
 Historical lore example: {"kind":"lore","target":"Seth and Buu's First Fight","content":"Seth and Buu fought for the first time on Hercule's estate. Seth blasted Buu into orbit; Buu returned unharmed and asked to continue.","evidence":"Buu returned unharmed and asked to continue.","reason":"Distinct first fight worth recalling","category":"plot_beat","triggers":["Seth and Buu first fight","Buu sent into orbit"]}.
-Eligible relationship targets: ${JSON.stringify(relationships)}
 Eligible thought targets: ${brains.map(b => JSON.stringify(b.characterName)).join(", ") || "none"}.
 Only output changes supported by this turn and consistent with ALL supplied canon. These hidden updates are not narrative and must never steer the scene merely to create memory.`;
 }
@@ -91,17 +88,6 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
     const reject = (reason: string) => errors.push(`One-pass memory skipped: ${reason}`);
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) { reject("invalid update"); continue; }
     const u = raw as Record<string, unknown>;
-    if (u.kind === "relationshipChange") {
-      const result = relationshipCandidate(adventure, context, u, story, playerInput, sourceTurnId);
-      if (typeof result === "string") { reject(`relationshipChange [${sourceLabel}]: ${result}`); continue; }
-      const key = `relationship:${result.targetId}:${result.relationship?.relationshipId}`;
-      if (seen.has(key)) { reject(`relationshipChange [${sourceLabel}]: duplicate pair in envelope`); continue; }
-      seen.add(key);
-      const boundary = applyAIMemoryUpdate(adventure, [{ type: "relationshipProposal", proposal: result }]);
-      actions.push(...boundary.actions);
-      executed.push(`relationshipChange [${sourceLabel}]: accepted for review — ${result.title}; ${result.rationale}`);
-      continue;
-    }
     if (![u.kind, u.target, u.content, u.evidence, u.reason].every(v => typeof v === "string" && v.trim())) { reject("missing fields"); continue; }
     const kind = u.kind as string, target = (u.target as string).trim(), content = (u.content as string).trim(), evidence = (u.evidence as string).trim();
     const quote = norm(evidence);

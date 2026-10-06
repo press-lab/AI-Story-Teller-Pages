@@ -604,7 +604,6 @@ export function SettingsPage({
                   <CheckboxField label="Current Arc (off: review generated events before they become canon)" checked={activeSettings.memoryAutoApprove.currentArcUpdate} onChange={(currentArcUpdate) => updateMemoryAutoApprove({ currentArcUpdate })} />
                   <CheckboxField label="Arc Proposals" checked={activeSettings.memoryAutoApprove.arcProposal} onChange={(arcProposal) => updateMemoryAutoApprove({ arcProposal })} />
                   <CheckboxField label="Story Cards" checked={activeSettings.memoryAutoApprove.storyCard} onChange={(storyCard) => updateMemoryAutoApprove({ storyCard })} />
-                  <CheckboxField label="Relationships (inline proposals still require knowledge/interpretation review)" checked={activeSettings.memoryAutoApprove.relationshipUpdate} onChange={(relationshipUpdate) => updateMemoryAutoApprove({ relationshipUpdate })} />
                   <CheckboxField label="Characters" checked={activeSettings.memoryAutoApprove.brainUpdate} onChange={(brainUpdate) => updateMemoryAutoApprove({ brainUpdate })} />
                 </div>
                 <p className="muted">

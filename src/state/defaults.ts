@@ -101,7 +101,6 @@ export const defaultMemoryAutoApproveSettings: MemoryAutoApproveSettings = {
   plotMomentumUpdate: false,
   storyCard: false,
   brainUpdate: false,
-  relationshipUpdate: false,
 };
 
 export const defaultSystemTriggerSettings: SystemTriggerSettings = {
@@ -341,7 +340,6 @@ export function makeBrain(overrides: Partial<BrainEntry> & Pick<BrainEntry, "cha
     thoughts: overrides.thoughts ?? {},
     archivedThoughts: overrides.archivedThoughts ?? {},
     linkedStoryCardId: overrides.linkedStoryCardId,
-    relationships: overrides.relationships ?? [],
     relationshipPressure: overrides.relationshipPressure ?? "",
     emotionalInterpretation: overrides.emotionalInterpretation ?? "",
     recentDevelopments: overrides.recentDevelopments ?? "",
@@ -556,7 +554,6 @@ export function normalizeAdventure(adventure: Adventure): Adventure {
     sceneState: adventure.sceneState ?? { content: "", updatedAt: nowIso() },
     brains: (adventure.brains ?? []).map((brain) => ({
       ...brain,
-      relationships: brain.relationships ?? [],
       source: brain.source ?? "manual",
       protected: brain.protected ?? false,
       inclusionPolicy: brain.inclusionPolicy ?? "triggered",
