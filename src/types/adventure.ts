@@ -95,6 +95,8 @@ export interface MemoryUpdateHistoryEntry {
 
 export interface ComponentEntry {
   contextRole?: "playLoop" | "general";
+  /** Plot Essentials / Current Arc only: Story Director reconciliation may not make new edits. Other update paths ignore it. */
+  lockFromStoryDirector?: boolean;
   id: string;
   title: string;
   type: ComponentType;
@@ -193,6 +195,8 @@ export interface StoryCard {
   archivedFacts?: string;
   /** When true, the LLM will automatically update this card after relevant scenes. */
   autoUpdate: boolean;
+  /** Story Director reconciliation may not make new edits to this card. Other update paths ignore it. */
+  lockFromStoryDirector?: boolean;
   /** Minimum turns between AI-generated updates or proposals for this card. */
   autoUpdateCooldownTurns: number;
   lastAutoUpdateTurn?: number;

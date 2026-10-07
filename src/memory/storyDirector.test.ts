@@ -6,7 +6,8 @@ import { adventureReducer } from '../state/adventureReducer';
 import { buildContext } from '../contextBuilder/contextBuilder';
 import { applyAIMemoryUpdate } from './applyAIMemoryUpdate';
 import { currentDirector, isPlayLoop, playLoopSuspended, ownerSnapshot } from './storyDirectorState';
-import { evaluateStoryDirector, parseCanonBatch, parseStoryState, recentDirectorMessages, RECONCILE_PROMPT, STORY_STATE_PROMPT } from './storyDirector';
+import { evaluateStoryDirector, parseCanonBatch, parseStoryState, reconciliationOwners, recentDirectorMessages, RECONCILE_PROMPT, STORY_STATE_PROMPT } from './storyDirector';
+import { parseComponentsJson } from '../importers/componentParser';
 import { sendOpenAICompatibleChatCompletion } from '../providers/openAICompatible';
 import { runTurnPipeline } from '../state/turnPipeline';
 import type { Adventure } from '../types/adventure';
@@ -158,6 +159,69 @@ describe('atomic canon reconciliation', () => {
     expect(erased.storyCards[0].content).toBe(a.storyCards[0].content);
     const changed = adventureReducer(n, { type: 'UPDATE_STORY_CARD', storyCardId: 'star', patch: { content: 'Player edit' } });
     expect(adventureReducer(changed, { type: 'REMOVE_LAST_ASSISTANT_MESSAGE' }).storyCards[0].content).toBe('Player edit');
+  });
+});
+describe('Lock from Story Director', () => {
+  function locked() {
+    const a = base();
+    a.storyCards[0].lockFromStoryDirector = true;
+    a.components.find(c => c.id === 'arc')!.lockFromStoryDirector = true;
+    return a;
+  }
+  it('excludes locked owners from reconciliation targets', () => {
+    const ids = reconciliationOwners(locked()).map(o => o.id);
+    expect(ids).not.toContain('star');
+    expect(ids).not.toContain('arc');
+    expect(reconciliationOwners(base()).map(o => o.id)).toEqual(expect.arrayContaining(['star', 'arc']));
+  });
+  it('rejects a returned edit for a locked owner', () => {
+    const a = locked();
+    expect(() => parseCanonBatch(a, { edits: [edit()] })).toThrow();
+    expect(() => parseCanonBatch(a, { edits: [edit('component', 'arc', 'The traitor is exposed.')] })).toThrow();
+  });
+  it('makes a pending batch stale on approval once its owner is locked', () => {
+    const a = base();
+    const batch = parseCanonBatch(a, { edits: [edit()] });
+    const pending = adventureReducer(a, { type: 'RECONCILE_CANON', batch, review: true });
+    const lockedState = adventureReducer(pending, { type: 'UPDATE_STORY_CARD', storyCardId: 'star', patch: { lockFromStoryDirector: true } });
+    const n = adventureReducer(lockedState, { type: 'REVIEW_CANON_BATCH', batchId: batch.id, approve: true });
+    expect(n.storyCards[0].content).toBe(a.storyCards[0].content);
+    expect(n.activeState.canonBatches?.[0].status).toBe('stale');
+  });
+  it('still rolls back an already-applied batch and keeps the lock value', () => {
+    const a = base();
+    const applied = apply(a, { edits: [edit()] });
+    const lockedState = adventureReducer(applied, { type: 'UPDATE_STORY_CARD', storyCardId: 'star', patch: { lockFromStoryDirector: true } });
+    const restored = adventureReducer(lockedState, { type: 'REMOVE_LAST_ASSISTANT_MESSAGE' }).storyCards[0];
+    expect(restored.content).toBe(a.storyCards[0].content);
+    expect(restored.lockFromStoryDirector).toBe(true);
+  });
+  it('does not block inline memory or Memory Inbox updates', () => {
+    const a = locked();
+    const inline = applyAIMemoryUpdate(a, [{ type: 'storyCardUpdate', storyCardId: 'star', content: 'Inline memory update.' }]).actions.reduce(adventureReducer, a);
+    expect(inline.storyCards[0].content).toContain('Inline memory update.');
+    const proposal = { id: 'arc-proposal', sourceTurnId: 'accepted', sourceText: event, proposedType: 'currentArcUpdate' as const, title: 'Current Arc', content: 'Track Star confessed.', suggestedTriggers: [], confidence: 0.9, rationale: 'Arc development.', status: 'pending' as const, targetId: 'arc', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' };
+    const queued = adventureReducer(a, { type: 'ADD_MEMORY_PROPOSAL', proposal });
+    const approved = adventureReducer(queued, { type: 'APPROVE_MEMORY_PROPOSAL', proposalId: 'arc-proposal' });
+    expect(approved.components.find(c => c.id === 'arc')?.content).not.toBe(a.components.find(c => c.id === 'arc')?.content);
+  });
+  it('rolls back when only updatedAt differs, but not when another owner field differs', () => {
+    const a = base();
+    const applied = apply(a, { edits: [edit()] });
+    const bumped = { ...applied, storyCards: applied.storyCards.map(c => ({ ...c, lockFromStoryDirector: true, updatedAt: '2099-01-01T00:00:00.000Z' })) };
+    const restored = adventureReducer(bumped, { type: 'REMOVE_LAST_ASSISTANT_MESSAGE' }).storyCards[0];
+    expect(restored.content).toBe(a.storyCards[0].content);
+    expect(restored.lockFromStoryDirector).toBe(true);
+    const edited = { ...applied, storyCards: applied.storyCards.map(c => ({ ...c, priority: c.priority + 1, updatedAt: '2099-01-01T00:00:00.000Z' })) };
+    expect(adventureReducer(edited, { type: 'REMOVE_LAST_ASSISTANT_MESSAGE' }).storyCards[0].content).toContain('betrayed');
+  });
+  it('keeps the lock through the component and Story Card factories', () => {
+    expect(makeComponent({ title: 'Plot Essentials', type: 'plotEssentials', content: 'Truth.', lockFromStoryDirector: true }).lockFromStoryDirector).toBe(true);
+    expect(makeStoryCard({ title: 'Mara', type: 'character', content: 'Mara.', lockFromStoryDirector: true }).lockFromStoryDirector).toBe(true);
+  });
+  it('preserves the lock through component JSON import', () => {
+    const result = parseComponentsJson(JSON.stringify([{ type: 'plotEssentials', title: 'Plot Essentials', content: 'Truth.', lockFromStoryDirector: true }]));
+    expect(result.components[0].component.lockFromStoryDirector).toBe(true);
   });
 });
 describe('post-generation integration', () => {

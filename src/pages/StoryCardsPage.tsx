@@ -1071,6 +1071,13 @@ export function StoryCardsPage({
                       checked={card.protected}
                       onChange={(checked) => dispatch({ type: "UPDATE_STORY_CARD", storyCardId: card.id, patch: { protected: checked } })}
                     />
+                    {card.type !== "event" && card.memoryMode !== "historical" && (
+                      <CheckboxField
+                        label="Lock from Story Director"
+                        checked={card.lockFromStoryDirector === true}
+                        onChange={(lockFromStoryDirector) => dispatch({ type: "UPDATE_STORY_CARD", storyCardId: card.id, patch: { lockFromStoryDirector } })}
+                      />
+                    )}
                     <Field label="Inclusion Policy">
                       <select
                         value={card.inclusionPolicy}

@@ -66,11 +66,11 @@ function stableSnapshot(value: unknown): string {
 export function ownerSnapshot(a: Adventure, e: Pick<CanonEdit, 'kind' | 'id' | 'relationshipId'>, includeHistorical = false): string | undefined {
   if (e.kind === 'component') {
     const c = a.components.find(c => c.id === e.id && ['plotEssentials', 'currentArc', 'activePressure'].includes(c.type));
-    return c ? stableSnapshot({ ...c, memoryUpdateHistory: undefined }) : undefined;
+    return c ? stableSnapshot({ ...c, memoryUpdateHistory: undefined, lockFromStoryDirector: undefined }) : undefined;
   }
   if (e.kind === 'storyCard') {
     const c = a.storyCards.find(c => c.id === e.id && c.type !== 'event' && (includeHistorical || c.memoryMode !== 'historical'));
-    return c ? stableSnapshot({ ...c, coreFacts: c.coreFacts ?? [], currentFacts: c.currentFacts ?? [], recentDevelopments: c.recentDevelopments ?? [], sourceTurnIds: c.sourceTurnIds ?? [], memoryUpdateHistory: undefined }) : undefined;
+    return c ? stableSnapshot({ ...c, coreFacts: c.coreFacts ?? [], currentFacts: c.currentFacts ?? [], recentDevelopments: c.recentDevelopments ?? [], sourceTurnIds: c.sourceTurnIds ?? [], memoryUpdateHistory: undefined, lockFromStoryDirector: undefined }) : undefined;
   }
   const b = a.brains.find(b => b.id === e.id);
   if (!b) return undefined;
@@ -79,10 +79,17 @@ export function ownerSnapshot(a: Adventure, e: Pick<CanonEdit, 'kind' | 'id' | '
   const r = b.relationships.find(r => r.id === e.relationshipId && a.storyCards.some(c => c.id === r.focusStoryCardId && c.type === 'character'));
   return r ? stableSnapshot({ ...r, history: undefined }) : undefined;
 }
+/** Lock from Story Director: blocks new reconciliation edits only. Not consulted by rollback or any other update path. */
+export function lockedFromStoryDirector(a: Adventure, e: Pick<CanonEdit, 'kind' | 'id'>): boolean {
+  if (e.kind === 'component') return a.components.some(c => c.id === e.id && (c.type === 'plotEssentials' || c.type === 'currentArc') && c.lockFromStoryDirector === true);
+  if (e.kind === 'storyCard') return a.storyCards.some(c => c.id === e.id && c.lockFromStoryDirector === true);
+  return false;
+}
 export function batchIsCurrent(a: Adventure, b: CanonBatch): boolean {
   return a.messages.some(m => m.role === 'assistant' && m.id === b.sourceMessageId && m.content === b.sourceContent)
     && b.edits.length > 0 && b.edits.length <= 80
     && new Set(b.edits.map(e => e.kind + ':' + e.id + ':' + (e.relationshipId ?? ''))).size === b.edits.length
+    && b.edits.every(e => !lockedFromStoryDirector(a, e))
     && b.edits.every(e => typeof e.before === 'string' && ownerSnapshot(a, e) === e.before
       && typeof e.evidence === 'string' && e.evidence.trim().length > 0 && b.sourceContent.includes(e.evidence)
       && ['STATE_UPDATE', 'CANON_COMMIT'].includes(e.change)

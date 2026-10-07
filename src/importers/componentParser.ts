@@ -152,6 +152,7 @@ function parseComponent(raw: unknown, sourceIndex: number): ParsedComponent | Sk
     state: stringField(raw, "state") ?? "",
     tokenBudget: numberField(raw, "tokenBudget"),
     autoUpdate: booleanField(raw, "autoUpdate"),
+    lockFromStoryDirector: booleanField(raw, "lockFromStoryDirector"),
     lastAutoUpdateTurn: numberField(raw, "lastAutoUpdateTurn"),
     autoUpdateCooldownTurns: numberField(raw, "autoUpdateCooldownTurns"),
     createdAt: stringField(raw, "createdAt"),

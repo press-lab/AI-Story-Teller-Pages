@@ -1897,17 +1897,24 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
   }
 }
 
+/** Rollback eligibility only: an updatedAt bump (e.g. toggling Lock from Story Director) must not block rollback. All other owner fields must match. */
+function sameOwnerIgnoringUpdatedAt(current: string | undefined, after: string): boolean {
+  if (current === undefined) return false;
+  const strip = (snapshot: string) => JSON.stringify({ ...JSON.parse(snapshot), updatedAt: undefined });
+  return strip(current) === strip(after);
+}
+
 /** Removing/editing accepted evidence must not leave its automatic canon writes live. */
 export function adventureReducer(state: Adventure, action: AdventureAction): Adventure {
   let next = reduceAdventure(state, action);
   if (next.messages === state.messages || !state.activeState.canonBatches?.some(b => b.status === "applied")) return next;
   for (const batch of state.activeState.canonBatches.filter(b => b.status === "applied")) {
     if (next.messages.some(m => m.id === batch.sourceMessageId && m.content === batch.sourceContent)) continue;
-    const canRestore = batch.after && batch.edits.every((e, i) => ownerSnapshot(next, e, true) === batch.after![i]);
+    const canRestore = batch.after && batch.edits.every((e, i) => sameOwnerIgnoringUpdatedAt(ownerSnapshot(next, e, true), batch.after![i]));
     if (canRestore) {
       for (const e of [...batch.edits].reverse()) {
-        if (e.kind === "component") next = { ...next, components: updateById(next.components, e.id, c => ({ ...JSON.parse(e.before), memoryUpdateHistory: c.memoryUpdateHistory })) };
-        if (e.kind === "storyCard") next = { ...next, storyCards: updateById(next.storyCards, e.id, c => ({ ...JSON.parse(e.before), memoryUpdateHistory: c.memoryUpdateHistory })) };
+        if (e.kind === "component") next = { ...next, components: updateById(next.components, e.id, c => ({ ...JSON.parse(e.before), memoryUpdateHistory: c.memoryUpdateHistory, lockFromStoryDirector: c.lockFromStoryDirector })) };
+        if (e.kind === "storyCard") next = { ...next, storyCards: updateById(next.storyCards, e.id, c => ({ ...JSON.parse(e.before), memoryUpdateHistory: c.memoryUpdateHistory, lockFromStoryDirector: c.lockFromStoryDirector })) };
         if (e.kind === "brain") next = { ...next, brains: updateById(next.brains, e.id, b => {
           const previous = JSON.parse(e.before) as BrainEntry;
           return { ...previous,

@@ -852,6 +852,13 @@ export function ComponentsPage({ adventure, dispatch, loading, onSuggestPlotUpda
                       onChange={(autoUpdate) => dispatch({ type: "UPDATE_COMPONENT", componentId: component.id, patch: { autoUpdate } })}
                     />
                   )}
+                  {(component.type === "plotEssentials" || component.type === "currentArc") && (
+                    <CheckboxField
+                      label="Lock from Story Director"
+                      checked={component.lockFromStoryDirector === true}
+                      onChange={(lockFromStoryDirector) => dispatch({ type: "UPDATE_COMPONENT", componentId: component.id, patch: { lockFromStoryDirector } })}
+                    />
+                  )}
                   <Field label="Auto-update cooldown (turns)">
                     <NumberInput
                       value={component.autoUpdateCooldownTurns ?? (component.type === "currentArc" ? 4 : 3)}
