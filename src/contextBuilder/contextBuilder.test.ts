@@ -799,7 +799,7 @@ describe("buildContext", () => {
     expect(result.messages[0].content).toContain("Rain makes the city smell like iron.");
   });
 
-  it("withholds the arc break instruction from context until the phase reaches break", () => {
+  it("never sends retired Arc Director instructions, in any saved phase", () => {
     const arc = {
       ...makeComponent({ title: "Current Story Arc", type: "currentArc", content: "The Red Ring tightens its grip.", active: true, priority: 50 }),
       arcThreadKeys: ["baddie"],
@@ -811,15 +811,14 @@ describe("buildContext", () => {
     const arcText = (a: Adventure) =>
       buildContext(a, {}).sections.find((section) => section.id === "currentArc")?.items.map((item) => item.content).join("\n") ?? "";
 
-    // Simmering: the simmer instruction is present and the break (cost) instruction is absent.
-    const simmering = arcText(adventure);
-    expect(simmering).toContain("stays off-screen");
-    expect(simmering).not.toContain("forces the confrontation");
-
-    // Broken: the break instruction is now injected; the simmer instruction is gone.
-    const broken = arcText({ ...adventure, components: [{ ...arc, arcState: { ...arc.arcState, phase: "break" } }] });
-    expect(broken).toContain("forces the confrontation");
-    expect(broken).not.toContain("stays off-screen");
+    for (const phase of ['simmer', 'escalate', 'break', 'aftermath'] as const) {
+      const saved = { ...adventure, components: [{ ...arc, arcState: { ...arc.arcState, phase } }] };
+      expect(arcText(saved)).toContain('The Red Ring tightens its grip.');
+      const payload = JSON.stringify(buildContext(saved).messages);
+      expect(payload).not.toContain(arc.arcSimmerInstruction);
+      expect(payload).not.toContain(arc.arcBreakInstruction);
+      expect(payload).not.toContain('ARC DIRECTION');
+    }
   });
 
   it("injects a brain's thought log only — never the legacy unbounded state fields", () => {

@@ -153,7 +153,8 @@ export function PlayPage({
   const lastAssistant = [...adventure.messages].reverse().find((m) => m.role === "assistant");
   const latestMessageId = adventure.messages.at(-1)?.id;
   const nextTurnNote = adventure.activeState.nextTurnNote;
-  const pendingMemoryCount = adventure.activeState.memoryProposals.filter((p) => p.status === "pending").length;
+  const pendingMemoryCount = adventure.activeState.memoryProposals.filter((p) => p.status === "pending" && p.proposedType !== "arcProposal").length
+    + (adventure.activeState.canonBatches?.filter(b => b.status === "pending").length ?? 0);
 
   const budgetDropped = contextResult?.excludedItems.filter((i) => i.reason === "budget_exceeded") ?? [];
   const droppedMessages = budgetDropped.filter((i) => i.sourceType === "message").length;

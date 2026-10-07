@@ -1,3 +1,4 @@
+import { StoryDirectorPanel } from "../components/StoryDirectorPanel";
 import { relationshipIsCurrent } from "../memory/relationships";
 import { useState } from "react";
 import { classifyMemory } from "../memory/classificationPolicy";
@@ -12,7 +13,6 @@ const proposalTypes: MemoryProposalType[] = [
   "brainUpdate",
   "plotEssentialsUpdate",
   "currentArcUpdate",
-  "arcProposal",
   "plotPressureUpdate",
   "plotMomentumUpdate",
   "summaryUpdate",
@@ -28,7 +28,7 @@ interface MemoryInboxPageProps extends AdventurePageProps {
 }
 
 export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onReconcileMemory, onFindEventMemories, loading = false }: MemoryInboxPageProps) {
-  const allProposals = [...adventure.activeState.memoryProposals].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const allProposals = adventure.activeState.memoryProposals.filter(p => p.proposedType !== "arcProposal").sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const [eventScan, setEventScan] = useState<AbortController>();
   const [eventProgress, setEventProgress] = useState("");
   const [sourceText, setSourceText] = useState("");
@@ -112,11 +112,13 @@ export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onR
           Review proposed memory writes before they become active story context. Event Memories always wait for your approval.
         </p>
         <div className="editor-stat-row" aria-label="Memory suggestion counts">
-          <span>{totalPending} pending</span>
-          <span>{totalResolved} resolved</span>
+          <span>{totalPending + (adventure.activeState.canonBatches?.filter(b => b.status === 'pending').length ?? 0)} pending</span>
+          <span>{totalResolved + (adventure.activeState.canonBatches?.filter(b => b.status !== 'pending').length ?? 0)} resolved</span>
           {searchLower && <span>{visibleProposals.length} shown</span>}
         </div>
       </div>
+
+      <StoryDirectorPanel adventure={adventure} dispatch={dispatch} />
 
       {onFindEventMemories && <div className="panel">
         <button type="button" disabled={loading || Boolean(eventScan)} onClick={async () => {
@@ -157,7 +159,7 @@ export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onR
           <CheckboxField label="Plot Essentials" checked={autoApprove.plotEssentialsUpdate} onChange={(v) => setAutoApprove({ plotEssentialsUpdate: v })} />
           <CheckboxField label="Active Pressure" checked={autoApprove.plotPressureUpdate} onChange={(v) => setAutoApprove({ plotPressureUpdate: v })} />
           <CheckboxField label="Current Arc" checked={autoApprove.currentArcUpdate} onChange={(v) => setAutoApprove({ currentArcUpdate: v })} />
-          <CheckboxField label="Arc Proposals" checked={autoApprove.arcProposal} onChange={(v) => setAutoApprove({ arcProposal: v })} />
+          <CheckboxField label="Story Director (also requires approval settings for every affected memory type)" checked={autoApprove.storyDirector === true} onChange={(v) => setAutoApprove({ storyDirector: v })} />
           <CheckboxField label="Story Cards" checked={autoApprove.storyCard} onChange={(v) => setAutoApprove({ storyCard: v })} />
           <CheckboxField label="Relationships (inline proposals still require knowledge/interpretation review)" checked={autoApprove.relationshipUpdate} onChange={(v) => setAutoApprove({ relationshipUpdate: v })} />
           <CheckboxField label="Characters" checked={autoApprove.brainUpdate} onChange={(v) => setAutoApprove({ brainUpdate: v })} />

@@ -241,7 +241,7 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
           <strong>Arc updates:</strong> The older premise-filtered path appends 1–3 sentences per relevant event.
           The post-story canon reconciliation path can replace obsolete active state or clear a resolved arc.
           Preserve useful past developments as history, but remove misleading live assertions.
-          The optional authored Arc Director is separate from the semantic story-state evaluator.
+          The old authored Arc Director is retired; its pacing controls and instructions are disabled.
         </p>
         <h4>Best Practices</h4>
         <ul>
@@ -292,15 +292,16 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
           The evaluator does not choose future beats or an ending. Meaningful state changes can prompt a validated
           reconciliation batch that replaces obsolete live facts in their existing owners while preserving history.
           Relationship state tracked by an enrolled Brain direction remains there, not on the character card.
-          Review batches in <strong>Components → Story state</strong>; inspect mode changes in Automations logs and
-          Play Loop inclusion or exclusion in Context Preview. Approval settings still govern writes.
+          Review batches in <strong>Memory Suggestions → Story Director</strong> or Components; inspect mode changes in Automations logs and
+          Play Loop inclusion or exclusion in Context Preview. Replacements require approval by default. Auto-approval requires
+          both the Story Director toggle and every affected memory type's toggle, with the global review requirement off.
+          Relationship changes always require review, and item locks still block changes.
         </p>
         <p>
           <strong>Active thread</strong> means a larger story problem actually underway. Current Story Arc is its
           existing component home when one is used. <strong>Active Pressure</strong> is an older compatibility
           component for short-lived immediate pressure, assembled with Plot Essentials. They serve different
-          purposes; there is no separate Active Threads component today. The optional authored Arc Director remains
-          separate from this post-story evaluator.
+          purposes; there is no separate Active Threads component today. The old authored Arc Director is retired.
         </p>
       </>
     ),

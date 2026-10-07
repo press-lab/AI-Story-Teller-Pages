@@ -666,6 +666,8 @@ export interface Adventure {
 }
 
 export interface MemoryAutoApproveSettings {
+  /** Story Director also requires each affected memory type to permit auto-approval. */
+  storyDirector: boolean;
   summaryUpdate: boolean;
   plotEssentialsUpdate: boolean;
   currentArcUpdate: boolean;

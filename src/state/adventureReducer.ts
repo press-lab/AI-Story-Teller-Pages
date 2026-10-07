@@ -721,15 +721,8 @@ function sanitizeProposal(proposal: MemoryProposal): MemoryProposal | null {
   // summaryUpdate with blank content would immediately overwrite the real summary — hard drop
   if (proposal.proposedType === "summaryUpdate" && !content) return null;
 
-  // arcProposal: content must be JSON carrying a non-empty premise, or the seed is meaningless
-  if (proposal.proposedType === "arcProposal") {
-    try {
-      const parsed = JSON.parse(content) as Record<string, unknown>;
-      if (typeof parsed.arcPremise !== "string" || !(parsed.arcPremise as string).trim()) return null;
-    } catch {
-      return null;
-    }
-  }
+  // Retired Arc Director proposals cannot be created or approved, including old saves.
+  if (proposal.proposedType === "arcProposal") return null;
 
   // brainUpdate: if the content looks like JSON, validate it has at least one recognised field
   if (proposal.proposedType === "brainUpdate" && content.startsWith("{")) {

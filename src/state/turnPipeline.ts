@@ -146,12 +146,7 @@ export async function applyProviderResponse({
 
   next = applyRuntimeEngines(next, { source: "output", text: finalContent });
 
-  // Arc Director: count only Story Card / Brain ids whose trigger patterns matched turn text.
-  // Pinned or always-on context can be included without counting as engagement.
-  const triggeredIds = preProviderContext.triggeredThreadIds;
-  if (advanceArcPacing && triggeredIds.length > 0) {
-    next = adventureReducer(next, { type: "ADVANCE_ARC_PACING", triggeredIds, turn: next.activeState.turn });
-  }
+  // Retired Arc Director: accepted turns no longer advance authored pacing.
 
   if (incrementTurn) {
     next = adventureReducer(next, { type: "INCREMENT_TURN" });

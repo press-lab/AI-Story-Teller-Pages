@@ -89,7 +89,7 @@ export function applyAIMemoryUpdate(adventure: Adventure, updates: AIMemoryUpdat
         rejectedUpdates.push(reject(update, "Invalid or stale canon reconciliation."));
         continue;
       }
-      const review = adventure.semanticEvaluationSettings.requireApprovalForAutoUpdates || update.batch.edits.some(e =>
+      const review = adventure.memoryAutoApprove.storyDirector !== true || adventure.semanticEvaluationSettings.requireApprovalForAutoUpdates || update.batch.edits.some(e =>
         e.kind === "relationship" || (e.kind === "storyCard" && !adventure.memoryAutoApprove.storyCard)
         || (e.kind === "brain" && !adventure.memoryAutoApprove.brainUpdate)
         || (e.kind === "component" && !(adventure.components.find(c => c.id === e.id)?.type === "currentArc" ? adventure.memoryAutoApprove.currentArcUpdate : adventure.components.find(c => c.id === e.id)?.type === "activePressure" ? adventure.memoryAutoApprove.plotPressureUpdate : adventure.memoryAutoApprove.plotEssentialsUpdate)));

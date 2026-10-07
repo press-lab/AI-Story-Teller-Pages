@@ -6,11 +6,11 @@ export function StoryDirectorPanel({ adventure, dispatch }: { adventure: Adventu
   const state = currentDirector(adventure);
   const batches = adventure.activeState.canonBatches ?? [];
   return <details className="editor-card">
-    <summary>Story state · Play Loop {playLoopSuspended(adventure) ? 'suspended' : 'active'}</summary>
+    <summary>Story Director · {batches.filter(b => b.status === 'pending').length} pending · Play Loop {playLoopSuspended(adventure) ? 'suspended' : 'active'}</summary>
     <p>{directorEnabled(adventure) ? 'Evaluates accepted story events after generation. No planned beats or ending.' : 'Designate a custom component as the Play Loop to enable story-state evaluation.'}</p>
     <p>{state?.reason ?? 'Normal sandbox play.'}</p>
     {state?.threads.map(t => <p key={t.id}><strong>{t.mode} · {t.id}</strong><br />{t.reason}<br /><q>{t.evidence}</q></p>)}
-    <p>Canon replacements respect memory approval settings. Relationship changes always require review. Detailed decisions and failures are in Triggers → evaluation logs.</p>
+    <p>Replacements wait for approval unless Story Director auto-approval and every affected memory type allow automatic changes. Require approval for auto-updates overrides these toggles. Relationship changes always require review. Detailed decisions and failures are in Triggers → evaluation logs.</p>
     {batches.map(b => <details key={b.id}>
       <summary>Canon reconciliation · {b.status} · {b.edits.length} owners</summary>
       {b.edits.map(e => <div key={`${e.kind}:${e.id}:${e.relationshipId ?? ''}`}>

@@ -1120,7 +1120,7 @@ describe("adventureReducer", () => {
     expect(tophCards[0].keys).toContain("Beifong"); // a sparse update must not strip existing aliases
   });
 
-  it("approving an arcProposal seeds the Current Arc simmering and banks the old arc", () => {
+  it("does not approve a retired Arc Director proposal loaded from an old save", () => {
     const arcComp = makeComponent({
       id: "component-arc",
       title: "Current Arc",
@@ -1146,23 +1146,17 @@ describe("adventureReducer", () => {
       }),
     });
 
-    state = reduce(state, { type: "ADD_MEMORY_PROPOSAL", proposal: arcProposal });
-    expect(state.activeState.memoryProposals.find((p) => p.id === "proposal-arc")?.status).toBe("pending");
+    state = { ...state, activeState: { ...state.activeState, memoryProposals: [arcProposal] } };
 
     state = reduce(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: "proposal-arc" });
 
     const seeded = state.components.find((c) => c.id === "component-arc");
-    expect(seeded?.arcPremise).toBe("Azula moves against the throne from the shadows");
-    expect(seeded?.arcPace).toBe("epic");
-    expect(seeded?.arcThreadKeys).toEqual(["card-azula"]);
-    expect(seeded?.arcState?.phase).toBe("simmer");
-    expect(seeded?.arcState?.tier).toBe(0);
-    expect(seeded?.content).toBe("");
-    // Old arc banked as a Story Card so prior arcs are preserved.
-    expect(state.storyCards.some((card) => card.content.includes("Renzan conspiracy was broken"))).toBe(true);
+    expect(seeded).toEqual(arcComp);
+    expect(state.activeState.memoryProposals[0].status).toBe('pending');
+    expect(state.storyCards.some((card) => card.content.includes("Renzan conspiracy was broken"))).toBe(false);
   });
 
-  it("auto-approves arcProposal when enabled", () => {
+  it("rejects new Arc Director proposals even when legacy auto-approval is enabled", () => {
     const arcComp = makeComponent({
       id: "component-arc",
       title: "Current Arc",
@@ -1193,11 +1187,8 @@ describe("adventureReducer", () => {
       }),
     });
 
-    expect(state.components.find((component) => component.id === "component-arc")?.arcPremise).toBe(
-      "Azula moves against the throne from the shadows",
-    );
-    expect(state.activeState.memoryProposals.find((proposal) => proposal.id === "proposal-arc-auto")?.status).toBe("approved");
-    expect(state.activeState.memoryProposals.some((proposal) => proposal.id === "proposal-arc-auto" && proposal.status === "pending")).toBe(false);
+    expect(state.components.find((component) => component.id === "component-arc")).toEqual(arcComp);
+    expect(state.activeState.memoryProposals.some((proposal) => proposal.id === "proposal-arc-auto")).toBe(false);
   });
 
   it("drops an arcProposal whose content is not valid arc JSON", () => {

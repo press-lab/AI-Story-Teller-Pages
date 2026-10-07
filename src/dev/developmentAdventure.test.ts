@@ -25,7 +25,7 @@ describe("development adventure seed", () => {
     );
   });
 
-  it("ships a configured Arc Director on the Current Story Arc", () => {
+  it("preserves legacy Arc Director data without sending its directions", () => {
     const adventure = createDevelopmentAdventure();
     const arc = adventure.components.find((component) => component.type === "currentArc");
 
@@ -41,7 +41,7 @@ describe("development adventure seed", () => {
     const result = buildContext(adventure, { currentInput: "Setu reports to the palace." });
     const arcText = result.sections.find((section) => section.id === "currentArc")?.items.map((item) => item.content).join("\n") ?? "";
     expect(arcText).not.toContain(arc?.arcBreakInstruction ?? "NO BREAK");
-    expect(arcText).toContain(arc?.arcSimmerInstruction ?? "NO SIMMER");
+    expect(arcText).not.toContain(arc?.arcSimmerInstruction ?? "NO SIMMER");
   });
 
   it("builds inspectable context with triggered cards, brains, and summary", () => {

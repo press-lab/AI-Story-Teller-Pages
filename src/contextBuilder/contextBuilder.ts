@@ -458,22 +458,12 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
       logExcludedOnce(component.id, component.title, "inactive");
       return [];
     }
-    // Arc Director phase gate: the simmer instruction is injected while building;
-    // the break (cost) instruction is withheld from context entirely until the phase
-    // reaches "break", so the model cannot land the climax early on something it never sees.
-    const phase = component.arcState?.phase ?? "simmer";
-    const phaseDirection =
-      phase === "break"
-        ? component.arcBreakInstruction?.trim()
-        : phase === "simmer" || phase === "escalate"
-          ? component.arcSimmerInstruction?.trim()
-          : undefined;
-    if (!component.content.trim() && !component.arcPremise?.trim() && !phaseDirection) return [];
+    // Legacy Arc Director pacing is retained in saves but never sent to the model.
+    if (!component.content.trim() && !component.arcPremise?.trim()) return [];
     const premiseHeader = component.arcPremise?.trim() ? `[Arc Premise: ${component.arcPremise.trim()}]\n` : "";
-    const directionBlock = phaseDirection ? `\n\n[ARC DIRECTION — ${phase.toUpperCase()}]\n${phaseDirection}` : "";
-    const arcContent = premiseHeader + (component.content.trim() || "(no entries yet)") + directionBlock;
+    const arcContent = premiseHeader + (component.content.trim() || "(no entries yet)");
     const next = item(component.id, "component", component.title, arcContent, component.priority, component.protected, component.pinned, component.active, component.inclusionPolicy, "user");
-    pushIncluded(next, `Current Story Arc loaded; priority=${component.priority}; arcPhase=${phase}.`);
+    pushIncluded(next, `Current Story Arc loaded; priority=${component.priority}.`);
     return [next];
   });
 
@@ -811,7 +801,7 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
   const finalRecentMessages = recentMessages.filter((message) => finalRecentMessageIds.has(message.id));
 
   const pendingProposals: MemoryProposal[] = adventure.activeState.memoryProposals.filter(
-    (proposal) => proposal.status === "pending",
+    (proposal) => proposal.status === "pending" && proposal.proposedType !== "arcProposal",
   );
 
   return {

@@ -94,6 +94,7 @@ export const defaultMemoryDetectionSettings: MemoryDetectionSettings = {
 };
 
 export const defaultMemoryAutoApproveSettings: MemoryAutoApproveSettings = {
+  storyDirector: false,
   summaryUpdate: false,
   plotEssentialsUpdate: false,
   currentArcUpdate: false,

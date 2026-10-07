@@ -118,6 +118,8 @@ describe('atomic canon reconciliation', () => {
   });
   it('keeps dynamic sentiment in its enrolled owner and archives superseded thoughts', () => {
     const a = base();
+    a.memoryAutoApprove = { ...a.memoryAutoApprove, storyDirector: true, storyCard: true, brainUpdate: true, relationshipUpdate: true };
+    a.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
     const b = makeBrain({ id: 'mara', characterName: 'Mara', thoughts: { suspect: 'I suspect the captain.' }, relationships: [{ id: 'pair', focus: 'Track Star', focusStoryCardId: 'star', current: { bond: 'teammate', status: 'active', dimensions: { trust: 'trusts him' } }, revision: 0, history: [], recalledHistoryIds: [] }] });
     a.brains = [b];
     const batch = parseCanonBatch(a, { edits: [edit(), { ...edit('brain', 'mara'), thoughts: { response: 'His confession changes everything.' } }, { ...edit('relationship', 'mara'), relationshipId: 'pair', relationship: { bond: 'teammate', status: 'active', dimensions: { trust: 'distrusts him after hearing the confession' } }, knowledgeEvidence: 'Mara hears Track Star confess.' }] });
@@ -222,6 +224,46 @@ describe('Lock from Story Director', () => {
   it('preserves the lock through component JSON import', () => {
     const result = parseComponentsJson(JSON.stringify([{ type: 'plotEssentials', title: 'Plot Essentials', content: 'Truth.', lockFromStoryDirector: true }]));
     expect(result.components[0].component.lockFromStoryDirector).toBe(true);
+  });
+});
+describe('Story Director auto-approval', () => {
+  it.each([
+    [false, false, false, 'pending'],
+    [false, true, false, 'pending'],
+    [true, false, false, 'pending'],
+    [true, true, false, 'applied'],
+    [true, true, true, 'pending'],
+  ] as const)('director=%s cards=%s requireReview=%s produces %s', (storyDirector, storyCard, requireReview, status) => {
+    const a = base();
+    a.memoryAutoApprove = { ...a.memoryAutoApprove, storyDirector, storyCard };
+    a.semanticEvaluationSettings.requireApprovalForAutoUpdates = requireReview;
+    const batch = parseCanonBatch(a, { edits: [edit()] });
+    const n = applyAIMemoryUpdate(a, [{ type: 'canonReconciliation', batch }]).actions.reduce(adventureReducer, a);
+    expect(n.activeState.canonBatches?.[0].status).toBe(status);
+    expect(n.storyCards[0].content).toBe(status === 'applied' ? edit().content : a.storyCards[0].content);
+    if (status === 'pending') {
+      const approved = adventureReducer(n, { type: 'REVIEW_CANON_BATCH', batchId: batch.id, approve: true });
+      expect(approved.activeState.canonBatches?.[0].status).toBe('applied');
+    }
+  });
+  it('requires every affected type to allow auto-approval and preserves item locks', () => {
+    const a = base();
+    a.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
+    a.memoryAutoApprove = { ...a.memoryAutoApprove, storyDirector: true, storyCard: true, currentArcUpdate: false };
+    const batch = parseCanonBatch(a, { edits: [edit(), edit('component', 'arc', 'The traitor is exposed.')] });
+    const run = (input: Adventure) => applyAIMemoryUpdate(input, [{ type: 'canonReconciliation', batch }]).actions.reduce(adventureReducer, input);
+    expect(run(a).activeState.canonBatches?.[0].status).toBe('pending');
+    a.memoryAutoApprove.currentArcUpdate = true;
+    expect(run(a).activeState.canonBatches?.[0].status).toBe('applied');
+    a.storyCards[0].lockFromStoryDirector = true;
+    expect(run(a).storyCards[0].content).toBe(a.storyCards[0].content);
+    expect(run(a).activeState.canonBatches ?? []).toHaveLength(0);
+  });
+  it('defaults old and new adventures to explicit Story Director approval', () => {
+    expect(base().memoryAutoApprove.storyDirector).toBe(false);
+    const old = base();
+    delete (old.memoryAutoApprove as Partial<typeof old.memoryAutoApprove>).storyDirector;
+    expect(normalizeAdventure(old).memoryAutoApprove.storyDirector).toBe(false);
   });
 });
 describe('post-generation integration', () => {
