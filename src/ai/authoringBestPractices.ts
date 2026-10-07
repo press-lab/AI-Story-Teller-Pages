@@ -13,10 +13,8 @@
  * Reconcile established changes at the owner, remove stale live copies, preserve history,
  * and run the reference's overlap audit. Never equate NPC belief or a plan with fact.
  *
- * The strings/functions below are EXISTING EXECUTABLE PROMPT INPUTS. This documentation
- * revision intentionally preserves them and all mutation policies. Some narrower premise,
- * always-true and historical-retirement wording remains an implementation gap documented
- * in the reference; changing those strings would change generation behavior.
+ * The strings below are executable authoring prompts. Keep their ownership guidance
+ * aligned with the current Play Loop and post-generation reconciliation behavior.
  */
 import type { StoryCardMemoryMode } from "../types/adventure";
 
@@ -27,14 +25,14 @@ export const betterRepositoryGuideSources = [
 ];
 
 export const AI_INSTRUCTIONS_BEST_PRACTICES = `AI Instructions best practices:
-- Use AI Instructions for global behavior, genre, drift prevention, scene loop, and prose rules.
+- Use AI Instructions for stable scenario behavior, genre, drift prevention, and prose rules. Keep the repeatable sandbox scene loop in the designated Play Loop custom component so it can be temporarily omitted during earned progression.
 - Do not store character facts, location facts, relationship facts, current mission state, or backstory here.
 - Keep them scenario-specific and non-redundant with Narration Rules.
 - Prefer named sections with a few concrete bullets over one large lore paragraph.
 - Per-character voice belongs on that character's Story Card, not in AI Instructions.`;
 
 export const PLOT_ESSENTIALS_BEST_PRACTICES = `Plot Essentials best practices:
-- Plot Essentials hold the overarching premise, central long-term conflict, and persistent story-wide constraints. The ongoing storyline and pacing belong in Current Arc; immediate scene beats stay in the transcript.
+- Plot Essentials hold compact current operating truth, premise, and persistent constraints needed in nearly every plausible next response. Current Arc owns an active larger thread when used; immediate scene beats stay in the transcript. Do not put a plot beat plan here.
 - They are always-on context, so keep them short and non-redundant.
 - Change this block only when those foundations materially change. Preserve still-valid foundations; do not append a chronological log.
 - Replaced text remains in component history. Removing a fact is not evidence for a historical event card.
@@ -62,9 +60,16 @@ export const PLOT_MEMORY_THRESHOLD = `Plot and relationship memory threshold:
 - Prefer updating the existing subject over a sibling card. If the fact is already captured in canon or a proposal, omit it even when a different title would describe it.
 - A casual offer is not a binding pact. Preserve an explicitly accepted consequential commitment, but never promote a tentative plan into a completed event or obligation.`;
 
+export const PLAY_LOOP_BEST_PRACTICES = `Play Loop best practices:
+- New adventures already include one designated Play Loop custom component. Do not create a second loop or embed its repeatable sandbox instructions in Narration Rules or AI Instructions.
+- Use it for ordinary life, NPC autonomy, incidental scenes, dormant possibilities, and low forced payoff velocity. Edit that existing component in Components if the scenario needs a specific mission rhythm.
+- It is included during normal play, temporarily omitted after accepted story events demonstrate earned progression or closure, and restored when that need ends. Do not script beats, an ending, or a fixed turn count.`;
+
 export const ADVENTURE_GENERATION_BEST_PRACTICES = `${AI_INSTRUCTIONS_BEST_PRACTICES}
 
 ${PLOT_ESSENTIALS_BEST_PRACTICES}
+
+${PLAY_LOOP_BEST_PRACTICES}
 
 ${STORY_CARD_BEST_PRACTICES}
 

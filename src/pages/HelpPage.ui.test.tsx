@@ -39,6 +39,7 @@ describe("HelpPage documentation UI", () => {
       "Character Cards — Voice Contract",
       "Characters",
       "Current Story Arc",
+      "Play Loop and Story State",
       "World Blocks",
       "Context Preview",
       "Automations",
@@ -72,5 +73,15 @@ describe("HelpPage documentation UI", () => {
 
     expect(screen.getAllByText("Next Turn Note")[0]).toBeInTheDocument();
     expect(screen.getByText(/visible, token-counted, and expires after use by default/i)).toBeInTheDocument();
+  });
+
+  it("distinguishes active threads from compatibility Active Pressure", async () => {
+    const user = userEvent.setup();
+    render(<HelpPage />);
+
+    await user.type(screen.getByLabelText(/search docs/i), "active threads");
+    expect(screen.getAllByRole("link", { name: "Play Loop and Story State" })[0]).toBeInTheDocument();
+    expect(screen.getByText(/there is no separate Active Threads component today/i)).toBeInTheDocument();
+    expect(screen.getByText(/older compatibility component for short-lived immediate pressure/i)).toBeInTheDocument();
   });
 });

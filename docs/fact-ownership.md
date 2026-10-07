@@ -8,18 +8,20 @@ Distinguish objective facts, durable character traits and beliefs, transient tho
 
 ## Compact ownership reference
 
-- Narration Rules: primary per-adventure behavior contract. AI Instructions: optional separately organized scenario rules. Together they own agency, point of view, prose, formatting, continuity behavior, NPC autonomy, and pacing principles. Write each rule once.
+- Narration Rules: primary stable per-adventure behavior contract. AI Instructions: optional separately organized stable scenario rules. Together they own agency, point of view, prose, formatting, and continuity behavior. Write each rule once.
+- Play Loop: designated custom component for ordinary sandbox play, NPC autonomy, incidental scenes, and low forced payoff velocity. Its inclusion can be temporarily suspended without rewriting its text.
 - Plot Essentials: compact current operating truth, premise, and persistent constraints needed in nearly every plausible next response. Importance alone does not justify inclusion.
 - Character Story Card: the subject's identity, biography, durable psychology, capabilities, secrets, Voice Contract, and objective ties. Other Story Cards own their declared recurring subject or completed event.
 - Brain: evolving event-specific internal responses. Durability and scope decide ownership, not whether information is private or mental.
 - Enrolled directional relationship: authoritative structured current state for the mutable relationship dimensions it tracks. This is an explicit exception to the usual durable-character-card boundary.
-- Current Story Arc (currentArc): the active larger thread, its premise, developments, unresolved problems, consequences, and status. Arc Director fields separately own authored pacing and future direction.
+- Current Story Arc (currentArc): the existing component home for an active larger thread, its premise, developments, unresolved problems, consequences, and status. Arc Director fields separately own optional authored pacing and future direction. The post-story director tracks semantic mode and thread status for inclusion decisions, not a second canonical plot ledger.
+- Active Pressure: compatibility component for older short-lived immediate pressure; distinct from an active larger thread. It is not a recommended new component. There is no separate Active Threads component yet.
 - Author's Note: tone, style, and near-context direction; it can persist until edited. Next Output Bias: short-term steering, normally consumed after one successful generation.
 - Historical memory: Adventure Chronicle transcript, historical/event Story Cards, and existing update/thought/relationship archives explain how the present arose without competing with current state.
 
 ## Narration Rules and AI Instructions
 
-These govern how to tell the story. They do not store biographies, mental profiles, power facts, world lore, current relationships, faction secrets, or active plot state. “Preserve the player's established capabilities” is a behavioral instruction; the capabilities and their mechanics belong on the character card. Do not repeat the same rule in both blocks. A scenario can keep all stable generation rules in Narration Rules and omit AI Instructions.
+These govern stable ways to tell the story. They do not store biographies, mental profiles, power facts, world lore, current relationships, faction secrets, or active plot state. “Preserve the player's established capabilities” is a behavioral instruction; the capabilities and their mechanics belong on the character card. Do not repeat the same rule in both blocks. A scenario can keep all stable generation rules in Narration Rules and omit AI Instructions. Keep the repeatable sandbox/mission loop in the designated Play Loop custom component so it can yield temporarily when the accepted story earns progression or closure.
 
 ## Plot Essentials
 
@@ -61,7 +63,7 @@ Enrollment offers overlap-review hints, not automatic rewriting of authored text
 
 Current Story Arc owns the active larger thread: premise, relevant developments, unresolved problems, consequences, and current arc status. Reference characters and factions without reproducing their biographies, durable motivations, or lore. Distinguish established facts from the running record of developments and from authored future direction.
 
-The existing currentArc update path appends developments to a running log; it is not replacement-based. Mark resolutions clearly and use existing editing/reconciliation controls to retire misleading current assertions while preserving useful history. Do not erase valid earlier developments merely because they are no longer current problems.
+The older premise-filtered currentArc update path appends developments to a running log. The newer post-story reconciliation path can replace obsolete live arc content and clear a resolved arc after accepted events. Preserve useful earlier developments as history without keeping resolved problems as active assertions. Neither path makes Current Arc a mandatory plot planner.
 
 Arc Director engagement counting remains deterministic: matching selected Story Card/Brain IDs advances counts, not an LLM judgment of drama. Multiple selected matches in a turn can count separately. Phases are simmer, escalate, break, aftermath. Simmer/escalate expose the authored simmer instruction; only break exposes the gated break instruction; aftermath exposes neither. Ask/Auto controls and manual phase controls retain their existing behavior.
 
@@ -71,9 +73,9 @@ Authored pacing and future direction are instructions, not events that have alre
 
 Author's Note may persist until edited; it is not automatically a one-turn note. Next Output Bias normally expires after one successful generation, with its existing expiration setting controlling that behavior. Clear or revise temporary pressure when resolved. Neither should become permanent lore, character profiles, or relationship state.
 
-Active Pressure is a compatibility surface, not a standard new component. Existing entries remain editable/filterable in Components and retain update controls. Active entries assemble alongside Plot Essentials in section C, not in an independent pressure section; existing pressure proposals replace the targeted existing entry. Do not recommend creating it for new scenarios. Immediate Momentum is a disabled legacy type and is not assembled into context.
+Active Pressure is a compatibility surface for older immediate pressure, not an active-thread ledger or a standard new component. Existing entries remain editable/filterable in Components and retain update controls. Active entries assemble alongside Plot Essentials in section C, not in an independent pressure section; existing pressure proposals replace the targeted existing entry. Do not recommend creating it for new scenarios. Immediate Momentum is a disabled legacy type and is not assembled into context.
 
-Custom components need a specific declared purpose, such as a reusable mission loop. They must not become catch-all copies of cards, Plot Essentials, Brains, or Current Story Arc. General custom context is included by its existing always-on/pinned controls and budget rules.
+Custom components need a specific declared purpose. New adventures already have one designated Play Loop; edit it for a specific mission rhythm rather than creating a second loop or putting repeatable loop text in permanent AI Instructions. The post-generation evaluator may omit the designated component when accepted events warrant progression or closure, then restore it. General custom context retains its normal inclusion controls and budget rules. Custom blocks must not become catch-all copies of cards, Plot Essentials, Brains, or Current Story Arc.
 
 ## Historical memory
 
@@ -128,10 +130,10 @@ Before: a defeated antagonist remains an active threat in several blocks, with �
 
 ## Implementation limits
 
-These are authoring recommendations, not new automation guarantees. The narrow componentUpdate helper in src/memory/applyAIMemoryUpdate.ts permits Plot Essentials only; typed reducer proposal paths separately handle Current Story Arc and existing Active Pressure. Configured semantic rules retain their approval/direct-write choices. No new write authority is granted here. No saves are migrated by this guidance. Existing generators, prompts, mutation policies, persistence, and approval settings remain unchanged.
+The narrow componentUpdate helper in src/memory/applyAIMemoryUpdate.ts still permits Plot Essentials only. Older typed proposal paths separately handle Current Story Arc and existing Active Pressure. The post-story director adds a validated replacement-batch path for existing Plot Essentials, Current Arc, compatibility Active Pressure, nonhistorical Story Cards, existing Brain thoughts, and enrolled directional relationships. It never writes behavioral components, authored Arc Director pacing, or historical records. Relationship changes always require review; other edits follow the configured approval settings. No new owner is created automatically. See [Story-led progression and canon reconciliation](./story-director.md) for exact scope, failure behavior, and test limits.
 
-src/ai/authoringBestPractices.ts and its consumers still contain executable guidance using narrower premise language and “always-true” terminology. src/ai/generators.ts can draft broader Brain material. Review generated setup against this reference; documentation does not silently change generation prompts.
+Executable authoring guidance in src/ai/authoringBestPractices.ts, src/ai/adventureGen.ts, and src/ai/generators.ts now directs repeatable play behavior to the existing designated Play Loop. Review generated setup against this reference; the model can still produce imperfect drafts.
 
-src/state/adventureReducer.ts retains additive Story Card paths, bounded living-card merge/archive behavior, and append-based currentArcUpdate. Those operations do not guarantee semantic removal of obsolete current claims. src/triggers/semanticEngine.ts retains model-assisted validation, targeted reconciliation and the linked storyCardNote path; these do not establish objective truth or reconcile every owner automatically.
+src/state/adventureReducer.ts retains additive Story Card paths, bounded living-card merge/archive behavior, and append-based currentArcUpdate for older workflows. Those operations alone do not guarantee removal of obsolete claims. The separate post-story batch performs bounded owner replacement when its evidence, snapshot, and approval checks pass. src/triggers/semanticEngine.ts retains model-assisted validation, targeted reconciliation and the linked storyCardNote path; these do not establish objective truth or reconcile every owner automatically.
 
 src/contextBuilder/contextBuilder.ts assembles Brain thoughts and eligible structured relationships, not legacy currentState/relationshipPressure/recentDevelopments blobs. Legacy anchor data can still influence Brain-update prompts in src/triggers/semanticEngine.ts; do not author a second durable profile there. Enrollment overlap hints and existing dedup tools are review aids, not proof of complete overlap detection. For workflow detail, see docs/dynamic-relationships.md, docs/memory-update-quality.md, and docs/memory-reconcile-automation-context.md.

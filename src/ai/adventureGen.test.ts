@@ -138,4 +138,19 @@ describe("runAdventureGen", () => {
     expect(userPrompt).toContain("explicit opt-in adult layer");
     expect(userPrompt).toContain("Boundaries and limits to respect: No fade to black.");
   });
+
+  it("routes mission-loop authoring to the existing designated component", async () => {
+    vi.mocked(sendOpenAICompatibleChatCompletion).mockResolvedValue({
+      content: JSON.stringify({ title: "Mission", openingScene: "", components: [], storyCards: [] }),
+      usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+      raw: {},
+    });
+
+    await runAdventureGen("A crew takes assignments", config, { storyShape: "missionLoop" });
+
+    const request = vi.mocked(sendOpenAICompatibleChatCompletion).mock.calls[0][0];
+    expect(request.messages[0].content).toContain("A designated Play Loop custom component is already supplied by the app");
+    expect(request.messages[0].content).toContain("Do not generate another loop component");
+    expect(request.messages[1].content).toContain("Do not create a second loop or embed repeatable loop rules in AI Instructions");
+  });
 });

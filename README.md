@@ -95,7 +95,7 @@ The Context Preview page shows:
 - **Plot Essentials**: tiny always-on current operating truth: what is happening now, open tensions, obligations, and major constraints that should shape every scene. PE replacement proposals overwrite the block; outgoing facts become pending historical Story Card proposals for review. Section C.
 - **Immediate Momentum**: disabled legacy component type. It is not generated, imported, auto-updated, or sent to the model.
 - **Narration Rules**: the primary per-adventure behavior contract, copied from defaults but editable during creation and afterward. Loaded with the system shell before other context.
-- **AI Instructions**: optional persistent scenario-specific behavior rules in section B. Use them for genre, drift prevention, scene-loop, and prose contracts, not facts. They are not required when Narration Rules already contain the complete stable contract. Avoid duplicating the same rule across both surfaces. AI must not modify these.
+- **AI Instructions**: optional persistent scenario-specific behavior rules in section B. Use them for stable genre, drift prevention, and prose contracts, not facts or the repeatable sandbox loop. The designated Play Loop custom component owns that loop so it can be temporarily excluded during earned progression or closure. AI Instructions are unnecessary when Narration Rules already contain the complete stable contract. Avoid duplicating rules. Autonomous AI updates cannot modify these.
 - **Author's Note**: author-layer mood or tonal constraints. Section D. AI must not modify these.
 - **Memory Inbox / Proposals**: `activeState.memoryProposals`, where AI-suggested durable memories wait for user approval. Pending proposals appear in Context Preview but are not model context. Approving converts them to Story Cards, Brain updates, Plot Essentials edits, or legacy Summary updates through reducer actions.
 - **Protected**: non-droppable during token truncation. `aiInstructions`, `plotEssentials`, and `authorNote` components are protected by default.
@@ -111,17 +111,22 @@ If added later, Memory Bank entries must be their own visible context section wi
 
 ## AI Mutation Boundaries
 
-AI-generated memory updates may only become reducer actions through `applyAIMemoryUpdate`.
+AI-generated memory updates use validated reducer actions. The narrow component
+update helper, older typed proposals, and post-story replacement batches have
+different target sets and approval checks.
 
 Allowed AI update targets:
 
 - BrainEntry fields
 - StoryCard content, triggers, and state
-- ComponentEntry content only when `component.type === "plotEssentials"`
+- Plot Essentials content through the narrow component-update helper
+- Existing Current Arc and compatibility Active Pressure through typed update/proposal paths
+- Existing eligible state owners through the post-story replacement batch (including enrolled directional relationship state, which always requires review)
 
 Rejected AI update targets:
 
-- AI Instructions and Author's Note components
+- Narration Rules, AI Instructions, Author's Note, and designated Play Loop components
+- authored Arc Director pacing and historical records
 - provider/model config
 - trigger rule definitions
 - quest definitions
