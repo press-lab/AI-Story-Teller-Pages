@@ -1,4 +1,4 @@
-import type { CanonBatch, StoryDirectorState } from '../memory/storyDirectorState';
+import type { CanonBatch, StoryDirectorEvaluation, StoryDirectorState } from '../memory/storyDirectorState';
 export type ISODateString = string;
 export type JsonObject = Record<string, unknown>;
 
@@ -613,6 +613,8 @@ export interface StoryEditHistoryEntry {
 
 export interface ActiveState {
   storyDirector?: StoryDirectorState;
+  /** Complete per-response evaluation history for reviewing Story Director against the play transcript. */
+  storyDirectorEvaluations?: StoryDirectorEvaluation[];
   canonBatches?: CanonBatch[];
   turn: number;
   forceIncludeNextTurn: ForceIncludeEntry[];
@@ -873,6 +875,7 @@ export type AdventureAction =
   | { type: "MARK_TRIGGER_FIRED"; triggerRuleId: string; turn: number }
   | { type: "LOG_TRIGGER_FIRE"; entry: TriggerLogEntry }
   | { type: "LOG_EVALUATION_RESULT"; entry: EvaluationLogEntry }
+  | { type: "RECORD_STORY_DIRECTOR_EVALUATION"; evaluation: StoryDirectorEvaluation }
   | { type: "FORCE_INCLUDE_NEXT_TURN"; targetType: ForceIncludeTargetType; targetId: string }
   | { type: "ADD_RAW_IMPORT"; rawImport: RawImportEntry }
   | { type: "UPDATE_RAW_IMPORT"; rawImportId: string; patch: Partial<RawImportEntry> }

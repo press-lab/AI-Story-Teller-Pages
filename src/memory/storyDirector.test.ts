@@ -5,11 +5,12 @@ import { createDefaultAdventure, makeBrain, makeComponent, makeStoryCard, normal
 import { adventureReducer } from '../state/adventureReducer';
 import { buildContext } from '../contextBuilder/contextBuilder';
 import { applyAIMemoryUpdate } from './applyAIMemoryUpdate';
-import { currentDirector, isPlayLoop, playLoopSuspended, ownerSnapshot } from './storyDirectorState';
+import { currentDirector, isPlayLoop, playLoopSuspended, ownerSnapshot, storyDirectorSourceFingerprint } from './storyDirectorState';
 import { evaluateStoryDirector, parseCanonBatch, parseStoryState, reconciliationOwners, recentDirectorMessages, RECONCILE_PROMPT, STORY_STATE_PROMPT } from './storyDirector';
 import { parseComponentsJson } from '../importers/componentParser';
 import { sendOpenAICompatibleChatCompletion } from '../providers/openAICompatible';
 import { runTurnPipeline } from '../state/turnPipeline';
+import { exportAdventureJson, importAdventureJson } from '../utils/json';
 import type { Adventure } from '../types/adventure';
 vi.mock('../providers/openAICompatible', () => ({ sendOpenAICompatibleChatCompletion: vi.fn() }));
 const event = 'Track Star admits the betrayal and hands over the original orders. Mara hears Track Star confess.';
@@ -267,6 +268,18 @@ describe('Story Director auto-approval', () => {
   });
 });
 describe('post-generation integration', () => {
+  it('retains evaluation history beyond the capped diagnostic log and replaces a repeated source verdict', () => {
+    let a = base();
+    const evaluation = { sourceMessageId: 'accepted', sourceContentFingerprint: storyDirectorSourceFingerprint(event), turn: 1, createdAt: '2026-01-01T00:00:00.000Z',
+      changes: [], playLoopSuspended: false, reconciliation: { status: 'notRequested' as const }, errors: [], usage: { promptTokens: 0, completionTokens: 0 } };
+    for (let turn = 0; turn < 120; turn++) {
+      a = adventureReducer(a, { type: 'RECORD_STORY_DIRECTOR_EVALUATION', evaluation: { ...evaluation, sourceMessageId: `turn-${turn}`, turn } });
+    }
+    a = adventureReducer(a, { type: 'RECORD_STORY_DIRECTOR_EVALUATION', evaluation: { ...evaluation, sourceMessageId: 'turn-30', turn: 999 } });
+    expect(a.activeState.storyDirectorEvaluations).toHaveLength(120);
+    expect(a.activeState.storyDirectorEvaluations?.find(e => e.sourceMessageId === 'turn-30')?.turn).toBe(999);
+    expect(a.activeState.storyDirectorEvaluations?.[0].sourceMessageId).toBe('turn-0');
+  });
   it('evaluates accepted output, reconciles only meaningful developments, and accounts usage', async () => {
     const a = base();
     vi.mocked(sendOpenAICompatibleChatCompletion).mockResolvedValueOnce({ content: JSON.stringify({ ...verdict('CLOSURE'), changes: [{ change: 'CANON_COMMIT', evidence: event, reason: 'Established betrayal' }] }), raw: {}, usage: { promptTokens: 10, completionTokens: 20, totalTokens: 30 } }).mockResolvedValueOnce({ content: JSON.stringify({ edits: [edit()] }), raw: {} });
@@ -275,6 +288,17 @@ describe('post-generation integration', () => {
     expect(sendOpenAICompatibleChatCompletion).toHaveBeenCalledTimes(2);
     expect(n.activeState.backgroundTokenUsage.promptTokens).toBe(10);
     expect(n.activeState.canonBatches?.[0].status).toBe('pending');
+    const recorded = n.activeState.storyDirectorEvaluations?.[0];
+    expect(recorded).toMatchObject({ sourceMessageId: 'accepted', turn: a.activeState.turn, playLoopSuspended: true,
+      changes: [{ change: 'CANON_COMMIT', evidence: event }], reconciliation: { status: 'batch', batchId: n.activeState.canonBatches?.[0].id, editCount: 1 },
+      usage: { promptTokens: 10, completionTokens: 20 } });
+    expect(recorded?.verdict?.threads[0].mode).toBe('CLOSURE');
+    expect(JSON.stringify(recorded)).not.toContain('Track Star is loyal.');
+    const restored = importAdventureJson(exportAdventureJson(n));
+    expect(restored.activeState.storyDirectorEvaluations).toEqual(n.activeState.storyDirectorEvaluations);
+    const edited = adventureReducer(n, { type: 'UPDATE_MESSAGE', messageId: 'accepted', content: 'The betrayal did not happen.' });
+    expect(storyDirectorSourceFingerprint(edited.messages.find(m => m.id === 'accepted')!.content)).not.toBe(recorded?.sourceContentFingerprint);
+    expect(edited.activeState.storyDirectorEvaluations?.[0].sourceContentFingerprint).toBe(recorded?.sourceContentFingerprint);
   });
   it('does not reconcile routine scenes and fails open without losing accepted prose', async () => {
     const a = base();
@@ -283,6 +307,26 @@ describe('post-generation integration', () => {
     expect(n.messages).toEqual(a.messages);
     expect(playLoopSuspended(n)).toBe(false);
     expect(n.activeState.evaluationLog[0].errors).toContain('offline');
+    expect(n.activeState.storyDirectorEvaluations?.[0]).toMatchObject({ sourceMessageId: 'accepted', reconciliation: { status: 'notRequested' }, errors: ['offline'] });
+  });
+  it('records a meaningful verdict even when reconciliation fails and play resumes normally', async () => {
+    const a = base();
+    vi.mocked(sendOpenAICompatibleChatCompletion)
+      .mockResolvedValueOnce({ content: JSON.stringify({ ...verdict('CLOSURE'), changes: [{ change: 'CANON_COMMIT', evidence: event, reason: 'Established betrayal' }] }), raw: {} })
+      .mockRejectedValueOnce(new Error('reconciliation offline'));
+    const n = (await evaluateStoryDirector(a, a.modelConfig)).reduce(adventureReducer, a);
+    expect(playLoopSuspended(n)).toBe(false);
+    expect(n.activeState.storyDirectorEvaluations?.[0]).toMatchObject({ verdict: { threads: [{ mode: 'CLOSURE' }] },
+      reconciliation: { status: 'failed' }, playLoopSuspended: false, errors: ['reconciliation offline'] });
+  });
+  it('records a reconciliation request that found no edits', async () => {
+    const a = base();
+    vi.mocked(sendOpenAICompatibleChatCompletion)
+      .mockResolvedValueOnce({ content: JSON.stringify({ ...verdict(), changes: [{ change: 'STATE_UPDATE', evidence: event, reason: 'Check owners' }] }), raw: {} })
+      .mockResolvedValueOnce({ content: JSON.stringify({ edits: [] }), raw: {} });
+    const n = (await evaluateStoryDirector(a, a.modelConfig)).reduce(adventureReducer, a);
+    expect(n.activeState.storyDirectorEvaluations?.[0].reconciliation).toEqual({ status: 'empty', editCount: 0 });
+    expect(n.activeState.canonBatches ?? []).toHaveLength(0);
   });
   it('runs after the narrative response and never on comms', async () => {
     const a = base(); a.memoryDetectionSettings.enabled = false;
@@ -293,6 +337,8 @@ describe('post-generation integration', () => {
     expect(accepted).toHaveBeenCalledOnce();
     expect(n.adventure.messages.at(-1)?.content).toBe('Mara orders lunch.');
     expect(sendOpenAICompatibleChatCompletion).toHaveBeenCalledTimes(1);
+    expect(n.adventure.activeState.storyDirectorEvaluations?.[0]).toMatchObject({ sourceMessageId: n.adventure.messages.at(-1)?.id,
+      verdict: { reason: 'Judge only what happened.', threads: [] }, changes: [], reconciliation: { status: 'notRequested' }, playLoopSuspended: false });
     vi.clearAllMocks();
     await runTurnPipeline({ adventure: a, text: 'OOC', mode: 'comms', providerConfig: a.modelConfig, sendChatCompletion: story });
     expect(sendOpenAICompatibleChatCompletion).not.toHaveBeenCalled();

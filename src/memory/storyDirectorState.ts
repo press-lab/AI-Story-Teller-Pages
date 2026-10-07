@@ -17,6 +17,33 @@ export interface StoryDirectorState {
   threads: StoryThread[];
   reason: string;
 }
+export interface StoryDirectorDetectedChange {
+  change: 'STATE_UPDATE' | 'CANON_COMMIT';
+  evidence: string;
+  reason: string;
+}
+/** One compact, persisted verdict per accepted assistant response. Story text stays in messages. */
+export interface StoryDirectorEvaluation {
+  sourceMessageId: string;
+  sourceContentFingerprint: string;
+  turn: number;
+  createdAt: string;
+  verdict?: Pick<StoryDirectorState, 'reason' | 'threads'>;
+  changes: StoryDirectorDetectedChange[];
+  playLoopSuspended: boolean;
+  reconciliation: { status: 'notRequested' | 'empty' | 'batch' | 'failed'; batchId?: string; editCount?: number };
+  errors: string[];
+  usage: { promptTokens: number; completionTokens: number };
+}
+/** Detect later edits to evaluated prose without copying the transcript into every record. */
+export function storyDirectorSourceFingerprint(content: string): string {
+  let hash = 2166136261;
+  for (let i = 0; i < content.length; i++) {
+    hash ^= content.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `${content.length}:${(hash >>> 0).toString(16)}`;
+}
 export interface CanonEdit {
   kind: 'component' | 'storyCard' | 'brain' | 'relationship';
   id: string;

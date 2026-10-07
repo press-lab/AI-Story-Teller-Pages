@@ -1544,6 +1544,16 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
           evaluationLog: [action.entry, ...state.activeState.evaluationLog].slice(0, 100),
         },
       });
+    case "RECORD_STORY_DIRECTOR_EVALUATION":
+      return touchAdventure(state, {
+        activeState: {
+          ...state.activeState,
+          storyDirectorEvaluations: [
+            ...(state.activeState.storyDirectorEvaluations ?? []).filter(entry => entry.sourceMessageId !== action.evaluation.sourceMessageId),
+            action.evaluation,
+          ],
+        },
+      });
     case "FORCE_INCLUDE_NEXT_TURN":
       return touchAdventure(state, {
         activeState: {
@@ -1867,6 +1877,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
           ...state.activeState,
           turn: 0,
           storyDirector: undefined,
+          storyDirectorEvaluations: [],
           canonBatches: [],
           forceIncludeNextTurn: [],
           triggerLog: [],
