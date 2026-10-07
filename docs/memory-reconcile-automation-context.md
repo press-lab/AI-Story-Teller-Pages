@@ -1,5 +1,7 @@
 # Memory Reconcile Automation Context
 
+Authoring reference: [Fact ownership and overlap audit](./fact-ownership.md).
+
 This note captures the July 2026 update prompted by the Arcane play save where resolved plot threads, especially Ambessa and broad Jinx-collaboration pressure, kept reappearing because active memory surfaces still described them as live.
 
 ## Problem
@@ -21,7 +23,7 @@ The Memory page now includes **Check Recent Entries**:
 - Resolved/removal wording applies deterministic patches such as unpinning, unprotecting, changing compact status to `resolved` or `superseded`, or deactivating removal targets.
 - The generated changes become normal Memory Suggestions. They are applied only through reducer approval/auto-approval behavior.
 
-This keeps the targeting deterministic while still using the AI for the part it is useful for: rewriting the memory content.
+This keeps targeting deterministic while using AI for proposed content. It does not search every possible duplicate or enforce unique ownership. Current Story Arc proposals still append developments; they are not replacement rewrites. Review the final live state and use existing editing controls to retire misleading assertions while preserving useful history. Enrolled relationships are not reconciled by this tool; edit/review their designated state separately. Durable psychology remains on cards, event-specific responses in Brains. Apply the ownership reference's reconciliation steps and overlap audit.
 
 ## Safety And Persistence Fixes
 

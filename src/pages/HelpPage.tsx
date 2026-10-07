@@ -1,4 +1,5 @@
 import { useMemo, useState, type ReactNode } from "react";
+import factOwnership from "../../docs/fact-ownership.md?raw";
 
 interface DocTopic {
   id: string;
@@ -205,8 +206,8 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
       <>
         <p>
           Characters manages Brain entries. Brains are opt-in and intended for major characters whose
-          internal state, emotional interpretation, relationship pressure, or recent developments should
-          evolve.
+          event-specific reactions should evolve. Durable psychology belongs on character cards;
+          enrolled directional relationships separately own their tracked mutable state.
         </p>
         <p>
           The system does not automatically create Brains for random characters. AI may update only
@@ -225,8 +226,9 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
       <>
         <p>
           <strong>Current Story Arc</strong> is a World Block component (type: Current Story Arc) that maintains a
-          running log of meaningful events in the active arc. Unlike Plot Essentials — which holds static world
-          constants — Current Story Arc grows as the story unfolds and gets retired when the arc resolves.
+          running log of meaningful events in the active larger thread. Plot Essentials holds compact current
+          operating truth needed nearly every response. Current Story Arc records developments, unresolved
+          problems and consequences, then becomes historical memory when complete.
         </p>
         <p>
           <strong>Arc Premise (required for auto-update):</strong> Seed the component with a one-line premise
@@ -237,8 +239,9 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
         </p>
         <p>
           <strong>Arc Log:</strong> Each auto-update appends 1–3 sentences capturing a specific arc
-          development. The log grows freely — no size limit — because it's designed to be completed and
-          moved out, not trimmed.
+          development. This remains an append-based running record, subject to context budgets.
+          Preserve useful past developments, but mark resolutions and edit misleading active assertions.
+          Authored pacing direction is separate from events that have actually happened.
         </p>
         <h4>Best Practices</h4>
         <ul>
@@ -247,22 +250,23 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
             arc beats. "The adventure continues" fires on everything — useless.
           </li>
           <li>
-            <strong>Leave it alone during play.</strong> Don't direct it. The point is that arc events
-            accumulate without your involvement. If the log fills with noise, tighten the premise.
+            <strong>Review current truth.</strong> Developments accumulate through existing update paths.
+            Tighten a noisy premise and reconcile stale assertions without deleting useful history.
+            Future direction must respect established outcomes and player agency.
           </li>
           <li>
-            <strong>Plot Essentials ≠ Current Arc.</strong> PE holds the overarching premise and persistent story-wide constraints. The arc holds the active conflict's running log and pacing gate.
+            <strong>Plot Essentials and Current Story Arc have distinct roles.</strong> PE owns compact near-universal operating truth; the arc owns the active larger thread and its running developments. Neither should copy character profiles or faction lore.
           </li>
           <li>
             <strong>Graduate when the arc resolves.</strong> When the arc has run its course, click
-            "Complete Arc → Story Card." This creates a permanent Story Card (type: plot) from the arc log
+            "Complete Arc → Story Card." This creates a historical Story Card (type: plot) from the arc log
             and clears the component for the next arc. The graduated card stays in context when triggered
             by relevant keywords — keeping the resolved arc as referenced backstory.
           </li>
           <li>
-            <strong>Auto-approval is on by default.</strong> Arc updates go through Memory Inbox but are
-            auto-approved, so they apply without you touching them. If you want to review each entry,
-            turn off "currentArcUpdate" in Memory Auto-Approve settings.
+            <strong>Approval follows your settings.</strong> New adventures default to review for arc updates;
+            saved explicit choices are preserved. Inspect "currentArcUpdate" in Memory Auto-Approve settings.
+            See <a href="#authoring-best-practices">fact ownership and reconciliation</a> for the overlap audit.
           </li>
         </ul>
       </>
@@ -434,7 +438,8 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
         <ol>
           <li>System Shell</li>
           <li>AI Instructions</li>
-          <li>Plot Essentials</li>
+          <li>Plot Essentials (including existing Active Pressure)</li>
+          <li>Current Story Arc</li>
           <li>Components</li>
           <li>Story Cards</li>
           <li>Brains</li>
@@ -501,7 +506,7 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
           <dt>Brains</dt>
           <dd>Opt-in state for major characters only. AI may update a Brain only if it already exists.</dd>
           <dt>Plot Essentials</dt>
-          <dd>Overarching premise, long-term conflict, and persistent story-wide constraints.</dd>
+          <dd>Compact current operating truth, premise, and constraints needed nearly every response. See <a href="#authoring-best-practices">fact ownership</a>.</dd>
           <dt>Memory Suggestions</dt>
           <dd>Pending proposals. Nothing in the inbox becomes active context until approved.</dd>
         </dl>
@@ -519,7 +524,7 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
         <p>Default routing rules:</p>
         <ul>
           <li>Durable recurring facts go to Story Cards.</li>
-          <li>Character-specific evolving internal state goes to Brains only for existing BrainEntries.</li>
+          <li>Event-specific internal responses go to existing Brains; durable psychology belongs on character cards. Enrolled relationships own their tracked mutable pair state.</li>
           <li>Tiny always-on current constraints go to Plot Essentials.</li>
           <li>Active arc history goes to Current Arc; immediate scene beats stay in the transcript.</li>
           <li>Ephemeral scenery, one-off room layouts, movement, and throwaway details are ignored.</li>
@@ -536,35 +541,22 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
     id: "authoring-best-practices",
     title: "Authoring Best Practices",
     category: "Best Practices",
-    summary: "Where AI Instructions, Plot Essentials, and Story Cards belong, based on the BetterRepository guide.",
-    tags: ["betterrepository", "ai instructions", "plot essentials", "story cards", "triggers", "best practices"],
+    summary: "One canonical fact has one authoritative home: ownership, reconciliation, examples, and overlap audit.",
+    tags: ["ownership", "self-contained", "overlap", "psychology", "relationships", "brains", "arc", "narration rules", "ai instructions", "plot essentials", "story cards", "audit", "best practices"],
     body: (
       <>
-        <p>
-          These defaults follow the BetterRepository authoring guide: use AI Instructions for behavior, Plot Essentials
-          for the overarching premise, and Story Cards for durable triggered memory. The executable copy of these
-          rules lives in <code>src/ai/authoringBestPractices.ts</code> so generators and docs stay aligned.
-        </p>
-        <dl>
-          <dt>AI Instructions</dt>
-          <dd>
-            Global behavior rules only: genre contract, drift prevention, scene loop, prose style, model behavior, and
-            scenario-specific writing constraints. Do not store character facts, lore facts, current scene state,
-            backstory, or per-character voice here.
-          </dd>
-          <dt>Plot Essentials</dt>
-          <dd>
-            The overarching premise, central long-term conflict, and persistent story-wide constraints. PE rarely changes. Automatic suggestions require review; replaced text stays in component history.
-          </dd>
-          <dt>Story Cards</dt>
-          <dd>
-            Durable triggered records for one subject: character, location, faction, object, relationship, secret, rule,
-            or completed event. Static cards use present tense for always-true facts, living cards track current evolving
-            subjects, and historical cards use past tense for completed events.
-          </dd>
-        </dl>
-        <p><strong>Trigger rule:</strong> character aliases belong on character identity cards. Event, relationship, and subplot cards should use specific trigger phrases, not broad character names that already belong to other cards.</p>
-        <p><strong>Generator rule:</strong> generated cards should avoid temporary details, be concise and self-contained, repeat the subject in the body, and use the correct memory mode and tense.</p>
+        {factOwnership.trim().split(/\r?\n\r?\n/).map((block, index) => {
+          if (block.startsWith("# ")) return null;
+          if (block.startsWith("## ")) return <h4 key={index}>{block.slice(3)}</h4>;
+          const lines = block.split(/\r?\n/);
+          if (lines.every(line => line.startsWith("- "))) {
+            return <ul key={index}>{lines.map(line => <li key={line}>{line.slice(2)}</li>)}</ul>;
+          }
+          if (lines.every(line => /^\d+\. /.test(line))) {
+            return <ol key={index}>{lines.map(line => <li key={line}>{line.replace(/^\d+\. /, "")}</li>)}</ol>;
+          }
+          return <p key={index}>{block}</p>;
+        })}
       </>
     ),
   },
@@ -591,14 +583,14 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
           <dt>Faction politics</dt>
           <dd>The opening establishes the current public pressure. Factions, leaders, alliances, leverage, and secrets go on cards.</dd>
           <dt>Romance drama</dt>
-          <dd>Relationship pressure stays choice-driven. Living relationship cards and Brains carry evolving state instead of bloating PE.</dd>
+          <dd>Relationship pressure stays choice-driven. Choose one card owner for untracked relationship state; enrolled directions own their tracked mutable state. Brain thoughts carry event-specific reactions.</dd>
           <dt>Survival / horror</dt>
           <dd>Story Cards hold threat rules, safe places, recurring dangers, and costs.</dd>
         </dl>
         <p><strong>Prose mode is separate.</strong> Minimalist is fast and lean; novelistic is richer and slower; cinematic focuses on visible behavior and blocking; dialogue-heavy prioritizes distinct voices and social pressure.</p>
         <p><strong>Player control is separate.</strong> Strict mode never writes your character. Minor-actions mode may bridge tiny implied motions. Cinematic flow may write small player-character beats, but major choices stay yours.</p>
         <p><strong>Adult content / NSFW is explicit opt-in.</strong> Romance-only creates attraction and intimacy without explicit adult content. Explicit adult mode adds a separate adult-content section, consenting-adult framing, and your boundary notes. Keep adult preferences visible and separate from generic prose rules.</p>
-        <p><strong>Plot Essentials stays small.</strong> Do not let setup templates turn PE into a quest log, relationship tracker, inventory, or character voice guide. Those usually belong in Story Cards or Brains.</p>
+        <p><strong>Plot Essentials stays small.</strong> Do not let setup templates turn PE into a quest log, relationship tracker, inventory, or character voice guide. Use each subject's designated owner; Voice Contracts and durable psychology belong on character cards. Review generator output against <a href="#authoring-best-practices">fact ownership and the overlap audit</a>.</p>
       </>
     ),
   },
@@ -611,26 +603,26 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
     body: (
       <>
         <p>
-          Brains store a character's private, evolving inner state — what they are thinking, feeling, suspecting, or planning. The model reads brains but never quotes them directly to the player.
+          Brains store event-specific internal responses: current reactions, situational intentions, and emerging suspicions. Durable beliefs, wants, values, personality, biography, powers, and Voice Contract belong on the character card even when private. Thought visibility follows the existing display settings.
         </p>
         <p><strong>What belongs in a brain thought:</strong></p>
         <ul>
           <li>A specific reaction to something that just happened, in first person and in the character's voice.</li>
-          <li>A private suspicion or plan the character hasn't revealed.</li>
-          <li>A shift in how the character now sees another person or situation.</li>
-          <li>Something the character is hiding or suppressing.</li>
+          <li>An emerging suspicion or immediate intention about a specific event, not an enduring ambition.</li>
+          <li>An interpretation of a recent interaction; tracked mutable pair state belongs in the enrolled relationship.</li>
+          <li>A response to a secret coming under pressure; the durable secret itself stays on the character card.</li>
         </ul>
         <p><strong>What does NOT belong:</strong></p>
         <ul>
           <li>Generic emotional states: "feeling anxious", "excited", "uneasy". These give the model nothing actionable.</li>
           <li>Scene descriptions or location tracking — keep that in Recent Messages unless it becomes durable.</li>
-          <li>Permanent character traits — those belong in a Story Card.</li>
+          <li>Durable character traits, values, established beliefs, and long-term wants — those belong on the character card and can change through established development.</li>
           <li>Things the character has already said or done openly — that's in the transcript.</li>
         </ul>
         <p><strong>Good:</strong> <code>margo_on_setu_ward_question: "She asked about the ward the same way she asked about the knife last winter. She already knows. I need to decide before the delegation arrives whether to tell her or redirect."</code></p>
         <p><strong>Bad:</strong> <code>mood: "Margo is anxious and protective."</code></p>
         <p>
-          Thoughts are captured inline during story generation at zero extra API cost. Each thought should have a descriptive snake_case key. Old thoughts are automatically archived when the brain grows long.
+          Thoughts can be captured with generation and retain existing validation, condensation, and archival behavior. Older retained thoughts are not necessarily current beliefs. A lasting change calls for card reconciliation; a single angry reaction does not. See <a href="#authoring-best-practices">the ownership examples and overlap audit</a>.
         </p>
       </>
     ),
@@ -644,11 +636,11 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
     body: (
       <>
         <p>
-          Story Cards store durable, recurring facts. They enter context only when their trigger keys appear — so they stay dormant and cost no tokens when off-topic.
+          Story Cards store durable, recurring facts. They enter context through existing trigger, pin, always-on, or force-inclusion controls and budgets. Mentioning a card in another card does not automatically load it.
         </p>
         <p><strong>What belongs in a Story Card:</strong></p>
         <ul>
-          <li>A character's permanent traits, history, relationships, and rules of behavior.</li>
+          <li>A character's durable traits, beliefs, wants, biography, capabilities, Voice Contract, and objective ties. Enrolled relationships own the mutable pair state they track.</li>
           <li>A location's sensory details, layout, and significance.</li>
           <li>A recurring object, secret, promise, or rule the story keeps returning to.</li>
           <li>Canon facts that must stay consistent regardless of scene.</li>
@@ -656,12 +648,12 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
         <p><strong>What does NOT belong:</strong></p>
         <ul>
           <li>Current location or scene presence — keep that in Recent Messages unless it becomes durable.</li>
-          <li>Temporary mission status or current assignments.</li>
+          <li>Momentary scene beats; recurring evolving subjects may use living cards, while larger-thread progress belongs in Current Story Arc.</li>
           <li>Emotional reactions to specific events — that's a Brain thought.</li>
           <li>One-off scenery or room details that won't recur.</li>
         </ul>
-        <p><strong>Format:</strong> Bullet points, one per line, using •. Each bullet is one self-contained fact. Lead with what is always true, then add specific constraints or rules.</p>
-        <p><strong>Memory mode:</strong> Static cards are always-true facts in present tense. Living cards are current evolving subjects that updates merge/archive. Historical cards are completed events or retired PE facts in past tense.</p>
+        <p><strong>Format:</strong> Bullet points, one per line, using •. Each bullet is one self-contained fact. Lead with identifying facts and enough local context for the subject; avoid copying other profiles.</p>
+        <p><strong>Memory mode:</strong> Static cards are relatively stable present-tense facts, not immutable canon. Living cards own current evolving subjects with merge/archive behavior; historical/event cards preserve completed events and consequences. Removing a PE fact alone does not establish an event. See <a href="#authoring-best-practices">fact ownership</a> for structured compacts and reconciliation.</p>
         <p><strong>Trigger keys:</strong> Use specific names, places, nicknames, objects, factions, and consequences. Character aliases belong on character identity cards; avoid putting broad character names on event, relationship, or subplot cards.</p>
         <p><strong>Good card:</strong></p>
         <pre>{`• Margo uses teasing to deflect when she's afraid.
@@ -680,13 +672,13 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
     body: (
       <>
         <p>
-          Plot Essentials is an always-on context component for the story's overarching premise, central long-term conflict, and persistent story-wide constraints. It loads every turn and costs tokens every turn — keep it tight.
+          Plot Essentials holds compact current operating truth, premise, and constraints needed in nearly every plausible next response. Active content loads subject to budget/protection controls; keep it tight. Importance alone does not justify inclusion.
         </p>
         <p><strong>What belongs:</strong></p>
         <ul>
           <li>The overarching premise: who the story follows and its enduring central conflict.</li>
-          <li>Long-term stakes that remain relevant across scenes and arcs.</li>
-          <li>Major constraints: power rules, public stakes, faction pressure, or canon limits that remain globally relevant.</li>
+          <li>Essential protagonist status, an always-present party, or a persistent circumstance shaping almost every scene, without copied profiles.</li>
+          <li>Near-universal operating constraints. Occasional lore and capability mechanics stay on their cards; active larger-thread progress stays in Current Story Arc.</li>
         </ul>
         <p><strong>What does NOT belong:</strong></p>
         <ul>
@@ -695,9 +687,9 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
           <li>Temporary mission status that changes every few turns — use Current Arc.</li>
           <li>Lore that only matters when a specific character or place comes up — use a Story Card instead.</li>
         </ul>
-        <p><strong>Format:</strong> 4-7 tight bullets or short labeled lines. PE updates replace the full block. Change PE only when its foundations change. Replaced text stays in component history; removal does not create an event card.</p>
+        <p><strong>Format:</strong> 4-7 tight bullets or short labeled lines. Reconcile owned facts when they change; retire obsolete current assertions and stale copies. Replacement and additive proposal paths exist, so inspect the result. Replaced text stays in component history; removal does not create an event card. Run the <a href="#authoring-best-practices">overlap audit</a>.</p>
         <p><strong>Good PE entry:</strong> <code>• Seth is an exile whose unstable bond with the ward threatens both his freedom and the sanctuary he seeks.</code></p>
-        <p><strong>Bad PE entry:</strong> <code>• Seth and Margo are currently standing near the threshold discussing the ward.</code> (scene state, not a permanent truth)</p>
+        <p><strong>Bad PE entry:</strong> <code>• Seth and Margo are currently standing near the threshold discussing the ward.</code> (momentary scene state, not a near-universal operating constraint)</p>
       </>
     ),
   },
@@ -712,21 +704,16 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
         <p>
           Rolling Summary is a legacy save-compatible field. It is retained on the adventure object for old saves, but it is not emitted as a default model context section. Use Current Arc, Plot Essentials, Story Cards, Brains, and Recent Messages for active continuity.
         </p>
-        <p><strong>What belongs:</strong></p>
-        <ul>
-          <li>Arc beats — the key moments that moved the story forward.</li>
-          <li>Permanent changes — decisions made, things revealed, bridges burned.</li>
-          <li>Open plot threads — unresolved problems, active threats, things the player character still needs to do.</li>
-          <li>Relationship shifts — changes in how characters relate to each other.</li>
-        </ul>
-        <p><strong>The most important rule:</strong> If the summary fills with emotional beats and relationship milestones without any external threat, unresolved problem, or active obligation, the model will write a relationship story. Keep at least one external arc, unresolved problem, or active threat visible here alongside personal developments.</p>
-        <p><strong>What does NOT belong:</strong></p>
-        <ul>
-          <li>Scene descriptions or current location.</li>
-          <li>Character inner thoughts — those belong in Brains.</li>
-          <li>Permanent world facts that belong in Story Cards or Plot Essentials.</li>
-        </ul>
-        <p>For current adventures, keep external stakes visible through Current Arc instead of relying on auto-summary settings.</p>
+        <p>
+          Scene State is also retained for compatibility and is not an independent assembled context section.
+          Adventure Chronicle preserves the transcript; historical/event Story Cards preserve useful completed
+          events and consequences. Keep active larger-thread progress in Current Story Arc and current facts
+          with their designated owners. Historical evidence should not be presented as current truth.
+        </p>
+        <p>
+          AI Dungeon's Story Summary is an AI Dungeon feature, not an AI Story Teller authoring surface.
+          Use the <a href="#authoring-best-practices">ownership reference and overlap audit</a> when reconciling memory.
+        </p>
       </>
     ),
   },

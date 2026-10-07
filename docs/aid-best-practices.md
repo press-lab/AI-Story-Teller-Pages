@@ -6,6 +6,10 @@ This is repo-local context for building AI Dungeon scenario packs, especially
 when producing an AID opening prompt, token-conscious plot components, and Story
 Card JSON that can be imported into AI Dungeon.
 
+This guide is explicitly AI Dungeon-specific. Its Story Summary, Character
+Creator, placeholders, field visibility, and trigger assumptions are not AI Story
+Teller behavior. For AI Story Teller use [Fact ownership and overlap audit](./fact-ownership.md).
+
 Primary references:
 
 - Official AI Dungeon Plot Components guide:
@@ -85,9 +89,10 @@ distance. Begin in-scene, with immediate pressure, a clear location, and at
 least one active NPC.
 
 For romance scenarios, it is valid to skip the cold meet-cute. If the scenario
-needs chemistry immediately, place a small amount of shared recent history in
-the opening prompt and reinforce it in Plot Essentials or a relationship Story
-Card. Make the relationship new but already charged.
+needs chemistry immediately, dramatize a small amount of shared recent history
+in the opening. Choose one authoritative current-state owner, such as the
+character card or a designated relationship card; do not copy the same
+attraction into Plot Essentials as reinforcement. Story prose remains evidence.
 
 Good opening prompt goals:
 
@@ -171,7 +176,7 @@ Better Plot Essentials:
 
 ```text
 ${What is your name?} is a ${What kind of outsider are you?} investigating Gloamfen's swamp-tax irregularities.
-Grushka Mirekiss is a powerful ogre bathhouse owner and the player's new, charged romantic complication.
+The investigation requires the player to remain in Gloamfen until the permits are audited.
 Someone is poisoning Gloamfen's swamp leylines and framing ogres for it.
 The conspiracy uses forged permits, corrupt officials, and staged monster attacks to seize the swamp.
 ```
@@ -196,7 +201,7 @@ move the lore to Plot Essentials or Story Cards.
 Example:
 
 ```text
-Mature swamp-noir romantic comedy. Keep Grushka bold, funny, sensual, and dangerous; keep the player in control of their own choices. Let the conspiracy create absurd complications without undercutting real stakes or chemistry.
+Mature swamp-noir romantic comedy. Use sharp banter and atmospheric scene framing. Let the conspiracy create absurd complications without undercutting real stakes or chemistry.
 ```
 
 ## Story Cards
@@ -220,7 +225,7 @@ Entry best practices:
 
 - Use plain English.
 - Be concise.
-- Put the most important fact near the beginning and near the end.
+- Put important facts near the beginning; do not repeat them just for emphasis.
 - Repeat the subject name in the Entry body.
 - Avoid excessive physical description unless it matters.
 - Use placeholders in the Entry when the card should adapt to player choices.
@@ -288,15 +293,17 @@ and over-emphasizes the fact.
 
 Good placement pattern for romance with prior history:
 
-- Opening Prompt: the recent shared incident and the live scene.
-- Plot Essentials: one line that the attraction/history exists.
-- Relationship Story Card: richer details and placeholders.
-- Character Story Card: the NPC's identity, voice, and behavior.
-- Author's Note: tone and chemistry.
+- Opening Prompt: dramatize the live scene; preserve it as story evidence.
+- Character Story Card: identity, durable psychology, voice, and the relationship
+  fact if this is its chosen owner.
+- Optional relationship Story Card: use instead for relationship state only when
+  it is a recurring subject; do not repeat the same state on the character card.
+- Plot Essentials: only near-universal operating constraints, not reinforcement.
+- Author's Note: tone and style, not another attraction or history assertion.
 
 ## Scenario Quality Rules
 
-For this user's preferred AID/AIST scenario style:
+For this user's preferred AI Dungeon scenario style:
 
 - Give the player a capable role.
 - Put them under pressure immediately.
@@ -331,6 +338,7 @@ Before finalizing, check:
 - Plot Essentials is lean and always-on.
 - Author's Note is short.
 - AI Instructions do not store lore.
+- Apply the [ownership overlap audit](./fact-ownership.md#overlap-audit) as an editorial check; AI Story Teller-only surfaces in that reference are not AI Dungeon features.
 - The opening starts in-scene.
 - Adult or mature content is opt-in, consensual, and framed around adult
   characters when romance or sexuality is involved.

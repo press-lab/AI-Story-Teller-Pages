@@ -2,6 +2,8 @@
 
 System architecture, feature inventory, and interaction map. Updated after each major change.
 
+Authoring boundaries and audit: [Fact ownership](docs/fact-ownership.md), also displayed in UI Help. One canonical fact has one authoritative home. Recommendations do not change existing prompt/update behavior; implementation limits are documented in that reference.
+
 ---
 
 ## Architecture Overview
@@ -49,11 +51,11 @@ Pure function — builds the provider payload each turn. Sections are assembled 
 |---|---|---|---|
 | 0 | `system` | A. System Shell | Fixed system prompt + all active `narrationRules` components |
 | 1 | `aiInstructions` | B. AI Instructions | All active `aiInstructions` components |
-| 2 | `plotEssentials` | C. Plot Essentials | `plotEssentials` components |
+| 2 | `plotEssentials` | C. Plot Essentials | `plotEssentials` and existing compatibility `activePressure` components |
 | 2.5 | `currentArc` | C2. Current Story Arc | `currentArc` components (prefixed with `[Arc Premise: ...]` if set) |
 | 3 | `components` | E. Components | Always-on or pinned non-special-typed components |
 | 4 | `storyCards` | F. Story Cards | Triggered, always, or pinned story cards |
-| 5 | `brains` | G. Brains | Triggered or pinned brain entries (thoughts only) |
+| 5 | `brains` | G. Brains | Eligible Brain thoughts plus enrolled directional relationship state and deliberately recalled history |
 | 8 | `authorNote` | D. Author's Note | `authorNote` components (placed late for recency influence) |
 | 10 | `nextTurnNote` | J. Next Output Bias | Active next-turn note |
 | 10.5 | `challengeMode` | M. Continuity Challenge | Injected instruction when `challengeMode` is active |
@@ -83,7 +85,8 @@ When total exceeds `maxContextTokens`, items are dropped in priority order:
 |---|---|---|---|---|
 | `narrationRules` | Yes | System shell (A) | No | Primary per-adventure behavior contract. POV, agency, continuity, tone, format. Protected. One per adventure. |
 | `aiInstructions` | Yes | B | No | Optional separately inspectable scenario-specific contract. Not required when Narration Rules already contain the stable rules. Protected. One per adventure. |
-| `plotEssentials` | Yes | C | Yes (append) | Overarching premise, long-term conflict, and persistent story-wide constraints. One-pass replacements always require review. |
+| `plotEssentials` | Yes | C | Yes (replacement; proposal paths can append) | Compact current operating truth, premise and constraints needed nearly every response. One-pass replacements always require review. |
+| `activePressure` | No | C | Existing-entry replacement | Compatibility surface: editable when present, not a standard new component. Clear resolved pressure. |
 | `currentArc` | Yes | C2 | Yes (append) | Running arc log. Requires `arcPremise` for auto-update. Graduate → Story Card when done. |
 | `immediateMomentum` | No | — | No | Disabled legacy type. Not generated, auto-updated, or assembled into context. |
 | `authorNote` | Yes | D (near-context) | No | Immediate narrative correction. One per adventure. Most powerful short-term tool. |
@@ -94,10 +97,10 @@ When total exceeds `maxContextTokens`, items are dropped in priority order:
 
 ### Current Story Arc — interaction notes:
 - Requires `arcPremise` text — this is the LLM filter condition. No premise = no auto-updates fire.
-- Auto-approval: `memoryAutoApprove.currentArcUpdate` (default `true`)
+- Auto-approval: `memoryAutoApprove.currentArcUpdate`; new adventures default to review, saved explicit choices are preserved
 - "Complete Arc → Story Card" button: creates a `plot` type Story Card from the log, clears content and arcPremise
 - Cooldown: 4 turns default
-- Difference from Plot Essentials: PE = overarching premise, long-term conflict, and persistent story-wide constraints. Arc = the active conflict's running log (accumulates as story unfolds, then gets retired)
+- Difference from Plot Essentials: PE = compact current operating truth, premise and near-universal constraints, without copied card profiles or arc progress. Arc = the active conflict's running log (accumulates as story unfolds, then gets retired)
 - Difference from Quests: Arc tracks narrative shape, not task completion. No objective states. Graduated arc becomes referenced backstory via Story Card, not a "quest completed" flag.
 
 ### Arc Director (deterministic story pacing)
@@ -111,7 +114,7 @@ Optional pacing layer on a `currentArc` component that makes an antagonist's arc
 - **The gate:** `simmer`/`escalate` inject `arcSimmerInstruction`; `break` injects `arcBreakInstruction`. The break (cost) instruction is **withheld from context entirely until `phase === "break"`** — the model cannot land the climax early on something it never sees.
 - **Driver:** after each turn, `turnPipeline` dispatches `ADVANCE_ARC_PACING` with the ids that triggered in-scene; the reducer increments `threadEngagement` for ids in `arcThreadKeys`, derives the tier, and advances the phase against the pace thresholds (`short` 4/8, `medium` 8/16, `long` 16/32, `epic` 30/60 for escalate/break). **Counted engagement only — never an LLM verdict.**
 - **Break trigger:** at the break threshold, `auto` mode sets `phase = "break"`; `ask` mode sets `pendingBreak` and holds at `escalate` until a `SET_ARC_PHASE` confirm. Break settles to `aftermath` after `ARC_BREAK_DURATION` (6) turns. `SET_ARC_PHASE` also powers the manual "Spring it now" / "Resolve arc" / "Reset to simmer" buttons.
-- **Principle:** code owns *timing*, the break card's text owns *outcome*, and a capable model (V3.2-class) owns whether the cost lands. See `AGENTS.md` → "Arc Director" for the invariants.
+- **Principle:** code owns *timing*, the break instruction supplies future direction, not established outcome or permission to override player agency, and a capable model (V3.2-class) owns whether the cost lands. See `AGENTS.md` → "Arc Director" for the invariants.
 
 ---
 
@@ -119,7 +122,7 @@ Optional pacing layer on a `currentArc` component that makes an antagonist's arc
 
 **Files:** `pages/StoryCardsPage.tsx`, `contextBuilder/contextBuilder.ts`, `triggers/semanticEngine.ts`, `memory/storyCardAudit.ts`
 
-Types: `character`, `location`, `lore`, `plot`, `custom`
+Types: `character`, `location`, `lore`, `plot`, `event`, `custom`. Factions and relationships use existing types. Static/living/historical modes describe stability and history, not immutable versus mutable canon. Character cards own durable psychology as well as biography, capabilities, secrets and Voice Contract; enrolled mutable relationship state is the explicit exception.
 
 ### Triggering:
 - Card title is always added to its own key list
@@ -133,7 +136,7 @@ Types: `character`, `location`, `lore`, `plot`, `custom`
 - The AI compares the description with existing Story Cards and character entries.
 - The result is one or more pending `storyCard` Memory Proposals, never an immediate active-memory write.
 - Native DeepSeek requests use JSON output with thinking disabled for this schema-driven call.
-- **Related generators** (`ai/generators.ts`, user-initiated ✨ buttons): fresh content for Narration Rules / AI Instructions / Author's Note (preview → Apply), a full Arc Director setup from a one-line concept (premise + simmer + break + pace + trigger mode), and a character Brain from just a name (behavioral voice contract, not trait lists). All are grounded in a compact adventure snapshot. See `AGENTS.md` → "AI Generation Buttons".
+- **Related generators** (`ai/generators.ts`, user-initiated ✨ buttons): fresh content for Narration Rules / AI Instructions / Author's Note (preview → Apply), a full Arc Director setup from a one-line concept (premise + simmer + break + pace + trigger mode), and a character Brain from just a name (review generated material: durable psychology and Voice Contract belong on the character card). All are grounded in a compact adventure snapshot. See `AGENTS.md` → "AI Generation Buttons".
 
 ### Auto-update:
 - `autoUpdate: boolean` per card
@@ -174,7 +177,7 @@ Brains track named character inner state as a keyed thought record. Primary upda
 - `updateMode` — `replace` or `append`
 - `condenseThreshold` — if total thoughts text exceeds this (default 1600 chars), auto-condense pass runs
 - `printThoughts` — if true, extracted thoughts are appended visibly to story output in `[thought: ...]` format
-- `anchorText` (character anchor) — immutable voice/behavioral defaults injected into brain update prompts to prevent personality drift
+- `anchorText` (character anchor) — legacy voice/behavioral anchor used in Brain update prompts; not an authoring destination for a duplicate current profile. This compatibility behavior remains unchanged
 
 ### Triggering for context inclusion:
 Triggered by `characterName` or any string in `triggers`, matched against recent text (phrase match). Also respects `inclusionPolicy`, `pinned`, `protected`.

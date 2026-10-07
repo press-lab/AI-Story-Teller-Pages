@@ -1,6 +1,11 @@
 # BetterRepository Context Notes
 
+Authoring reference: [Fact ownership and overlap audit](./fact-ownership.md).
+
 Source pass over BetterRepository for AI Story Teller authoring guidance.
+External feature names, categories, Story Summary, scripts, and placeholder rules
+below describe AI Dungeon/BetterRepository. Only explicitly labeled AI Story
+Teller mappings describe this app; use the ownership reference for its boundaries.
 
 Primary site: https://better-repository.netlify.app
 
@@ -236,8 +241,8 @@ Story Summary templates:
 AI Story Teller mapping:
 
 - Many BetterRepository "Plot Essentials" templates are too broad for this repo's strict current-truth section if used wholesale.
-- For AI Story Teller, split these into the right surfaces: current truth in Plot Essentials, short-term steering in Author's Note/Next Output Bias, recurring entities in Story Cards, internal character state in Brains, and long-term historical arc facts in proposals/cards.
-- Templates like Relationship Tracker and Character Voice Guide should often become Story Cards or Brains here, not always-on Plot Essentials.
+- For AI Story Teller, split these into the right surfaces: current truth in Plot Essentials, short-term steering in Author's Note/Next Output Bias, recurring entities in Story Cards, event-specific internal reactions in Brains, and long-term historical arc facts in proposals/cards.
+- Character Voice Guide belongs on the character card. A Relationship Tracker needs one designated card owner unless the direction is enrolled in structured Brain relationships; never maintain parallel trackers.
 - Current Scene Anchor maps closely to this repo's active current situation/pressure concepts, but should stay short.
 
 ### Story Card Library Details
@@ -276,7 +281,7 @@ Template coverage:
 AI Story Teller mapping:
 
 - Our Story Cards can use bullets where our app style expects them, but the BetterRepository lesson is that the entry must read as coherent context, not UI metadata.
-- Relationship cards are present in BetterRepository, but this repo's architecture says relationships between known characters should usually live on Brains or living character cards. Do not import that BetterRepository pattern blindly.
+- Relationship cards are subjects, not a dedicated type here. Choose a character card or designated living relationship card for untracked facts; enrolled directional relationships own their tracked mutable state. Brain thoughts remain event-specific reactions.
 - Quest/Mission templates are useful authoring references, but quest state is not part of default AI Story Teller context assembly.
 
 ## High-Level Lesson
@@ -309,10 +314,10 @@ Key points learned:
 
 AI Story Teller mapping:
 
-- Keep AI Instructions in section B as global behavior and generation rules.
+- Narration Rules is the primary per-adventure behavior contract; optional AI Instructions in section B separates scenario-specific rules without repeating them.
 - Do not let autonomous AI memory updates mutate AI Instructions.
 - Do not put plot facts, current mission state, character profiles, or relationship facts here.
-- If a scenario needs voice stability, put per-character voice contracts on Story Cards or Brains, not in global AI Instructions.
+- If a scenario needs voice stability, put per-character voice contracts on character Story Cards, not in global AI Instructions.
 - For scenario generation, make AI Instructions compact and scenario-specific. The right output is not a giant universal prompt.
 
 ## Plot Components And Plot Essentials
@@ -331,7 +336,7 @@ The guide distinguishes:
 
 ### Plot Essentials
 
-Plot Essentials are for information that should always matter. They are the current operating truth: protagonist identity/status, current situation, active world rules, central constraints, and always-present companions.
+For AI Story Teller, Plot Essentials is compact current operating truth, premise, and constraints needed in nearly every plausible next response. Essential protagonist status or an always-present party can qualify; full profiles, power mechanics, occasional lore, and active larger-thread progress belong with their respective card or arc owners. Importance alone is insufficient.
 
 Key points learned:
 
@@ -407,11 +412,11 @@ Key points learned:
 
 - Use plain, natural language.
 - Keep entries concise.
-- Put important facts at the beginning and end.
+- Put important facts near the beginning; do not repeat them merely for emphasis.
 - Repeat the subject name in the entry body. Do not rely on the title alone.
 - Avoid long physical-description dumps unless the appearance detail matters to play.
-- Split complex subjects into parent/child cards when needed.
-- Card networks can work: one active card can mention another card's trigger, causing likely later activation. Do not depend on this for critical facts unless the current card also contains enough context by itself.
+- Split distinct subjects only; keep each character's essential identity, biography, and durable psychology together.
+- Mentioning another card does not automatically load it in AI Story Teller. Keep enough local context for the card's own role and inspect inclusion controls rather than copying other cards.
 
 ### Trigger Best Practices
 
@@ -430,8 +435,8 @@ AI Story Teller mapping:
 - Make every Story Card self-contained even if the UI labels it.
 - Avoid broad character-name triggers on event, relationship, location, and subplot cards when a character identity card already owns that name.
 - Use living cards for evolving relationship/status/current arrangements; merge/archive instead of creating sibling cards for the same evolving subject.
-- Use historical cards for completed events and retired Plot Essentials facts.
-- If a character has a Brain, put evolving internal state there. If no Brain exists, route durable character facts to a Story Card or Story Card proposal, not a new Brain by default.
+- Use historical cards for useful completed events and consequences. Retiring a PE assertion does not itself establish an event.
+- Durable psychology belongs on the character card whether or not a Brain exists. Existing Brains hold event-specific reactions; do not create a Brain by default to store durable character facts.
 
 ## Symbols And Commands
 
@@ -518,9 +523,9 @@ Use this checklist when reviewing or generating AI Story Teller scenarios:
 - Next Output Bias is one-turn steering, not durable memory.
 - Story Cards are self-contained triggered facts with specific triggers.
 - Living Story Cards track current evolving status; historical Story Cards track completed facts.
-- Brains are for major characters' internal evolving state, not random NPCs or locations.
+- Brains are for major characters' event-specific internal responses; enduring traits and beliefs belong on cards.
 - Do not duplicate the same fact across PE, Story Cards, Brains, and Author's Note.
 - Prefer positive, behavioral wording over vague adjectives or negation-heavy rules.
-- Put key facts at the beginning and end of compact context entries.
+- Put key facts near the beginning without repeating them for emphasis. Run the [ownership overlap audit](./fact-ownership.md#overlap-audit).
 - Check the assembled context before blaming model quality.
 - Keep every token attributable to a named, inspectable section.

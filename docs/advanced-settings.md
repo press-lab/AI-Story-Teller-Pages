@@ -1,5 +1,7 @@
 # Advanced Settings Reference
 
+Authoring reference: [Fact ownership and overlap audit](./fact-ownership.md).
+
 Settings → Advanced unlocks four panels. All settings are per-adventure and saved in the adventure JSON.
 
 ---
@@ -24,7 +26,7 @@ Hard ceiling on total tokens sent per turn. Set it ~1–2k below your model's ac
 
 ### Max Recent Messages
 
-How many recent chat turns to keep verbatim in the context. Beyond this cap, older turns are not sent verbatim; preserve important facts through Story Cards, Brains, Plot Essentials, or Current Arc instead. 40 is the balanced default; if your turns are long, 20–25 avoids crowding out story cards and components.
+How many recent chat turns to keep verbatim in the context. Beyond this cap, older turns are not sent verbatim; retain important facts at the owner identified in the [ownership reference](./fact-ownership.md), not in several reinforcement copies. Durable psychology stays on cards; event-specific reactions stay in Brains; active larger-thread progress stays in Current Story Arc. 40 is the balanced default; if your turns are long, 20–25 avoids crowding out story cards and components.
 
 ### Memory Priority Mode
 
@@ -151,4 +153,4 @@ When **off**: the AI only identifies *what* to store (title and type), leaving t
 
 ### Auto-approve brain state updates
 
-Brain state (Brains panel — character mental state) is typically lower-stakes than story cards. When on, brain update proposals skip your inbox and apply directly. Story cards and plot essentials still go to Memory Suggestions for review.
+This controls eligible Brain update proposals, not ownership or factual certainty. Brains hold event-specific internal responses; enduring wants, values, beliefs, and personality belong on character cards. Other proposal types have their own approval settings and review requirements. Enrolled relationship changes retain their separate review boundary. Run the ownership overlap audit after accepted changes; auto-approval is not semantic reconciliation.

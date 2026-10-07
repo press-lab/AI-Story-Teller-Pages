@@ -1,3 +1,23 @@
+/**
+ * Scenario-authoring documentation: docs/fact-ownership.md (also shown in UI Help).
+ * One canonical fact has one authoritative home. Self-contained means enough
+ * local context for the surface's role, not copied profiles or implicit card loading.
+ * Narration Rules/optional AI Instructions own distinct behavior rules; Plot
+ * Essentials owns compact current operating truth needed almost every response.
+ * Character cards own biography, durable psychology, capabilities and Voice Contract.
+ * Brains own event-specific reactions, not enduring wants/values/beliefs. Enrolled
+ * directional relationships explicitly own their tracked mutable pair state.
+ * Current Story Arc owns the active thread and running developments; Arc Director
+ * instructions are future direction, not established events. Notes steer narration;
+ * Chronicle, historical cards and archives preserve evidence rather than current state.
+ * Reconcile established changes at the owner, remove stale live copies, preserve history,
+ * and run the reference's overlap audit. Never equate NPC belief or a plan with fact.
+ *
+ * The strings/functions below are EXISTING EXECUTABLE PROMPT INPUTS. This documentation
+ * revision intentionally preserves them and all mutation policies. Some narrower premise,
+ * always-true and historical-retirement wording remains an implementation gap documented
+ * in the reference; changing those strings would change generation behavior.
+ */
 import type { StoryCardMemoryMode } from "../types/adventure";
 
 export const betterRepositoryGuideSources = [

@@ -1,5 +1,7 @@
 # Designing a Durable Adventure
 
+Authoring reference: [Fact ownership and overlap audit](./fact-ownership.md).
+
 This is the distilled design theory behind AI Story Teller's arc, brain, and
 component systems — what actually makes an adventure stay fun for hundreds or
 thousands of turns, and how the app's features map onto it. Written from a
@@ -50,15 +52,17 @@ they are.
 The second one is *playable* — the model can act on it. The first is a label
 the model has to guess how to perform.
 
-This is exactly what **Brains** are for. A Brain is a character with interior
-state that **accumulates** (Inner Self style — thoughts append, they don't get
-overwritten) and a behavioral voice contract. The loop pokes; the Brain reacts
-*with continuity*. That continuity is what makes the social dynamics *persist*
-across the loop instead of resetting every scene.
+Durable behavioral tendencies and the Voice Contract belong on the character's
+Story Card, alongside biography, values, enduring wants, and established beliefs.
+Brains hold the particular internal reactions the loop evokes. Thoughts accumulate
+with validation and archival controls; an older thought is not necessarily a
+current belief. Established lasting development should be reconciled on the card.
 
-> Relationships, bonds, and pacts between known characters live **on the
-> characters' Brains**, never as their own standalone Story Cards. A card title
-> is always the proper name of a single entity, never "Dynamic between X and Y."
+Relationship ownership depends on enrollment: choose a character card or an
+explicitly designated living relationship card for untracked durable facts. An
+enrolled directional relationship owns its tracked mutable state. Objective ties
+and useful history can remain on cards; Brain reactions must not become another
+relationship ledger. See the ownership reference for examples and the overlap audit.
 
 ### The Voice Contract
 
@@ -187,9 +191,11 @@ stable.
 
 Design constraints for the pacing layer:
 
-- **It owns timing, never outcome.** What the break costs (bloodless ↔ lethal)
-  is authored in the break card's text. The pacing code only decides *when* that
-  card enters context.
+- **It owns timing, never outcome.** Cost direction (bloodless ↔ lethal)
+  is authored in the break instruction. The pacing code decides when that
+  instruction enters context, not which events have happened. Preserve player
+  agency and accepted outcomes. The arc log remains an append-based record of
+  developments; future direction must not be presented as established fact.
 - **It advances on a countable signal, never an LLM verdict.** Tier climbs on
   measurable player *engagement* with a thread (how often its cards trigger),
   not on the model judging "is this dramatic yet." The moment pacing depends on
@@ -201,7 +207,7 @@ Design constraints for the pacing layer:
   break. Flash-tier models skim long rule blocks and revert to helpfulness
   defaults; they are not suitable here.
 
-This is what the **Arc Director** (on a Current Arc component) implements:
+This is what the **Arc Director** (on a Current Story Arc component) implements:
 phases **Simmer → Escalate → Break → Aftermath**, a thread set (the "baddie"),
 a pace (the "timer"), a cost (the break instruction), and a trigger mode.
 
@@ -212,7 +218,8 @@ a pace (the "timer"), a cost (the break instruction), and a trigger mode.
 These get conflated; keep them separate.
 
 - **Cost policy** — *what* the break costs. Bloodless ↔ real/lethal. Authored in
-  the break card. "Everyone lives" → it's so. "Heavy, real costs" → it's so.
+  the break instruction. These are future directions, not recorded events or
+  guarantees; established outcomes and player agency still govern.
 - **Trigger control** — *who* says it fires now. **Auto** (the AI springs it
   when the gate opens) ↔ **Ask** (the app asks you first — one yes/no, not a
   ledger). The leash.
@@ -227,8 +234,10 @@ character-driven arcs actually want.
 
 When an arc resolves (Break → Aftermath), the next arc should grow from the
 **highest-engagement unresolved thread** and *connect to what just happened*
-(convergence). In Auto mode the Director can promote it itself; in Ask mode it
-proposes the next arc to the Memory Inbox for you to accept, edit, or reject.
+(convergence). The existing next-arc chooser offers directions; auto-continuation
+can select one when enabled. Completion banks the finished arc as a historical
+Story Card before seeding the next. Break trigger mode and auto-continuation
+are separate controls.
 You are never handed a ledger — at most a single decision.
 
 ---
@@ -238,9 +247,10 @@ You are never handed a ledger — at most a single decision.
 For a new or existing adventure that should have a climbing arc:
 
 - [ ] **Backdrop** you actually like inhabiting.
-- [ ] **Cast as Brains**, behavioral not adjectival, relationships on the Brains.
+- [ ] **Cast on character cards**, including durable psychology and Voice Contracts; Brains for event-specific responses.
+- [ ] Run the [ownership overlap audit](./fact-ownership.md#overlap-audit); choose one owner for each relationship state.
 - [ ] A **loop** where each phase manufactures the next.
-- [ ] One **Current Arc** with an Arc Director:
+- [ ] One **Current Story Arc** with an Arc Director:
   - [ ] **The Baddie** — which Story Cards / Brains are this arc's threads.
   - [ ] **The Timer** — pace (Short / Medium / Long / Epic).
   - [ ] **How it simmers** — recur, hint, stay off-screen, stay connected to the
@@ -283,7 +293,7 @@ interface ArcPacingState {
 }
 ```
 
-The non-negotiable: **code owns timing, the break card's text owns outcome, and
+The non-negotiable: **code owns timing, the break instruction supplies authored direction, not established outcome, and
 a capable model (V3.2-class) owns whether the cost actually lands.**
 
 
