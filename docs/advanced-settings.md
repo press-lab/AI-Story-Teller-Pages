@@ -24,7 +24,7 @@ Hard ceiling on total tokens sent per turn. Set it ~1–2k below your model's ac
 
 ### Max Recent Messages
 
-How many recent chat turns to keep verbatim in the context. Beyond this cap, older turns are not sent verbatim; preserve important facts through Story Cards, Brains, Plot Essentials, Current Arc, or Active Pressure instead. 40 is the balanced default; if your turns are long, 20–25 avoids crowding out story cards and components.
+How many recent chat turns to keep verbatim in the context. Beyond this cap, older turns are not sent verbatim; preserve important facts through Story Cards, Brains, Plot Essentials, or Current Arc instead. 40 is the balanced default; if your turns are long, 20–25 avoids crowding out story cards and components.
 
 ### Memory Priority Mode
 
@@ -73,7 +73,7 @@ Per-section hard token caps. Expert setting. Lets you constrain a specific secti
 
 ## LLM Evaluation
 
-Controls the semantic engine — the background AI that reads your story after each turn and fires Automations such as brain updates, story card updates, Plot Essentials updates, Current Arc updates, and one-sentence Active Pressure updates.
+Controls the semantic engine — the background AI that reads your story after each turn and fires Automations such as brain updates, story card updates, Plot Essentials updates, and Current Arc updates.
 
 ### Evaluation Model Override
 
@@ -85,7 +85,7 @@ How many recent messages the evaluator reads. More messages = more context for a
 
 ### Enable semantic triggers
 
-Master switch for all Automations. Must be on for brain updates, story card updates, Plot Essentials tracking, Current Arc tracking, and Active Pressure updates to fire automatically after each turn.
+Master switch for all Automations. Must be on for brain updates, story card updates, Plot Essentials tracking, and Current Arc tracking to fire automatically after each turn.
 
 ### Show evaluation log on Automations page
 
@@ -101,7 +101,7 @@ When on, all AI-generated Automation updates (brain updates, plot essentials, et
 
 ### Background Provider
 
-Route background tasks (evaluation, brain updates, story card updates, Plot Essentials/Current Arc/Active Pressure updates, and memory detection) through a separate provider endpoint. Leave blank to use your main preset for everything.
+Route background tasks (evaluation, brain updates, story card updates, Plot Essentials/Current Arc updates, and memory detection) through a separate provider endpoint. Leave blank to use your main preset for everything.
 
 Useful if you have a fast/cheap API (e.g., Groq + Llama 3.3 70B) for background work and a better model for story generation. The model field here overrides the evaluation model override above.
 

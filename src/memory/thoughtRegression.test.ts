@@ -24,11 +24,11 @@ function fixture() {
 afterEach(() => vi.restoreAllMocks());
 
 describe("ordinary Brain thoughts alongside optional relationships", () => {
-  it("keeps the no-relationship memory instruction byte-identical to pre-feature commit 5049262", () => {
+  it("keeps ordinary memory instructions stable without optional relationships or pressure", () => {
     const text = onePassMemoryInstruction([makeBrain({ characterName: "Mira" })], ["world_fact"]);
-    // SHA-256 of the same call using the original pre-feature instruction.
+    // Baseline excludes optional pressure capture and relationship instructions.
     expect(createHash("sha256").update(text.replaceAll("\r\n", "\n")).digest("hex"))
-      .toBe("b729bd1b6e393ad8885b5d35f75ae88be63d7cc3e52d8ae568c0f5c67f0a6686");
+      .toBe("0d6fd600d76e67ab59642cb644b2f02f048041b8b62b2fdde7f51c4126b6493f");
     expect(MEMORY_OUTPUT_RESERVE).toBe(1400);
     const a = fixture();
     const context = buildContext(a, { currentInput: names.join(" and ") });

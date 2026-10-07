@@ -6,7 +6,7 @@ This note captures the July 2026 update prompted by the Arcane play save where r
 
 The save audit showed that auto-approval was not the core issue. The issue was stale active context:
 
-- Plot Essentials, Active Pressure, Story Cards, and Brains could still contain resolved facts as active pressure.
+- Plot Essentials, Story Cards, and Brains could still contain resolved facts as current concerns.
 - Existing "Clean Up Cards" and "Clean Up Components" could fall back to deterministic recommendations when the AI pass failed, which made provider/config problems too easy to miss.
 - Background provider settings could include a malformed base URL and an API-key value in exported/persisted adventure JSON.
 - Manual AI update tools updated broad surfaces, but they did not provide a targeted "these recent entries changed the status of X; update everything related to X" workflow.
@@ -16,7 +16,7 @@ The save audit showed that auto-approval was not the core issue. The issue was s
 The Memory page now includes **Check Recent Entries**:
 
 - The user supplies an entry count and may optionally add a directive.
-- Code deterministically scans the selected recent entries, plus the optional directive when present, for related Plot Essentials, Active Pressure, Current Arc, Story Cards, and optionally Brains.
+- Code deterministically scans the selected recent entries, plus the optional directive when present, for related Plot Essentials, Current Arc, Story Cards, and optionally Brains.
 - The deterministic target list is fixed before the AI call. The AI may generate replacement/update content only for those targets.
 - Resolved/removal wording applies deterministic patches such as unpinning, unprotecting, changing compact status to `resolved` or `superseded`, or deactivating removal targets.
 - The generated changes become normal Memory Suggestions. They are applied only through reducer approval/auto-approval behavior.
@@ -45,6 +45,6 @@ This keeps the targeting deterministic while still using the AI for the part it 
 
 Use this when the player says something like:
 
-> Ambessa is defeated and no longer an active pressure. The Council accepts my work with Jinx on the filter. Caitlyn can still be angry personally about Jinx.
+> Ambessa is defeated and no longer a threat. The Council accepts my work with Jinx on the filter. Caitlyn can still be angry personally about Jinx.
 
-Set the entry count to the relevant recent window, usually 10-30 entries, and run Check Recent Entries. The "What changed?" field is optional; leave it blank to infer updates from the selected recent entries alone, or use it to steer cleanup toward a specific resolved/removed thread. Review the Memory Suggestions that appear. If Story Card or Plot auto-approval is enabled, those proposal types may apply immediately, but the reducer still records the approved proposal unless it is an ephemeral Active Pressure update.
+Set the entry count to the relevant recent window, usually 10-30 entries, and run Check Recent Entries. The "What changed?" field is optional; leave it blank to infer updates from the selected recent entries alone, or use it to steer cleanup toward a specific resolved/removed thread. Review the Memory Suggestions that appear. If Story Card or Plot auto-approval is enabled, those proposal types may apply immediately, with normal proposal recording for durable memory.

@@ -609,7 +609,7 @@ export function SettingsPage({
                 </div>
                 <p className="muted">
                   These toggles apply to Memory Suggestions created by automatic detection, manual builders,
-                  and one-pass memory. One-pass Plot Essentials, plot cards, and protected-card changes always require review. Plot Essentials holds the overarching story; Active Pressure holds immediate external stakes; Current Arc holds the ongoing storyline and pacing.
+                  and one-pass memory. One-pass Plot Essentials, plot cards, and protected-card changes always require review. Plot Essentials holds the overarching story; Current Arc holds the ongoing storyline and pacing.
                 </p>
               </>
             )}

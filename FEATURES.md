@@ -49,7 +49,7 @@ Pure function — builds the provider payload each turn. Sections are assembled 
 |---|---|---|---|
 | 0 | `system` | A. System Shell | Fixed system prompt + all active `narrationRules` components |
 | 1 | `aiInstructions` | B. AI Instructions | All active `aiInstructions` components |
-| 2 | `plotEssentials` | C. Plot Essentials | `plotEssentials`, `activePressure` components |
+| 2 | `plotEssentials` | C. Plot Essentials | `plotEssentials` components |
 | 2.5 | `currentArc` | C2. Current Story Arc | `currentArc` components (prefixed with `[Arc Premise: ...]` if set) |
 | 3 | `components` | E. Components | Always-on or pinned non-special-typed components |
 | 4 | `storyCards` | F. Story Cards | Triggered, always, or pinned story cards |
@@ -85,19 +85,18 @@ When total exceeds `maxContextTokens`, items are dropped in priority order:
 | `aiInstructions` | Yes | B | No | Optional separately inspectable scenario-specific contract. Not required when Narration Rules already contain the stable rules. Protected. One per adventure. |
 | `plotEssentials` | Yes | C | Yes (append) | Overarching premise, long-term conflict, and persistent story-wide constraints. One-pass replacements always require review. |
 | `currentArc` | Yes | C2 | Yes (append) | Running arc log. Requires `arcPremise` for auto-update. Graduate → Story Card when done. |
-| `activePressure` | No* | C | Yes (replace) | One-sentence current external threat or obligation. Auto-updated, auto-approved by default. |
 | `immediateMomentum` | No | — | No | Disabled legacy type. Not generated, auto-updated, or assembled into context. |
 | `authorNote` | Yes | D (near-context) | No | Immediate narrative correction. One per adventure. Most powerful short-term tool. |
 | `memory` | No | — | No | **Legacy.** Migrate content to Story Cards (type: Lore). |
 | `custom` | No | E (if always-on/pinned) | No | General purpose. Configure inclusion policy, priority, protection manually. |
 
-*`activePressure` is treated as a singleton by defaults/normalization. `immediateMomentum` remains in the type system only for old-save compatibility.
+`immediateMomentum` remains in the type system only for old-save compatibility.
 
 ### Current Story Arc — interaction notes:
 - Requires `arcPremise` text — this is the LLM filter condition. No premise = no auto-updates fire.
 - Auto-approval: `memoryAutoApprove.currentArcUpdate` (default `true`)
 - "Complete Arc → Story Card" button: creates a `plot` type Story Card from the log, clears content and arcPremise
-- Cooldown: 4 turns default (coarser than Active Pressure's 3)
+- Cooldown: 4 turns default
 - Difference from Plot Essentials: PE = overarching premise, long-term conflict, and persistent story-wide constraints. Arc = the active conflict's running log (accumulates as story unfolds, then gets retired)
 - Difference from Quests: Arc tracks narrative shape, not task completion. No objective states. Graduated arc becomes referenced backstory via Story Card, not a "quest completed" flag.
 
@@ -200,7 +199,6 @@ All AI-generated content suggestions pass through Memory Proposals before becomi
 | `brainUpdate` | Semantic engine (updateBrain/appendBrain) | Off | Apply BrainPatch |
 | `plotEssentialsUpdate` | Semantic engine, "Suggest Updates" | Off | Append to PE component |
 | `currentArcUpdate` | Semantic engine (updateComponentArc) | **On** | Append to arc component |
-| `plotPressureUpdate` | Semantic engine (updateComponentPressure) | **On** | Replace activePressure content |
 | `plotMomentumUpdate` | Legacy/disabled | Off | No-op |
 | `summaryUpdate` | Semantic engine (summaryConditions) — deprecated | Off | Append to rollingSummary |
 | `ignore` | Classification fallback | — | No-op |
@@ -233,16 +231,16 @@ Runs in background after each turn (async, doesn't block story).
 - Queues generated actions (brain/card/component updates) — run in parallel up to `maxParallelUpdateCalls`
 
 ### Legacy `runMemoryCycle` (not scheduled by normal play):
-- Plot conditions are evaluated independently: Plot Essentials, Active Pressure, and Current Arc may all fire in one cycle. Pressure cannot consume the Plot Essentials slot.
+- Plot conditions are evaluated independently: Plot Essentials and Current Arc may all fire in one cycle.
 - At most one eligible Story Card and one Brain update are selected per cycle; discovery separately proposes missing durable subjects.
 - Generated output routes through Memory Inbox and honors per-type auto-approval settings.
-- Plot Essentials and Active Pressure replacements and targeted Story Card rewrites pass size/format checks and a separate model-based evidence review before a proposal or direct write. Unchanged output is skipped. Invalid output leaves memory unchanged and records an evaluation error. Review calls use the background provider and count toward background token usage; they add one call per nonempty, changed candidate that passes format checks. This review is a model judgment, not a guarantee of factual accuracy.
+- Plot Essentials replacements and targeted Story Card rewrites pass size/format checks and a separate model-based evidence review before a proposal or direct write. Unchanged output is skipped. Invalid output leaves memory unchanged and records an evaluation error. Review calls use the background provider and count toward background token usage; they add one call per nonempty, changed candidate that passes format checks. This review is a model judgment, not a guarantee of factual accuracy.
 - Plot Essentials replacements retain valid constraints, remove stale current state, and distinguish knowledge from belief, claims from facts, and plans from completed events. Removed text remains in component update history; removal alone never creates historical Story Cards.
 - Story Card routing uses explicit target IDs, exact titles, or exact non-character trigger aliases. Shared vocabulary in content or source scenes does not establish identity. Character trigger keys are activation cues, not implicit identity aliases. Approval preserves the resolved destination. Cross-subject similarity deduplication excludes character cards.
 - Existing saved content is not migrated or silently cleaned by these safeguards.
 
 ### Condition builders:
-- Plot conditions: active Plot Essentials with auto-update enabled (or an unset legacy flag when memory detection is enabled), Current Arc with a premise, and Active Pressure.
+- Plot conditions: active Plot Essentials with auto-update enabled (or an unset legacy flag when memory detection is enabled), and Current Arc with a premise.
 - Story Card conditions: all eligible auto-update cards, respecting cooldowns; select only a meaningful durable change, not a scene recap or private interpretation.
 - Brain conditions: existing active Brains matching the scene, respecting cooldowns.
 
@@ -411,7 +409,6 @@ If you have legacy adventures with summary content, that content remains in the 
 | Voice Contracts (documentation/convention) | ✅ Complete |
 | All 9 component types | ✅ Complete |
 | Current Story Arc + graduation | ✅ Complete |
-| Active Pressure | ✅ Complete |
 | Immediate Momentum | ⚠️ Disabled legacy type |
 | Memory proposals / inbox | ✅ Complete |
 | Memory detection (post-turn background) | ✅ Complete |
@@ -450,7 +447,6 @@ Player input
     → contextBuilder (assembles sections A–M)
         ← narrationRules, aiInstructions, plotEssentials
         ← currentArc (with arcPremise header)
-        ← activePressure
         ← triggered story cards (phrase/keyword/regex match)
         ← triggered brains (character name match)
         ← authorNote

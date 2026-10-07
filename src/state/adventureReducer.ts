@@ -1050,11 +1050,8 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal)
   if (proposal.proposedType === "plotPressureUpdate") {
     if (!proposal.content.trim()) return {};
     const componentType = "activePressure";
-    const defaultTitle = "Active Pressure";
-    const defaultPriority = 245;
     const existing =
-      state.components.find((c) => c.id === proposal.targetId && c.type === componentType) ??
-      state.components.find((c) => c.type === componentType);
+      state.components.find((c) => c.type === componentType && (!proposal.targetId || c.id === proposal.targetId));
     const turn = state.activeState.turn;
     if (existing) {
       return {
@@ -1064,21 +1061,7 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal)
         ),
       };
     }
-    const component = recordComponentMemoryUpdate(
-      undefined,
-      makeComponent({
-        title: defaultTitle,
-        type: componentType,
-        content: proposal.content,
-        active: true,
-        alwaysOn: false,
-        pinned: false,
-        priority: defaultPriority,
-        ...proposal.componentPatch,
-      }),
-      proposalMemoryMeta("create"),
-    );
-    return { components: upsertById(state.components, { ...component, lastAutoUpdateTurn: turn }) };
+    return {};
   }
 
   if (proposal.proposedType === "currentArcUpdate") {
@@ -1588,6 +1571,7 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
     case "ADD_MEMORY_PROPOSAL": {
       const clean = sanitizeProposal(routedProposal(state, action.proposal));
       if (!clean) return state;
+      if (clean.proposedType === "plotPressureUpdate" && !state.components.some(c => c.type === "activePressure" && (!clean.targetId || c.id === clean.targetId))) return state;
       if (clean.proposedType === "relationshipUpdate") {
         if (!relationshipIsCurrent(state, clean) || duplicateRelationship(state, clean)) return state;
         const t = clean.relationship!;

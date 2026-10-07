@@ -68,6 +68,9 @@ export async function regenerateProposalContent(
   adventure: Adventure,
   providerConfig: ProviderConfig,
 ): Promise<string> {
+  if (proposal.proposedType === "plotPressureUpdate" && !adventure.components.some(c => c.type === "activePressure" && (!proposal.targetId || c.id === proposal.targetId))) {
+    throw new Error("The requested component no longer exists.");
+  }
   const systemPrompt = `You are a world-memory assistant for an interactive fiction game.
 The user has a memory suggestion they want better content for.
 Write improved content for the suggestion titled "${proposal.title}" (type: ${proposal.proposedType}, card category: ${proposal.storyCardType ?? "unspecified"}).

@@ -268,7 +268,7 @@ const TYPE_DESCRIPTIONS: Record<ComponentType, string> = {
   aiInstructions: "Optional scenario-specific rules separated for organization. Use this only when you want a distinct drift-prevention or genre contract outside Narration Rules. Do not duplicate rules already present in Narration Rules; both blocks load every turn.",
   plotEssentials: "Current operating truth — what is happening now, open tensions, obligations, and major constraints that should shape every scene. Keep it compact and replace it when it drifts. Outgoing facts become reviewable historical Story Card proposals.",
   currentArc: "A running log of the active story arc — auto-updated as arc-relevant events occur. Seed it with a one-line Arc Premise that defines what this arc is about. The AI only appends entries when something genuinely advances or complicates that premise. When the arc is complete, graduate it to a Story Card and start fresh.",
-  activePressure: "One sentence naming the external threat, obligation, or force currently bearing on the player character. Auto-generated, approved via Memory Inbox. Must stay anchored to external stakes — a danger, a deadline, a pursuit, a debt. If this drifts to describing an emotional state or internal need, regenerate it.",
+  activePressure: "",
   immediateMomentum: "Disabled legacy component. Immediate next-beat direction now belongs in Recent Messages or the one-turn Next Output Bias.",
   authorNote: "Near-context narrative direction — inserted just before Recent Messages for maximum influence on the next response. One per adventure. Most powerful mid-session correction tool: if a character is drifting too passive, too emotional, or too reactive, add a directive here before the next turn. 'Nix should have a project she is actively working on right now' resets the register immediately.",
   memory: "Legacy lore block. Move content to a Story Card with type Lore for triggered inclusion.",
@@ -546,7 +546,7 @@ export function ComponentsPage({ adventure, dispatch, loading, onSuggestPlotUpda
         <details className="panel">
           <summary>Draft plot memory with AI</summary>
           <p className="muted">
-            Describe the current situation, pressure, or correction. The AI drafts a pending Plot Essentials or Active Pressure update using the app's placement rules.
+            Describe the current situation, pressure, or correction. The AI drafts a pending update for the selected plot component.
           </p>
           <div className="grid three">
             <Field label="Target">
@@ -558,7 +558,7 @@ export function ComponentsPage({ adventure, dispatch, loading, onSuggestPlotUpda
                 }}
               >
                 <option value="plotEssentials">Plot Essentials</option>
-                <option value="activePressure">Active Pressure</option>
+                {adventure.components.some(c => c.type === "activePressure") && <option value="activePressure">Active Pressure</option>}
               </select>
             </Field>
             <Field label="Component">
@@ -633,7 +633,7 @@ export function ComponentsPage({ adventure, dispatch, loading, onSuggestPlotUpda
                 <div className="component-tool-copy">
                   <h3>Clean up plot components</h3>
                   <p className="muted">
-                    Find bloated Plot Essentials, stale active pressure, disabled legacy blocks, duplicate always-on facts, and current-state/history drift.
+                    Find bloated Plot Essentials, disabled legacy blocks, duplicate always-on facts, and current-state/history drift.
                   </p>
                 </div>
                 <div className="component-tool-controls">

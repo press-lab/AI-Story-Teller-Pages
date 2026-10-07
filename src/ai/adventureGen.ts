@@ -59,7 +59,6 @@ export interface AdventureGenPreferences {
 const generatedComponentTypes = new Set<ComponentType>([
   "aiInstructions",
   "plotEssentials",
-  "activePressure",
   "authorNote",
   "custom",
 ]);
@@ -173,7 +172,7 @@ Output ONLY valid JSON — no explanation, no preamble, no markdown prose outsid
   "components": [
     {
       "title": "string",
-      "type": "aiInstructions | plotEssentials | activePressure | authorNote | custom",
+      "type": "aiInstructions | plotEssentials | authorNote | custom",
       "content": "string",
       "alwaysOn": true,
       "pinned": true,
@@ -197,8 +196,7 @@ Authoring contract:
 ${ADVENTURE_GENERATION_BEST_PRACTICES}
 
 Component guidelines:
-- Always include one "plotEssentials" component containing the overarching premise, central long-term conflict, and persistent story-wide constraints. Put immediate threats in Active Pressure and the current storyline in Current Arc. Use 4-7 tight bullets and keep it under 140 words. Do not turn it into a full backstory or lore encyclopedia.
-- Include one "activePressure" component for the immediate external threat, obligation, deadline, or unresolved problem driving the opening. Keep it to exactly one concise sentence.
+- Always include one "plotEssentials" component containing the overarching premise, central long-term conflict, and persistent story-wide constraints. Keep immediate scene beats in the opening and the current storyline in Current Arc. Use 4-7 tight bullets and keep it under 140 words. Do not turn it into a full backstory or lore encyclopedia.
 - Add "aiInstructions" for scenario-specific generation constraints or drift prevention not covered by narration mechanics. Do not put story facts there. Structure it with named ALL-CAPS sections (SETTING, PLAYER POWER, STORY BEHAVIOR, PROSE, etc.) relevant to the premise. Each section should be 2-5 tight bullet points. Always include a PROSE section with guidance on sentence rhythm, dialogue voice diversity, and sensory vs. expository balance. Include a STORY BEHAVIOR section that specifies what the story should be driven by and what drift patterns to prevent. If the premise involves a powerful or exceptional player character, include a PLAYER POWER section with explicit rules about how NPCs engage without worship or constant nerf attempts. Omit sections that are not relevant to the premise.
 - Add "authorNote" only for concise tone, mood, pacing, or prose influence.
 - Add a "custom" component only for broad world context that is relevant every turn. If it matters only when a character, place, faction, object, or secret appears, use a Story Card instead.
@@ -206,7 +204,7 @@ Component guidelines:
 
 Story card guidelines:
 - Create cards for recurring named characters, significant recurring locations, factions, and key lore items introduced by the premise or opening scene.
-- Do not create cards for current scene position, temporary mission status, one-off scenery, or throwaway objects. Put immediate danger in activePressure and let the recent messages carry the next concrete beat.
+- Do not create cards for current scene position, temporary mission status, one-off scenery, or throwaway objects. Let the opening and recent messages carry immediate danger and the next concrete beat.
 - memoryMode: use "static" for always-true facts, "living" for evolving current relationships/status/searches/arrangements, and "historical" for completed events or past-tense facts.
 - keys array: use the specific trigger phrases that should summon THIS card. Character aliases belong on character identity cards. Do not put broad character names on event, relationship, or subplot cards when those names already have character cards.
 - Aim for 4–12 cards depending on the complexity of the premise. Quality over quantity.
@@ -230,7 +228,7 @@ The example lines carry the most weight. Write them as the character would actua
 
 function setupPreferenceGuidance(preferences: AdventureGenPreferences): string {
   const storyShapeGuidance: Record<AdventureStoryShape, string> = {
-    balanced: "Balanced adventure: use a tight premise, a small recurring cast, one active pressure, and a few Story Cards. Keep PE compact and broadly useful.",
+    balanced: "Balanced adventure: use a tight premise, a small recurring cast, and a few Story Cards. Keep PE compact and broadly useful.",
     sandbox: "Sandbox: prioritize a reactive world, player agency, faction/location cards, and loose hooks. Keep AI Instructions light; do not over-plan the plot in PE.",
     missionLoop: "Mission loop: create an explicit custom loop component whose phases feed each other. PE should name the current assignment/obligation and recurring constraints; Story Cards should hold the team, handler, enemy factions, and recurring mission assets.",
     mystery: "Mystery: PE should state the current known question and immediate investigative pressure, not the answer. Put clues, suspects, secrets, and locations in Story Cards. AI Instructions should prevent premature reveals.",
@@ -270,7 +268,6 @@ function setupPreferenceGuidance(preferences: AdventureGenPreferences): string {
 Apply these preferences by routing facts to the correct surfaces:
 - AI Instructions: behavior, player-control contract, prose mode, drift prevention, adult-content policy if opted in.
 - Plot Essentials: 4-7 bullets of overarching premise and persistent story-wide constraints only.
-- Active Pressure: exactly one sentence naming the current external pressure.
 - Author's Note: brief tone/mood/pacing nudge only.
 - Story Cards/Brains: recurring people, relationships, locations, factions, secrets, rules, and evolving internal state.`;
 }

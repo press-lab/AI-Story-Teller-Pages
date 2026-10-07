@@ -33,3 +33,11 @@ describe("normalizeAdventure", () => {
     expect(card?.protected).toBe(false);
   });
 });
+
+describe("optional pressure component", () => {
+  it("does not seed or restore a missing component on load", () => {
+    const adventure = createDefaultAdventure("No pressure");
+    expect(adventure.components.some(c => c.type === "activePressure")).toBe(false);
+    expect(normalizeAdventure(adventure).components.some(c => c.type === "activePressure")).toBe(false);
+  });
+});

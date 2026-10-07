@@ -207,7 +207,6 @@ export function createDefaultAdventure(title = "Untitled Adventure"): Adventure 
         alwaysOn: true,
         pinned: true,
       }),
-      makeComponent({ title: "Active Pressure", type: "activePressure", content: "", priority: 245, active: true }),
     ],
     storyCards: [],
     brains: [],
@@ -608,11 +607,7 @@ export function normalizeAdventure(adventure: Adventure): Adventure {
         seenSingletons.add(component.type);
         return true;
       });
-      const hasActivePressure = deduped.some((c) => c.type === "activePressure");
-      return [
-        ...deduped,
-        ...(hasActivePressure ? [] : [makeComponent({ title: "Active Pressure", type: "activePressure", content: "", priority: 245, active: true })]),
-      ];
+      return deduped;
     })(),
     triggerRules: (adventure.triggerRules ?? []).map((rule) => ({
       ...rule,

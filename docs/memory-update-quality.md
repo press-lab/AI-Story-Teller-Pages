@@ -1,6 +1,6 @@
 # Memory update quality
 
-Automatic memory evaluation distinguishes the latest player turn and response from older attribution context. Active Pressure requires a new threat, changed stakes or obligation, or resolution supported by a latest-turn message. Rephrasing the same situation, routine movement, and leisure activity do not justify replacing pressure. Resolution can leave no immediate pressure; updates do not need to manufacture a replacement danger.
+Automatic memory evaluation distinguishes the latest player turn and response from older attribution context. Updates require meaningful changes supported by the latest turn; routine movement and rephrasing do not justify memory rewrites.
 
 Story-card and brain updates require explicit identity verification before either a proposal or a direct semantic write. Brain review checks the named character's perspective and access to knowledge, so a player's messages or plans cannot simply become an NPC's first-person thoughts. An uncertain or malformed review produces no update. Brain condensation may archive entries but cannot rewrite validated text or add facts. Traits promoted from brains to story cards also receive story-card validation.
 

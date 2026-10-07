@@ -245,6 +245,8 @@ function activeSemanticRules(adventure: Adventure): SemanticCondition[] {
     .filter((rule) => (rule.evaluationMode ?? "semantic") === "semantic")
     .filter((rule) => Boolean(rule.condition.trim()))
     .filter((rule) => !isTriggerOnCooldown(adventure, rule))
+    .filter((rule) => rule.actions.length === 0 || rule.actions.some(action =>
+      action.type !== "updateComponentPressure" || adventure.components.some(c => c.id === action.componentId && c.type === "activePressure" && c.active)))
     .map((rule) => ({
       id: `trigger:${rule.id}`,
       label: rule.name,
@@ -301,7 +303,7 @@ function currentArcConditions(adventure: Adventure): SemanticCondition[] {
 
 function activePressureConditions(adventure: Adventure): SemanticCondition[] {
   return adventure.components
-    .filter((c) => c.type === "activePressure" && c.active)
+    .filter((c) => c.type === "activePressure" && c.active && c.autoUpdate !== false)
     .map((component) => ({
       id: `plotEssentialsPressure:${component.id}`,
       label: `Active Pressure: ${component.title}`,
@@ -644,7 +646,8 @@ async function generatedActionsFor(
     }
 
     if (triggerAction.type === "updateComponentPressure") {
-      const pressureComp = adventure.components.find((c) => c.type === "activePressure");
+      const pressureComp = adventure.components.find((c) => c.type === "activePressure" && c.id === triggerAction.componentId && c.active);
+      if (!pressureComp) return { actions: [] };
       const content = await sendTargetedUpdate(adventure, providerConfig, plotPressurePrompt(adventure), accum);
       const validation = await validateMemoryUpdate(adventure, providerConfig, "activePressure", "Active Pressure", pressureComp?.content ?? "", content, accum);
       if (!validation.changed) return { actions: [], error: validation.error };
@@ -1171,6 +1174,10 @@ export async function runPlotAIBuilder(
     (request.targetComponentId ? adventure.components.find((c) => c.id === request.targetComponentId && c.type === componentType) : undefined) ??
     adventure.components.find((c) => c.type === componentType && c.active) ??
     adventure.components.find((c) => c.type === componentType);
+  if (componentType === "activePressure" && !targetComponent) {
+    const logEntry = { ...emptyLog, errors: ["The requested component no longer exists."] };
+    return { actions: [{ type: "LOG_EVALUATION_RESULT", entry: logEntry }], logEntry };
+  }
   const proposedType: MemoryProposal["proposedType"] = request.target === "activePressure" ? "plotPressureUpdate" : "plotEssentialsUpdate";
   const recent = request.useRecentStory ? recentExcerpt(adventure) : "(not included by user choice)";
   const plotEssentials = adventure.components.filter((c) => c.type === "plotEssentials").map((c) => `[ID: ${c.id}] ${c.title}\n${c.content}`).join("\n\n");

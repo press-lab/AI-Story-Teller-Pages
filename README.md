@@ -47,7 +47,7 @@ Context sections, in fixed order:
 |---|---|---|
 | `system` | A. System Shell | Global generation rules — always protected |
 | `aiInstructions` | B. AI Instructions | Components with `type === "aiInstructions"` |
-| `plotEssentials` | C. Plot Essentials | `plotEssentials` and one-sentence `activePressure` components |
+| `plotEssentials` | C. Plot Essentials | `plotEssentials` components |
 | `currentArc` | C2. Current Story Arc | Active arc log and gated Arc Director phase instruction |
 | `components` | E. Components | General always-on or pinned custom components |
 | `storyCards` | F. Story Cards | Triggered / pinned Story Cards |
@@ -93,12 +93,11 @@ The Context Preview page shows:
 - **Story Cards**: durable triggered records for one subject: character, location, faction, object, relationship, secret, rule, or completed event. Cards carry `memoryMode` (`static`, `living`, or `historical`) so generated updates know whether to write always-true facts, current evolving state, or past-tense history. The Story Cards page can turn a user description into a pending AI-generated Memory Proposal for review. Optional AI auto-updates use a per-card cooldown and can be routed through Memory Inbox when approval is required.
 - **Brains**: opt-in character-internal state for major characters only. AI may update a Brain only when a `BrainEntry` already exists. Do not create Brains for random NPCs.
 - **Plot Essentials**: tiny always-on current operating truth: what is happening now, open tensions, obligations, and major constraints that should shape every scene. PE replacement proposals overwrite the block; outgoing facts become pending historical Story Card proposals for review. Section C.
-- **Active Pressure**: one sentence naming the current external threat, obligation, or force pressing on the player character. Section C. Auto-updated and auto-approved by default.
 - **Immediate Momentum**: disabled legacy component type. It is not generated, imported, auto-updated, or sent to the model.
 - **Narration Rules**: the primary per-adventure behavior contract, copied from defaults but editable during creation and afterward. Loaded with the system shell before other context.
 - **AI Instructions**: optional persistent scenario-specific behavior rules in section B. Use them for genre, drift prevention, scene-loop, and prose contracts, not facts. They are not required when Narration Rules already contain the complete stable contract. Avoid duplicating the same rule across both surfaces. AI must not modify these.
 - **Author's Note**: author-layer mood or tonal constraints. Section D. AI must not modify these.
-- **Memory Inbox / Proposals**: `activeState.memoryProposals`, where AI-suggested durable memories wait for user approval. Pending proposals appear in Context Preview but are not model context. Approving converts them to Story Cards, Brain updates, Plot Essentials edits, Active Pressure edits, or legacy Summary updates through reducer actions.
+- **Memory Inbox / Proposals**: `activeState.memoryProposals`, where AI-suggested durable memories wait for user approval. Pending proposals appear in Context Preview but are not model context. Approving converts them to Story Cards, Brain updates, Plot Essentials edits, or legacy Summary updates through reducer actions.
 - **Protected**: non-droppable during token truncation. `aiInstructions`, `plotEssentials`, and `authorNote` components are protected by default.
 - **Pinned**: prioritized for inclusion and ordering, but droppable if budget is exhausted and the item is not also protected.
 
@@ -106,7 +105,7 @@ Use `src/memory/classificationPolicy.ts` for deterministic memory routing. Use `
 
 ### Deferred Memory Bank Idea
 
-An optional Inspectable Memory Bank may be useful later, but it is intentionally not part of the MVP. Story Cards, Brains, Memory Inbox, Plot Essentials, Active Pressure, Current Arc, Next Output Bias, and Recent Messages already cover the current context roles without an additional retrieval layer.
+An optional Inspectable Memory Bank may be useful later, but it is intentionally not part of the MVP. Story Cards, Brains, Memory Inbox, Plot Essentials, Current Arc, Next Output Bias, and Recent Messages already cover the current context roles without an additional retrieval layer.
 
 If added later, Memory Bank entries must be their own visible context section with item-level source turns, token cost, relevance reason, usage count, last-used timestamp, and approve/edit/archive/delete controls. They must never enter the model as an opaque retrieved-memory bucket.
 
@@ -119,7 +118,6 @@ Allowed AI update targets:
 - BrainEntry fields
 - StoryCard content, triggers, and state
 - ComponentEntry content only when `component.type === "plotEssentials"`
-- Active Pressure content only through the `plotPressureUpdate` proposal path
 
 Rejected AI update targets:
 
@@ -152,7 +150,7 @@ The context builder in `src/contextBuilder/contextBuilder.ts` follows the requir
 - Components, Story Cards, Brains, Triggers, Memory Inbox, Chronicle, Context Preview, Settings, Saves, and Import/Export tabs.
 - Chronicle and Memory Inbox tabs for inspecting transcript history and proposed durable memories.
 - Trigger matching for keyword, phrase, and regex; deterministic priority order; cooldowns; trigger log.
-- LLM semantic trigger evaluation with generated updates for brains, story cards, Plot Essentials, Current Arc, and Active Pressure.
+- LLM semantic trigger evaluation with generated updates for brains, story cards, Plot Essentials, and Current Arc.
 - Full trigger action suite wired through the reducer.
 - Legacy quest, Auto-Card, Rolling Summary, and Scene State fields preserved for older saves, but not part of default runtime context.
 - AIST adventure JSON backup/restore for full playable saves.
@@ -160,7 +158,7 @@ The context builder in `src/contextBuilder/contextBuilder.ts` follows the requir
 
 ## Architecture Decision: Semantic Engine and Memory Proposals
 
-The semantic post-turn evaluator can apply brain, story card, Plot Essentials, Current Arc, and Active Pressure updates through reducer-backed proposal/update paths. When `semanticEvaluationSettings.requireApprovalForAutoUpdates` is `true`, generated updates become Memory Inbox proposals and do not mutate active memory until approved.
+The semantic post-turn evaluator can apply brain, story card, Plot Essentials, and Current Arc updates through reducer-backed proposal/update paths. When `semanticEvaluationSettings.requireApprovalForAutoUpdates` is `true`, generated updates become Memory Inbox proposals and do not mutate active memory until approved.
 
 Memory Inbox / Memory Proposals is the path for unstructured AI-suggested new memory (the `classifyMemory` flow), where the AI is making a novel durable-memory suggestion the user has not pre-authorized.
 

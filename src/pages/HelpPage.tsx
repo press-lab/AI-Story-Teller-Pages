@@ -49,7 +49,7 @@ npm.cmd run test:live   # optional, uses .env.test.local`}</pre>
         <p>
           New Adventure includes optional setup before play: an opening scene, starter World Blocks, manual
           Story Cards, and Story Cards parsed from uploaded or pasted JSON. Generate with AI drafts the title,
-          opening scene, tight Plot Essentials, one-sentence Active Pressure, optional scenario-specific
+          opening scene, tight Plot Essentials, optional scenario-specific
           AI Instructions or Author's Note, and recurring Story Cards for review. Native DeepSeek generation uses
           structured JSON output with thinking disabled for this schema-driven setup call.
         </p>
@@ -135,7 +135,7 @@ npm.cmd run test:live   # optional, uses .env.test.local`}</pre>
         </p>
         <p>
           Pending proposals are not active context. Approving a proposal routes it to a Story Card, Brain
-          update, Plot Essentials update, Active Pressure update, or legacy Rolling Summary update through reducer-backed paths.
+          update, Plot Essentials update, or legacy Rolling Summary update through reducer-backed paths.
         </p>
       </>
     ),
@@ -251,7 +251,7 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
             accumulate without your involvement. If the log fills with noise, tighten the premise.
           </li>
           <li>
-            <strong>Plot Essentials ≠ Current Arc.</strong> PE holds the overarching premise and persistent story-wide constraints. Active Pressure holds immediate external threats and obligations. The arc holds the active conflict's running log and pacing gate.
+            <strong>Plot Essentials ≠ Current Arc.</strong> PE holds the overarching premise and persistent story-wide constraints. The arc holds the active conflict's running log and pacing gate.
           </li>
           <li>
             <strong>Graduate when the arc resolves.</strong> When the arc has run its course, click
@@ -521,7 +521,7 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
           <li>Durable recurring facts go to Story Cards.</li>
           <li>Character-specific evolving internal state goes to Brains only for existing BrainEntries.</li>
           <li>Tiny always-on current constraints go to Plot Essentials.</li>
-          <li>Current external pressure goes to Active Pressure; active arc history goes to Current Arc.</li>
+          <li>Active arc history goes to Current Arc; immediate scene beats stay in the transcript.</li>
           <li>Ephemeral scenery, one-off room layouts, movement, and throwaway details are ignored.</li>
         </ul>
         <pre>{`"Margo calls Seth hedge prince" -> storyCard
@@ -578,7 +578,7 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
       <>
         <p>
           Generate with AI asks what kind of story you want, then routes the setup into the right surfaces. You choose
-          outcomes; the app decides whether the result belongs in AI Instructions, Plot Essentials, Active Pressure,
+          outcomes; the app decides whether the result belongs in AI Instructions, Plot Essentials,
           Author's Note, Story Cards, or Brains.
         </p>
         <dl>
@@ -589,11 +589,11 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
           <dt>Mystery</dt>
           <dd>The current known question goes in Plot Essentials. Clues, suspects, secrets, and locations go on Story Cards.</dd>
           <dt>Faction politics</dt>
-          <dd>Active Pressure names the current public pressure. Factions, leaders, alliances, leverage, and secrets go on cards.</dd>
+          <dd>The opening establishes the current public pressure. Factions, leaders, alliances, leverage, and secrets go on cards.</dd>
           <dt>Romance drama</dt>
           <dd>Relationship pressure stays choice-driven. Living relationship cards and Brains carry evolving state instead of bloating PE.</dd>
           <dt>Survival / horror</dt>
-          <dd>Active Pressure tracks the current external threat. Story Cards hold threat rules, safe places, recurring dangers, and costs.</dd>
+          <dd>Story Cards hold threat rules, safe places, recurring dangers, and costs.</dd>
         </dl>
         <p><strong>Prose mode is separate.</strong> Minimalist is fast and lean; novelistic is richer and slower; cinematic focuses on visible behavior and blocking; dialogue-heavy prioritizes distinct voices and social pressure.</p>
         <p><strong>Player control is separate.</strong> Strict mode never writes your character. Minor-actions mode may bridge tiny implied motions. Cinematic flow may write small player-character beats, but major choices stay yours.</p>
@@ -685,14 +685,14 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
         <p><strong>What belongs:</strong></p>
         <ul>
           <li>The overarching premise: who the story follows and its enduring central conflict.</li>
-          <li>Long-term stakes that remain relevant across scenes and arcs. Put immediate threats and obligations in Active Pressure.</li>
+          <li>Long-term stakes that remain relevant across scenes and arcs.</li>
           <li>Major constraints: power rules, public stakes, faction pressure, or canon limits that remain globally relevant.</li>
         </ul>
         <p><strong>What does NOT belong:</strong></p>
         <ul>
           <li>Current scene position or who is present — keep that in Recent Messages unless it becomes a durable constraint.</li>
           <li>Character emotional states or internal goals.</li>
-          <li>Temporary mission status that changes every few turns — use Current Arc or Active Pressure.</li>
+          <li>Temporary mission status that changes every few turns — use Current Arc.</li>
           <li>Lore that only matters when a specific character or place comes up — use a Story Card instead.</li>
         </ul>
         <p><strong>Format:</strong> 4-7 tight bullets or short labeled lines. PE updates replace the full block. Change PE only when its foundations change. Replaced text stays in component history; removal does not create an event card.</p>
@@ -710,7 +710,7 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
     body: (
       <>
         <p>
-          Rolling Summary is a legacy save-compatible field. It is retained on the adventure object for old saves, but it is not emitted as a default model context section. Use Current Arc, Plot Essentials, Active Pressure, Story Cards, Brains, and Recent Messages for active continuity.
+          Rolling Summary is a legacy save-compatible field. It is retained on the adventure object for old saves, but it is not emitted as a default model context section. Use Current Arc, Plot Essentials, Story Cards, Brains, and Recent Messages for active continuity.
         </p>
         <p><strong>What belongs:</strong></p>
         <ul>
@@ -726,35 +726,7 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
           <li>Character inner thoughts — those belong in Brains.</li>
           <li>Permanent world facts that belong in Story Cards or Plot Essentials.</li>
         </ul>
-        <p>For current adventures, keep external stakes visible through Active Pressure and Current Arc instead of relying on auto-summary settings.</p>
-      </>
-    ),
-  },
-  {
-    id: "best-practices-active-pressure",
-    title: "Active Pressure — Best Practices",
-    category: "Best Practices",
-    summary: "What Active Pressure tracks and how to write it so the model stays in external-stakes mode.",
-    tags: ["active pressure", "pressure", "threat", "obligation", "best practices"],
-    body: (
-      <>
-        <p>
-          Active Pressure is one sentence describing the external threat, obligation, or force currently bearing on the player character at the story level. It tells the model "this is what is pushing or threatening right now" — and it should replace the previous value entirely when the pressure changes.
-        </p>
-        <p><strong>Active Pressure answers:</strong> <em>What is currently threatening, pressing, or obligating the player character from the outside?</em></p>
-        <p><strong>Good Active Pressure:</strong></p>
-        <ul>
-          <li>"The delegation arrives at dawn. Setu has until then to decide whether to reveal what she knows."</li>
-          <li>"The Beast has scented the group and is circling the ward's outer edge."</li>
-          <li>"Kael has issued a public challenge. Not responding by nightfall reads as surrender."</li>
-        </ul>
-        <p><strong>Bad Active Pressure:</strong></p>
-        <ul>
-          <li>"Setu feels the weight of her choices pressing in." (character emotion, not external pressure)</li>
-          <li>"There is tension between Margo and Seth." (relationship state, not a story-level threat)</li>
-          <li>"Setu is uncertain about what to do next." (internal state, not external force)</li>
-        </ul>
-        <p>Active Pressure is auto-updated by the semantic engine. You can also edit it directly if the model's version misses the real threat.</p>
+        <p>For current adventures, keep external stakes visible through Current Arc instead of relying on auto-summary settings.</p>
       </>
     ),
   },

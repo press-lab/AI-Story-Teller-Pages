@@ -105,7 +105,7 @@ const uniqueComponentTypes = new Set<ComponentType>([
 ]);
 
 const storyShapeOptions: Array<{ value: AdventureStoryShape; label: string; description: string }> = [
-  { value: "balanced", label: "Balanced starter", description: "Small cast, clear premise, active pressure, and a few durable cards." },
+  { value: "balanced", label: "Balanced starter", description: "Small cast, clear premise, and a few durable cards." },
   { value: "sandbox", label: "Sandbox", description: "Reactive world, loose hooks, more factions/locations, less plot locking." },
   { value: "missionLoop", label: "Mission loop", description: "Jobs create fallout, fallout creates team scenes, team scenes create the next job." },
   { value: "mystery", label: "Mystery", description: "Known question in PE, clues/suspects/secrets in Story Cards, no early answer." },

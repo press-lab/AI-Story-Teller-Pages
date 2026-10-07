@@ -349,7 +349,6 @@ AI Story Teller mapping:
 - Keep Plot Essentials in section C as compact current truth.
 - Do not append a chronological log to Plot Essentials.
 - Remove resolved or outgoing facts; route historical durable facts into Story Card proposals where appropriate.
-- Active Pressure belongs beside current truth as one sentence about what is pressing now, not as a summary.
 - Immediate Momentum remains disabled legacy compatibility and should not be revived as a new always-on context surface.
 
 ### Author's Note
@@ -515,7 +514,6 @@ Use this checklist when reviewing or generating AI Story Teller scenarios:
 
 - AI Instructions are global behavior only, not lore.
 - Plot Essentials contain compact current truth and always-relevant constraints.
-- Active Pressure is one sentence about the current external force pressing on the player character.
 - Author's Note is short scene tone, not a long plan.
 - Next Output Bias is one-turn steering, not durable memory.
 - Story Cards are self-contained triggered facts with specific triggers.

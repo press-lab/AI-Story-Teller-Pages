@@ -431,7 +431,7 @@ Blocking behavior:
 - Blocked context identifies the section/item when possible and no provider request is made.
 - Blocked output is never displayed raw to the user.
 - Blocked output stores a placeholder assistant event and a policy decision.
-- Blocked memory writes do not create or update Story Cards, Brains, Plot Essentials, or Active Pressure.
+- Blocked memory writes do not create or update Story Cards, Brains, or Plot Essentials.
 - Blocked imports remain quarantined or rejected.
 - Blocked shares remain private and unpublished.
 - Severe blocked attempts create account safety events for restriction evaluation.

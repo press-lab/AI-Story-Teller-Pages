@@ -30,12 +30,6 @@ The short version:
    plot you administer; an arc that grows *out of* the loop and eventually
    comes to a head.
 
-Active Pressure is the small live version of that pressure: exactly one sentence
-about the external force pressing on the player character right now. It is not a
-plot summary and not the next action; durable facts live in Plot Essentials,
-climbing conflict lives in Current Story Arc, and one-turn steering lives in
-Next Output Bias.
-
 Power fantasy is **not** a separate pillar and it is **not** subordinate to
 social friction. If your taste is being OP and having NPCs largely accept it,
 that's valid — the power is a clean flex, and the reaction-fuel comes from the
@@ -246,7 +240,6 @@ For a new or existing adventure that should have a climbing arc:
 - [ ] **Backdrop** you actually like inhabiting.
 - [ ] **Cast as Brains**, behavioral not adjectival, relationships on the Brains.
 - [ ] A **loop** where each phase manufactures the next.
-- [ ] **Active Pressure** as one sentence naming the external force pressing now.
 - [ ] One **Current Arc** with an Arc Director:
   - [ ] **The Baddie** — which Story Cards / Brains are this arc's threads.
   - [ ] **The Timer** — pace (Short / Medium / Long / Epic).

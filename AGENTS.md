@@ -47,7 +47,7 @@ Do not directly mutate adventure objects in components, trigger engines, importe
 - Context Preview must match the provider payload returned by `buildContext`. Empty sections are excluded from the payload but always present in `result.sections`.
 - `ContextBuildResult.pendingProposals` exposes pending Memory Proposals for the UI. These are never included in the model payload.
 - AI-generated memory updates must go through `src/memory/applyAIMemoryUpdate.ts` and then through reducer actions.
-- AI may update BrainEntry fields only when the BrainEntry already exists, StoryCard content/triggers/state, Plot Essentials component content, and the one-sentence Active Pressure component through the `plotPressureUpdate` path only.
+- AI may update BrainEntry fields only when the BrainEntry already exists, StoryCard content/triggers/state, and Plot Essentials component content.
 - AI must not mutate AI Instructions, Author's Note, provider config, trigger definitions, quest definitions, raw imports, or the system shell.
 - Memory Inbox proposals live in `activeState.memoryProposals`; approving/rejecting/ignoring proposals must go through reducer actions.
 - Do not add silent stubs. If a feature is incomplete, label it clearly in both code and UI.
@@ -59,12 +59,11 @@ Do not directly mutate adventure objects in components, trigger engines, importe
 - **Next Output Bias**: `activeState.nextTurnNote`, a user-written short-term steering note for the next generation. Appears in section J, is visible in Context Preview, token-counted, reducer-driven, and expires after one successful generation by default.
 - **Story Cards**: durable recurring facts — private jokes, nicknames, secrets, promises, relationship facts, magical rules, recurring objects, locations, factions. Trigger-matched or pinned. Section F. Optional AI auto-updates use per-card cooldown fields (`autoUpdateCooldownTurns`, `lastAutoUpdateTurn`).
 - **Brains**: opt-in evolving character-internal state for major characters only. Do not create BrainEntries for random NPCs, locations, factions, objects, or one-scene characters. Brain updates only apply when a BrainEntry already exists. If no BrainEntry exists, route durable character memory to an existing Story Card or a Story Card proposal in Memory Inbox.
-- **Plot Essentials**: compact overarching premise, central long-term conflict, and persistent story-wide constraints. Change only when those foundations change; immediate stakes belong in Active Pressure and ongoing storyline progress belongs in Current Arc. Section C. AI may update these through the approved `plotEssentialsUpdate` proposal path only.
-- **Active Pressure**: one sentence naming the current external threat, obligation, or force pressing on the player character. Section C. Auto-generated through `plotPressureUpdate`, auto-approved by default, and replaced when stakes change.
+- **Plot Essentials**: compact overarching premise, central long-term conflict, and persistent story-wide constraints. Change only when those foundations change; ongoing storyline progress belongs in Current Arc. Section C. AI may update these through the approved `plotEssentialsUpdate` proposal path only.
 - **Immediate Momentum**: disabled legacy component type. Keep the type for old-save compatibility, but do not generate it, auto-update it, import it, or assemble it into context.
 - **AI Instructions**: persistent generation rules. Section B. AI must not modify.
 - **Author's Note**: tonal / mood layer. Section D. AI must not modify.
-- **Memory Inbox**: `activeState.memoryProposals` — AI/system-suggested memory updates before they become active context. Proposals have `status: "pending" | "approved" | "rejected" | "ignored"`. Pending proposals appear in Context Preview but are never model context. Approving a proposal converts it to a Story Card, Brain update, Plot Essentials update, Active Pressure update, or legacy Summary update via reducer actions.
+- **Memory Inbox**: `activeState.memoryProposals` — AI/system-suggested memory updates before they become active context. Proposals have `status: "pending" | "approved" | "rejected" | "ignored"`. Pending proposals appear in Context Preview but are never model context. Approving a proposal converts it to a Story Card, Brain update, Plot Essentials update, or legacy Summary update via reducer actions.
 
 Use `classifyMemory` in `src/memory/classificationPolicy.ts` when creating deterministic proposals. If a character has no BrainEntry, route durable character facts to an existing Story Card or a Story Card proposal; do not create a brainUpdate proposal by default. Ephemeral scenery, one-off room layouts, generic movement, and throwaway details should be ignored unless marked important or recurring.
 

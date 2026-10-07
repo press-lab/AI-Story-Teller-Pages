@@ -178,7 +178,6 @@ describe("runSemanticPostTurnEvaluation", () => {
     };
 
     mockProvider
-      .mockResolvedValueOnce({ content: "[]", raw: {} })
       .mockResolvedValueOnce({ content: '["storyCard:card-margo"]', raw: {} })
       .mockResolvedValueOnce({ content: "Margo is protective and now worried about Seth.", raw: {} });
 
@@ -259,7 +258,6 @@ describe("runSemanticPostTurnEvaluation", () => {
     };
 
     mockProvider
-      .mockResolvedValueOnce({ content: "[]", raw: {} })
       .mockResolvedValueOnce({ content: '["storyCard:card-joke"]', raw: {} })
       .mockResolvedValueOnce({ content: "Margo calls Seth hedge prince only when scared.", raw: {} });
 
@@ -994,5 +992,35 @@ describe("memory discovery and component suggestions", () => {
     const result = await runMemoryCycle(a, providerConfig);
     expect(result.logEntry.conditionsEvaluated.map(c => c.id)).toEqual(["storyCard:first", "storyCard:second"]);
     expect(result.actions).toContainEqual(expect.objectContaining({ type: "ADD_MEMORY_PROPOSAL", proposal: expect.objectContaining({ targetId: "second" }) }));
+  });
+});
+
+describe("absent pressure component", () => {
+  it("skips a stale pressure-only automation without a provider call", async () => {
+    const adventure = baseAdventure();
+    adventure.components = [];
+    adventure.triggerRules = [makeTriggerRule({ id: "stale-pressure", name: "Stale pressure", enabled: true, evaluationMode: "semantic", condition: "A threat changes", actions: [{ type: "updateComponentPressure", componentId: "deleted" }] })];
+    const result = await runSemanticPostTurnEvaluation(adventure, providerConfig);
+    expect(mockProvider).not.toHaveBeenCalled();
+    expect(result.actions.some(a => a.type === "ADD_MEMORY_PROPOSAL")).toBe(false);
+  });
+
+  it("skips the missing pressure action but preserves another action in a mixed rule", async () => {
+    const adventure = baseAdventure();
+    adventure.components = [];
+    adventure.triggerRules = [makeTriggerRule({ id: "mixed", name: "Mixed rule", enabled: true, evaluationMode: "semantic", condition: "A threat changes", actions: [{ type: "updateComponentPressure", componentId: "deleted" }, { type: "activateComponent", componentId: "other" }] })];
+    mockProvider.mockResolvedValueOnce({ content: '["trigger:mixed"]', raw: {} });
+    const result = await runSemanticPostTurnEvaluation(adventure, providerConfig);
+    expect(mockProvider).toHaveBeenCalledTimes(1);
+    expect(result.actions.some(a => a.type === "ADD_MEMORY_PROPOSAL")).toBe(false);
+    expect(result.actions.some(a => a.type === "ACTIVATE_COMPONENT")).toBe(true);
+  });
+
+  it("does not draft a pressure suggestion when no component exists", async () => {
+    const adventure = baseAdventure();
+    adventure.components = [];
+    const result = await runPlotAIBuilder(adventure, providerConfig, { target: "activePressure", description: "The duke demands tribute.", useRecentStory: true });
+    expect(mockProvider).not.toHaveBeenCalled();
+    expect(result.actions.some(a => a.type === "ADD_MEMORY_PROPOSAL")).toBe(false);
   });
 });
