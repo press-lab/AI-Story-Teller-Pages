@@ -549,7 +549,7 @@ export function BrainsPage({ adventure, dispatch, loading, onUpdateBrainNow, onA
                 onChange={(event) => dispatch({ type: "UPDATE_BRAIN", brainId: brain.id, patch: { linkedStoryCardId: event.target.value || undefined } })}
               >
                 <option value="">None</option>
-                {adventure.storyCards.map((card) => (
+                {adventure.storyCards.filter((card) => card.type === "character").map((card) => (
                   <option key={card.id} value={card.id}>{card.title}</option>
                 ))}
               </select>
