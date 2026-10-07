@@ -130,15 +130,18 @@ Rejected AI update targets:
 
 If an entity has no BrainEntry, AI-driven memory routing must not create or update a Brain by default. Durable character facts should route to an existing Story Card when possible, otherwise to a pending Story Card proposal in Memory Inbox. Random NPCs, one-scene characters, locations, factions, and objects should not receive BrainEntries by default.
 
-The play loop is implemented in `src/App.tsx`:
+The generation flow is implemented in `src/hooks/useAdventureRuntime.ts` and `src/state/turnPipeline.ts`:
 
 1. Save user message through the reducer.
 2. Evaluate keyword/regex triggers synchronously.
 3. Build deterministic context.
 4. Call the OpenAI-compatible story provider and save the model output.
 5. Persist story state.
-6. Run semantic trigger evaluation and generated updates in the background.
-7. Apply generated updates through the reducer and persist again.
+6. Evaluate accepted story state when a designated Play Loop is active, then reconcile meaningful canon changes through validated replacement batches.
+7. Run semantic trigger evaluation and generated updates in the background.
+8. Apply generated updates through the reducer and persist again.
+
+See [Story-led progression and canon reconciliation](docs/story-director.md) for Play Loop suspension/restoration, owner replacement, approval controls, debugging, cost, and validation limits.
 
 The context builder in `src/contextBuilder/contextBuilder.ts` follows the required deterministic section order and returns the final provider payload, ordered sections, section token estimates, total estimate, and excluded items.
 

@@ -1,3 +1,5 @@
+import { StoryDirectorPanel } from '../components/StoryDirectorPanel';
+import { isPlayLoop } from '../memory/storyDirectorState';
 import { useState } from "react";
 import type { Adventure, AdventureAction, ArcPace, ArcPhase, ArcTriggerMode, ComponentEntry, ComponentType, ContextInclusionPolicy, PlotAIBuilderRequest } from "../types/adventure";
 import type { ComponentAuditRecommendation } from "../memory/componentAudit";
@@ -299,7 +301,7 @@ function ComponentSummary({ component, query }: { component: ComponentEntry; que
   const tokenEstimate = approximateTokenCount(componentContextText(component));
   return (
     <span className="story-card-summary">
-      <span className="story-card-title"><Highlight text={TYPE_LABELS[component.type]} query={query} /></span>
+      <span className="story-card-title"><Highlight text={isPlayLoop(component) ? "Play Loop" : TYPE_LABELS[component.type]} query={query} /></span>
       <span className="story-card-badges">
         {!component.active && <span className="badge badge-inactive">Inactive</span>}
         {component.pinned && <span className="badge badge-pinned">Pinned</span>}
@@ -522,6 +524,7 @@ export function ComponentsPage({ adventure, dispatch, loading, onSuggestPlotUpda
 
   return (
     <section className="page editor-surface components-page">
+      <StoryDirectorPanel adventure={adventure} dispatch={dispatch} />
       <div className="editor-page-summary">
         <p className="muted">
           Always-on plot truth, narration rules, author direction, and custom context blocks.
@@ -891,10 +894,11 @@ export function ComponentsPage({ adventure, dispatch, loading, onSuggestPlotUpda
                 />
               </div>
               <CheckboxField
-                label="Always on (ignore inclusion policy — load every turn)"
+                label="Always on (subject to Play Loop suspension when designated)"
                 checked={component.alwaysOn}
                 onChange={(checked) => dispatch({ type: "UPDATE_COMPONENT", componentId: component.id, patch: { alwaysOn: checked } })}
               />
+              {component.type === "custom" && <CheckboxField label="Play Loop (temporarily omitted during earned plot progression)" checked={isPlayLoop(component)} onChange={checked => dispatch({ type: "UPDATE_COMPONENT", componentId: component.id, patch: { contextRole: checked ? "playLoop" : "general", ...(checked ? { alwaysOn: true, inclusionPolicy: "always" } : {}) } })} />}
               <div className="grid two">
                 <CheckboxField
                   label="Protected (cannot be dropped by token truncation)"

@@ -1,0 +1,95 @@
+import { validRelationshipState } from './relationships';
+import type { Adventure, ComponentEntry, RelationshipState, StoryCardCompactStatus } from '../types/adventure';
+
+export type StoryMode = 'NORMAL_PLAY' | 'ACTIVE_PROGRESSION' | 'CLOSURE' | 'RESOLVED';
+export interface StoryThread {
+  id: string;
+  mode: StoryMode;
+  reason: string;
+  evidence: string;
+  sourceMessageId: string;
+  confidence: number;
+  loopObstructs: boolean;
+}
+export interface StoryDirectorState {
+  sourceMessageId: string;
+  sourceContent: string;
+  threads: StoryThread[];
+  reason: string;
+}
+export interface CanonEdit {
+  kind: 'component' | 'storyCard' | 'brain' | 'relationship';
+  id: string;
+  relationshipId?: string;
+  before: string;
+  content?: string;
+  thoughts?: Record<string, string>;
+  relationship?: RelationshipState;
+  resolved?: boolean;
+  state?: string;
+  compactStatus?: StoryCardCompactStatus;
+  change: 'STATE_UPDATE' | 'CANON_COMMIT';
+  evidence: string;
+  reason: string;
+  removedFacts: string[];
+}
+export interface CanonBatch {
+  id: string;
+  sourceMessageId: string;
+  sourceContent: string;
+  edits: CanonEdit[];
+  after?: string[];
+  status: 'pending' | 'applied' | 'rejected' | 'stale';
+}
+export const DEFAULT_PLAY_LOOP = `Continue the active scene in response to the player, keeping the fiction live and unresolved.
+
+Normal sandbox play: allow unrelated events, life between plots, dormant possibilities, incidental scenes, and autonomous NPCs. Let threats simmer. Keep forced payoff velocity low; not every scene becomes the main plot. Nothing urgent happening is valid play when the cast is socially alive.`;
+export function isPlayLoop(c: ComponentEntry): boolean {
+  return c.type === 'custom' && (c.contextRole === 'playLoop' || (c.contextRole === undefined && /^(?:core gameplay loop|play loop)$/i.test(c.title.trim())));
+}
+export function directorEnabled(a: Adventure): boolean {
+  return a.components.some(c => c.active && isPlayLoop(c));
+}
+export function currentDirector(a: Adventure): StoryDirectorState | undefined {
+  const d = a.activeState.storyDirector;
+  const latest = [...a.messages].reverse().find(m => m.role === 'assistant');
+  return d && latest?.id === d.sourceMessageId && latest.content === d.sourceContent ? d : undefined;
+}
+export function playLoopSuspended(a: Adventure): boolean {
+  return directorEnabled(a) && !!currentDirector(a)?.threads.some(t =>
+    t.confidence >= 0.9 && (t.mode === 'CLOSURE' || (t.mode === 'ACTIVE_PROGRESSION' && t.loopObstructs)));
+}
+function stableSnapshot(value: unknown): string {
+  return JSON.stringify(value, (_key, item: unknown) => item && typeof item === 'object' && !Array.isArray(item)
+    ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
+}
+export function ownerSnapshot(a: Adventure, e: Pick<CanonEdit, 'kind' | 'id' | 'relationshipId'>, includeHistorical = false): string | undefined {
+  if (e.kind === 'component') {
+    const c = a.components.find(c => c.id === e.id && ['plotEssentials', 'currentArc', 'activePressure'].includes(c.type));
+    return c ? stableSnapshot({ ...c, memoryUpdateHistory: undefined }) : undefined;
+  }
+  if (e.kind === 'storyCard') {
+    const c = a.storyCards.find(c => c.id === e.id && c.type !== 'event' && (includeHistorical || c.memoryMode !== 'historical'));
+    return c ? stableSnapshot({ ...c, coreFacts: c.coreFacts ?? [], currentFacts: c.currentFacts ?? [], recentDevelopments: c.recentDevelopments ?? [], sourceTurnIds: c.sourceTurnIds ?? [], memoryUpdateHistory: undefined }) : undefined;
+  }
+  const b = a.brains.find(b => b.id === e.id);
+  if (!b) return undefined;
+  if (e.kind === 'brain') return stableSnapshot({ ...b, archivedThoughts: undefined,
+    relationships: b.relationships.map(r => ({ ...r, history: undefined })) });
+  const r = b.relationships.find(r => r.id === e.relationshipId && a.storyCards.some(c => c.id === r.focusStoryCardId && c.type === 'character'));
+  return r ? stableSnapshot({ ...r, history: undefined }) : undefined;
+}
+export function batchIsCurrent(a: Adventure, b: CanonBatch): boolean {
+  return a.messages.some(m => m.role === 'assistant' && m.id === b.sourceMessageId && m.content === b.sourceContent)
+    && b.edits.length > 0 && b.edits.length <= 80
+    && new Set(b.edits.map(e => e.kind + ':' + e.id + ':' + (e.relationshipId ?? ''))).size === b.edits.length
+    && b.edits.every(e => typeof e.before === 'string' && ownerSnapshot(a, e) === e.before
+      && typeof e.evidence === 'string' && e.evidence.trim().length > 0 && b.sourceContent.includes(e.evidence)
+      && ['STATE_UPDATE', 'CANON_COMMIT'].includes(e.change)
+      && Array.isArray(e.removedFacts) && e.removedFacts.every(f => typeof f === 'string')
+      && (e.kind === 'component' || e.kind === 'storyCard' ? typeof e.content === 'string' && (e.content.trim().length > 0 || e.resolved === true)
+        : e.kind === 'relationship' ? validRelationshipState(e.relationship)
+        : e.kind === 'brain' && !!e.thoughts && typeof e.thoughts === 'object' && !Array.isArray(e.thoughts) && Object.values(e.thoughts).every(t => typeof t === 'string')));
+}
+export const PROGRESSION_DIRECTION = `The recent story has earned active progression. Allow actions already underway to change the thread and establish new facts. Do not force escalation, a next scene, an ending, or a player decision. An open player decision does not require an unresolved plot.`;
+export const CLOSURE_DIRECTION = `The recent story has naturally converged. Allow definitive answers, decisive NPC action, and consequences supported by established events. Do not preserve uncertainty by adding another clue, intermediary, hidden layer, or deeper mastermind merely to keep the thread alive. Do not predetermine an ending or decide the player's actions, dialogue, consent, or choices. Keep their next action open even when the problem resolves.`;

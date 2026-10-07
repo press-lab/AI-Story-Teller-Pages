@@ -18,6 +18,8 @@ vi.mock("../triggers/semanticEngine", async importOriginal => ({
 
 function setup(enabled = true, customRule = false) {
   const initial = createDefaultAdventure("Call accounting");
+  // This suite isolates inline memory accounting; director calls have separate integration coverage.
+  initial.components = initial.components.filter(c => c.contextRole !== "playLoop");
   initial.memoryDetectionSettings = { ...initial.memoryDetectionSettings, enabled: !enabled }; // deliberately stale saved settings
   initial.memoryAutoApprove = { ...initial.memoryAutoApprove, storyCard: true };
   if (customRule) initial.triggerRules.push(makeTriggerRule({ name: "Explicit custom rule", condition: "When Mira learns something", evaluationMode: "semantic" }));

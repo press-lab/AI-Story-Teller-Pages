@@ -1,3 +1,4 @@
+import type { CanonBatch, StoryDirectorState } from '../memory/storyDirectorState';
 export type ISODateString = string;
 export type JsonObject = Record<string, unknown>;
 
@@ -93,6 +94,7 @@ export interface MemoryUpdateHistoryEntry {
 }
 
 export interface ComponentEntry {
+  contextRole?: "playLoop" | "general";
   id: string;
   title: string;
   type: ComponentType;
@@ -606,6 +608,8 @@ export interface StoryEditHistoryEntry {
 }
 
 export interface ActiveState {
+  storyDirector?: StoryDirectorState;
+  canonBatches?: CanonBatch[];
   turn: number;
   forceIncludeNextTurn: ForceIncludeEntry[];
   triggerLog: TriggerLogEntry[];
@@ -808,6 +812,9 @@ export type BrainPatch = {
 };
 
 export type AdventureAction =
+  | { type: "SET_STORY_DIRECTOR"; state: StoryDirectorState }
+  | { type: "RECONCILE_CANON"; batch: CanonBatch; review: boolean }
+  | { type: "REVIEW_CANON_BATCH"; batchId: string; approve: boolean }
   | { type: "SET_TITLE"; title: string }
   | { type: "SET_OPENING_SCENE"; content: string }
   | { type: "UPDATE_METADATA"; metadata: JsonObject }

@@ -250,7 +250,7 @@ export function useAdventureRuntime(
 
   async function startMemoryFallback(snapshot: Adventure) {
     if (!snapshot.memoryDetectionSettings.enabled || memoryFallbackInFlight.current.has(snapshot.id)) return;
-    const latest = snapshot.activeState.evaluationLog[0];
+    const latest = snapshot.activeState.evaluationLog.find(log => log.turn >= snapshot.activeState.turn - 1 && log.actionsExecuted.includes("One-pass memory: no additional API call"));
     const onePassFailed = latest?.actionsExecuted.includes("One-pass memory: no additional API call")
       && latest.errors.some(message => /Memory envelope missing|Incomplete or oversized memory envelope|Invalid memory JSON/.test(message));
     if (!onePassFailed) return;
@@ -372,6 +372,7 @@ export function useAdventureRuntime(
         text,
         mode,
         providerConfig: mergeProviderConfig(base, providerSettings),
+        onStoryAccepted: async snapshot => { setAdventure(snapshot); await saveAdventure(snapshot); },
         sendChatCompletion: async (messages, snapshot, context) => {
           snapshotWithUserMsg = snapshot;
           setAdventure(snapshot);
@@ -446,6 +447,7 @@ export function useAdventureRuntime(
         recordUserInput: false,
         providerCue: "[continue]",
         providerConfig: mergeProviderConfig(base, providerSettings),
+        onStoryAccepted: async snapshot => { setAdventure(snapshot); await saveAdventure(snapshot); },
         sendChatCompletion: async (messages, snapshot, context) => {
           setAdventure(snapshot);
           setContextResult(context);
@@ -512,6 +514,7 @@ export function useAdventureRuntime(
         response,
         mode: "story",
         providerConfig: regenConfig,
+        onStoryAccepted: async snapshot => { setAdventure(snapshot); await saveAdventure(snapshot); },
         preProviderContext: context,
         incrementTurn: false,
         advanceArcPacing: false,

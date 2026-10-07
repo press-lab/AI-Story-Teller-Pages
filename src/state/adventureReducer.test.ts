@@ -5,6 +5,9 @@ import { adventureReducer } from "./adventureReducer";
 import { makeMemoryProposal } from "../test/goldenAdventure";
 
 const testedActionTypes = [
+  "SET_STORY_DIRECTOR",
+  "RECONCILE_CANON",
+  "REVIEW_CANON_BATCH",
   "SET_TITLE",
   "SET_OPENING_SCENE",
   "UPDATE_METADATA",

@@ -1,3 +1,4 @@
+import { isPlayLoop, playLoopSuspended, currentDirector, PROGRESSION_DIRECTION, CLOSURE_DIRECTION } from '../memory/storyDirectorState';
 import { relationshipFocusCard, relationshipItemId, relationshipTargets, relationshipText } from "../memory/relationships";
 import { ONE_PASS_MEMORY_ID, onePassMemoryInstruction, relationshipMemoryInstruction } from "../memory/onePassMemory";
 import { selectEventMemories } from "../memory/eventMemory";
@@ -491,6 +492,10 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
   // E. Components — general always-on or pinned components (not a special typed section above)
   const generalComponentItems = prioritySort(adventure.components).flatMap((component) => {
     if (component.type === "narrationRules" || component.type === "aiInstructions" || component.type === "plotEssentials" || component.type === "currentArc" || component.type === "activePressure" || component.type === "immediateMomentum" || component.type === "authorNote") return [];
+    if (isPlayLoop(component) && playLoopSuspended(adventure)) {
+      logExcludedOnce(component.id, component.title, "inactive", "Play Loop temporarily suspended: " + currentDirector(adventure)?.reason);
+      return [];
+    }
     if (!component.active) {
       logExcludedOnce(component.id, component.title, "inactive");
       return [];
@@ -500,6 +505,13 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
     pushIncluded(next, `Component loaded by ${component.pinned ? "pin" : `alwaysOn/inclusionPolicy=${component.inclusionPolicy}`}; priority=${component.priority}; protected=${component.protected}.`);
     return [next];
   });
+
+  if (playLoopSuspended(adventure)) {
+    const closure = currentDirector(adventure)?.threads.some(t => t.mode === "CLOSURE" && t.confidence >= 0.9);
+    const direction = item("story-progression", "system", "Story progression permission", closure ? CLOSURE_DIRECTION : PROGRESSION_DIRECTION, 100, true, false, true, "always", "system");
+    generalComponentItems.push(direction);
+    pushIncluded(direction, "Post-generation semantic judgment; no planned beats or ending.");
+  }
 
   // F. Story Cards + Auto-Cards
   const storyCardItems: ContextItem[] = [];

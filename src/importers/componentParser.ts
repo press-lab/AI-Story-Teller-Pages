@@ -137,6 +137,7 @@ function parseComponent(raw: unknown, sourceIndex: number): ParsedComponent | Sk
     title,
     type,
     content,
+    contextRole: raw.contextRole === "playLoop" || raw.contextRole === "general" ? raw.contextRole : undefined,
     arcPremise: stringField(raw, "arcPremise"),
     priority: numberField(raw, "priority") ?? defaultPriority(type),
     alwaysOn,
