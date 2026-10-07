@@ -309,15 +309,62 @@ describe('post-generation integration', () => {
     expect(n.activeState.evaluationLog[0].errors).toContain('offline');
     expect(n.activeState.storyDirectorEvaluations?.[0]).toMatchObject({ sourceMessageId: 'accepted', reconciliation: { status: 'notRequested' }, errors: ['offline'] });
   });
-  it('records a meaningful verdict even when reconciliation fails and play resumes normally', async () => {
+  it('keeps a grounded progression verdict when reconciliation fails', async () => {
     const a = base();
     vi.mocked(sendOpenAICompatibleChatCompletion)
       .mockResolvedValueOnce({ content: JSON.stringify({ ...verdict('CLOSURE'), changes: [{ change: 'CANON_COMMIT', evidence: event, reason: 'Established betrayal' }] }), raw: {} })
       .mockRejectedValueOnce(new Error('reconciliation offline'));
     const n = (await evaluateStoryDirector(a, a.modelConfig)).reduce(adventureReducer, a);
-    expect(playLoopSuspended(n)).toBe(false);
+    expect(playLoopSuspended(n)).toBe(true);
     expect(n.activeState.storyDirectorEvaluations?.[0]).toMatchObject({ verdict: { threads: [{ mode: 'CLOSURE' }] },
-      reconciliation: { status: 'failed' }, playLoopSuspended: false, errors: ['reconciliation offline'] });
+      reconciliation: { status: 'failed' }, playLoopSuspended: true, errors: ['reconciliation offline'] });
+  });
+  it('preserves rejected evidence and repairs once with exact source grounding', async () => {
+    const a = base();
+    const invalid = JSON.stringify({ ...verdict('CLOSURE'), threads: [{ ...verdict('CLOSURE').threads[0], sourceMessageId: 'wrong-id' }] });
+    vi.mocked(sendOpenAICompatibleChatCompletion)
+      .mockResolvedValueOnce({ content: invalid, raw: {} })
+      .mockResolvedValueOnce({ content: JSON.stringify(verdict('CLOSURE')), raw: {} })
+      .mockResolvedValueOnce({ content: JSON.stringify({ edits: [] }), raw: {} });
+    const n = (await evaluateStoryDirector(a, a.modelConfig)).reduce(adventureReducer, a);
+    expect(playLoopSuspended(n)).toBe(true);
+    expect(n.activeState.storyDirectorEvaluations?.[0].rejectedResponses).toEqual([
+      expect.objectContaining({ stage: 'evaluation', attempt: 1, response: invalid, error: expect.stringContaining('wrong-id') }),
+    ]);
+    expect(sendOpenAICompatibleChatCompletion).toHaveBeenCalledTimes(3);
+    expect(vi.mocked(sendOpenAICompatibleChatCompletion).mock.calls[1][0].messages[1].content).toContain('validationError');
+    expect(importAdventureJson(exportAdventureJson(n)).activeState.storyDirectorEvaluations).toEqual(n.activeState.storyDirectorEvaluations);
+  });
+  it('retains malformed JSON and unsupported quotes after bounded repair fails', async () => {
+    const a = base();
+    const invalid = JSON.stringify({ ...verdict('CLOSURE'), threads: [{ ...verdict('CLOSURE').threads[0], evidence: 'invented' }] });
+    vi.mocked(sendOpenAICompatibleChatCompletion)
+      .mockResolvedValueOnce({ content: 'not JSON', raw: {} })
+      .mockResolvedValueOnce({ content: invalid, raw: {} });
+    const n = (await evaluateStoryDirector(a, a.modelConfig)).reduce(adventureReducer, a);
+    expect(playLoopSuspended(n)).toBe(false);
+    expect(n.messages).toEqual(a.messages);
+    expect(n.activeState.storyDirectorEvaluations?.[0].rejectedResponses?.map(r => r.response)).toEqual(['not JSON', invalid]);
+    expect(n.activeState.storyDirectorEvaluations?.[0].verdict).toBeUndefined();
+    expect(sendOpenAICompatibleChatCompletion).toHaveBeenCalledTimes(2);
+  });
+  it('keeps validated closure and preserves rejected canon responses without partial writes', async () => {
+    const a = base();
+    const invalid = JSON.stringify({ edits: [edit(), { ...edit('component', 'arc'), evidence: 'invented' }] });
+    vi.mocked(sendOpenAICompatibleChatCompletion)
+      .mockResolvedValueOnce({ content: JSON.stringify(verdict('CLOSURE')), raw: {} })
+      .mockResolvedValue({ content: invalid, raw: {} });
+    const n = (await evaluateStoryDirector(a, a.modelConfig)).reduce(adventureReducer, a);
+    expect(playLoopSuspended(n)).toBe(true);
+    expect(n.storyCards).toEqual(a.storyCards);
+    expect(n.activeState.canonBatches ?? []).toHaveLength(0);
+    expect(n.activeState.storyDirectorEvaluations?.[0].reconciliation.status).toBe('failed');
+    expect(n.activeState.storyDirectorEvaluations?.[0].rejectedResponses).toHaveLength(2);
+    expect(n.activeState.storyDirectorEvaluations?.[0].rejectedResponses?.[0]).toMatchObject({ stage: 'reconciliation', response: invalid });
+    expect(sendOpenAICompatibleChatCompletion).toHaveBeenCalledTimes(3);
+  });
+  it('does not silently discard unsupported detected changes', () => {
+    expect(() => parseStoryState(base(), { ...verdict(), changes: [{ change: 'CANON_COMMIT', evidence: 'invented', reason: 'Claim' }] })).toThrow('Story change 1');
   });
   it('records a reconciliation request that found no edits', async () => {
     const a = base();

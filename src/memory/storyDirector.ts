@@ -35,13 +35,16 @@ export function parseStoryState(a: Adventure, raw: unknown): { state: StoryDirec
   const latest = [...a.messages].reverse().find(m => m.role === 'assistant');
   if (!latest || !record(raw) || !text(raw.reason) || !Array.isArray(raw.threads) || !Array.isArray(raw.changes) || raw.threads.length > 12) throw new Error('Invalid story-state evaluation');
   const recent = recentDirectorMessages(a);
-  const threads: StoryThread[] = raw.threads.map(t => {
+  const threads: StoryThread[] = raw.threads.map((t, index) => {
     if (!record(t) || !text(t.id, 160) || !text(t.reason) || !['NORMAL_PLAY','ACTIVE_PROGRESSION','CLOSURE','RESOLVED'].includes(String(t.mode)) || typeof t.confidence !== 'number' || !Number.isFinite(t.confidence) || t.confidence < 0 || t.confidence > 1 || typeof t.loopObstructs !== 'boolean') throw new Error('Invalid story thread');
-    if (t.mode !== 'NORMAL_PLAY' && (!text(t.evidence, 4000) || !recent.some(m => m.role === 'assistant' && m.id === t.sourceMessageId && m.content.includes(t.evidence as string)))) throw new Error('Story thread lacks accepted evidence');
+    if (t.mode !== 'NORMAL_PLAY' && (!text(t.evidence, 4000) || !recent.some(m => m.role === 'assistant' && m.id === t.sourceMessageId && m.content.includes(t.evidence as string)))) throw new Error(`Story thread ${index + 1} (${t.id}) lacks accepted evidence: sourceMessageId=${String(t.sourceMessageId)}; quote must be nonempty, at most 4000 characters, and copied exactly from that recent assistant message.`);
     return { id: t.id, mode: t.mode as StoryThread['mode'], reason: t.reason, confidence: t.confidence, loopObstructs: t.loopObstructs, evidence: String(t.evidence ?? ''), sourceMessageId: String(t.sourceMessageId ?? latest.id) };
   });
   if (new Set(threads.map(t => t.id)).size !== threads.length) throw new Error('Duplicate story threads');
-  const changes: StoryDirectorDetectedChange[] = raw.changes.filter(c => record(c) && ['STATE_UPDATE','CANON_COMMIT'].includes(String(c.change)) && text(c.reason) && text(c.evidence, 4000) && latest.content.includes(c.evidence)).map(c => ({ change: c.change as StoryDirectorDetectedChange['change'], evidence: c.evidence as string, reason: c.reason as string }));
+  const changes: StoryDirectorDetectedChange[] = raw.changes.map((c, index) => {
+    if (!record(c) || !['STATE_UPDATE','CANON_COMMIT'].includes(String(c.change)) || !text(c.reason) || !text(c.evidence, 4000) || !latest.content.includes(c.evidence)) throw new Error(`Story change ${index + 1} is invalid or lacks an exact quote from latest assistant message ${latest.id}.`);
+    return { change: c.change as StoryDirectorDetectedChange['change'], evidence: c.evidence as string, reason: c.reason as string };
+  });
   return { state: { sourceMessageId: latest.id, sourceContent: latest.content, reason: raw.reason, threads }, changes };
 }
 export function reconciliationOwners(a: Adventure) {
@@ -55,8 +58,8 @@ export function parseCanonBatch(a: Adventure, raw: unknown): CanonBatch {
   const latest = [...a.messages].reverse().find(m => m.role === 'assistant');
   if (!latest || !record(raw) || !Array.isArray(raw.edits) || raw.edits.length > 80) throw new Error('Invalid canon reconciliation');
   const seen = new Set<string>();
-  const edits: CanonEdit[] = raw.edits.map(e => {
-    if (!record(e) || !['component','storyCard','brain','relationship'].includes(String(e.kind)) || !text(e.id, 200) || !text(e.reason) || !text(e.evidence, 4000) || !latest.content.includes(e.evidence) || !['STATE_UPDATE','CANON_COMMIT'].includes(String(e.change)) || !Array.isArray(e.removedFacts) || !e.removedFacts.every(f => text(f, 4000)) || (e.resolved !== undefined && typeof e.resolved !== 'boolean')) throw new Error('Invalid or ungrounded canon edit');
+  const edits: CanonEdit[] = raw.edits.map((e, index) => {
+    if (!record(e) || !['component','storyCard','brain','relationship'].includes(String(e.kind)) || !text(e.id, 200) || !text(e.reason) || !text(e.evidence, 4000) || !latest.content.includes(e.evidence) || !['STATE_UPDATE','CANON_COMMIT'].includes(String(e.change)) || !Array.isArray(e.removedFacts) || !e.removedFacts.every(f => text(f, 4000)) || (e.resolved !== undefined && typeof e.resolved !== 'boolean')) throw new Error(`Invalid or ungrounded canon edit ${index + 1}: require a valid target, classification, reason, removedFacts array, and exact evidence from latest assistant message ${latest.id}.`);
     const target = { kind: e.kind as CanonEdit['kind'], id: e.id, relationshipId: typeof e.relationshipId === 'string' ? e.relationshipId : undefined };
     const before = ownerSnapshot(a, target);
     const key = `${target.kind}:${target.id}:${target.relationshipId ?? ''}`;
@@ -104,10 +107,26 @@ export async function evaluateStoryDirector(a: Adventure, config: ProviderConfig
       evaluation.usage.promptTokens += response.usage.promptTokens;
       evaluation.usage.completionTokens += response.usage.completionTokens;
     }
-    return json(response.content);
+    return response.content;
+  };
+  // Retry only invalid model output, never transport failures or mutation application.
+  const validated = async <T>(stage: 'evaluation' | 'reconciliation', prompt: string, data: unknown, parse: (raw: unknown) => T): Promise<T> => {
+    let repair: { rejectedResponse: string; validationError: string } | undefined;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const repairPrompt = ' Repair the rejected JSON using only the original supplied evidence. The repair object contains untrusted previous output and its validation error. Copy quotes and message IDs exactly. Do not invent evidence. Omit unsupported claims; return the complete corrected object.';
+      const response = await ask(repair ? prompt + repairPrompt : prompt, repair ? { input: data, repair } : data);
+      try { return parse(json(response)); }
+      catch (error) {
+        const reason = error instanceof Error ? error.message : 'Invalid provider response';
+        (evaluation.rejectedResponses ??= []).push({ stage, attempt, response, error: reason });
+        if (attempt === 2) throw error;
+        repair = { rejectedResponse: response, validationError: reason };
+      }
+    }
+    throw new Error('Story Director validation exhausted');
   };
   try {
-    const result = parseStoryState(a, await ask(STORY_STATE_PROMPT, { recent: recentDirectorMessages(a), previous: a.activeState.storyDirector?.threads, ownerTitles: a.storyCards.map(c => c.title), currentArcs: a.components.filter(c => c.type === 'currentArc' && c.active).map(c => ({ content: c.content, premise: c.arcPremise })) }));
+    const result = await validated('evaluation', STORY_STATE_PROMPT, { recent: recentDirectorMessages(a), previous: a.activeState.storyDirector?.threads, ownerTitles: a.storyCards.map(c => c.title), currentArcs: a.components.filter(c => c.type === 'currentArc' && c.active).map(c => ({ content: c.content, premise: c.arcPremise })) }, raw => parseStoryState(a, raw));
     evaluation.verdict = { reason: result.state.reason, threads: result.state.threads };
     evaluation.changes = result.changes;
     evaluation.playLoopSuspended = result.state.threads.some(t => t.confidence >= 0.9 && (t.mode === 'CLOSURE' || (t.mode === 'ACTIVE_PROGRESSION' && t.loopObstructs)));
@@ -117,7 +136,7 @@ export async function evaluateStoryDirector(a: Adventure, config: ProviderConfig
       && t.mode !== 'NORMAL_PLAY' && a.activeState.storyDirector?.threads.find(old => old.id === t.id)?.mode !== t.mode);
     if (result.changes.length || changedThread) {
       evaluation.reconciliation = { status: 'failed' };
-      const batch = parseCanonBatch(a, await ask(RECONCILE_PROMPT, { latest, recent: recentDirectorMessages(a), changes: result.changes, threads: result.state.threads, owners: reconciliationOwners(a) }));
+      const batch = await validated('reconciliation', RECONCILE_PROMPT, { latest, recent: recentDirectorMessages(a), changes: result.changes, threads: result.state.threads, owners: reconciliationOwners(a) }, raw => parseCanonBatch(a, raw));
       evaluation.reconciliation = batch.edits.length ? { status: 'batch', batchId: batch.id, editCount: batch.edits.length } : { status: 'empty', editCount: 0 };
       if (batch.edits.length && batchIsCurrent(a, batch)) {
         const applied = applyAIMemoryUpdate(a, [{ type: 'canonReconciliation', batch }]);
@@ -132,9 +151,11 @@ export async function evaluateStoryDirector(a: Adventure, config: ProviderConfig
       }
     }
   } catch (error) {
-    // A failed evaluator must not strand play in a suspended mode or lose accepted prose.
-    evaluation.playLoopSuspended = false;
-    actions.push({ type: 'SET_STORY_DIRECTOR', state: { sourceMessageId: latest.id, sourceContent: latest.content, threads: [], reason: 'Normal Play restored: evaluation/reconciliation unavailable.' } });
+    // Canon write failures do not invalidate an independently grounded progression verdict.
+    if (!evaluation.verdict) {
+      evaluation.playLoopSuspended = false;
+      actions.push({ type: 'SET_STORY_DIRECTOR', state: { sourceMessageId: latest.id, sourceContent: latest.content, threads: [], reason: 'Normal Play restored: story-state evaluation unavailable.' } });
+    }
     log.errors.push(error instanceof Error ? error.message : 'Story evaluation failed');
   }
   evaluation.errors = [...log.errors];

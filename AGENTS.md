@@ -85,7 +85,7 @@ If you want to require user review for all semantic memory writes, set `requireA
 
 ## Story-led progression and canon reconciliation
 
-See [Story Director](docs/story-director.md). A designated custom Play Loop is conditionally included; post-generation semantic judgment never advances the authored Arc Director counters/phases. Keep its default conservative and preserve sandbox wording.
+See [Story Director](docs/story-director.md). A designated custom Play Loop is conditionally included; post-generation semantic judgment never advances the authored Arc Director counters/phases. Keep its default conservative and preserve sandbox wording. Evaluation failures restore normal play; canon reconciliation failures preserve an independently validated progression verdict. Preserve rejected provider responses and allow at most one validation repair request per stage.
 
 The dedicated `canonReconciliation` AI-update boundary is an explicit exception to the legacy narrow mutation rules above: evidence-backed atomic replacements may update existing state components (Plot Essentials, Current Arc, Active Pressure), nonhistorical cards, existing Brain thoughts, and enrolled relationships. It must preserve owner history, reject stale batches atomically, respect memory approval settings, and require review for relationships. It may not mutate narrator instructions, Play Loop text, authored pacing, or provider configuration. Keep discarded-generation rollback and mutation-boundary tests.
 

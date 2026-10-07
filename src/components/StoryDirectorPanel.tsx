@@ -19,12 +19,17 @@ export function StoryDirectorPanel({ adventure, dispatch }: { adventure: Adventu
         const batch = batches.find(b => b.id === e.reconciliation.batchId);
         const source = adventure.messages.find(m => m.id === e.sourceMessageId);
         return <details key={e.sourceMessageId}>
-          <summary>Turn {e.turn} · {e.verdict?.threads.map(t => t.mode).join(', ') || 'NORMAL_PLAY'} · {e.errors.length ? 'error' : e.reconciliation.status}</summary>
+          <summary>Turn {e.turn} · {(e.verdict ? e.verdict.threads.map(t => t.mode).join(', ') || 'NORMAL_PLAY' : 'NO VALID VERDICT')} · {e.errors.length ? 'error' : e.reconciliation.status}</summary>
           <p>Story message: {e.sourceMessageId}{!source ? ' (removed from play)' : storyDirectorSourceFingerprint(source.content) !== e.sourceContentFingerprint ? ' (edited since evaluation)' : ''}</p>
           <p>{e.verdict?.reason ?? 'No valid verdict.'} Play Loop {e.playLoopSuspended ? 'suspended' : 'active'}.</p>
           {e.verdict?.threads.map(t => <p key={t.id}>{t.mode} · {t.id} · confidence {t.confidence}: {t.reason}<br /><q>{t.evidence}</q></p>)}
           {e.changes.map((change, i) => <p key={i}>{change.change}: {change.reason}<br /><q>{change.evidence}</q></p>)}
           <p>Reconciliation: {e.reconciliation.status}{e.reconciliation.editCount !== undefined ? ` · ${e.reconciliation.editCount} edits` : ''}{batch ? ` · ${batch.status}` : ''}</p>
+          {e.rejectedResponses?.map((r, i) => <details key={i}>
+            <summary>Rejected {r.stage} response - attempt {r.attempt}</summary>
+            <p>{r.error}</p>
+            <pre style={{ whiteSpace: 'pre-wrap' }}>{r.response}</pre>
+          </details>)}
           {e.errors.map((error, i) => <p key={i}>Error: {error}</p>)}
         </details>;
       })}

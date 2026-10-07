@@ -28,6 +28,7 @@ export interface StoryDirectorEvaluation {
   sourceContentFingerprint: string;
   turn: number;
   createdAt: string;
+  rejectedResponses?: { stage: 'evaluation' | 'reconciliation'; attempt: number; response: string; error: string }[];
   verdict?: Pick<StoryDirectorState, 'reason' | 'threads'>;
   changes: StoryDirectorDetectedChange[];
   playLoopSuspended: boolean;
