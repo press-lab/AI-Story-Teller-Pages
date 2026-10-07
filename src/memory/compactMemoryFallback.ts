@@ -36,7 +36,7 @@ export async function runCompactMemoryFallback(
     .map(message => `${message.role}: ${message.content}`).join("\n\n");
   const playerInput = adventure.messages.at(-2)?.role === "user" ? adventure.messages.at(-2)!.content : "";
   const reusableTargets = adventure.storyCards
-    .filter(card => card.active && card.inclusionPolicy !== "manual" && ["lore", "location", "custom"].includes(card.type))
+    .filter(card => card.active && card.memoryMode !== "historical" && card.inclusionPolicy !== "manual" && ["lore", "location", "custom"].includes(card.type))
     .map(card => ({ title: card.title, type: card.type, keys: card.keys }));
   const characterTitles = adventure.storyCards
     .filter(card => card.active && card.type === "character")
@@ -49,7 +49,7 @@ export async function runCompactMemoryFallback(
     { role: "user", content: memoryRules },
     { role: "user", content: "Relevant current canon:\n" + references.join("\n\n") },
     { role: "user", content: "Existing lore, location, and shared-history targets (prefer the appropriate subject; these titles may be used even if the card was not triggered into context): " + JSON.stringify(reusableTargets) + "\nCharacter titles (update only for an explicitly evidenced enduring profile fact): " + JSON.stringify(characterTitles) + "\nPending Story Card titles (do not duplicate): " + JSON.stringify(pendingTitles) },
-    { role: "user", content: "Recent story context; quoted evidence may come from any supplied exchange:\n" + recent },
+    { role: "user", content: "Recent story context; relationshipChange evidence and knowledgeEvidence MUST come from the latest player/story exchange only; other memory evidence may come from any supplied exchange:\n" + recent },
   ];
   let response;
   try {
@@ -71,8 +71,8 @@ export async function runCompactMemoryFallback(
     const raw = response.content.replace(/<think>[\s\S]*?<\/think>/gi, "").trim()
       .replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
     const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object" || !("updates" in parsed)
-      || !Array.isArray(parsed.updates) || parsed.updates.length > 4) return { ...empty, tokenUsage };
+    if (raw.length > 16000 || !parsed || typeof parsed !== "object" || !("updates" in parsed)
+      || !Array.isArray(parsed.updates)) return { ...empty, tokenUsage };
     const recentEvidence = adventure.messages.slice(-recentCount).map(message => message.content);
     const actions = onePassMemoryActions(adventure, context, parsed.updates, latestStory.content,
       latestStory.id, undefined, "Compact memory fallback: one API call", playerInput, recentEvidence);

@@ -1,3 +1,4 @@
+import { relationshipCandidate, type RelationshipTarget } from "./relationships";
 import type { Adventure, AdventureAction, BrainEntry, ContextBuildResult, MemoryProposal, StoryCardType } from "../types/adventure";
 import { createId, nowIso } from "../utils/id";
 import { cardMatchesName } from "../state/defaults";
@@ -5,8 +6,19 @@ import { applyAIMemoryUpdate } from "./applyAIMemoryUpdate";
 
 export const ONE_PASS_MEMORY_ID = "one-pass-memory";
 export const MEMORY_OUTPUT_RESERVE = 1400;
+export const MAX_MEMORY_UPDATES = 4;
 
-export function onePassMemoryInstruction(brains: BrainEntry[], categories: string[]): string {
+/** Opt-in: do not alter the ordinary memory prompt when no pair is eligible. */
+export function relationshipMemoryInstruction(relationships: RelationshipTarget[]): string {
+  if (!relationships.length) return "";
+  return `\n[DYNAMIC RELATIONSHIPS]
+An eligible Brain may also propose a "relationshipChange" in the same memory_updates envelope. Ordinary thoughts still use "thought"; do not suppress thoughts to fill relationship slots. The shared limit remains four small updates; never invent updates.
+Use exact target (Brain ID), relationshipId, focusStoryCardId and focus from the inventory, plus revision. Instead of content provide proposed: {bond,status,dimensions}, the complete new state with unchanged dimension names. Include evidence and knowledgeEvidence: exact quotes from this turn establishing the change and how the NPC witnessed or learned it; also include reason. No numeric meters. Bond/status transitions require explicit in-story evidence naming the resulting state and review; rudeness alone never means a breakup. Quote matching proves provenance, not knowledge. Uncertain knowledge and interpretation require review. Keep ordinary thoughts as private reactions, Story Cards as profiles and untracked relationships. Never write relationshipPressure.
+Eligible relationship targets: ${JSON.stringify(relationships)}
+[/DYNAMIC RELATIONSHIPS]`;
+}
+
+export function onePassMemoryInstruction(brains: BrainEntry[], categories: string[], relationships: RelationshipTarget[] = []): string {
   return `[ONE-PASS MEMORY]
 Write the requested narrative first, preserving its quality and visible word limit. Then append exactly one hidden JSON envelope:
 <memory_updates>{"updates":[]}</memory_updates>
@@ -24,7 +36,7 @@ Current Arc holds the ongoing storyline and its authored pacing. Do not alter ar
 For example: {"kind":"card","target":"Mira","content":"Mira is allergic to silver.","evidence":"Silver gives me a rash, Mira says.","reason":"Persistent vulnerability"}.
 Historical lore example: {"kind":"lore","target":"Seth and Buu's First Fight","content":"Seth and Buu fought for the first time on Hercule's estate. Seth blasted Buu into orbit; Buu returned unharmed and asked to continue.","evidence":"Buu returned unharmed and asked to continue.","reason":"Distinct first fight worth recalling","category":"plot_beat","triggers":["Seth and Buu first fight","Buu sent into orbit"]}.
 Eligible thought targets: ${brains.map(b => JSON.stringify(b.characterName)).join(", ") || "none"}.
-Only output changes supported by this turn and consistent with ALL supplied canon. These hidden updates are not narrative and must never steer the scene merely to create memory.`;
+Only output changes supported by this turn and consistent with ALL supplied canon. These hidden updates are not narrative and must never steer the scene merely to create memory.${relationshipMemoryInstruction(relationships)}`;
 }
 
 /** A broken/truncated tail must never leak JSON into the story or discard good prose. */
@@ -37,7 +49,7 @@ export function parseOnePassMemory(text: string): { story: string; updates: unkn
   if (!match || match[1].length > 16000) return { story, updates: [], error: "Incomplete or oversized memory envelope; story preserved." };
   try {
     const parsed: unknown = JSON.parse(match[1]);
-    if (!parsed || typeof parsed !== "object" || !("updates" in parsed) || !Array.isArray(parsed.updates) || parsed.updates.length > 4) throw new Error();
+    if (!parsed || typeof parsed !== "object" || !("updates" in parsed) || !Array.isArray(parsed.updates)) throw new Error();
     return { story, updates: parsed.updates };
   } catch {
     return { story, updates: [], error: "Invalid memory JSON; story preserved." };
@@ -84,10 +96,29 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
   const evidenceSources = [norm(story), norm(playerInput), ...recentEvidence.map(norm)];
   const seen = new Set<string>();
   let newCards = 0;
-  for (const raw of updates) {
+  let accepted = 0;
+  // Overproduction is not broken JSON. Keep valid thoughts before other candidates
+  // in an oversized batch; malformed and ineligible entries consume no write slots.
+  const isThought = (u: unknown) => !!u && typeof u === "object" && "kind" in u && u.kind === "thought";
+  const candidates = updates.length > MAX_MEMORY_UPDATES
+    ? [...updates.filter(isThought), ...updates.filter(u => !isThought(u))] : updates;
+  for (const raw of candidates) {
     const reject = (reason: string) => errors.push(`One-pass memory skipped: ${reason}`);
+    if (accepted >= MAX_MEMORY_UPDATES) { reject(`[${sourceLabel}] update limit reached; retained ${accepted} accepted updates`); continue; }
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) { reject("invalid update"); continue; }
     const u = raw as Record<string, unknown>;
+    if (u.kind === "relationshipChange") {
+      const result = relationshipCandidate(adventure, context, u, story, playerInput, sourceTurnId);
+      if (typeof result === "string") { reject(`relationshipChange [${sourceLabel}]: ${result}`); continue; }
+      const key = `relationship:${result.targetId}:${result.relationship?.relationshipId}`;
+      if (seen.has(key)) { reject(`relationshipChange [${sourceLabel}]: duplicate pair in envelope`); continue; }
+      seen.add(key);
+      const boundary = applyAIMemoryUpdate(adventure, [{ type: "relationshipProposal", proposal: result }]);
+      actions.push(...boundary.actions);
+      accepted++;
+      executed.push(`relationshipChange [${sourceLabel}]: accepted for review — ${result.title}; ${result.rationale}`);
+      continue;
+    }
     if (![u.kind, u.target, u.content, u.evidence, u.reason].every(v => typeof v === "string" && v.trim())) { reject("missing fields"); continue; }
     const kind = u.kind as string, target = (u.target as string).trim(), content = (u.content as string).trim(), evidence = (u.evidence as string).trim();
     const quote = norm(evidence);
@@ -96,7 +127,6 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
     if (content.includes("<") || content.length > 4000 || target.length > 150 || (u.reason as string).length > 600) { reject(`${target}: invalid content`); continue; }
     const key = `${kind}:${norm(target)}`;
     if (seen.has(key)) { reject(`${target}: repeated target`); continue; }
-    seen.add(key);
     const timestamp = nowIso();
     const proposal: MemoryProposal = {
       id: createId("proposal"), sourceTurnId, sourceText: evidence, proposedType: "storyCard", title: target,
@@ -116,6 +146,8 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
       const boundary = applyAIMemoryUpdate(adventure, [{ type: "brainPatch", brainId: brain.id, patch, mode: "append", turn: adventure.activeState.turn, preview: content }]);
       if (adventure.memoryAutoApprove.brainUpdate) actions.push(...boundary.actions);
       else actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal: { ...proposal, proposedType: "brainUpdate", targetId: brain.id, content: JSON.stringify(patch) } });
+      seen.add(key);
+      accepted++;
       executed.push(`Thought: ${target}`);
       continue;
     }
@@ -167,6 +199,8 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
     } else { reject(`${target}: unsupported memory kind`); continue; }
     if (proposal.requiresReview && kind !== "essentials") proposal.rationale += " Consequential memory change: review required.";
     actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal });
+    seen.add(key);
+    accepted++;
     executed.push(`Proposed ${kind}: ${target}`);
   }
   actions.push({ type: "LOG_EVALUATION_RESULT", entry: {

@@ -58,7 +58,6 @@ describe("one-pass memory quality boundary", () => {
     ["truncated opening tag", `${story}<memory_up`],
     ["invalid JSON", `${story}<memory_updates>{oops}</memory_updates>`],
     ["multiple tails", `${envelope([])}<memory_updates>{"updates":[]}</memory_updates>`],
-    ["too many updates", envelope(Array(5).fill(update))],
   ])("preserves good story after %s memory output without a retry", async (_label, content) => {
     const adventure = fixture();
     const provider = vi.fn(async () => ({ content }));

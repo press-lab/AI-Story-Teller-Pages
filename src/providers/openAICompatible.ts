@@ -349,8 +349,11 @@ async function sendAnthropicRequest(
     throw new Error(`Provider error ${response.status} (${endpoint}): ${detail}`);
   }
 
-  const content = raw.content?.find((c) => c.type === "text")?.text;
-  if (content == null) throw new Error(`Provider returned no content. Body: ${rawText.slice(0, 300)}`);
+  // Narration and the memory envelope may arrive in separate text blocks.
+  // Preserve every text block in order, including blocks splitting a JSON token.
+  const textBlocks = raw.content?.filter((c) => c.type === "text" && typeof c.text === "string") ?? [];
+  if (!textBlocks.length) throw new Error(`Provider returned no content. Body: ${rawText.slice(0, 300)}`);
+  const content = textBlocks.map((c) => c.text).join("");
 
   const usage: ProviderUsage | undefined = raw.usage
     ? {

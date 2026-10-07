@@ -117,7 +117,7 @@ async function sendStoryCompletionWithGuard({
   config: RuntimeProviderSettings;
   responseLengthHint: number;
   playerInput: string;
-}): Promise<{ content: string; usage?: ProviderUsage }> {
+}): Promise<{ content: string; usage?: ProviderUsage; memoryDiscardReason?: string }> {
   const response = await sendOpenAICompatibleChatCompletion({ messages, config });
   const guard = evaluateStoryResponseGuard(response.content, responseLengthHint, playerInput);
   if (!guard.needsCorrection) return response;
@@ -135,7 +135,11 @@ async function sendStoryCompletionWithGuard({
     // default thinking mode can otherwise consume the entire small correction budget.
     thinking: "disabled",
   });
-  return { content: corrected.content, usage: combineProviderUsage(response.usage, corrected.usage) };
+  return {
+    content: corrected.content,
+    usage: combineProviderUsage(response.usage, corrected.usage),
+    memoryDiscardReason: "Original memory discarded by visible-story correction; recover from the corrected story only.",
+  };
 }
 
 function stripThinkTags(text: string): string {
