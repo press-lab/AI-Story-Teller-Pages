@@ -216,6 +216,8 @@ describe("world evolution through narration, persistence and next context", () =
     a = approve(await turn(a, allegiance, { worldChanges: [change(a)] }));
     a = await turn(a, "Marcus is loyal to the king.", { updates: [{ kind: "card", target: "Marcus", content: "Marcus is loyal to the king.", evidence: "Marcus is loyal to the king.", reason: "Allegiance", effects: [] }] });
     expect(a.storyCards[0].content).not.toContain("loyal to the king");
+    expect(a.worldEvolutionState!.history[0].change.previous).toBe("Marcus is loyal to the king.");
+    expect(a.activeState.memoryProposals.filter(p => p.status === "pending")).toEqual([]);
   });
   it("preserves complete truncated records, rejects cut-off ones, and recovers missing output with one compact call", async () => {
     let a = sandbox();

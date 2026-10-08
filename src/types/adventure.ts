@@ -118,6 +118,7 @@ export interface WorldEvolutionIssue {
   sourceTurnId: string;
   reason: string;
   status: "unrecorded" | "recovered" | "dismissed";
+  droppedRecords?: { route: string; record: Record<string, unknown> }[];
 }
 export interface WorldEvolutionState {
   threads: PlotThread[];
@@ -803,6 +804,7 @@ export interface AdventureThumbnailImage {
 }
 
 export interface NewAdventureSetup {
+  worldEvolutionSettings?: WorldEvolutionSettings;
   title: string;
   openingScene: string;
   components: ComponentEntry[];

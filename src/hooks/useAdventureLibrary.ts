@@ -57,6 +57,7 @@ export function useAdventureLibrary(
     const next = {
       ...baseline,
       openingScene: setup.openingScene,
+      worldEvolutionSettings: { ...baseline.worldEvolutionSettings!, ...setup.worldEvolutionSettings },
       metadata: setup.thumbnailImage ? thumbnailMetadataPatch(setup.thumbnailImage) : baseline.metadata,
       components: [
         ...baseline.components.filter((c) => !setupTypes.has(c.type)),

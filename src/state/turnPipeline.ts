@@ -90,7 +90,7 @@ export async function applyProviderResponse({
   let next = adventure;
 
   // Extract inline thought tags and memory tags from the response before the player sees it.
-  const memory = parseOnePassMemory(response.content, worldRuntimeActive(adventure), adventure.messages.at(-1)?.content ?? "");
+  const memory = parseOnePassMemory(response.content, worldRuntimeActive(adventure), adventure.messages.at(-1)?.content ?? "", { adventure, context: preProviderContext, playerInput: adventure.messages.at(-1)?.content ?? "" });
   const { cleanContent: thoughtCleanContent } = extractInlineThoughts(memory.story);
   if (!thoughtCleanContent.trim()) throw new Error("The model returned no visible story. No memory was applied.");
   const rawContentForLint = thoughtCleanContent;
@@ -145,7 +145,7 @@ export async function applyProviderResponse({
     if (memoryEnabled && !continuityCorrected && !response.memoryDiscardReason) next = reduceActions(next, worldEvolutionActions(next, preProviderContext, memory, finalContent, messageId));
     const failure = continuityCorrected ? "World changes from the discarded draft were not applied. Review accepted narration." : response.memoryDiscardReason ?? memory.error
       ?? (!memoryEnabled ? "World event capture is paused because one-pass memory was disabled or omitted by the context budget." : undefined);
-    if (failure) next = adventureReducer(next, { type: "SET_WORLD_ISSUE", issue: { id: `world-issue:${messageId}`, sourceTurnId: messageId, status: "unrecorded", reason: failure } });
+    if (failure) next = adventureReducer(next, { type: "SET_WORLD_ISSUE", issue: { id: `world-issue:${messageId}`, sourceTurnId: messageId, status: "unrecorded", reason: failure, droppedRecords: !continuityCorrected && !response.memoryDiscardReason ? memory.droppedRecords : undefined } });
   }
   next = adventureReducer(next, { type: "CONSUME_NEXT_TURN_NOTE" });
 

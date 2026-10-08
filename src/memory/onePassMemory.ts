@@ -1,9 +1,10 @@
 import { relationshipCandidate, type RelationshipTarget } from "./relationships";
-import type { Adventure, AdventureAction, BrainEntry, ContextBuildResult, MemoryProposal, StoryCardType, WorldEvolutionSettings, WorldEffect } from "../types/adventure";
+import type { Adventure, AdventureAction, BrainEntry, ContextBuildResult, MemoryProposal, StoryCardType, WorldEvolutionSettings, WorldEffect, WorldEvolutionIssue } from "../types/adventure";
 import { createId, nowIso } from "../utils/id";
 import { cardMatchesName } from "../state/defaults";
 import { applyAIMemoryUpdate } from "./applyAIMemoryUpdate";
-import { MAX_WORLD_OUTPUT_CHARS, MAX_WORLD_OUTPUT_TOKENS_ESTIMATE, MAX_WORLD_RECORD_CHARS } from "./worldEvolution";
+import { MAX_WORLD_OUTPUT_CHARS, MAX_WORLD_OUTPUT_TOKENS_ESTIMATE, MAX_WORLD_RECORD_CHARS, worldEvolutionActions } from "./worldEvolution";
+import { adventureReducer } from "../state/adventureReducer";
 import { approximateTokenCount } from "../tokenizer/approximateTokenCount";
 
 export const ONE_PASS_MEMORY_ID = "one-pass-memory";
@@ -41,46 +42,89 @@ Only output changes supported by this turn and consistent with ALL supplied cano
 }
 
 /** A broken/truncated tail must never leak JSON into the story or discard good prose. */
-export function parseOnePassMemory(text: string, compact = false, evidenceSource = ""): { story: string; updates: unknown[]; plotEvents?: unknown[]; worldChanges?: unknown[]; newPlots?: unknown[]; error?: string } {
+export interface MemorySelectionContext { adventure: Adventure; context: ContextBuildResult; playerInput: string; recentEvidence?: string[] }
+
+export function parseOnePassMemory(text: string, compact = false, evidenceSource = "", selection?: MemorySelectionContext): { story: string; updates: unknown[]; plotEvents?: unknown[]; worldChanges?: unknown[]; newPlots?: unknown[]; error?: string; droppedRecords?: WorldEvolutionIssue["droppedRecords"] } {
   const start = text.search(/<memory_(?:updates\b|[a-z]*$)/i);
   if (start < 0) return { story: text, updates: [], error: "Memory envelope missing; story preserved." };
   const story = text.slice(0, start).trimEnd();
   const tail = text.slice(start);
   const match = /^<memory_updates\s*>([\s\S]*?)<\/memory_updates>\s*$/i.exec(tail);
-  if (!match || match[1].length > 16000) return { story, ...boundMemoryEnvelope({ updates: [], ...recoverWorldRecords(tail, compact) }, compact, story + "\n" + evidenceSource), error: "Incomplete or oversized memory envelope; story preserved." };
+  if (!match || match[1].length > 16000) return { story, ...boundMemoryEnvelope({ updates: [], ...recoverWorldRecords(tail, compact) }, compact, story + "\n" + evidenceSource, selection, story), error: "Incomplete or oversized memory envelope; story preserved." };
   try {
     const parsed: unknown = JSON.parse(match[1]);
     if (!parsed || typeof parsed !== "object" || !("updates" in parsed) || !Array.isArray(parsed.updates)) throw new Error();
     return { story, ...boundMemoryEnvelope({ updates: parsed.updates,
       ...("plotEvents" in parsed && Array.isArray(parsed.plotEvents) ? { plotEvents: parsed.plotEvents } : {}),
       ...("worldChanges" in parsed && Array.isArray(parsed.worldChanges) ? { worldChanges: parsed.worldChanges } : {}),
-      ...("newPlots" in parsed && Array.isArray(parsed.newPlots) ? { newPlots: parsed.newPlots } : {}) }, compact, story + "\n" + evidenceSource) };
+      ...("newPlots" in parsed && Array.isArray(parsed.newPlots) ? { newPlots: parsed.newPlots } : {}) }, compact, story + "\n" + evidenceSource, selection, story) };
   } catch {
-    return { story, ...boundMemoryEnvelope({ updates: [], ...recoverWorldRecords(tail, compact) }, compact, story + "\n" + evidenceSource), error: "Invalid memory JSON; story preserved." };
+    return { story, ...boundMemoryEnvelope({ updates: [], ...recoverWorldRecords(tail, compact) }, compact, story + "\n" + evidenceSource, selection, story), error: "Invalid memory JSON; story preserved." };
   }
 }
 
-export function boundMemoryEnvelope(envelope: { updates: unknown[]; worldChanges?: unknown[]; newPlots?: unknown[]; plotEvents?: unknown[] }, compact: boolean, evidenceSource = ""): typeof envelope & { error?: string } {
+export function boundMemoryEnvelope(envelope: { updates: unknown[]; worldChanges?: unknown[]; newPlots?: unknown[]; plotEvents?: unknown[] }, compact: boolean, evidenceSource = "", selection?: MemorySelectionContext, story = evidenceSource): typeof envelope & { error?: string; droppedRecords?: WorldEvolutionIssue["droppedRecords"] } {
   if (!compact) return envelope;
-  const result: typeof envelope & { error?: string } = { updates: [] };
-  const report = (message: string) => { if (!result.error?.includes(message)) result.error = [result.error, message].filter(Boolean).join(" "); };
-  let count = 0;
+  const result: typeof envelope & { error?: string; droppedRecords?: WorldEvolutionIssue["droppedRecords"] } = { updates: [] };
+  for (const key of ["worldChanges", "newPlots", "plotEvents"] as const) if (envelope[key]) result[key] = [];
+  const issues: string[] = [];
+  const candidates: { key: "updates" | "worldChanges" | "newPlots" | "plotEvents"; record: Record<string, unknown>; priority: number; identity: string }[] = [];
+  const seen = new Set<string>();
   for (const key of ["updates", "worldChanges", "newPlots", "plotEvents"] as const) {
-    if (!envelope[key]) continue;
-    result[key] = [];
-    const records = key === "updates" ? [...envelope[key]!].sort((a, b) => Number((b as { kind?: string })?.kind === "thought") - Number((a as { kind?: string })?.kind === "thought")) : envelope[key]!;
-    for (const record of records) {
-      if (key === "updates") {
-        const u = record as Record<string, unknown>;
-        if (!u || typeof u !== "object" || ![u.kind, u.target, u.evidence, u.reason].every(v => typeof v === "string" && v.trim())
-          || u.kind !== "relationshipChange" && typeof u.content !== "string" || evidenceSource && !evidenceSource.includes(String(u.evidence))) { report("Invalid structured candidate omitted; review accepted narration."); continue; }
+    for (const raw of envelope[key] ?? []) {
+      const r = raw as Record<string, unknown>;
+      const invalid = !r || typeof r !== "object" || Array.isArray(r) || typeof r.evidence !== "string" || !r.evidence.trim()
+        || evidenceSource && !evidenceSource.includes(r.evidence)
+        || key === "updates" && (![r.kind, r.target, r.reason].every(v => typeof v === "string" && v.trim()) || r.kind !== "relationshipChange" && typeof r.content !== "string")
+        || key !== "updates" && (typeof r.autonomous !== "boolean" || typeof r.offscreen !== "boolean");
+      if (invalid) { issues.push("Invalid structured candidate omitted; review accepted narration."); continue; }
+      const serialized = JSON.stringify(r);
+      if (serialized.length > MAX_WORLD_RECORD_CHARS || approximateTokenCount(serialized) > 600) { issues.push("Incomplete or oversized memory envelope; excess records need review."); continue; }
+      // Ask existing validators whether a record can enter its own route. No writes occur here.
+      if (selection) {
+        const { context, playerInput } = selection;
+        const adventure = { ...selection.adventure, messages: [...selection.adventure.messages, { id: "selection", role: "assistant" as const, content: story, createdAt: nowIso() }] };
+        const actions = key === "updates"
+          ? onePassMemoryActions(adventure, context, [r], story, "selection", undefined, "Selection validation", playerInput, selection.recentEvidence)
+          : worldEvolutionActions(adventure, context, { [key]: [r] }, story, "selection");
+        const writes = actions.filter(a => !["LOG_EVALUATION_RESULT", "SET_WORLD_ISSUE"].includes(a.type));
+        // Preview each specialized reducer action against an immutable copy. This also
+        // excludes stale/protected writes and already-pending duplicate proposals.
+        if (!writes.some(action => adventureReducer(adventure, action) !== adventure)) {
+          const reason = actions.flatMap(a => a.type === "SET_WORLD_ISSUE" ? [a.issue.reason] : a.type === "LOG_EVALUATION_RESULT" ? a.entry.errors : []).join(" ");
+          issues.push(reason || "Invalid structured candidate omitted; review accepted narration."); continue;
+        }
       }
-      if (count >= MAX_MEMORY_UPDATES || JSON.stringify(record).length > MAX_WORLD_RECORD_CHARS || approximateTokenCount(JSON.stringify(record)) > 600) { report("Structured update limit reached: Incomplete or oversized memory envelope; excess records need review."); continue; }
-      result[key]!.push(record);
-      if (JSON.stringify(result).length > MAX_WORLD_OUTPUT_CHARS || approximateTokenCount(JSON.stringify(result)) > MAX_WORLD_OUTPUT_TOKENS_ESTIMATE) { result[key]!.pop(); report("Incomplete or oversized memory envelope; excess records need review."); continue; }
-      count++;
+      const terminal = key === "plotEvents" && ["resolved", "failed", "abandoned"].includes(String(r.kind));
+      if (terminal && (!r.resolution || r.certainty !== "confirmed")) { issues.push("Invalid terminal candidate omitted; review accepted narration."); continue; }
+      const identity = key === "updates" ? r.kind === "relationshipChange" ? `relationship:${r.target}:${r.relationshipId}` : `${r.kind}:${r.target}`
+        : `${key}:${r.targetId ?? r.id}`;
+      if (seen.has(identity)) { issues.push("Duplicate structured candidate omitted."); continue; }
+      // Duplicates of invalid candidates do not reserve identities.
+      seen.add(identity);
+      const significantCanon = key === "worldChanges" && (["replace", "supersede", "remove", "resolve"].includes(String(r.operation)) || Array.isArray(r.effects) && r.effects.length > 0);
+      const priority = terminal ? 100 : significantCanon ? 90 : key === "plotEvents" ? 65 : key === "newPlots" ? 60 : r.kind === "relationshipChange" ? 55 : r.kind === "thought" || key === "worldChanges" && r.owner === "brain" ? 50 : 40;
+      candidates.push({ key, record: r, priority, identity });
     }
   }
+  candidates.sort((a, b) => b.priority - a.priority);
+  const dropped: NonNullable<WorldEvolutionIssue["droppedRecords"]> = [];
+  const retainForReview = (route: string, record: Record<string, unknown>) => {
+    const candidate = { route, record };
+    if (dropped.length < 4 && JSON.stringify([...dropped, candidate]).length <= MAX_WORLD_OUTPUT_CHARS && approximateTokenCount(JSON.stringify([...dropped, candidate])) <= MAX_WORLD_OUTPUT_TOKENS_ESTIMATE) dropped.push(candidate);
+  };
+  let count = 0;
+  for (const { key, record, identity } of candidates) {
+    if (count >= MAX_MEMORY_UPDATES) { retainForReview(key, record); issues.push(`Structured update limit reached; ${identity.slice(0, 100)} needs review in accepted narration.`); continue; }
+    result[key] ??= [];
+    result[key]!.push(record);
+    if (JSON.stringify(result).length > MAX_WORLD_OUTPUT_CHARS || approximateTokenCount(JSON.stringify(result)) > MAX_WORLD_OUTPUT_TOKENS_ESTIMATE) {
+      result[key]!.pop(); retainForReview(key, record); issues.push(`Incomplete or oversized memory envelope; ${identity.slice(0, 100)} needs review.`); continue;
+    }
+    count++;
+  }
+  if (dropped.length) result.droppedRecords = dropped;
+  if (issues.length) result.error = [...new Set(issues)].slice(0, 8).join(" ");
   return result;
 }
 
@@ -95,7 +139,7 @@ function recoverWorldRecords(tail: string, includeUpdates = false): { updates?: 
     if (array < 0) continue;
     let depth = 0, inString = false, escape = false, objectStart = -1;
     const records: unknown[] = [];
-    for (let i = array + 1; i < tail.length && records.length < 4; i++) {
+    for (let i = array + 1; i < tail.length && records.length < 32; i++) {
       const c = tail[i];
       if (inString) { if (escape) escape = false; else if (c === "\\") escape = true; else if (c === '"') inString = false; continue; }
       if (c === '"') { inString = true; continue; }

@@ -1,3 +1,4 @@
+import { WorldEvolutionControls } from "./WorldEvolutionControls";
 import { useEffect, useState, type ChangeEvent } from "react";
 import type {
   Adventure,
@@ -12,7 +13,7 @@ import type {
   StoryCardType,
 } from "../types/adventure";
 import type { AdventureSummary } from "../db/adventureDb";
-import { defaultNarrationRulesContent, makeComponent, makeStoryCard } from "../state/defaults";
+import { defaultWorldEvolutionSettings, defaultNarrationRulesContent, makeComponent, makeStoryCard } from "../state/defaults";
 import { parseAidStoryCards } from "../importers/aidCardParser";
 import { importAdventureJson } from "../utils/json";
 import {
@@ -323,6 +324,7 @@ export function AdventuresPage({
   const [adultBoundaries, setAdultBoundaries] = useState("");
   const [genLoading, setGenLoading] = useState(false);
   const [genError, setGenError] = useState<string | undefined>();
+  const [worldSettings, setWorldSettings] = useState({ ...defaultWorldEvolutionSettings });
   const [setupError, setSetupError] = useState<string | undefined>();
 
   const starterComponents = componentDrafts.map(componentFromDraft).filter((component): component is ComponentEntry => Boolean(component));
@@ -439,6 +441,7 @@ export function AdventuresPage({
       components: starterComponents,
       storyCards: [...manualStoryCards, ...jsonStoryCards],
       thumbnailImage,
+      worldEvolutionSettings: { ...worldSettings },
     });
   }
 
@@ -521,6 +524,7 @@ export function AdventuresPage({
     return (
       <section className="page">
         <article className="panel new-adventure-setup">
+          <WorldEvolutionControls settings={worldSettings} onChange={patch => setWorldSettings(values => ({ ...values, ...patch }))} />
           <div className="panel-heading">
             <div>
               <button type="button" onClick={() => setView("list")}>

@@ -38,7 +38,7 @@ function fixture(withArc) {
   a.activeState.turn = 0;
   return a;
 }
-const refs = ["401b27c", "bdb7e53", "1edee2d", "3c25be0", "e3c432", "working"];
+const refs = ["401b27c", "bdb7e53", "1edee2d", "3c25be0", "e3c432", "2df5e17", "working"];
 const rows = [];
 for (const ref of refs) {
   const load = loader(ref);
@@ -51,6 +51,23 @@ for (const ref of refs) {
     rows.push({ ref, fixture: arc ? "activeArc" : "emptySandbox", requests, inputTokensEstimate: input, memoryInstructionTokensEstimate: estimate(memory), structuredOutputTokensEstimate: estimate('{"updates":[]}') });
   }
 }
+const presets = current("src/memory/worldPresets.ts").worldPresets;
+const presetRows = [];
+for (const [preset, settings] of Object.entries({ Disabled: { ...presets["Living World"], enabled: false }, ...presets })) {
+  for (const arc of [false, true]) {
+    let requests = 0;
+    const a = fixture(arc); a.worldEvolutionSettings = { enabled: true, ...settings };
+    const result = await current("src/state/turnPipeline.ts").runTurnPipeline({ adventure: a, text: "Marcus looks around the peaceful garden.", sendChatCompletion: async () => { requests++; return { content: 'Marcus drinks his tea.\n<memory_updates>{"updates":[]}</memory_updates>' }; } });
+    const input = result.providerPayload.reduce((n, m) => n + estimate(m.content), 0);
+    const worldInstruction = current("src/memory/worldEvolution.ts").worldEvolutionInstruction(a, new Set([...a.storyCards, ...a.components].map(t => t.id)));
+    const row = { preset, fixture: arc ? "activeArc" : "emptySandbox", requests, inputTokensEstimate: input, worldInstructionTokensEstimate: worldInstruction ? estimate(worldInstruction) : 0 };
+    for (const ref of ["401b27c", "1edee2d", "2df5e17"]) row[`deltaFrom${ref}`] = input - rows.find(r => r.ref === ref && r.fixture === row.fixture).inputTokensEstimate;
+    if (requests !== 1) throw new Error("Preset added routine requests.");
+    if (preset === "Disabled" && worldInstruction) throw new Error("Disabled world has prompt overhead.");
+    presetRows.push(row);
+  }
+}
+console.log(JSON.stringify({ presetRows }, null, 2));
 console.log(JSON.stringify(rows, null, 2));
 const world = current("src/memory/worldEvolution.ts");
 const worst = fixture(true);

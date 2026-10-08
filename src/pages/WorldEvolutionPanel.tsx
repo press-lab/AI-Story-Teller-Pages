@@ -3,7 +3,7 @@ import type { AdventurePageProps } from "./pageTypes";
 
 export function WorldEvolutionPanel({ adventure, dispatch }: AdventurePageProps) {
   const world = worldState(adventure);
-  if (!adventure.worldEvolutionSettings?.enabled && !world.threads.length && !world.issues.length) return null;
+  if (!adventure.worldEvolutionSettings?.enabled && !world.threads.length && !world.archivedThreads?.length && !world.history.length && !world.issues.length) return null;
   return <article className="panel">
     <h3>World Evolution record</h3>
     <p className="muted">Tracked plots, accepted canon changes, and responses whose world changes need review.</p>
@@ -11,6 +11,7 @@ export function WorldEvolutionPanel({ adventure, dispatch }: AdventurePageProps)
       <summary>Unrecorded or recovered events ({world.issues.filter(i => i.status === "unrecorded").length} need review)</summary>
       {world.issues.slice(-10).reverse().map(issue => <article key={issue.id}>
         <p><strong>{issue.status}</strong> · {issue.sourceTurnId}: {issue.reason}</p>
+        {issue.droppedRecords?.map((candidate, index) => <details key={index}><summary>Dropped {candidate.route} candidate — review before applying</summary><pre>{JSON.stringify(candidate.record, null, 2)}</pre></details>)}
         <details><summary>Accepted narration</summary><p>{adventure.messages.find(m => m.id === issue.sourceTurnId)?.content ?? "Source response was removed from the Chronicle."}</p></details>
         {issue.status === "unrecorded" && <button type="button" onClick={() => dispatch({ type: "SET_WORLD_ISSUE", issue: { ...issue, status: "dismissed" } })}>Mark reviewed</button>}
       </article>)}

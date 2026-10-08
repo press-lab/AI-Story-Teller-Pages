@@ -525,7 +525,7 @@ export function normalizeAdventure(adventure: Adventure): Adventure {
   return {
     ...baseline,
     ...adventure,
-    worldEvolutionSettings: { ...legacyWorldEvolutionSettings, ...(adventure.worldEvolutionSettings ?? {}), enabled: adventure.worldEvolutionSettings?.enabled ?? (adventure.worldEvolutionSettings?.plotProgression !== undefined && adventure.worldEvolutionSettings.plotProgression !== "off") },
+    worldEvolutionSettings: { ...legacyWorldEvolutionSettings, ...(adventure.worldEvolutionSettings ?? {}), enabled: adventure.worldEvolutionSettings?.enabled ?? false },
     worldEvolutionState: { history: [], issues: [], ...(adventure.worldEvolutionState ?? {}),
       threads: (adventure.worldEvolutionState?.threads ?? []).filter(t => !t.outcome),
       archivedThreads: [...(adventure.worldEvolutionState?.archivedThreads ?? []), ...(adventure.worldEvolutionState?.threads ?? []).filter(t => !!t.outcome)] },

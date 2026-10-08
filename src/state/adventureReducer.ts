@@ -1393,7 +1393,7 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
         ),
       });
     case "SET_WORLD_EVOLUTION_SETTINGS":
-      return touchAdventure(state, { worldEvolutionSettings: { ...state.worldEvolutionSettings!, enabled: true, ...action.patch } });
+      return touchAdventure(state, { worldEvolutionSettings: { ...state.worldEvolutionSettings!, ...action.patch } });
     case "SET_WORLD_ISSUE": {
       const world = worldState(state);
       return touchAdventure(state, { worldEvolutionState: { ...world, issues: [...world.issues.filter(i => i.id !== action.issue.id), action.issue] } });
@@ -1403,7 +1403,7 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
     case "REGISTER_PLOT_THREAD": {
       const world = worldState(state), t = action.thread, settings = state.worldEvolutionSettings;
       const story = state.messages.find(m => m.id === t.sourceTurnId && m.role === "assistant")?.content ?? "";
-      if (!worldEnabled(state) || settings?.newPlotGeneration === "off" || settings?.plotProgression === "off"
+      if (!worldEnabled(state) || settings?.newPlotGeneration === "off"
         || (t.offscreen && !settings?.offscreenEvents) || ((t.autonomous || t.offscreen) && settings?.npcAutonomy !== "independent")
         || world.threads.length >= MAX_ACTIVE_PLOTS || [...world.threads, ...(world.archivedThreads ?? [])].some(p => p.id === t.id || p.objective === t.objective) || t.originEvidence.length < 12 || !story.includes(t.originEvidence)
         || !t.objective.trim() || t.participants.some(id => ![...state.storyCards, ...state.brains].some(c => c.id === id))) return state;

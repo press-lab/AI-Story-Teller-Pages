@@ -31,15 +31,30 @@ Reproduce with `node scripts/measure-world-evolution-cost.mjs`. Actual historica
 | 1edee2d | 2104 | 2155 | 1 | 4 |
 | 3c25be0 | 2104 | 2296 | 1 | 4 |
 | e3c432 | 2104 | 2936 | 1 | 4 |
-| Hardened | 2526 | 2685 | 1 | 4 |
+| 2df5e17 hardened baseline | 2526 | 2685 | 1 | 4 |
+| Scenario controls (Living World) | 2561 | 2721 | 1 | 4 |
 
-Empty-sandbox capture now works, costing 422 estimated input tokens above e3c432. With an active arc, the hardened prompt saves 251 estimated tokens. Relative to the relationship baseline the increases are 422/530; relative to 401b27c they are 491/598. Lore and relationship ownership remain available. The script fails if ordinary request count exceeds one or fixture overhead exceeds 650 estimated tokens relative to 1edee2d.
+At 2df5e17 empty-sandbox capture costs 422 estimated input tokens above e3c432; the active-arc prompt saves 251 versus e3c432. Scenario controls add 35–36 estimated input tokens to that Living World baseline. Lore and relationship ownership remain available. The script fails if ordinary request count exceeds one or fixture overhead exceeds 650 estimated tokens relative to 1edee2d.
 
 A representative progress event is 62 estimated structured-output tokens in the initial small plot schema and 91 with explicit objective, revision, certainty and autonomy. Empty output remains 4. These are schema examples, not observed model generation distributions. Quiet fixtures produce no fallback or correction in any revision. Actual failure-frequency changes cannot be inferred from mocked scenes; diagnostics record them during real use.
 
+## Preset comparison
+
+Each cell pair is **empty sandbox / active arc**, using identical adventure JSON, player input, narration and empty envelope. Background features are disabled. Each fixture uses **one routine request**, with zero new evaluators. Disabled World Evolution contributes zero World Evolution instruction tokens; its remaining delta from 401b27c belongs to intervening ordinary-memory changes.
+
+| Preset | Total estimated input | Delta vs 401b27c | Delta vs 1edee2d | Delta vs 2df5e17 | World instruction estimate |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Disabled | 2104 / 2155 | +69 / +68 | 0 / 0 | −422 / −530 | 0 / 0 |
+| Quiet Sandbox | 2379 / 2431 | +344 / +344 | +275 / +276 | −147 / −254 | 276 / 276 |
+| Natural Evolution | 2561 / 2721 | +526 / +634 | +457 / +566 | +35 / +36 | 458 / 565 |
+| Living World | 2561 / 2721 | +526 / +634 | +457 / +566 | +35 / +36 | 458 / 565 |
+| Unpredictable World | 2565 / 2724 | +530 / +637 | +461 / +569 | +39 / +39 | 461 / 569 |
+
+Natural and Living use equally sized schemas in these fixtures; their values guide different narrative behavior. Quiet omits plot/canon inventories for unavailable capabilities. Values are estimates from the app's character-based estimator, including its per-message rounding; isolated instruction estimates do not always exactly equal payload deltas. No live billing measurements are claimed.
+
 ## Bounds and recovery
 
-- The worst supported instruction inventory (four 160-character target IDs with 80-character revisions/protection flags and four 160-character plot IDs) is 3,847 characters / 962 estimated tokens. Inventories exclude historical/inactive/omitted targets, are rebuilt after budget cuts, and consume the existing memory-item budget. Complete owners and duplicated plot objectives are not serialized into instructions.
+- The worst supported instruction inventory (four 160-character target IDs with 80-character revisions/protection flags and four 160-character plot IDs) is 3,984 characters / 996 estimated tokens. Inventories exclude historical/inactive/omitted targets, are filtered after budget cuts without growing, and consume the existing memory-item budget. Complete owners and duplicated plot objectives are not serialized into instructions.
 - All four output arrays share four records, 4,800 serialized characters and 1,200 estimated output tokens. Each record is limited to 2,400 characters / 600 estimated tokens. Content/previous/evidence fields have individual limits. Excess complete candidates are reported for review; safe records survive.
 - Visible narration caps and the 1,400-token hidden reserve are unchanged. Approximate limits are not exact provider tokenizer guarantees.
 - At most twelve active emerging plots are created; completed plots move to persistent archival history. Context selects at most four active and two relevant historical plots, with two recent events each. Saved history is retained rather than repeatedly sent to the model.

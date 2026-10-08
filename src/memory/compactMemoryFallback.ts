@@ -78,11 +78,11 @@ export async function runCompactMemoryFallback(
     const envelope = boundMemoryEnvelope({ updates: parsed.updates,
       plotEvents: "plotEvents" in parsed && Array.isArray(parsed.plotEvents) ? parsed.plotEvents : [],
       worldChanges: "worldChanges" in parsed && Array.isArray(parsed.worldChanges) ? parsed.worldChanges : [],
-      newPlots: "newPlots" in parsed && Array.isArray(parsed.newPlots) ? parsed.newPlots : [] }, worldRuntimeActive(adventure), recentEvidence.join("\n"));
+      newPlots: "newPlots" in parsed && Array.isArray(parsed.newPlots) ? parsed.newPlots : [] }, worldRuntimeActive(adventure), recentEvidence.join("\n"), { adventure, context, playerInput, recentEvidence }, latestStory.content);
     const actions = onePassMemoryActions(adventure, context, envelope.updates, latestStory.content,
       latestStory.id, undefined, "Compact memory fallback: one API call", playerInput, recentEvidence);
     actions.push(...worldEvolutionActions(adventure, context, envelope, latestStory.content, latestStory.id));
-    if ("error" in envelope) actions.push({ type: "SET_WORLD_ISSUE", issue: { id: `world-issue:${latestStory.id}`, sourceTurnId: latestStory.id, status: "unrecorded", reason: String(envelope.error) } });
+    if ("error" in envelope) actions.push({ type: "SET_WORLD_ISSUE", issue: { id: `world-issue:${latestStory.id}`, sourceTurnId: latestStory.id, status: "unrecorded", reason: String(envelope.error), droppedRecords: envelope.droppedRecords } });
     return { actions, tokenUsage, valid: true };
   } catch {
     return { ...empty, tokenUsage };

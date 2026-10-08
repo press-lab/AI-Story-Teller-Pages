@@ -1,6 +1,6 @@
 import { relationshipFocusCard, relationshipItemId, relationshipTargets, relationshipText } from "../memory/relationships";
 import { ONE_PASS_MEMORY_ID, onePassMemoryInstruction, relationshipMemoryInstruction } from "../memory/onePassMemory";
-import { worldEnabled, worldEvolutionInstruction, worldRuntimeActive, selectedWorldPlots } from "../memory/worldEvolution";
+import { worldEnabled, worldEvolutionInstruction, worldRuntimeActive, selectedWorldPlots, selectedWorldTargets } from "../memory/worldEvolution";
 import { selectEventMemories } from "../memory/eventMemory";
 import { PLOT_MEMORY_THRESHOLD } from "../ai/authoringBestPractices";
 import type {
@@ -592,6 +592,11 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
     return [next, ...relationshipItems];
   });
 
+  const worldScene = [options.currentInput, options.latestModelOutput, ...adventure.messages.slice(-4).map(m => m.content)].filter(Boolean).join(" ");
+  const worldInventoryIds = new Set([
+    ...selectedWorldTargets(adventure, new Set([...storyCardItems, ...brainItems, ...plotEssentialItems].map(i => i.id)), worldScene).map(t => t.id),
+    ...currentArcItems.slice(0, 4).map(i => i.id),
+  ]);
   // J. Next Output Bias (+ response length hint)
   if (memoryItem) {
     // Single-item sections need not print their title. Explicit target names let the
@@ -603,7 +608,7 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
       components: editableComponents.map(entry => ({ title: entry.title, type: adventure.components.find(c => c.id === entry.id)?.type })),
     })}`;
     if (!worldEnabled(adventure) || adventure.worldEvolutionSettings!.relationshipEvolution) memoryItem.content += relationshipMemoryInstruction(relationshipTargets(adventure, new Set(brainItems.map(i => i.id))));
-    memoryItem.content += worldEvolutionInstruction(adventure, new Set([...storyCardItems, ...brainItems, ...plotEssentialItems, ...currentArcItems].map(i => i.id)));
+    memoryItem.content += worldEvolutionInstruction(adventure, worldInventoryIds, worldScene);
     memoryItem.tokenEstimate = approximateTokenCount(memoryItem.content);
   }
 
@@ -793,7 +798,7 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
     const ids = new Set(sections.flatMap(s => s.items).map(i => i.id));
     finalMemory.content = finalMemory.content.replace(/\n\[DYNAMIC RELATIONSHIPS\][\s\S]*?\[\/DYNAMIC RELATIONSHIPS\]/g, "").replace(/\n\[WORLD EVOLUTION\][\s\S]*?\[\/WORLD EVOLUTION\]/g, "")
       + (!worldEnabled(adventure) || adventure.worldEvolutionSettings!.relationshipEvolution ? relationshipMemoryInstruction(relationshipTargets(adventure, ids)) : "")
-      + worldEvolutionInstruction(adventure, ids);
+      + worldEvolutionInstruction(adventure, new Set([...worldInventoryIds].filter(id => ids.has(id))), worldScene);
     finalMemory.tokenEstimate = approximateTokenCount(finalMemory.content);
     sections = recalculate(sections);
   }
