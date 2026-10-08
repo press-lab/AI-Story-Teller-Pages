@@ -1,14 +1,19 @@
 import type { Adventure, AdventureAction, BrainEntry, ComponentEntry, ContextBuildResult, MemoryProposal, PlotEvent, PlotThread, StoryCard, WorldChange, WorldEffect, WorldEvolutionState } from "../types/adventure";
 import { makeStoryCard } from "../state/defaults";
 import { createId, nowIso } from "../utils/id";
+import { approximateTokenCount } from "../tokenizer/approximateTokenCount";
 
 export const MAX_WORLD_RECORDS = 4;
+export const MAX_ACTIVE_PLOTS = 12;
+export const MAX_WORLD_RECORD_CHARS = 2400;
+export const MAX_WORLD_OUTPUT_CHARS = 4800;
+export const MAX_WORLD_OUTPUT_TOKENS_ESTIMATE = 1200;
 export const worldEnabled = (a: Adventure) => a.worldEvolutionSettings?.enabled === true;
-export const worldRuntimeActive = (a: Adventure) => worldEnabled(a) && (a.components.some(c => c.type === "currentArc" && c.active) || worldState(a).threads.length > 0);
+export const worldRuntimeActive = (a: Adventure) => worldEnabled(a);
 export const worldState = (a: Adventure): WorldEvolutionState => a.worldEvolutionState ?? { threads: [], history: [], issues: [] };
 const text = (v: unknown, max = 1200): v is string => typeof v === "string" && v.length <= max && !/[<>]/.test(v);
 const quote = (source: string, evidence: unknown): evidence is string => text(evidence, 800) && evidence.trim().length >= 12 && source.includes(evidence);
-const uncertain = /\b(?:rumou?r|perhaps|might|may have|plans? to|intends? to|would|supposedly|allegedly|suspects?|claims? that)\b/i;
+const uncertain = /\b(?:rumou?r|perhaps|might|may have|plans? to|intends? to|would|supposedly|allegedly|suspects? that|claims? that)\b/i;
 
 export function inferredEffects(content: string): WorldEffect[] {
   const effects: WorldEffect[] = [];
@@ -26,19 +31,34 @@ export function characterForTarget(a: Adventure, id?: string, content = ""): Sto
     || c.title === brain?.characterName || content.toLowerCase().includes(c.title.toLowerCase())));
 }
 
+export function needsSemanticReview(a: Adventure, p: MemoryProposal): boolean {
+  return worldEnabled(a) && (p.proposedType === "plotEssentialsUpdate" || p.proposedType === "relationshipUpdate" || p.proposedType === "brainUpdate"
+    || p.storyCardType === "character" || characterForTarget(a, p.targetId).length > 0 || inferredEffects(p.content + " " + p.sourceText).length > 0);
+}
+
 /** Shared by every automatic write path; declaring a different proposal kind cannot bypass a permission. */
-export function mutationPermissionError(a: Adventure, targetId: string | undefined, content: string, effects: WorldEffect[] = [], development = false): string | undefined {
-  const all = new Set([...effects, ...inferredEffects(content)]);
+export function mutationPermissionError(a: Adventure, targetId: string | undefined, content: string, effects?: WorldEffect[], development = false, motivationEvidence?: string): string | undefined {
+  if (effects && (!Array.isArray(effects) || effects.some(e => !["development", "betrayal", "redemption", "hiddenMotivation", "reinterpretation", "identity"].includes(e)))) return "Invalid semantic effects classification.";
+  // Lexical signals justify review, not a claim that a character actually betrayed anyone.
+  const hints = inferredEffects(content);
+  const all = new Set(effects ?? hints);
+  if (a.brains.some(b => b.id === targetId) && all.has("identity")) return "Durable identity belongs on a character Story Card, not a Brain.";
   const characters = characterForTarget(a, targetId, content);
   if (all.has("betrayal") && characters.some(c => c.evolutionProtection?.betrayal)) return "Character is protected from betrayal.";
   if ((all.has("identity") || all.has("reinterpretation")) && characters.some(c => c.evolutionProtection?.identity)) return "Character identity is protected.";
   if (!worldEnabled(a)) return;
   const s = a.worldEvolutionSettings!;
+  if (effects === undefined && hints.length) return "Ambiguous consequential change needs an explicit reviewed semantic classification.";
   if (all.has("betrayal") && s.betrayal === "off") return "Betrayal is disabled.";
   if (all.has("redemption") && s.redemption === "off") return "Redemption is disabled.";
   if (all.has("hiddenMotivation") && !s.hiddenMotivations) return "Hidden motivations are disabled.";
   if (all.has("reinterpretation") && s.canonReinterpretation === "off") return "Canon reinterpretation is disabled.";
   if ((development || all.has("identity") || all.has("redemption") || all.has("betrayal")) && !s.characterDevelopment) return "Character development is disabled.";
+  if ((all.has("betrayal") && s.betrayal === "earned") || (all.has("redemption") && s.redemption === "earned")) {
+    const sources = [...a.messages.slice(-16).map(m => m.content), ...a.storyCards.map(c => c.content), ...a.brains.map(b => b.currentState + "\n" + b.notes)];
+    if (!motivationEvidence || motivationEvidence.length < 16 || !sources.some(t => t.includes(motivationEvidence))) return "Earned semantic effect needs established motivation evidence.";
+  }
+  if (worldState(a).history.some(h => !h.rolledBack && h.change.targetId === targetId && h.change.previous.length >= 12 && content.includes(h.change.previous))) return "Superseded canon cannot be revived by an ordinary memory write; use a reviewed world change.";
 }
 
 export function worldTarget(a: Adventure, c: WorldChange): StoryCard | BrainEntry | ComponentEntry | undefined {
@@ -48,20 +68,26 @@ export function worldTarget(a: Adventure, c: WorldChange): StoryCard | BrainEntr
 }
 export function targetValue(a: Adventure, c: WorldChange): string {
   const target = worldTarget(a, c);
-  return target ? c.owner === "brain" ? (target as BrainEntry)[c.field ?? "currentState"] : (target as StoryCard | ComponentEntry).content : "";
+  if (!target) return "";
+  if (c.owner === "brain") return (target as BrainEntry)[c.field ?? "currentState"];
+  if (c.owner === "storyCard" && c.previous && !(target as StoryCard).content.includes(c.previous)) {
+    const card = target as StoryCard;
+    return [...(card.currentFacts ?? []), ...(card.recentDevelopments ?? [])].find(f => f.includes(c.previous)) ?? card.content;
+  }
+  return (target as StoryCard | ComponentEntry).content;
 }
 export function changeNeedsReview(a: Adventure, c: WorldChange): boolean {
   const target = worldTarget(a, c);
   return c.requiresReview || !!target?.protected || c.owner === "plotEssentials"
     || ["remove", "replace", "supersede", "resolve"].includes(c.operation) || c.effects.length > 0
-    || inferredEffects(c.content + " " + c.evidence).length > 0;
+    || inferredEffects(c.content + " " + c.evidence).length > 0 || c.owner === "storyCard" && (target as StoryCard | undefined)?.type === "character";
 }
 
 export function validateWorldChange(a: Adventure, c: WorldChange, acceptedStory: string): string | undefined {
   if (!worldEnabled(a)) return "World evolution is not enabled.";
   if (!c || !["storyCard", "brain", "plotEssentials"].includes(c.owner) || !["create", "append", "replace", "remove", "supersede", "resolve"].includes(c.operation)
-    || !text(c.targetId, 160) || !c.targetId.trim() || !text(c.previous, 6000) || !text(c.content, 2000)
-    || !text(c.reason, 500) || !c.reason.trim() || typeof c.requiresReview !== "boolean"
+    || !text(c.targetId, 160) || !c.targetId.trim() || !text(c.previous, 800) || !text(c.content, 800)
+    || !text(c.reason, 200) || !c.reason.trim() || typeof c.requiresReview !== "boolean"
     || typeof c.autonomous !== "boolean" || typeof c.offscreen !== "boolean" || !Array.isArray(c.effects)
     || c.effects.some(e => !["development", "betrayal", "redemption", "hiddenMotivation", "reinterpretation", "identity"].includes(e))) return "Malformed world change.";
   if (c.certainty !== "confirmed" || !quote(acceptedStory, c.evidence) || uncertain.test(c.evidence)) return "Change is not a confirmed event in accepted narration.";
@@ -85,9 +111,10 @@ export function validateWorldChange(a: Adventure, c: WorldChange, acceptedStory:
   }
   if (c.operation !== "remove" && !c.content.trim()) return "New state is empty.";
   if (c.operation === "append" && inferredEffects(c.content + " " + c.evidence).some(e => e === "betrayal" || e === "reinterpretation" || e === "redemption")) return "Use supersede/replace for changed current facts.";
-  const effects = [...new Set([...c.effects, ...inferredEffects(c.content + " " + c.evidence)])];
-  const error = mutationPermissionError(a, c.characterId ?? c.targetId, c.content + " " + c.evidence, effects,
-    c.owner === "storyCard" && (target as StoryCard | undefined)?.type === "character");
+  const effects = c.effects;
+  if (c.characterId && !characterForTarget(a, c.targetId, c.content + " " + c.evidence).some(t => t.id === c.characterId)) return "Character identity does not match the mutation owner.";
+  const error = mutationPermissionError(a, c.targetId, c.content + " " + c.evidence, effects,
+    c.owner === "storyCard" && (target as StoryCard | undefined)?.type === "character", c.motivationEvidence);
   if (error) return error;
   if ((effects.includes("betrayal") && s.betrayal === "earned") || (effects.includes("redemption") && s.redemption === "earned")) {
     const motivationSources = [acceptedStory, ...a.messages.slice(-16).map(m => m.content), ...a.storyCards.map(t => t.content), ...a.brains.map(t => t.currentState + "\n" + t.notes)];
@@ -120,9 +147,10 @@ export function applyWorldChange(a: Adventure, p: MemoryProposal): Partial<Adven
   const timestamp = nowIso();
   if (c.owner === "storyCard") {
     const card = before as StoryCard | undefined;
-    after = card ? { ...card, content, updatedAt: timestamp, active: c.operation === "remove" && !content ? false : card.active,
-      currentFacts: card.currentFacts ? (c.operation === "append" ? card.currentFacts : c.operation === "replace" ? content.split("\n").filter(Boolean) : card.currentFacts.map(f => f.replace(c.previous, c.content)).filter(Boolean)) : undefined,
-      recentDevelopments: c.operation === "append" ? card.recentDevelopments : [],
+    const updateFact = (f: string) => c.previous ? f.replace(c.previous, c.content) : f;
+    after = card ? { ...card, content: c.operation === "append" ? content : c.previous && !card.content.includes(c.previous) ? card.content : content, updatedAt: timestamp, active: c.operation === "remove" && !content ? false : card.active,
+      currentFacts: card.currentFacts ? (c.operation === "append" ? card.currentFacts : card.currentFacts.map(updateFact).filter(Boolean)) : undefined,
+      recentDevelopments: c.operation === "append" ? card.recentDevelopments : card.recentDevelopments?.map(updateFact).filter(Boolean),
       archivedFacts: c.operation === "append" ? card.archivedFacts : [card.archivedFacts, `Previously (${p.sourceTurnId}): ${c.previous || card.content}`].filter(Boolean).join("\n") }
       : makeStoryCard({ id: c.targetId, title: c.title!, type: c.cardType, content, keys: c.triggers, memoryMode: c.cardType === "event" ? "historical" : "living" });
     patch = { storyCards: card ? a.storyCards.map(t => t.id === c.targetId ? after as StoryCard : t) : [...a.storyCards, after as StoryCard] };
@@ -138,13 +166,42 @@ export function applyWorldChange(a: Adventure, p: MemoryProposal): Partial<Adven
   return { ...patch, worldEvolutionState: { ...state, history: [...state.history, { id: createId("world-history"), proposalId: p.id, change: c, sourceTurnId: p.sourceTurnId, previous: before ?? null, next: after, createdAt: timestamp }] } };
 }
 
+/** Undo only the fields changed by this entry. Unrelated later edits survive. */
 export function rollbackWorldChange(a: Adventure, id: string): Partial<Adventure> {
   const state = worldState(a), h = state.history.find(e => e.id === id);
-  if (!h || h.rolledBack || worldTarget(a, h.change)?.updatedAt !== h.next.updatedAt || targetValue(a, h.change) !== (h.change.owner === "brain" ? (h.next as BrainEntry)[h.change.field!] : (h.next as StoryCard).content)) return {};
-  const previous = h.previous ? { ...h.previous, updatedAt: nowIso() } : null;
-  const patch: Partial<Adventure> = h.change.owner === "storyCard" ? { storyCards: previous ? a.storyCards.map(t => t.id === h.change.targetId ? previous as StoryCard : t) : a.storyCards.filter(t => t.id !== h.change.targetId) }
-    : h.change.owner === "brain" ? { brains: a.brains.map(t => t.id === h.change.targetId ? previous as BrainEntry : t) }
-      : { components: a.components.map(t => t.id === h.change.targetId ? previous as ComponentEntry : t) };
+  if (!h || h.rolledBack) return {};
+  const current = worldTarget(a, h.change);
+  if (!current) return {};
+  if (!h.previous) {
+    if (JSON.stringify(current) !== JSON.stringify(h.next)) return {};
+    return { storyCards: a.storyCards.filter(t => t.id !== h.change.targetId), worldEvolutionState: { ...state, history: state.history.map(e => e.id === id ? { ...e, rolledBack: true } : e) } };
+  }
+  const previous = h.previous as unknown as Record<string, unknown>;
+  const applied = h.next as unknown as Record<string, unknown>;
+  const live = current as unknown as Record<string, unknown>;
+  const restored: Record<string, unknown> = { ...live };
+  const fields = h.change.owner === "brain" ? [h.change.field!, "evolvedFields"] : h.change.owner === "storyCard" ? ["content", "currentFacts", "recentDevelopments", "archivedFacts", "active"] : ["content"];
+  for (const field of fields) {
+    const before = previous[field], after = applied[field], value = live[field];
+    if (JSON.stringify(before) === JSON.stringify(after)) continue;
+    if (JSON.stringify(value) === JSON.stringify(after)) { restored[field] = before; continue; }
+    if (typeof before === "string" && typeof after === "string" && typeof value === "string") {
+      let prefix = 0, suffix = 0;
+      while (prefix < Math.min(before.length, after.length) && before[prefix] === after[prefix]) prefix++;
+      while (suffix < Math.min(before.length, after.length) - prefix && before[before.length - 1 - suffix] === after[after.length - 1 - suffix]) suffix++;
+      const inserted = after.slice(prefix, after.length - suffix), removed = before.slice(prefix, before.length - suffix);
+      if (!inserted || value.split(inserted).length !== 2) return {};
+      restored[field] = value.replace(inserted, removed);
+    } else if (Array.isArray(before) && Array.isArray(after) && Array.isArray(value)) {
+      const added = after.filter(v => !before.includes(v)), removed = before.filter(v => !after.includes(v));
+      if (added.some(v => !value.includes(v))) return {};
+      restored[field] = [...value.filter(v => !added.includes(v)), ...removed];
+    } else return {};
+  }
+  restored.updatedAt = nowIso();
+  const patch: Partial<Adventure> = h.change.owner === "storyCard" ? { storyCards: a.storyCards.map(t => t.id === h.change.targetId ? restored as unknown as StoryCard : t) }
+    : h.change.owner === "brain" ? { brains: a.brains.map(t => t.id === h.change.targetId ? restored as unknown as BrainEntry : t) }
+      : { components: a.components.map(t => t.id === h.change.targetId ? restored as unknown as ComponentEntry : t) };
   return { ...patch, worldEvolutionState: { ...state, history: state.history.map(e => e.id === id ? { ...e, rolledBack: true } : e) } };
 }
 
@@ -157,14 +214,19 @@ export function validatePlotEvent(a: Adventure, e: PlotEvent, story: string): st
   const target = plotTarget(a, e.targetId);
   if (!worldEnabled(a) || !target || target.outcome || e.objective !== target.objective || e.expectedRevision !== target.revision) return "Missing, concluded, or stale plot objective.";
   if (!["progress", "setback", "revelation", "confrontation", "resolved", "failed", "abandoned"].includes(e.kind)
-    || e.certainty !== "confirmed" || !quote(story, e.evidence) || uncertain.test(e.evidence) || !text(e.outcome, 400) || !e.outcome.trim()) return "Plot event is unsupported or unconfirmed.";
+    || e.certainty !== "confirmed" || !quote(story, e.evidence) || uncertain.test(e.evidence) || !text(e.outcome, 400) || !e.outcome.trim() || !story.includes(e.outcome)) return "Plot event is unsupported or unconfirmed.";
   if (a.worldEvolutionSettings!.plotProgression === "off") return "Plot progression is disabled.";
-  if ((e.offscreen && !a.worldEvolutionSettings!.offscreenEvents) || ((e.autonomous || e.offscreen) && a.worldEvolutionSettings!.npcAutonomy !== "independent")) return "Independent/offscreen plot events are disabled.";
+  if (typeof e.offscreen !== "boolean" || typeof e.autonomous !== "boolean") return "Plot event requires explicit autonomy/offscreen classification.";
+  const offscreen = e.offscreen || /\b(?:meanwhile|elsewhere|unbeknownst|offscreen)\b/i.test(e.evidence);
+  if ((offscreen && !a.worldEvolutionSettings!.offscreenEvents) || ((e.autonomous || offscreen) && a.worldEvolutionSettings!.npcAutonomy !== "independent")) return "Independent/offscreen plot events are disabled.";
   if (["resolved", "failed", "abandoned"].includes(e.kind)) {
     const r = e.resolution;
-    if (!r || !r.centralObjective || !Array.isArray(r.remainingObstacles) || r.remainingObstacles.length !== 0
+    const anchors = target.objective.toLowerCase().match(/[a-z]{5,}/g)?.filter(w => !["their", "about", "there", "which", "every", "discover", "defeat", "investigate", "resolve", "complete"].includes(w)) ?? [];
+    if (!r || r.centralObjective !== true || !Array.isArray(r.remainingObstacles) || r.remainingObstacles.length !== 0
       || r.verdict !== (e.kind === "resolved" ? "victory" : e.kind === "failed" ? "failure" : "abandonment")
       || !quote(story, r.closureEvidence) || uncertain.test(r.closureEvidence)
+      || !anchors.length || !anchors.some(w => r.closureEvidence.toLowerCase().includes(w))
+      || /\b(?:subordinate|one suspect|only a|still unresolved|remains? unknown|temporary|partial)\b/i.test(r.closureEvidence)
       || !/\b(?:solved|concluded|ended|complete[ds]?|permanently|definitively|no longer|abandon\w*|renounc\w*|destroyed|exposed|confessed|confesses|disband\w*|surrender\w*)\b/i.test(r.closureEvidence)) return "Central objective has no definitive closure; record progress or request review.";
   }
 }
@@ -174,17 +236,30 @@ export function eventPhase(e: PlotEvent): PlotThread["phase"] {
   return "break";
 }
 
-export interface WorldEnvelope { plotEvents?: unknown[]; worldChanges?: unknown[]; newPlots?: unknown[] }
+export interface WorldEnvelope { updates?: unknown[]; plotEvents?: unknown[]; worldChanges?: unknown[]; newPlots?: unknown[] }
 export function worldEvolutionActions(a: Adventure, context: ContextBuildResult, envelope: WorldEnvelope, story: string, sourceTurnId: string): AdventureAction[] {
   if (!worldEnabled(a)) return [];
   const actions: AdventureAction[] = [], errors: string[] = [];
-  let slots = MAX_WORLD_RECORDS;
+  const changedTargets = new Set<string>(), eventTargets = new Set<string>();
+  const newThreads: { id: string; objective: string }[] = [];
+  let slots = Math.max(0, MAX_WORLD_RECORDS - ((envelope as WorldEnvelope & { updates?: unknown[] }).updates?.length ?? 0));
+  let outputChars = 0;
+  const takeRecord = (raw: unknown) => {
+    if (slots <= 0) { errors.push("Structured record count exceeds four shared records."); return false; }
+    slots--;
+    const size = JSON.stringify(raw)?.length ?? 0;
+    outputChars += size;
+    if (size > MAX_WORLD_RECORD_CHARS || approximateTokenCount(JSON.stringify(raw)) > 600 || outputChars > MAX_WORLD_OUTPUT_CHARS) { errors.push("World output exceeds compact serialized limits."); return false; }
+    return true;
+  };
   const visible = new Set(context.sections.flatMap(s => s.items.map(i => i.id)));
   for (const raw of (envelope.worldChanges ?? []).slice(0, MAX_WORLD_RECORDS)) {
-    if (!slots--) break;
+    if (!takeRecord(raw)) continue;
     const c = raw as WorldChange;
     const error = validateWorldChange(a, c, story);
     if (error || c.operation !== "create" && !visible.has(c.targetId)) { errors.push(error ?? "World target omitted from context."); continue; }
+    if (changedTargets.has(c.targetId)) { errors.push("Duplicate world target in one response; review changes together."); continue; }
+    changedTargets.add(c.targetId);
     const timestamp = nowIso();
     const proposal: MemoryProposal = { id: createId("proposal"), proposedType: c.owner === "storyCard" ? "storyCard" : c.owner === "brain" ? "brainUpdate" : "plotEssentialsUpdate",
       targetId: c.targetId, title: c.title ?? (worldTarget(a, c) as StoryCard | undefined)?.title ?? c.targetId, content: c.content, sourceText: c.evidence,
@@ -192,51 +267,65 @@ export function worldEvolutionActions(a: Adventure, context: ContextBuildResult,
     actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal });
   }
   for (const raw of (envelope.newPlots ?? []).slice(0, MAX_WORLD_RECORDS)) {
-    if (slots-- <= 0) break;
+    if (!takeRecord(raw)) continue;
     const p = raw as Record<string, unknown>;
-    if (!p || !text(p.id, 120) || !text(p.title, 120) || !p.title.trim() || !text(p.objective, 300) || !p.objective.trim()
+    if (!p || !text(p.id, 120) || !p.id.trim() || !text(p.title, 120) || !p.title.trim() || !text(p.objective, 300) || !p.objective.trim()
       || !quote(story, p.evidence) || uncertain.test(p.evidence) || !Array.isArray(p.participants) || !p.participants.length || p.participants.length > 4
-      || p.participants.some(id => typeof id !== "string" || ![...a.storyCards, ...a.brains].some(t => t.id === id))
+      || p.participants.some(id => typeof id !== "string" || !visible.has(id) || ![...a.storyCards, ...a.brains].some(t => t.id === id))
       || a.worldEvolutionSettings!.newPlotGeneration === "off" || a.worldEvolutionSettings!.plotProgression === "off"
-      || worldState(a).threads.some(t => t.id === p.id || t.objective === p.objective)) { errors.push("New plot is ungrounded, duplicate, or prohibited."); continue; }
-    if ((p.offscreen && !a.worldEvolutionSettings!.offscreenEvents) || (p.autonomous && a.worldEvolutionSettings!.npcAutonomy !== "independent")) { errors.push("New plot violates autonomy/offscreen permissions."); continue; }
-    actions.push({ type: "REGISTER_PLOT_THREAD", thread: { id: p.id, title: p.title, objective: p.objective, participants: p.participants as string[], originEvidence: p.evidence, sourceTurnId, phase: "simmer", revision: 0, events: [] } });
+      || worldState(a).threads.length + newThreads.length >= MAX_ACTIVE_PLOTS
+      || [...worldState(a).threads, ...(worldState(a).archivedThreads ?? []), ...newThreads].some(t => t.id === p.id || t.objective === p.objective)) { errors.push("New plot is ungrounded, duplicate, at capacity, or prohibited."); continue; }
+    if (typeof p.offscreen !== "boolean" || typeof p.autonomous !== "boolean"
+      || (p.offscreen && !a.worldEvolutionSettings!.offscreenEvents) || ((p.autonomous || p.offscreen) && a.worldEvolutionSettings!.npcAutonomy !== "independent")) { errors.push("New plot violates autonomy/offscreen permissions."); continue; }
+    newThreads.push({ id: p.id, objective: p.objective });
+    actions.push({ type: "REGISTER_PLOT_THREAD", thread: { id: p.id, title: p.title, objective: p.objective, participants: p.participants as string[], originEvidence: p.evidence, sourceTurnId, phase: "simmer", revision: 0, events: [], autonomous: p.autonomous, offscreen: p.offscreen, importance: typeof p.importance === "number" ? Math.max(0, Math.min(3, Math.floor(p.importance))) : 0 } });
   }
   for (const raw of (envelope.plotEvents ?? []).slice(0, MAX_WORLD_RECORDS)) {
-    if (slots-- <= 0) break;
+    if (!takeRecord(raw)) continue;
     if (!raw || typeof raw !== "object") { errors.push("Malformed plot event."); continue; }
     const rawEvent = raw as PlotEvent;
-    const target = plotTarget(a, rawEvent.targetId);
-    const terminal = ["resolved", "failed", "abandoned"].includes(rawEvent.kind);
-    const legacyTerminal = terminal && !rawEvent.resolution;
-    const e: PlotEvent = { ...rawEvent, sourceTurnId, turn: a.activeState.turn,
-      objective: rawEvent.objective ?? target?.objective,
-      expectedRevision: rawEvent.expectedRevision ?? target?.revision,
-      certainty: rawEvent.certainty ?? "confirmed",
-      resolution: rawEvent.resolution ?? (terminal ? {
-        verdict: rawEvent.kind === "resolved" ? "victory" : rawEvent.kind === "failed" ? "failure" : "abandonment",
-        centralObjective: true, remainingObstacles: [], closureEvidence: rawEvent.evidence,
-      } : undefined),
-    };
+    const e: PlotEvent = { ...rawEvent, sourceTurnId, turn: a.activeState.turn };
     const error = validatePlotEvent(a, e, story);
     if (error) { errors.push(error); continue; }
+    if (eventTargets.has(e.targetId)) { errors.push("Duplicate plot revision in one response."); continue; }
+    eventTargets.add(e.targetId);
     actions.push({ type: "APPLY_PLOT_EVENT", event: e });
   }
   if (errors.length) {
     actions.push({ type: "SET_WORLD_ISSUE", issue: { id: `world-issue:${sourceTurnId}`, sourceTurnId, status: "unrecorded", reason: errors.join(" ") } });
-  } else if (worldState(a).issues.some(i => i.sourceTurnId === sourceTurnId && i.status === "unrecorded")) {
+  } else if (actions.length && worldState(a).issues.some(i => i.sourceTurnId === sourceTurnId && i.status === "unrecorded")) {
     actions.push({ type: "SET_WORLD_ISSUE", issue: { id: `world-issue:${sourceTurnId}`, sourceTurnId, status: "recovered", reason: "Accepted narration recovered through the existing memory path." } });
   }
   return actions;
 }
 
+/** Select active and historical plots by scene involvement, recency and explicit importance. */
+export function selectedWorldPlots(a: Adventure, scene: string): PlotThread[] {
+  const state = worldState(a);
+  const words = new Set((scene.toLowerCase().match(/[a-z][a-z0-9]{3,}/g) ?? []));
+  const score = (t: PlotThread) => {
+    const terms = (t.title + " " + t.objective + " " + t.participants.map(id => a.storyCards.find(c => c.id === id)?.title ?? a.brains.find(b => b.id === id)?.characterName ?? "").join(" ")).toLowerCase().match(/[a-z][a-z0-9]{3,}/g) ?? [];
+    return terms.filter(w => words.has(w)).length * 100 + (t.importance ?? 0) * 10 + Math.min(9, t.events.at(-1)?.turn ?? 0);
+  };
+  const active = state.threads.filter(t => !t.outcome).sort((a, b) => score(b) - score(a)).slice(0, 4);
+  const historical = [...(state.archivedThreads ?? []), ...state.threads.filter(t => t.outcome)]
+    .filter(t => score(t) >= 100).sort((a, b) => score(b) - score(a)).slice(0, 2);
+  return [...active, ...historical];
+}
+
 export function worldEvolutionInstruction(a: Adventure, ids: Set<string>): string {
   if (!worldRuntimeActive(a)) return "";
   const s = a.worldEvolutionSettings!;
-  const targets = [...a.storyCards.filter(c => ids.has(c.id) && c.memoryMode !== "historical").map(c => ({ id: c.id, owner: "storyCard", revision: c.updatedAt, protection: c.evolutionProtection })),
-    ...a.brains.filter(b => ids.has(b.id)).map(b => ({ id: b.id, owner: "brain", revision: b.updatedAt })),
-    ...a.components.filter(c => ids.has(c.id) && c.type === "plotEssentials").map(c => ({ id: c.id, owner: "plotEssentials", revision: c.updatedAt }))].slice(0, 8);
-  const plots = [...a.components.filter(c => c.active && c.type === "currentArc" && !c.arcState?.outcome).map(c => ({ id: c.id, objective: c.arcPremise ?? c.content, revision: c.arcState?.revision ?? 0 })),
-    ...worldState(a).threads.filter(t => !t.outcome).map(t => ({ id: t.id, objective: t.objective, revision: t.revision }))].slice(0, 4);
-  return `\n[WORLD EVOLUTION]\nSettings: ${JSON.stringify(s)}. Respect these permissions in prose AND memory. Off means do not invent that development. Active progression pursues meaningful conclusions; Natural follows established choices; Off leaves sandbox scenes alone. Decisive favors closure, openEnded allows continuing conflicts. Occasional plots are selective; frequent allows concurrent developments; neither requires a timer. Reactive NPCs respond to the scene; independent NPCs may pursue goals. Quiet scenes are normal. Do not invent successor masterminds to prolong a solved mystery. Protect player agency and character knowledge.\nIn the SAME memory envelope, optional arrays plotEvents, worldChanges, newPlots share a maximum of 4 records. Use only confirmed accepted story, never rumor/plan. Every evidence is an exact visible quote. Targets: ${JSON.stringify(targets)}. Plots: ${JSON.stringify(plots)}.\nplotEvents: {targetId,expectedRevision,objective,kind:progress|setback|revelation|confrontation|resolved|failed|abandoned,evidence,outcome,certainty:"confirmed",autonomous,offscreen}. Terminal events ALSO require resolution:{verdict:victory|failure|abandonment,centralObjective:true,remainingObstacles:[],closureEvidence}. Closure must explicitly name the central subject and conclude the objective. Clues, suspects, subordinates and temporary victories are partial; never mark them resolved.\nworldChanges: {owner:storyCard|brain|plotEssentials,targetId,operation:create|append|replace|remove|supersede|resolve,expectedRevision,previous,content,evidence,reason,requiresReview,certainty:"confirmed",effects:[],autonomous,offscreen}. Previous is exact current field text; replacement is complete current truth. Archive obsolete truth through supersede/replace, never append a contradiction. Create uses a new ID, null revision, empty previous, title,cardType,triggers. Brain requires existing target, field:currentState|emotionalInterpretation|recentDevelopments|notes and knowledgeEvidence quote. Durable identity/loyalty belongs on character cards, private perspective on Brains, enrolled relationships ONLY via relationshipChange. Effects:development|betrayal|redemption|hiddenMotivation|reinterpretation|identity; list ALL applicable. Earned twists require motivationEvidence quoted from established canon/story. Character protections override permissions; retroactive reinterpretation requires review.\nnewPlots: {id,title,objective,participants:[existing IDs],evidence,autonomous,offscreen}. Only genuinely new established consequential conflicts tied to existing participants, never a routine scene or a mandatory successor.\n[/WORLD EVOLUTION]`;
+  const targets = [...a.storyCards.filter(c => c.active && ids.has(c.id) && c.memoryMode !== "historical" && c.type !== "event").map(c => [c.id, "storyCard", c.updatedAt, c.evolutionProtection ? { betrayal: !!c.evolutionProtection.betrayal, identity: !!c.evolutionProtection.identity } : undefined]),
+    ...a.brains.filter(b => b.active && ids.has(b.id)).map(b => [b.id, "brain", b.updatedAt]),
+    ...a.components.filter(c => c.active && ids.has(c.id) && c.type === "plotEssentials").map(c => [c.id, "plotEssentials", c.updatedAt])].filter(t => String(t[0]).length <= 160 && String(t[2]).length <= 80).slice(0, 4);
+  const plots = [...a.components.filter(c => c.active && ids.has(c.id) && c.type === "currentArc" && !c.arcState?.outcome).map(c => [c.id, c.arcState?.revision ?? 0]),
+    ...worldState(a).threads.filter(t => ids.has(t.id) && !t.outcome).map(t => [t.id, t.revision])].filter(t => String(t[0]).length <= 160 && typeof t[1] === "number" && Number.isFinite(t[1])).slice(0, 4);
+  const policy = `progress=${s.plotProgression}, closure=${s.plotResolution}, newPlots=${s.newPlotGeneration}, autonomy=${s.npcAutonomy}, offscreen=${s.offscreenEvents}, development=${s.characterDevelopment}, relationships=${s.relationshipEvolution}, hidden=${s.hiddenMotivations}, betrayal=${s.betrayal}, redemption=${s.redemption}, reinterpret=${s.canonReinterpretation}`;
+  return `\n[WORLD EVOLUTION] ${policy}. Quiet scenes need no updates; never invent successor conflicts. Respect permissions in narration too.
+All updates/plotEvents/worldChanges/newPlots SHARE 4 records, 4800 serialized characters /1200 estimated tokens total; each record <=2400 characters/600 estimated tokens, text fields <=800, reason<=200. Evidence and plot outcome are exact accepted-story quotes; certainty:"confirmed", autonomous/offscreen booleans REQUIRED. No rumors/plans.
+${plots.length ? 'plotEvents:{targetId,expectedRevision,objective(exact context objective),kind:progress|setback|revelation|confrontation|resolved|failed|abandoned,evidence,outcome,certainty,autonomous,offscreen}. Plot IDs/revisions:' + JSON.stringify(plots) + '. Terminal requires resolution:{verdict:victory|failure|abandonment,centralObjective:true,remainingObstacles:[],closureEvidence}. Quote must conclude the CENTRAL objective; subordinate wins are progress.' : ''}
+${targets.length ? 'worldChanges:{owner,targetId,operation:create|append|replace|remove|supersede|resolve,expectedRevision,previous,content,evidence,reason,requiresReview,certainty,effects:[],autonomous,offscreen}. Eligible [id,owner,revision,protection]:' + JSON.stringify(targets) + '. Previous quotes current field; supersede obsolete truth, never append contradictions. Brain adds field and knowledgeEvidence; durable allegiance belongs on cards. Create adds title,cardType,triggers,null revision,empty previous.' : ''}
+Every AI update classifies effects:development|betrayal|redemption|hiddenMotivation|reinterpretation|identity; ambiguous consequential changes require review. Earned effects add established motivationEvidence. Protections override settings; reinterpretation Review needs approval.
+${s.newPlotGeneration !== "off" && s.plotProgression !== "off" ? 'newPlots:{id,title,objective,participants:[existing IDs],evidence,autonomous,offscreen}. Only consequential established conflicts. At most 12 active plots.' : ''} [/WORLD EVOLUTION]`;
 }

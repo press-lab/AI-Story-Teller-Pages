@@ -1,6 +1,6 @@
 import { applyRelationship, duplicateRelationship, relationshipFocusCard, relationshipIsCurrent, stateKey, validRelationshipState } from "../memory/relationships";
 import { sameEventMemory } from "../memory/eventMemory";
-import { applyWorldChange, changeNeedsReview, eventPhase, mutationPermissionError, rollbackWorldChange, validatePlotEvent, validateWorldChange, worldEnabled, worldState } from "../memory/worldEvolution";
+import { applyWorldChange, changeNeedsReview, eventPhase, MAX_ACTIVE_PLOTS, mutationPermissionError, needsSemanticReview, rollbackWorldChange, validatePlotEvent, validateWorldChange, worldEnabled, worldState } from "../memory/worldEvolution";
 import type {
   Adventure,
   AdventureAction,
@@ -525,7 +525,7 @@ function applyBrainUpdate(
 }
 
 function stripProviderKey(config: ProviderConfig): ProviderConfig {
-  const { apiKey: _apiKey, sessionId: _sessionId, ...safeConfig } = config;
+  const { apiKey: _apiKey, sessionId: _sessionId, requestContext: _requestContext, ...safeConfig } = config;
   return safeConfig;
 }
 
@@ -843,6 +843,9 @@ function outgoingBrainFieldProposalsForReplacement(
 }
 
 function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal): Partial<Adventure> {
+  if (needsSemanticReview(state, proposal) && proposal.semanticEffects === undefined) return {};
+  if (mutationPermissionError(state, proposal.targetId, proposal.content + " " + proposal.sourceText, proposal.semanticEffects, false, proposal.motivationEvidence)) return {};
+  if (worldEnabled(state) && proposal.proposedType === "storyCard" && !proposal.appendContent && state.storyCards.some(c => c.id === proposal.targetId && c.evolutionProtection?.identity)) return {};
   if (proposal.proposedType === "relationshipUpdate") return { brains: applyRelationship(state, proposal) };
   const proposalMemoryMeta = (operation: MemoryUpdateOperation): MemoryUpdateMeta => ({
     source: "memoryProposal",
@@ -1171,6 +1174,7 @@ function applyCompanionMemoryProposals(
   for (const proposal of proposals) {
     const clean = sanitizeProposal(routedProposal(workingState, proposal));
     if (!clean) continue;
+    if (needsSemanticReview(workingState, clean) && clean.semanticEffects === undefined || worldEnabled(workingState) && clean.semanticEffects?.includes("reinterpretation") && workingState.worldEvolutionSettings!.canonReinterpretation === "review") clean.requiresReview = true;
     const autoApprove = workingState.memoryAutoApprove?.[clean.proposedType as keyof typeof workingState.memoryAutoApprove] ?? false;
     if (!autoApprove || clean.requiresReview) {
       recorded.push(clean);
@@ -1316,7 +1320,8 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
         components: updateById(state.components, action.componentId, (item) => mergePatch<ComponentEntry>(item, action.patch)),
       });
     case "APPLY_COMPONENT_UPDATE": {
-      if (mutationPermissionError(state, action.componentId, action.content)) return state;
+      if (worldEnabled(state) && action.semanticEffects === undefined) return state;
+      if (mutationPermissionError(state, action.componentId, action.content, action.semanticEffects, false, action.motivationEvidence)) return state;
       const target = state.components.find((component) => component.id === action.componentId);
       if (!target) return state;
       const basePatch: Partial<Adventure> = {
@@ -1349,7 +1354,8 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
         }),
       });
     case "APPLY_STORY_CARD_UPDATE":
-      if (mutationPermissionError(state, action.storyCardId, action.content ?? "", [], state.storyCards.some(c => c.id === action.storyCardId && c.type === "character"))) return state;
+      if (worldEnabled(state) && (action.semanticEffects === undefined || state.storyCards.some(c => c.id === action.storyCardId && c.evolutionProtection?.identity))) return state;
+      if (mutationPermissionError(state, action.storyCardId, action.content ?? "", action.semanticEffects, state.storyCards.some(c => c.id === action.storyCardId && c.type === "character"), action.motivationEvidence)) return state;
       if (state.storyCards.some(card => card.id === action.storyCardId && card.type === "event")) return state;
       if (action.content === undefined && (!action.patch || Object.keys(action.patch).length === 0)) return state;
       return touchAdventure(state, {
@@ -1398,7 +1404,8 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
       const world = worldState(state), t = action.thread, settings = state.worldEvolutionSettings;
       const story = state.messages.find(m => m.id === t.sourceTurnId && m.role === "assistant")?.content ?? "";
       if (!worldEnabled(state) || settings?.newPlotGeneration === "off" || settings?.plotProgression === "off"
-        || world.threads.some(p => p.id === t.id || p.objective === t.objective) || !story.includes(t.originEvidence)
+        || (t.offscreen && !settings?.offscreenEvents) || ((t.autonomous || t.offscreen) && settings?.npcAutonomy !== "independent")
+        || world.threads.length >= MAX_ACTIVE_PLOTS || [...world.threads, ...(world.archivedThreads ?? [])].some(p => p.id === t.id || p.objective === t.objective) || t.originEvidence.length < 12 || !story.includes(t.originEvidence)
         || !t.objective.trim() || t.participants.some(id => ![...state.storyCards, ...state.brains].some(c => c.id === id))) return state;
       return touchAdventure(state, { worldEvolutionState: { ...world, threads: [...world.threads, t] } });
     }
@@ -1410,9 +1417,10 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
       const phase = eventPhase(action.event);
       if (!arc) {
         const world = worldState(state);
-        return touchAdventure(state, { worldEvolutionState: { ...world, threads: world.threads.map(t => t.id !== action.event.targetId ? t : {
+        const updated = world.threads.map(t => t.id !== action.event.targetId ? t : {
           ...t, phase, revision: t.revision + 1, events: [...t.events, action.event], outcome: terminal ? action.event.outcome : undefined,
-        }) } });
+        });
+        return touchAdventure(state, { worldEvolutionState: { ...world, threads: updated.filter(t => !t.outcome), archivedThreads: [...(world.archivedThreads ?? []), ...updated.filter(t => t.outcome)] } });
       }
       return touchAdventure(state, { components: updateById(state.components, arc.id, item => touch({
         ...item,
@@ -1494,7 +1502,8 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
         brains: updateById(state.brains, action.brainId, (item) => updateBrainField(item, action.field, action.text, "replace")),
       });
     case "APPLY_BRAIN_UPDATE": {
-      if (mutationPermissionError(state, action.brainId, JSON.stringify(action.patch))) return state;
+      if (worldEnabled(state) && action.semanticEffects === undefined && Object.keys(action.patch).some(k => k !== "thoughts" && k !== "relationships")) return state;
+      if (mutationPermissionError(state, action.brainId, JSON.stringify(action.patch), action.semanticEffects, false, action.motivationEvidence)) return state;
       const target = state.brains.find((brain) => brain.id === action.brainId);
       if (!target) return state;
       const basePatch: Partial<Adventure> = {
@@ -1622,10 +1631,11 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
         const proposal = { ...p, requiresReview: changeNeedsReview(state, c), status: approved ? "approved" as const : "pending" as const };
         return touchAdventure(state, { ...(approved ? applyWorldChange(state, proposal) : {}), activeState: { ...state.activeState, memoryProposals: [proposal, ...state.activeState.memoryProposals] } });
       }
-      if (mutationPermissionError(state, action.proposal.targetId, action.proposal.content + " " + action.proposal.sourceText, [],
-        action.proposal.proposedType === "storyCard" && (action.proposal.storyCardType === "character" || state.storyCards.some(c => c.id === action.proposal.targetId && c.type === "character")))) return state;
+      if (action.proposal.semanticEffects !== undefined && mutationPermissionError(state, action.proposal.targetId, action.proposal.content + " " + action.proposal.sourceText, action.proposal.semanticEffects,
+        action.proposal.proposedType === "storyCard" && (action.proposal.storyCardType === "character" || state.storyCards.some(c => c.id === action.proposal.targetId && c.type === "character")), action.proposal.motivationEvidence)) return state;
       const clean = sanitizeProposal(routedProposal(state, action.proposal));
       if (!clean) return state;
+      if (needsSemanticReview(state, clean) && clean.semanticEffects === undefined || worldEnabled(state) && clean.semanticEffects?.includes("reinterpretation") && state.worldEvolutionSettings!.canonReinterpretation === "review") clean.requiresReview = true;
       if (clean.proposedType === "plotPressureUpdate" && !state.components.some(c => c.type === "activePressure" && (!clean.targetId || c.id === clean.targetId))) return state;
       if (clean.proposedType === "relationshipUpdate") {
         if (!relationshipIsCurrent(state, clean) || duplicateRelationship(state, clean)) return state;
@@ -1740,7 +1750,9 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
       if (!existing || (existing.proposedType === "relationshipUpdate" && (existing.status !== "pending" || !relationshipIsCurrent(state, existing)))) return state;
       const proposal = sanitizeProposal(routedProposal(state, proposalWithEdits(existing, action.editedProposal)));
       if (!proposal || (proposal.proposedType === "relationshipUpdate" && !relationshipIsCurrent(state, proposal))) return state;
-      if (mutationPermissionError(state, proposal.targetId, proposal.content + " " + proposal.sourceText, [], proposal.proposedType === "storyCard" && state.storyCards.some(c => c.id === proposal.targetId && c.type === "character"))) return state;
+      if (needsSemanticReview(state, proposal) && proposal.semanticEffects === undefined) return state;
+      if (worldEnabled(state) && proposal.proposedType === "storyCard" && !proposal.appendContent && state.storyCards.some(c => c.id === proposal.targetId && c.evolutionProtection?.identity)) return state;
+      if (mutationPermissionError(state, proposal.targetId, proposal.content + " " + proposal.sourceText, proposal.semanticEffects, proposal.proposedType === "storyCard" && state.storyCards.some(c => c.id === proposal.targetId && c.type === "character"), proposal.motivationEvidence)) return state;
       const approved = updateMemoryProposal(proposal, { status: "approved" });
       const applied = applyApprovedMemoryProposal(state, approved);
       return touchAdventure(state, {
@@ -1816,6 +1828,12 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
           },
         },
       });
+    case "RECORD_PROVIDER_REQUEST": {
+      if (action.record.adventureId !== state.id || state.activeState.providerRequests?.some(r => r.id === action.record.id)) return state;
+      const records = [...(state.activeState.providerRequests ?? []), action.record];
+      const turns = [...new Set(records.map(r => r.turn))].sort((a, b) => b - a).slice(0, 100);
+      return touchAdventure(state, { activeState: { ...state.activeState, providerRequests: records.filter(r => turns.includes(r.turn)) } });
+    }
     case "SET_NEXT_TURN_NOTE": {
       const timestamp = nowIso();
       return touchAdventure(state, {

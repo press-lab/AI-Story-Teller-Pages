@@ -26,7 +26,7 @@ describe("compact memory fallback", () => {
   it("recovers durable card and brain changes in one grounded call", async () => {
     provider.mockResolvedValue({
       content: JSON.stringify({ updates: [
-        { kind: "card", target: "Lucian", content: "Lucian knows the intruder's silver-cup mark.", evidence: "Lucian says he knows the intruder's mark: a silver cup.", reason: "This knowledge matters to the unresolved intruder" },
+        { kind: "card", effects: [], target: "Lucian", content: "Lucian knows the intruder's silver-cup mark.", evidence: "Lucian says he knows the intruder's mark: a silver cup.", reason: "This knowledge matters to the unresolved intruder" },
         { kind: "thought", target: "Edythe", content: "I suspect Lucian is holding back what he knows about the cup.", evidence: "Edythe realizes he knows more than he admits.", reason: "Changed private suspicion" },
         { kind: "pressure", target: "Active Pressure", content: "The intruder's silver-cup mark puts pressure on Seth and Edythe to identify them.", evidence: "Lucian says he knows the intruder's mark: a silver cup.", reason: "The immediate external mystery has changed" },
       ] }), raw: {}, usage: { promptTokens: 800, completionTokens: 100, totalTokens: 900 },

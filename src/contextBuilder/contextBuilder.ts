@@ -1,6 +1,6 @@
 import { relationshipFocusCard, relationshipItemId, relationshipTargets, relationshipText } from "../memory/relationships";
 import { ONE_PASS_MEMORY_ID, onePassMemoryInstruction, relationshipMemoryInstruction } from "../memory/onePassMemory";
-import { worldEnabled, worldEvolutionInstruction, worldRuntimeActive, worldState } from "../memory/worldEvolution";
+import { worldEnabled, worldEvolutionInstruction, worldRuntimeActive, selectedWorldPlots } from "../memory/worldEvolution";
 import { selectEventMemories } from "../memory/eventMemory";
 import { PLOT_MEMORY_THRESHOLD } from "../ai/authoringBestPractices";
 import type {
@@ -480,8 +480,7 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
     return [next];
   });
 
-  const threads = worldState(adventure).threads;
-  const selectedThreads = [...threads.filter(t => !t.outcome).slice(0, 4), ...threads.filter(t => !!t.outcome).slice(-2)];
+  const selectedThreads = worldRuntimeActive(adventure) ? selectedWorldPlots(adventure, (options.currentInput ?? "") + " " + (options.latestModelOutput ?? "")) : [];
   for (const thread of selectedThreads) {
     const content = thread.outcome ? `Concluded ${thread.title}: ${thread.outcome}. Historical outcome, not an unresolved threat.`
       : `Objective: ${thread.objective}\nPhase: ${thread.phase}\n${thread.events.slice(-2).map(e => `${e.kind}: ${e.outcome}`).join("\n")}`;
@@ -582,7 +581,7 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
       })];
     });
     const thoughtsForContext = dedupeThoughtRecord(brain.thoughts);
-    const evolved = worldRuntimeActive(adventure) ? (brain.evolvedFields ?? []).flatMap(field => field && brain[field]?.trim() ? [`${field}: ${brain[field].slice(0, 1600)}`] : []).join("\n") : "";
+    const evolved = worldRuntimeActive(adventure) ? [...new Set(["currentState" as const, ...(brain.evolvedFields ?? [])])].flatMap(field => field && brain[field]?.trim() ? [`${field}: ${brain[field].slice(0, 500)}`] : []).join("\n") : "";
     if (Object.keys(thoughtsForContext).length === 0 && !evolved) {
       pushExcluded("brain", brain.id, brain.characterName, "not_triggered", "Brain triggered but has no thoughts yet — nothing to inject.");
       return relationshipItems;
@@ -604,7 +603,7 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
       components: editableComponents.map(entry => ({ title: entry.title, type: adventure.components.find(c => c.id === entry.id)?.type })),
     })}`;
     if (!worldEnabled(adventure) || adventure.worldEvolutionSettings!.relationshipEvolution) memoryItem.content += relationshipMemoryInstruction(relationshipTargets(adventure, new Set(brainItems.map(i => i.id))));
-    memoryItem.content += worldEvolutionInstruction(adventure, new Set([...storyCardItems, ...brainItems, ...plotEssentialItems].map(i => i.id)));
+    memoryItem.content += worldEvolutionInstruction(adventure, new Set([...storyCardItems, ...brainItems, ...plotEssentialItems, ...currentArcItems].map(i => i.id)));
     memoryItem.tokenEstimate = approximateTokenCount(memoryItem.content);
   }
 
@@ -792,8 +791,9 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
   const finalMemory = sections.flatMap(s => s.items).find(i => i.id === ONE_PASS_MEMORY_ID);
   if (finalMemory) {
     const ids = new Set(sections.flatMap(s => s.items).map(i => i.id));
-    finalMemory.content = finalMemory.content.replace(/\n\[DYNAMIC RELATIONSHIPS\][\s\S]*?\[\/DYNAMIC RELATIONSHIPS\]/g, "")
-      + relationshipMemoryInstruction(relationshipTargets(adventure, ids));
+    finalMemory.content = finalMemory.content.replace(/\n\[DYNAMIC RELATIONSHIPS\][\s\S]*?\[\/DYNAMIC RELATIONSHIPS\]/g, "").replace(/\n\[WORLD EVOLUTION\][\s\S]*?\[\/WORLD EVOLUTION\]/g, "")
+      + (!worldEnabled(adventure) || adventure.worldEvolutionSettings!.relationshipEvolution ? relationshipMemoryInstruction(relationshipTargets(adventure, ids)) : "")
+      + worldEvolutionInstruction(adventure, ids);
     finalMemory.tokenEstimate = approximateTokenCount(finalMemory.content);
     sections = recalculate(sections);
   }

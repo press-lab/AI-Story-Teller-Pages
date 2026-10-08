@@ -319,6 +319,7 @@ export function PlayPage({
 
   return (
     <section className="page play-layout">
+        {adventure.worldEvolutionSettings?.enabled && adventure.worldEvolutionState?.issues.some(i => i.status === "unrecorded" && i.sourceTurnId === [...adventure.messages].reverse().find(m => m.role === "assistant")?.id) && <p role="status" className="muted">World event capture needs review. Open Memory Suggestions to inspect the accepted narration and unrecorded events.</p>}
       {error && (
         <div className="error-box error-dismissible">
           <span>{error}</span>

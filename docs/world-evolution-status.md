@@ -1,20 +1,26 @@
-# World Evolution implementation status
+# Persistent World Evolution
 
-This is an incremental implementation, not the complete Persistent World Evolution feature.
+World Evolution uses the existing narration response and hidden memory envelope. Deterministic validation and reducer actions persist changes; there is no additional director or routine plot-evaluation request. New adventures enable it; old saves without settings retain legacy pacing and memory behavior. Disabling it preserves saved history.
 
-New adventures save scenario settings with the requested defaults. Imported adventures without those fields receive conservative legacy values. The current runtime uses plot progression, NPC autonomy, and offscreen event settings for Current Arc plot events. Other stored settings are visible in Settings but have no runtime effect yet.
+## Implemented behavior
 
-The existing narration response can carry `plotEvents` in its one-pass memory envelope. Local validation checks the active arc ID, an exact quote from the accepted story, and an outcome contained in that quote. Accepted events are reduced into `arcState.events`; terminal events store `arcState.outcome` and move the arc to aftermath. Subsequent Current Arc context shows the outcome without the unresolved premise, prior log, or pacing instructions. If a completed arc is archived through an existing manual control, its outcome is included in the historical card.
+- Empty sandboxes can acquire consequential plots and world changes without a fabricated Current Arc. New Plot Generation Off prevents creation; quiet scenes require no progression.
+- Plot events require explicit objective, revision, confirmed accepted quotes and autonomy/offscreen classification. Terminal events additionally require explicit verdict, central-objective classification, no remaining central obstacles and closure evidence. Missing fields are never synthesized. Subordinate/partial wins remain nonterminal; accepted terminal outcomes remove obsolete arc guidance and archive emerging threads without mandatory successors.
+- World Changes target existing owners with revision and previous-fact checks. Supersede updates matching content and structured current facts, preserves unrelated recent developments, and archives obsolete truth. Story Cards own durable allegiance/identity; Brains own private state with an evidenced knowledge path; enrolled relationships retain existing revision/history/review owners. Plot Essentials changes require review.
+- Typed semantic effects govern betrayal, redemption, development, hidden motivations and reinterpretation across world records, ordinary proposals, Brain/Card/component updates, relationship proposals and companion updates. Existing semantic requests classify effects in the same response. Missing consequential classifications require inbox review; reviewers can explicitly classify effects there. Earned twists require established quoted motivation. Character protection overrides scenario permission. Identity-protected cards cannot be replaced through generic AI updates. Relationship Evolution Off blocks automatic transitions but leaves manual editing intact.
+- Reviewed canon changes have field-specific reversal. Unrelated later facts/keys survive; conflicting subsequent edits disable reversal. Stale approvals cannot overwrite newer canon. Ordinary append memory cannot revive a superseded fact.
+- Completed emerging plots leave the active collection for archival history. Creation stops at twelve active plots. Context selects four active/two relevant historical plots using scene words, participant involvement, recency and importance rather than creation order. Full evidence/history stays in the save and review panel.
+- Complete records survive malformed/truncated tails after validation. Discarded drafts contribute neither ordinary nor world memory. Missing/rejected/oversized records and failed compact recovery stay visible in Memory Suggestions; Play flags the latest capture failure. Empty recovery is not falsely marked successful.
+- Context Preview exposes categorized requests per turn, measured input/output, separately labeled estimates, fallback/correction frequencies, estimated hidden output and grounded cost when available. Retries are counted before aggregation.
 
-For new adventures, mention-count pacing and automatic continuation generation are disabled. Legacy adventures retain their prior pacing and continuation behavior. No new routine model call is introduced by the plot event path.
+## Verification and cost
 
-## Incomplete work
+Integrated tests execute real pipeline parsing, validators, reducer updates, IndexedDB persistence and next context. They cover quiet play, bootstrap, escalation, partial and terminal outcomes, continued closure, allegiance/history/undo, protected characters, earned betrayal/redemption, stale review, Brain knowledge/ownership, Plot Essentials export/import, offscreen permissions, relationship Off/manual editing, discarded/truncated/missing responses, compact recovery, legacy saves and long-running plot selection. Existing relationship tests retain independent review and history coverage. Transport tests prove retry accounting and unknown-cost handling.
 
-- Targeted canon operations with revisions, review, protection, and rollback are not implemented.
-- Character development, betrayal, redemption, and identity protection are not enforced by the new settings.
-- Offscreen world consequences beyond Current Arc status are not persisted. Rumor and knowledge boundaries still need explicit state.
-- Emerging plots do not yet have a tracked lifecycle.
-- Representative cost measurements against all three baseline commits have not been performed.
-- The complete fifteen-scenario end-to-end test matrix is not implemented.
+See [request audit and reproducible measurements](world-evolution-cost-audit.md). Ordinary fixture turns remain one request. Structured output shares four records and 1,200 estimated tokens within the existing 1,400-token reserve. Instructions and plot retrieval are budgeted and bounded. No paid live tests were used.
 
-The local evidence check proves provenance of text, not the truth of a semantic inference. It requires the proposed outcome to be part of the quoted narrative, but it cannot decide whether a complex mystery is actually solved. This limitation needs stronger validation within the same response envelope before the feature is complete.
+## Practical limits
+
+Exact quotes establish provenance, not semantic truth. The same-response model must classify complex allegiance changes and central victories accurately. Local checks catch missing scope, uncertain evidence, obvious subordinate/partial closure, protected ownership and stale revisions, but cannot prove arbitrary natural-language semantics. Ambiguous consequential mutations require explicit review; prose itself is governed by prompt permissions and existing response guards. Keyword hints are defensive review signals, not proof that anger constitutes betrayal.
+
+Approximate token estimates are not provider tokenizer or billing measurements. Mocked fixtures prove bounded paths, not real-world failure rates; diagnostics expose those during use. Failed compact recovery leaves the event in the Chronicle and review interface instead of silently spending on a full cycle. History storage can grow; context and new active plots are bounded. Imported active collections above the cap are preserved, with further creation blocked until space becomes available.

@@ -1,5 +1,6 @@
 import type { Adventure, ProviderConfig } from "./types/adventure";
 import { sendOpenAICompatibleChatCompletion } from "./providers/openAICompatible";
+import { resolveBackgroundProviderConfig } from "./providers/backgroundProvider";
 
 interface RiskyPattern {
   re: RegExp;
@@ -21,17 +22,7 @@ export function scanForRiskyClaims(text: string): boolean {
 }
 
 function resolvedProviderConfig(adventure: Adventure, providerConfig: ProviderConfig): ProviderConfig {
-  const bg = adventure.semanticEvaluationSettings.backgroundProviderConfig;
-  if (bg?.baseUrl) {
-    return {
-      ...providerConfig,
-      baseUrl: bg.baseUrl,
-      apiKey: bg.apiKey ?? providerConfig.apiKey,
-      model: bg.model || providerConfig.model,
-      promptCaching: bg.baseUrl === providerConfig.baseUrl ? providerConfig.promptCaching : undefined,
-    };
-  }
-  return { ...providerConfig, model: adventure.semanticEvaluationSettings.evaluationModel || providerConfig.model };
+  return resolveBackgroundProviderConfig(adventure, providerConfig);
 }
 
 export async function runContinuityCheck(
@@ -60,7 +51,7 @@ export async function runContinuityCheck(
 
   try {
     const response = await sendOpenAICompatibleChatCompletion({
-      config: resolvedProviderConfig(adventure, providerConfig),
+      config: { ...resolvedProviderConfig(adventure, providerConfig), requestContext: providerConfig.requestContext && { ...providerConfig.requestContext, purpose: "continuity" } },
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userContent },

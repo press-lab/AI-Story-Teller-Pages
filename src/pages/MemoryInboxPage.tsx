@@ -284,6 +284,11 @@ function ProposalCard({ proposal, stale, dispatch, onUpdate, onRegenerate }: Pro
       </summary>
 
       <div className="proposal-card-body">
+          {isPending && <section>
+            <CheckboxField label="I have reviewed the semantic effects" checked={proposal.semanticEffects !== undefined} onChange={checked => onUpdate(proposal, { semanticEffects: checked ? [] : undefined })} />
+            {proposal.semanticEffects !== undefined && (["development", "betrayal", "redemption", "hiddenMotivation", "reinterpretation", "identity"] as const).map(effect => <CheckboxField key={effect} label={effect} checked={proposal.semanticEffects!.includes(effect)} onChange={checked => onUpdate(proposal, { semanticEffects: checked ? [...proposal.semanticEffects!, effect] : proposal.semanticEffects!.filter(e => e !== effect) })} />)}
+            <Field label="Established motivation evidence"><textarea value={proposal.motivationEvidence ?? ""} onChange={event => onUpdate(proposal, { motivationEvidence: event.target.value })} /></Field>
+          </section>}
         {proposal.relationship && <section><h4>{proposal.title}</h4>
           <p>NPC Brain: {proposal.targetId} · Focus: {proposal.relationship.focus} · Source turn: {proposal.sourceTurnId}</p>
           <strong>Previous state</strong><pre>{JSON.stringify(proposal.relationship.previous, null, 2)}</pre>

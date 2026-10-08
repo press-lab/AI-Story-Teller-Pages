@@ -834,7 +834,7 @@ describe("buildContext", () => {
       active: true,
       inclusionPolicy: "always",
     });
-    const adventure: Adventure = { ...createDefaultAdventure("Brain State"), brains: [brain] };
+    const adventure: Adventure = { ...createDefaultAdventure("Brain State"), worldEvolutionSettings: { ...createDefaultAdventure().worldEvolutionSettings!, enabled: false }, brains: [brain] };
     const brainText = buildContext(adventure, {}).sections.find((section) => section.id === "brains")?.items.map((item) => item.content).join("\n") ?? "";
     expect(brainText).toContain("turn3_betrayal: 3 → The ward was a trap. I'm done protecting the prince.");
     expect(brainText).not.toContain("State: Cornered and calculating a betrayal.");
@@ -854,7 +854,7 @@ describe("buildContext", () => {
         turn11_new: "11 \u2192 The ward answered Seth first. That changes the math.",
       },
     });
-    const adventure: Adventure = { ...createDefaultAdventure("Brain State"), brains: [brain] };
+    const adventure: Adventure = { ...createDefaultAdventure("Brain State"), worldEvolutionSettings: { ...createDefaultAdventure().worldEvolutionSettings!, enabled: false }, brains: [brain] };
     const brainText = buildContext(adventure, {}).sections.find((section) => section.id === "brains")?.items.map((item) => item.content).join("\n") ?? "";
     expect(brainText).not.toContain("turn9_old");
     expect(brainText).toContain("turn10_repeat");
@@ -870,7 +870,7 @@ describe("buildContext", () => {
       active: true,
       inclusionPolicy: "always",
     });
-    const adventure: Adventure = { ...createDefaultAdventure("Brain State"), brains: [brain] };
+    const adventure: Adventure = { ...createDefaultAdventure("Brain State"), worldEvolutionSettings: { ...createDefaultAdventure().worldEvolutionSettings!, enabled: false }, brains: [brain] };
     const brains = buildContext(adventure, {}).sections.find((section) => section.id === "brains");
     expect(brains?.items.length ?? 0).toBe(0);
   });

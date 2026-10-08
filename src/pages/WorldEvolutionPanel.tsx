@@ -1,4 +1,4 @@
-import { worldState } from "../memory/worldEvolution";
+import { rollbackWorldChange, worldState } from "../memory/worldEvolution";
 import type { AdventurePageProps } from "./pageTypes";
 
 export function WorldEvolutionPanel({ adventure, dispatch }: AdventurePageProps) {
@@ -16,7 +16,7 @@ export function WorldEvolutionPanel({ adventure, dispatch }: AdventurePageProps)
       </article>)}
     </details>
     <details open={world.threads.length > 0}><summary>Emerging plots ({world.threads.length})</summary>
-      {world.threads.map(t => <article key={t.id}><h4>{t.title}</h4><p>{t.id} · {t.phase} · revision {t.revision}</p>
+      {[...world.threads, ...(world.archivedThreads ?? [])].map(t => <article key={t.id}><h4>{t.title}</h4><p>{t.id} · {t.phase} · revision {t.revision}{t.outcome ? " · archived" : ""}</p>
         <p>Objective: {t.objective}</p><p>Participants: {t.participants.map(id => adventure.storyCards.find(c => c.id === id)?.title ?? adventure.brains.find(b => b.id === id)?.characterName ?? id).join(", ")}</p>
         {t.outcome && <p>Outcome: {t.outcome}</p>}
         <details><summary>Evidence and history</summary><p>{t.originEvidence}</p>{t.events.map((e, i) => <p key={i}>{e.kind}: {e.outcome} · {e.sourceTurnId}<br />{e.evidence}</p>)}</details>
@@ -25,8 +25,8 @@ export function WorldEvolutionPanel({ adventure, dispatch }: AdventurePageProps)
     <details><summary>Canon change history ({world.history.length})</summary>
       {[...world.history].reverse().map(h => <article key={h.id}><p>{h.change.owner} {h.change.targetId} · {h.change.operation} · {h.sourceTurnId}</p>
         <p>Evidence: {h.change.evidence}</p><pre>{h.change.previous || "(new fact)"} → {h.change.content || "(removed)"}</pre>
-        <button type="button" disabled={h.rolledBack} onClick={() => dispatch({ type: "ROLLBACK_WORLD_CHANGE", historyId: h.id })}>{h.rolledBack ? "Reversed" : "Reverse this change"}</button>
-        <p className="muted">Reversal requires this revision to still be current. Later edits are preserved.</p>
+        <button type="button" disabled={h.rolledBack || !rollbackWorldChange(adventure, h.id).worldEvolutionState} onClick={() => dispatch({ type: "ROLLBACK_WORLD_CHANGE", historyId: h.id })}>{h.rolledBack ? "Reversed" : "Reverse this change"}</button>
+        <p className="muted">Reversal preserves unrelated later edits. Conflicting edits to the changed fact require manual review.</p>
       </article>)}
     </details>
   </article>;

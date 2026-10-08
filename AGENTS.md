@@ -98,7 +98,7 @@ The Arc Director makes an antagonist's arc climb and *break* on its own, configu
 
 **Invariants — do not break these:**
 - `arcBreakInstruction` (the cost) MUST NOT be assembled into context before `phase === "break"`. This is the core safety property — the model cannot land the climax on something it never sees. Any refactor of the `currentArc` context block must preserve it; a contextBuilder test guards it.
-- Pacing advances on COUNTED engagement (`threadEngagement`), never on an LLM verdict. Do not add a "let the model judge if it's dramatic yet" path — that reintroduces the unmanaged ledger the feature exists to delete.
+- Legacy pacing advances on COUNTED engagement (`threadEngagement`). Enabled World Evolution accepts typed, evidenced plot events from the existing narration envelope; never add another routine plot-evaluator request. Terminal events require explicit objective/revision/closure data. See `docs/world-evolution-status.md`.
 - Phase transitions are one-way except an explicit `SET_ARC_PHASE` reset to `simmer` (which clears `threadEngagement`).
 - Engagement counts only ids listed in the arc's `arcThreadKeys`.
 

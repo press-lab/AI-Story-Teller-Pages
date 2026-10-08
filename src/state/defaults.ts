@@ -481,7 +481,7 @@ function normalizeStoryCardEntry(card: StoryCard, migrateGuardedFacts: boolean):
 
 function persistedProviderConfig(config: ProviderConfig | undefined): Partial<ProviderConfig> {
   if (!config) return {};
-  const { apiKey: _apiKey, sessionId: _sessionId, ...persisted } = config;
+  const { apiKey: _apiKey, sessionId: _sessionId, requestContext: _requestContext, ...persisted } = config;
   return persisted;
 }
 
@@ -526,7 +526,9 @@ export function normalizeAdventure(adventure: Adventure): Adventure {
     ...baseline,
     ...adventure,
     worldEvolutionSettings: { ...legacyWorldEvolutionSettings, ...(adventure.worldEvolutionSettings ?? {}), enabled: adventure.worldEvolutionSettings?.enabled ?? (adventure.worldEvolutionSettings?.plotProgression !== undefined && adventure.worldEvolutionSettings.plotProgression !== "off") },
-    worldEvolutionState: { threads: [], history: [], issues: [], ...(adventure.worldEvolutionState ?? {}) },
+    worldEvolutionState: { history: [], issues: [], ...(adventure.worldEvolutionState ?? {}),
+      threads: (adventure.worldEvolutionState?.threads ?? []).filter(t => !t.outcome),
+      archivedThreads: [...(adventure.worldEvolutionState?.archivedThreads ?? []), ...(adventure.worldEvolutionState?.threads ?? []).filter(t => !!t.outcome)] },
     openingScene: adventure.openingScene ?? "",
     messages,
     metadata: adventure.metadata ?? {},

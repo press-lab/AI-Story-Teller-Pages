@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useState } from "react";
+import { RequestDiagnostics } from "./RequestDiagnostics";
 import { buildContext } from "../contextBuilder/contextBuilder";
 import { runCondenseContent, runContextDedup, type DedupInputItem, type DedupProposal } from "../ai/contextAI";
 import { dedupeTextLines, normalizeCleanupText } from "../memory/deterministicCleanup";
@@ -266,6 +267,7 @@ export function ContextPreviewPage({ adventure, dispatch, contextResult, onBuild
 
   return (
     <section className="page editor-surface context-preview-page">
+      <RequestDiagnostics adventure={adventure} />
       <div className="editor-page-summary">
         <p className="muted">
           Everything the model sees each turn. Click a row to inspect content, condense bulky items, or review excluded context.

@@ -277,10 +277,10 @@ describe("sendOpenAICompatibleChatCompletion", () => {
     ]);
     expect(body.messages).toEqual([{ role: "user", content: "Continue." }]);
     expect(result.usage).toEqual({
-      promptTokens: 100,
+        promptTokens: 200,
       completionTokens: 20,
-      totalTokens: 120,
-      cacheReadTokens: 70,
+        totalTokens: 220,
+        cacheReadTokens: 70,
       cacheCreationTokens: 30,
     });
   });

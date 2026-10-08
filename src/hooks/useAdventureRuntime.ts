@@ -12,6 +12,7 @@ import { runStoryCardAudit, type AuditRecommendation } from "../memory/storyCard
 import { runComponentAudit, type ComponentAuditRecommendation } from "../memory/componentAudit";
 import { runBrainAudit, type BrainAuditRecommendation } from "../memory/brainAudit";
 import { sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
+import { subscribeProviderRequests } from "../providers/requestAccounting";
 import { resolveBackgroundProviderConfig } from "../providers/backgroundProvider";
 import { adventureReducer } from "../state/adventureReducer";
 import {
@@ -48,6 +49,7 @@ import type {
   PendingAdventureUpdate,
   PlotAIBuilderRequest,
   ProviderUsage,
+  ProviderRequestRecord,
   StoryCardAIBuilderRequest,
 } from "../types/adventure";
 import { createId, nowIso } from "../utils/id";
@@ -55,7 +57,8 @@ import type { RuntimeProviderSettings } from "../pages/pageTypes";
 
 function mergeProviderConfig(adventure: Adventure, settings: RuntimeProviderSettings): RuntimeProviderSettings {
   const sessionId = `ai-story-teller:${adventure.id}`.slice(0, 256);
-  return { ...adventure.modelConfig, ...settings, apiKey: settings.apiKey, sessionId };
+  return { ...adventure.modelConfig, ...settings, apiKey: settings.apiKey, sessionId,
+    requestContext: { adventureId: adventure.id, turn: adventure.activeState.turn + 1, purpose: "narration" } };
 }
 
 export function applyResponseLengthHint(config: RuntimeProviderSettings, hint: number, hiddenReserveTokens = 0): RuntimeProviderSettings {
@@ -131,7 +134,7 @@ async function sendStoryCompletionWithGuard({
   });
   const corrected = await sendOpenAICompatibleChatCompletion({
     messages: correctionMessages,
-    config: correctionConfig(config, responseLengthHint),
+    config: { ...correctionConfig(config, responseLengthHint), requestContext: config.requestContext && { ...config.requestContext, purpose: "responseCorrection" } },
     // This tightly constrained rewrite does not benefit from hidden reasoning. DeepSeek's
     // default thinking mode can otherwise consume the entire small correction budget.
     thinking: "disabled",
@@ -159,7 +162,7 @@ const CHALLENGE_PHRASES = [
 
 function buildBackgroundConfig(adventure: Adventure, settings: RuntimeProviderSettings): RuntimeProviderSettings {
   const base = mergeProviderConfig(adventure, settings);
-  return resolveBackgroundProviderConfig(adventure, base) as RuntimeProviderSettings;
+  return resolveBackgroundProviderConfig(adventure, { ...base, requestContext: { adventureId: adventure.id, turn: adventure.activeState.turn, purpose: "manual" } }) as RuntimeProviderSettings;
 }
 
 export function useAdventureRuntime(
@@ -185,6 +188,7 @@ export function useAdventureRuntime(
   const wasHiddenRef = useRef(false);
   const pendingRetryRef = useRef(false);
   const continueTurnRef = useRef<(() => Promise<void>) | undefined>(undefined);
+  const requestRecordsRef = useRef<ProviderRequestRecord[]>([]);
 
   useEffect(() => { adventureRef.current = adventure; }, [adventure]);
   useEffect(() => { providerSettingsRef.current = providerSettings; }, [providerSettings]);
@@ -206,7 +210,7 @@ export function useAdventureRuntime(
   }, []);
 
   const activeProviderConfig = useMemo(
-    () => adventure ? mergeProviderConfig(adventure, providerSettings) : providerSettings,
+    () => adventure ? { ...mergeProviderConfig(adventure, providerSettings), requestContext: { adventureId: adventure.id, turn: adventure.activeState.turn, purpose: "manual" as const } } : providerSettings,
     [adventure, providerSettings],
   );
 
@@ -223,6 +227,12 @@ export function useAdventureRuntime(
     });
   }, [setAdventure, setSaveStatus, refreshAdventures]);
 
+  useEffect(() => subscribeProviderRequests(record => {
+    if (adventureRef.current?.id !== record.adventureId) return;
+    if (isSubmittingRef.current) requestRecordsRef.current.push(record);
+    else applyActionsAndPersist([{ type: "RECORD_PROVIDER_REQUEST", record }]);
+  }), [applyActionsAndPersist]);
+
   function queuePendingUpdate(actions: AdventureAction[], source: PendingAdventureUpdate["source"]) {
     const update: PendingAdventureUpdate = {
       id: createId("pending"),
@@ -235,6 +245,8 @@ export function useAdventureRuntime(
   }
 
   function mergeQueuedUpdates(adventureState: Adventure): Adventure {
+    adventureState = reduceActions(adventureState, requestRecordsRef.current.filter(r => r.adventureId === adventureState.id).map(record => ({ type: "RECORD_PROVIDER_REQUEST", record })));
+    requestRecordsRef.current = [];
     if (queuedUpdatesRef.current.length === 0) return adventureState;
     let next = adventureState;
     for (const update of queuedUpdatesRef.current) {
@@ -270,8 +282,8 @@ export function useAdventureRuntime(
       };
       const actions = compact.valid
         ? [...compact.actions, { type: "SET_LAST_MEMORY_CYCLE_TURN" as const, turn: snapshot.activeState.turn }, compactUsage]
-        : worldRuntimeActive(snapshot) ? [{ type: "SET_LAST_MEMORY_CYCLE_TURN" as const, turn: snapshot.activeState.turn }, compactUsage]
-          : [...(await runMemoryCycle(snapshot, config)).actions, compactUsage];
+        : worldRuntimeActive(snapshot) ? [{ type: "SET_LAST_MEMORY_CYCLE_TURN" as const, turn: snapshot.activeState.turn }, compactUsage, { type: "SET_WORLD_ISSUE" as const, issue: { id: `world-issue:${snapshot.messages.at(-1)?.id}`, sourceTurnId: snapshot.messages.at(-1)?.id ?? "", status: "unrecorded" as const, reason: "Compact recovery failed; review accepted narration manually. No full fallback requested." } }]
+          : [...(await runMemoryCycle(snapshot, { ...config, requestContext: config.requestContext && { ...config.requestContext, purpose: "fullMemoryFallback" } })).actions, compactUsage];
       if (adventureRef.current?.id !== snapshot.id) return;
       if (isSubmittingRef.current) {
         queuePendingUpdate(actions, "memoryCycle");
@@ -298,7 +310,7 @@ export function useAdventureRuntime(
     try {
       const result = await runSemanticPostTurnEvaluation(
         snapshot,
-        mergeProviderConfig(snapshot, providerSettingsRef.current),
+        { ...buildBackgroundConfig(snapshot, providerSettingsRef.current), requestContext: { adventureId: snapshot.id, turn: snapshot.activeState.turn, purpose: "semanticEvaluation" } },
       );
       if (adventureRef.current?.id !== snapshot.id) return;
       const stampAction: AdventureAction = { type: "SET_LAST_SEMANTIC_EVAL_TURN", turn: snapshot.activeState.turn };
@@ -340,7 +352,7 @@ export function useAdventureRuntime(
     if (!arc || arcInFlight.current.has(snapshot.id)) return;
     arcInFlight.current.add(snapshot.id);
     try {
-      const options = await generateArcContinuations(snapshot, activeProviderConfig, arc);
+      const options = await generateArcContinuations(snapshot, { ...activeProviderConfig, requestContext: { adventureId: snapshot.id, turn: snapshot.activeState.turn, purpose: "arcContinuation" } }, arc);
       if (adventureRef.current?.id !== snapshot.id) return;
       if (arc.arcAutoContinue) {
         // Silent auto-continue: the Director picks the most convergent direction and seeds it
@@ -425,7 +437,7 @@ export function useAdventureRuntime(
         wasHiddenRef.current = false;
         setError(errMsg);
       }
-      const errorState = snapshotWithUserMsg ?? base;
+      const errorState = mergeQueuedUpdates(snapshotWithUserMsg ?? base);
       setAdventure(errorState);
       await saveAdventure(errorState);
     } finally {
@@ -478,8 +490,9 @@ export function useAdventureRuntime(
       void checkArcContinuation(next);
     } catch (providerError) {
       setError(providerError instanceof Error ? providerError.message : "Continue failed.");
-      setAdventure(adventure);
-      await saveAdventure(adventure);
+      const failed = mergeQueuedUpdates(adventure);
+      setAdventure(failed);
+      await saveAdventure(failed);
     } finally {
       setLoading(false);
       isSubmittingRef.current = false;
@@ -505,6 +518,7 @@ export function useAdventureRuntime(
         next.activeState.responseLengthHint,
         hiddenOutputReserveTokens(context),
       );
+      if (regenConfig.requestContext) regenConfig.requestContext = { ...regenConfig.requestContext, turn: next.activeState.turn };
       const response = await sendStoryCompletionWithGuard({
         messages: context.messages,
         config: regenConfig,
@@ -531,7 +545,9 @@ export function useAdventureRuntime(
       void startSemanticEvaluation(next);
     } catch (providerError) {
       setError(providerError instanceof Error ? providerError.message : "Regeneration failed.");
+      next = mergeQueuedUpdates(next);
       setAdventure(next);
+      await saveAdventure(next);
     } finally {
       setLoading(false);
       isSubmittingRef.current = false;

@@ -2,8 +2,8 @@ import { buildContext } from "../contextBuilder/contextBuilder";
 import { resolveBackgroundProviderConfig } from "../providers/backgroundProvider";
 import { sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
 import type { Adventure, AdventureAction, ChatMessage, ProviderConfig } from "../types/adventure";
-import { MEMORY_OUTPUT_RESERVE, ONE_PASS_MEMORY_ID, onePassMemoryActions } from "./onePassMemory";
-import { worldEvolutionActions } from "./worldEvolution";
+import { boundMemoryEnvelope, MEMORY_OUTPUT_RESERVE, ONE_PASS_MEMORY_ID, onePassMemoryActions } from "./onePassMemory";
+import { worldEvolutionActions, worldRuntimeActive } from "./worldEvolution";
 
 export interface CompactMemoryFallbackResult {
   actions: AdventureAction[];
@@ -56,7 +56,7 @@ export async function runCompactMemoryFallback(
   try {
     const backgroundConfig = resolveBackgroundProviderConfig(adventure, providerConfig);
     response = await sendOpenAICompatibleChatCompletion({
-      config: { ...backgroundConfig, maxOutputTokens: Math.min(backgroundConfig.maxOutputTokens, MEMORY_OUTPUT_RESERVE) }, messages,
+      config: { ...backgroundConfig, requestContext: backgroundConfig.requestContext && { ...backgroundConfig.requestContext, purpose: "compactMemoryFallback" }, maxOutputTokens: Math.min(backgroundConfig.maxOutputTokens, MEMORY_OUTPUT_RESERVE) }, messages,
       responseFormat: "json_object",
     });
   } catch {
@@ -75,13 +75,14 @@ export async function runCompactMemoryFallback(
     if (raw.length > 16000 || !parsed || typeof parsed !== "object" || !("updates" in parsed)
       || !Array.isArray(parsed.updates)) return { ...empty, tokenUsage };
     const recentEvidence = adventure.messages.slice(-recentCount).map(message => message.content);
-    const actions = onePassMemoryActions(adventure, context, parsed.updates, latestStory.content,
-      latestStory.id, undefined, "Compact memory fallback: one API call", playerInput, recentEvidence);
-    actions.push(...worldEvolutionActions(adventure, context, {
+    const envelope = boundMemoryEnvelope({ updates: parsed.updates,
       plotEvents: "plotEvents" in parsed && Array.isArray(parsed.plotEvents) ? parsed.plotEvents : [],
       worldChanges: "worldChanges" in parsed && Array.isArray(parsed.worldChanges) ? parsed.worldChanges : [],
-      newPlots: "newPlots" in parsed && Array.isArray(parsed.newPlots) ? parsed.newPlots : [],
-    }, latestStory.content, latestStory.id));
+      newPlots: "newPlots" in parsed && Array.isArray(parsed.newPlots) ? parsed.newPlots : [] }, worldRuntimeActive(adventure), recentEvidence.join("\n"));
+    const actions = onePassMemoryActions(adventure, context, envelope.updates, latestStory.content,
+      latestStory.id, undefined, "Compact memory fallback: one API call", playerInput, recentEvidence);
+    actions.push(...worldEvolutionActions(adventure, context, envelope, latestStory.content, latestStory.id));
+    if ("error" in envelope) actions.push({ type: "SET_WORLD_ISSUE", issue: { id: `world-issue:${latestStory.id}`, sourceTurnId: latestStory.id, status: "unrecorded", reason: String(envelope.error) } });
     return { actions, tokenUsage, valid: true };
   } catch {
     return { ...empty, tokenUsage };

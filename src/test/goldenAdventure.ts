@@ -118,6 +118,7 @@ export function goldenAdventure(): Adventure {
 
   return {
     ...createDefaultAdventure("Golden Adventure"),
+    worldEvolutionSettings: { ...createDefaultAdventure().worldEvolutionSettings!, enabled: false },
     components: [aiInstructions, plotEssentials, authorNote, pinnedNormal, inactiveNormal],
     storyCards: [jokeCard, beastCard, inactiveCard],
     brains: [margoBrain, sethBrain],

@@ -89,6 +89,9 @@ export interface WorldChange {
   triggers?: string[];
 }
 export interface PlotThread {
+  autonomous?: boolean;
+  offscreen?: boolean;
+  importance?: number;
   id: string;
   title: string;
   objective: string;
@@ -118,6 +121,7 @@ export interface WorldEvolutionIssue {
 }
 export interface WorldEvolutionState {
   threads: PlotThread[];
+  archivedThreads?: PlotThread[];
   history: WorldHistoryEntry[];
   issues: WorldEvolutionIssue[];
 }
@@ -443,6 +447,9 @@ export interface TokenBudgetSettings {
 }
 
 export interface ProviderConfig {
+  /** Runtime correlation only; stripped before persistence. */
+  requestContext?: { adventureId: string; turn: number; purpose: RequestPurpose };
+  pricing?: { inputPerMillionUSD: number; outputPerMillionUSD: number };
   name: string;
   baseUrl: string;
   apiKey?: string;
@@ -485,6 +492,23 @@ export interface ProviderUsage {
   cacheReadTokens?: number;
   /** Tokens written into the prompt cache this request (cache creation cost). */
   cacheCreationTokens?: number;
+}
+
+export type RequestPurpose = "narration" | "responseCorrection" | "continuity" | "compactMemoryFallback" | "fullMemoryFallback" | "semanticEvaluation" | "arcContinuation" | "manual";
+export interface ProviderRequestRecord {
+  id: string;
+  adventureId: string;
+  turn: number;
+  purpose: RequestPurpose;
+  model: string;
+  startedAt: string;
+  success: boolean;
+  usage?: ProviderUsage;
+  inputTokensEstimate: number;
+  outputTokensEstimate: number;
+  structuredOutputTokensEstimate: number;
+  continuityCorrected?: boolean;
+  costUSD?: number;
 }
 
 export interface BackgroundProviderConfig {
@@ -573,6 +597,8 @@ export type MemoryProposalType =
 export type MemoryProposalStatus = "pending" | "approved" | "rejected" | "ignored";
 
 export interface MemoryProposal {
+  semanticEffects?: WorldEffect[];
+  motivationEvidence?: string;
   worldChange?: WorldChange;
   relationship?: RelationshipTransition;
   /** Consequential automatic changes require explicit review, regardless of generic auto-approval. */
@@ -702,6 +728,7 @@ export interface StoryEditHistoryEntry {
 }
 
 export interface ActiveState {
+  providerRequests?: ProviderRequestRecord[];
   turn: number;
   forceIncludeNextTurn: ForceIncludeEntry[];
   triggerLog: TriggerLogEntry[];
@@ -924,7 +951,7 @@ export type AdventureAction =
   | { type: "PIN_COMPONENT"; componentId: string }
   | { type: "UNPIN_COMPONENT"; componentId: string }
   | { type: "UPDATE_COMPONENT"; componentId: string; patch: Partial<ComponentEntry> }
-  | { type: "APPLY_COMPONENT_UPDATE"; componentId: string; content: string }
+  | { type: "APPLY_COMPONENT_UPDATE"; componentId: string; content: string; semanticEffects?: WorldEffect[]; motivationEvidence?: string }
   | { type: "REORDER_COMPONENT"; componentId: string; direction: "up" | "down" }
   | { type: "UPSERT_STORY_CARD"; storyCard: StoryCard }
   | { type: "DELETE_STORY_CARD"; storyCardId: string }
@@ -933,7 +960,7 @@ export type AdventureAction =
   | { type: "PIN_STORY_CARD"; storyCardId: string }
   | { type: "UNPIN_STORY_CARD"; storyCardId: string }
   | { type: "UPDATE_STORY_CARD"; storyCardId: string; patch: Partial<StoryCard> }
-  | { type: "APPLY_STORY_CARD_UPDATE"; storyCardId: string; content?: string; patch?: Partial<Pick<StoryCard, "keys" | "state">> }
+  | { type: "APPLY_STORY_CARD_UPDATE"; storyCardId: string; content?: string; patch?: Partial<Pick<StoryCard, "keys" | "state">>; semanticEffects?: WorldEffect[]; motivationEvidence?: string }
   | { type: "MARK_STORY_CARD_UPDATED"; storyCardId: string; turn: number; proposalId?: string }
   | { type: "MARK_COMPONENT_UPDATED"; componentId: string; turn: number }
   | { type: "ADVANCE_ARC_PACING"; triggeredIds: string[]; turn: number }
@@ -956,7 +983,7 @@ export type AdventureAction =
   | { type: "UPDATE_BRAIN"; brainId: string; patch: Partial<BrainEntry> }
   | { type: "APPEND_BRAIN_STATE"; brainId: string; field?: BrainStateField; text: string }
   | { type: "REPLACE_BRAIN_STATE"; brainId: string; field?: BrainStateField; text: string }
-  | { type: "APPLY_BRAIN_UPDATE"; brainId: string; patch: BrainPatch; mode?: "replace" | "append"; turn?: number; preview?: string }
+  | { type: "APPLY_BRAIN_UPDATE"; brainId: string; patch: BrainPatch; mode?: "replace" | "append"; turn?: number; preview?: string; semanticEffects?: WorldEffect[]; motivationEvidence?: string }
   | { type: "UPSERT_TRIGGER_RULE"; triggerRule: TriggerRule }
   | { type: "DELETE_TRIGGER_RULE"; triggerRuleId: string }
   | { type: "UPDATE_TRIGGER_RULE"; triggerRuleId: string; patch: Partial<TriggerRule> }
@@ -987,6 +1014,7 @@ export type AdventureAction =
   | { type: "SET_STATE_FLAG"; key: string; value: string | number | boolean }
   | { type: "SET_RESPONSE_LENGTH_HINT"; hint: number }
   | { type: "ACCUMULATE_BACKGROUND_TOKENS"; promptTokens: number; completionTokens: number }
+  | { type: "RECORD_PROVIDER_REQUEST"; record: ProviderRequestRecord }
   | { type: "SET_NEXT_TURN_NOTE"; note: Partial<NextTurnNote> }
   | { type: "CLEAR_NEXT_TURN_NOTE" }
   | { type: "CONSUME_NEXT_TURN_NOTE" }

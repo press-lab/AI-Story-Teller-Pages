@@ -3,11 +3,17 @@ import { adventureReducer } from "../state/adventureReducer";
 import { createDefaultAdventure, makeBrain, makeComponent, makeStoryCard } from "../state/defaults";
 import { applyAIMemoryUpdate } from "./applyAIMemoryUpdate";
 
+function legacyAdventure(title: string) {
+  const adventure = createDefaultAdventure(title);
+  adventure.worldEvolutionSettings!.enabled = false;
+  return adventure;
+}
+
 describe("applyAIMemoryUpdate", () => {
   it("rejects protected and non-memory mutation surfaces", () => {
     const authorNote = makeComponent({ id: "author", title: "Author", type: "authorNote", content: "do not change" });
     const aiInstructions = makeComponent({ id: "ai", title: "AI", type: "aiInstructions", content: "do not change" });
-    const adventure = { ...createDefaultAdventure("AI Bounds"), components: [authorNote, aiInstructions] };
+    const adventure = { ...legacyAdventure("AI Bounds"), components: [authorNote, aiInstructions] };
 
     const result = applyAIMemoryUpdate(adventure, [
       { type: "componentUpdate", componentId: "author", content: "bad" },
@@ -33,7 +39,7 @@ describe("applyAIMemoryUpdate", () => {
 
   it("allows Plot Essentials component content updates through reducer actions", () => {
     const plot = makeComponent({ id: "plot", title: "Plot", type: "plotEssentials", content: "old" });
-    const adventure = { ...createDefaultAdventure("AI Bounds"), components: [plot] };
+    const adventure = { ...legacyAdventure("AI Bounds"), components: [plot] };
 
     const result = applyAIMemoryUpdate(adventure, [{ type: "componentUpdate", componentId: "plot", content: "new plot" }]);
     const next = result.actions.reduce((state, action) => adventureReducer(state, action), adventure);
@@ -47,7 +53,7 @@ describe("applyAIMemoryUpdate", () => {
   it("allows brain and story card memory updates through typed reducer actions", () => {
     const brain = makeBrain({ id: "brain-margo", characterName: "Margo", currentState: "old" });
     const storyCard = makeStoryCard({ id: "card-joke", title: "Joke", content: "old", keys: ["old"] });
-    const adventure = { ...createDefaultAdventure("AI Bounds"), brains: [brain], storyCards: [storyCard] };
+    const adventure = { ...legacyAdventure("AI Bounds"), brains: [brain], storyCards: [storyCard] };
 
     const result = applyAIMemoryUpdate(adventure, [
       { type: "brainPatch", brainId: "brain-margo", patch: { currentState: "new" }, mode: "replace", turn: 2 },
@@ -71,7 +77,7 @@ describe("applyAIMemoryUpdate", () => {
 
   it("stamps story cards when AI memory updates only card metadata", () => {
     const storyCard = makeStoryCard({ id: "card-joke", title: "Joke", content: "old", keys: ["old"] });
-    const adventure = { ...createDefaultAdventure("AI Bounds"), storyCards: [storyCard] };
+    const adventure = { ...legacyAdventure("AI Bounds"), storyCards: [storyCard] };
 
     const result = applyAIMemoryUpdate(adventure, [
       { type: "storyCardUpdate", storyCardId: "card-joke", keys: ["new"] },
@@ -90,7 +96,7 @@ describe("applyAIMemoryUpdate", () => {
   });
 
   it("rejects brain updates when the BrainEntry does not already exist", () => {
-    const adventure = createDefaultAdventure("AI Bounds");
+    const adventure = legacyAdventure("AI Bounds");
     const result = applyAIMemoryUpdate(adventure, [
       { type: "brainPatch", brainId: "missing-brain", patch: { currentState: "new" } },
     ]);

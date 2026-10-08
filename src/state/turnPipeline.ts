@@ -90,7 +90,7 @@ export async function applyProviderResponse({
   let next = adventure;
 
   // Extract inline thought tags and memory tags from the response before the player sees it.
-  const memory = parseOnePassMemory(response.content);
+  const memory = parseOnePassMemory(response.content, worldRuntimeActive(adventure), adventure.messages.at(-1)?.content ?? "");
   const { cleanContent: thoughtCleanContent } = extractInlineThoughts(memory.story);
   if (!thoughtCleanContent.trim()) throw new Error("The model returned no visible story. No memory was applied.");
   const rawContentForLint = thoughtCleanContent;
@@ -114,21 +114,6 @@ export async function applyProviderResponse({
   const messageId = assistantMessageId ?? createId("message");
   const memoryEnabled = mode !== "comms" && next.memoryDetectionSettings.enabled
     && preProviderContext.sections.some(s => s.items.some(i => i.id === ONE_PASS_MEMORY_ID));
-  if (memoryEnabled) {
-    // Never apply memory from a discarded draft after a continuity rewrite.
-    const actions = onePassMemoryActions(next, preProviderContext, continuityCorrected ? [] : memory.updates,
-      finalContent, messageId, continuityCorrected ? "Memory skipped after continuity correction."
-        : [memory.error, response.memoryDiscardReason].filter(Boolean).join(" ") || undefined);
-    const before = next;
-    next = reduceActions(next, actions);
-    const visibleThoughts = next.brains.filter(b => b.printThoughts).flatMap(b => {
-      const old = before.brains.find(previous => previous.id === b.id);
-      return Object.entries(b.thoughts).filter(([key, value]) => old?.thoughts[key] !== value)
-        .map(([, value]) => "*[" + b.characterName + "]: " + value + "*");
-    });
-    if (visibleThoughts.length) finalContent += "\n\n" + visibleThoughts.join("\n");
-  }
-
 
   next = adventureReducer(next, {
     type: "ADD_MESSAGE",
@@ -139,6 +124,23 @@ export async function applyProviderResponse({
     createdAt,
     usage: response.usage,
   });
+  if (memoryEnabled) {
+    // Never apply memory from a discarded draft after a continuity rewrite.
+    const actions = onePassMemoryActions(next, preProviderContext, continuityCorrected || response.memoryDiscardReason ? [] : memory.updates,
+      finalContent, messageId, continuityCorrected ? "Memory skipped after continuity correction."
+        : [memory.error, response.memoryDiscardReason].filter(Boolean).join(" ") || undefined);
+    const before = next;
+    next = reduceActions(next, actions);
+    const visibleThoughts = next.brains.filter(b => b.printThoughts).flatMap(b => {
+      const old = before.brains.find(previous => previous.id === b.id);
+      return Object.entries(b.thoughts).filter(([key, value]) => old?.thoughts[key] !== value)
+        .map(([, value]) => "*[" + b.characterName + "]: " + value + "*");
+    });
+    if (visibleThoughts.length) {
+      finalContent += "\n\n" + visibleThoughts.join("\n");
+      next = adventureReducer(next, { type: "UPDATE_MESSAGE", messageId, content: finalContent });
+    }
+  }
   if (mode !== "comms" && worldRuntimeActive(next)) {
     if (memoryEnabled && !continuityCorrected && !response.memoryDiscardReason) next = reduceActions(next, worldEvolutionActions(next, preProviderContext, memory, finalContent, messageId));
     const failure = continuityCorrected ? "World changes from the discarded draft were not applied. Review accepted narration." : response.memoryDiscardReason ?? memory.error

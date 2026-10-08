@@ -1,8 +1,10 @@
 import { relationshipCandidate, type RelationshipTarget } from "./relationships";
-import type { Adventure, AdventureAction, BrainEntry, ContextBuildResult, MemoryProposal, StoryCardType, WorldEvolutionSettings } from "../types/adventure";
+import type { Adventure, AdventureAction, BrainEntry, ContextBuildResult, MemoryProposal, StoryCardType, WorldEvolutionSettings, WorldEffect } from "../types/adventure";
 import { createId, nowIso } from "../utils/id";
 import { cardMatchesName } from "../state/defaults";
 import { applyAIMemoryUpdate } from "./applyAIMemoryUpdate";
+import { MAX_WORLD_OUTPUT_CHARS, MAX_WORLD_OUTPUT_TOKENS_ESTIMATE, MAX_WORLD_RECORD_CHARS } from "./worldEvolution";
+import { approximateTokenCount } from "../tokenizer/approximateTokenCount";
 
 export const ONE_PASS_MEMORY_ID = "one-pass-memory";
 export const MEMORY_OUTPUT_RESERVE = 1400;
@@ -39,30 +41,54 @@ Only output changes supported by this turn and consistent with ALL supplied cano
 }
 
 /** A broken/truncated tail must never leak JSON into the story or discard good prose. */
-export function parseOnePassMemory(text: string): { story: string; updates: unknown[]; plotEvents?: unknown[]; worldChanges?: unknown[]; newPlots?: unknown[]; error?: string } {
+export function parseOnePassMemory(text: string, compact = false, evidenceSource = ""): { story: string; updates: unknown[]; plotEvents?: unknown[]; worldChanges?: unknown[]; newPlots?: unknown[]; error?: string } {
   const start = text.search(/<memory_(?:updates\b|[a-z]*$)/i);
   if (start < 0) return { story: text, updates: [], error: "Memory envelope missing; story preserved." };
   const story = text.slice(0, start).trimEnd();
   const tail = text.slice(start);
   const match = /^<memory_updates\s*>([\s\S]*?)<\/memory_updates>\s*$/i.exec(tail);
-  if (!match || match[1].length > 16000) return { story, updates: [], ...recoverWorldRecords(tail), error: "Incomplete or oversized memory envelope; story preserved." };
+  if (!match || match[1].length > 16000) return { story, ...boundMemoryEnvelope({ updates: [], ...recoverWorldRecords(tail, compact) }, compact, story + "\n" + evidenceSource), error: "Incomplete or oversized memory envelope; story preserved." };
   try {
     const parsed: unknown = JSON.parse(match[1]);
     if (!parsed || typeof parsed !== "object" || !("updates" in parsed) || !Array.isArray(parsed.updates)) throw new Error();
-    return { story, updates: parsed.updates,
+    return { story, ...boundMemoryEnvelope({ updates: parsed.updates,
       ...("plotEvents" in parsed && Array.isArray(parsed.plotEvents) ? { plotEvents: parsed.plotEvents } : {}),
       ...("worldChanges" in parsed && Array.isArray(parsed.worldChanges) ? { worldChanges: parsed.worldChanges } : {}),
-      ...("newPlots" in parsed && Array.isArray(parsed.newPlots) ? { newPlots: parsed.newPlots } : {}) };
+      ...("newPlots" in parsed && Array.isArray(parsed.newPlots) ? { newPlots: parsed.newPlots } : {}) }, compact, story + "\n" + evidenceSource) };
   } catch {
-    return { story, updates: [], ...recoverWorldRecords(tail), error: "Invalid memory JSON; story preserved." };
+    return { story, ...boundMemoryEnvelope({ updates: [], ...recoverWorldRecords(tail, compact) }, compact, story + "\n" + evidenceSource), error: "Invalid memory JSON; story preserved." };
   }
 }
 
+export function boundMemoryEnvelope(envelope: { updates: unknown[]; worldChanges?: unknown[]; newPlots?: unknown[]; plotEvents?: unknown[] }, compact: boolean, evidenceSource = ""): typeof envelope & { error?: string } {
+  if (!compact) return envelope;
+  const result: typeof envelope & { error?: string } = { updates: [] };
+  const report = (message: string) => { if (!result.error?.includes(message)) result.error = [result.error, message].filter(Boolean).join(" "); };
+  let count = 0;
+  for (const key of ["updates", "worldChanges", "newPlots", "plotEvents"] as const) {
+    if (!envelope[key]) continue;
+    result[key] = [];
+    const records = key === "updates" ? [...envelope[key]!].sort((a, b) => Number((b as { kind?: string })?.kind === "thought") - Number((a as { kind?: string })?.kind === "thought")) : envelope[key]!;
+    for (const record of records) {
+      if (key === "updates") {
+        const u = record as Record<string, unknown>;
+        if (!u || typeof u !== "object" || ![u.kind, u.target, u.evidence, u.reason].every(v => typeof v === "string" && v.trim())
+          || u.kind !== "relationshipChange" && typeof u.content !== "string" || evidenceSource && !evidenceSource.includes(String(u.evidence))) { report("Invalid structured candidate omitted; review accepted narration."); continue; }
+      }
+      if (count >= MAX_MEMORY_UPDATES || JSON.stringify(record).length > MAX_WORLD_RECORD_CHARS || approximateTokenCount(JSON.stringify(record)) > 600) { report("Structured update limit reached: Incomplete or oversized memory envelope; excess records need review."); continue; }
+      result[key]!.push(record);
+      if (JSON.stringify(result).length > MAX_WORLD_OUTPUT_CHARS || approximateTokenCount(JSON.stringify(result)) > MAX_WORLD_OUTPUT_TOKENS_ESTIMATE) { result[key]!.pop(); report("Incomplete or oversized memory envelope; excess records need review."); continue; }
+      count++;
+    }
+  }
+  return result;
+}
+
 /** Recover only complete JSON objects. Never complete a cut-off quote or use prose from a discarded draft. */
-function recoverWorldRecords(tail: string): { plotEvents?: unknown[]; worldChanges?: unknown[]; newPlots?: unknown[] } {
-  if (tail.length > 16000) return {};
+function recoverWorldRecords(tail: string, includeUpdates = false): { updates?: unknown[]; plotEvents?: unknown[]; worldChanges?: unknown[]; newPlots?: unknown[] } {
+  tail = tail.slice(0, 16000);
   const result: Record<string, unknown[]> = {};
-  for (const key of ["plotEvents", "worldChanges", "newPlots"]) {
+  for (const key of [...(includeUpdates ? ["updates"] : []), "plotEvents", "worldChanges", "newPlots"]) {
     const start = tail.indexOf(`"${key}"`);
     if (start < 0) continue;
     const array = tail.indexOf("[", start);
@@ -117,7 +143,7 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
   const executed: string[] = [];
   const visibleIds = new Set(context.sections.flatMap(s => s.items.map(i => i.id)));
   const instruction = context.sections.flatMap(s => s.items).find(i => i.id === ONE_PASS_MEMORY_ID)?.content ?? "";
-  const lastMessage = adventure.messages.at(-1);
+  const lastMessage = adventure.messages.at(-1)?.role === "assistant" ? adventure.messages.at(-2) : adventure.messages.at(-1);
   const playerInput = playerInputOverride ?? (lastMessage?.role === "user" ? lastMessage.content : "");
   const evidenceSources = [norm(story), norm(playerInput), ...recentEvidence.map(norm)];
   const seen = new Set<string>();
@@ -150,11 +176,13 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
     const quote = norm(evidence);
     if (quote.length < 12 || !evidenceSources.some(s => s.includes(quote))) { reject(`${target}: evidence is not in this turn`); continue; }
     if (words(content) > (kind === "essentials" ? 180 : kind === "newCard" || kind === "lore" ? 90 : kind === "card" ? 70 : 45)) { reject(`${target}: content exceeds limit`); continue; }
-    if (content.includes("<") || content.length > 4000 || target.length > 150 || (u.reason as string).length > 600) { reject(`${target}: invalid content`); continue; }
+    if (content.includes("<") || content.length > (adventure.worldEvolutionSettings?.enabled ? 800 : 4000) || target.length > 150 || (u.reason as string).length > (adventure.worldEvolutionSettings?.enabled ? 200 : 600)) { reject(`${target}: invalid content`); continue; }
     const key = `${kind}:${norm(target)}`;
     if (seen.has(key)) { reject(`${target}: repeated target`); continue; }
     const timestamp = nowIso();
     const proposal: MemoryProposal = {
+      semanticEffects: Array.isArray(u.effects) ? u.effects as WorldEffect[] : undefined,
+      motivationEvidence: typeof u.motivationEvidence === "string" ? u.motivationEvidence : undefined,
       id: createId("proposal"), sourceTurnId, sourceText: evidence, proposedType: "storyCard", title: target,
       content, suggestedTriggers: [], confidence: 0.75, rationale: `One-pass memory: ${u.reason}`,
       status: "pending", createdAt: timestamp, updatedAt: timestamp,
@@ -169,7 +197,8 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
       if (!evidenceSources.some(s => s.includes(norm(target)))) { reject(`${target}: character absent from this turn`); continue; }
       if (Object.values({ ...brain.archivedThoughts, ...brain.thoughts }).some(t => norm(t).includes(norm(content)))) continue;
       const patch = { thoughts: { [`${adventure.activeState.turn}_${sourceTurnId}`]: `${adventure.activeState.turn} → ${content}` } };
-      const boundary = applyAIMemoryUpdate(adventure, [{ type: "brainPatch", brainId: brain.id, patch, mode: "append", turn: adventure.activeState.turn, preview: content }]);
+      const boundary = applyAIMemoryUpdate(adventure, [{ type: "brainPatch", brainId: brain.id, patch, mode: "append", turn: adventure.activeState.turn, preview: content, semanticEffects: proposal.semanticEffects, motivationEvidence: proposal.motivationEvidence }]);
+      if (boundary.rejectedUpdates.length) { reject(`${target}: ${boundary.rejectedUpdates[0].reason}`); continue; }
       if (adventure.memoryAutoApprove.brainUpdate) actions.push(...boundary.actions);
       else actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal: { ...proposal, proposedType: "brainUpdate", targetId: brain.id, content: JSON.stringify(patch) } });
       seen.add(key);

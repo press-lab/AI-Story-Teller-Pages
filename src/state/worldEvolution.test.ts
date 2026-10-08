@@ -12,7 +12,8 @@ describe("persistent plot events", () => {
   it("resolves an evidenced mystery through the narration turn and removes its pending premise next turn", async () => {
     const adventure = createDefaultAdventure("Mystery");
     adventure.components.push(arc());
-    const sendChatCompletion = vi.fn(async () => ({ content: `Mira unmasks the bell ringer. The culprit was the mayor. The mayor confesses and is arrested.\n<memory_updates>{"updates":[],"plotEvents":[{"kind":"resolved","targetId":"arc-mystery","evidence":"The mayor confesses and is arrested.","outcome":"The mayor confesses and is arrested."}]}</memory_updates>` }));
+    const story = "Mira unmasks the bell ringer. The mayor admits ringing the midnight bell. The mayor confesses and is arrested. The bell mystery is conclusively solved.";
+    const sendChatCompletion = vi.fn(async () => ({ content: story + "\n<memory_updates>" + JSON.stringify({ updates: [], plotEvents: [{ kind: "resolved", targetId: "arc-mystery", expectedRevision: 0, objective: "Find who rang the midnight bell.", certainty: "confirmed", autonomous: false, offscreen: false, evidence: story, outcome: "The mayor confesses and is arrested.", resolution: { verdict: "victory", centralObjective: true, remainingObstacles: [], closureEvidence: story } }] }) + "</memory_updates>" }));
     const result = await runTurnPipeline({ adventure, text: "I confront the mayor.", sendChatCompletion });
     expect(sendChatCompletion).toHaveBeenCalledTimes(1);
     const updated = result.adventure.components.find(c => c.id === "arc-mystery")!;

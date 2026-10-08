@@ -1,4 +1,5 @@
 import type { ChatMessage, ProviderConfig, ProviderRequestThrottle, ProviderUsage } from "../types/adventure";
+import { beginProviderRequest } from "./requestAccounting";
 
 type CacheBlock = { type: "text"; text: string; cache_control?: { type: "ephemeral" } };
 type CacheableContent = string | CacheBlock[];
@@ -219,7 +220,17 @@ async function sendOpenAIRequest(
   );
 }
 
-async function sendOpenAIRequestOnce(
+async function sendOpenAIRequestOnce(...args: Parameters<typeof sendOpenAIRequestOnceUntracked>): ReturnType<typeof sendOpenAIRequestOnceUntracked> {
+  const finish = beginProviderRequest(args[2], args[1]);
+  try {
+    const result = await sendOpenAIRequestOnceUntracked(...args);
+    const raw = result.raw as { usage?: { cost?: number } };
+    finish(!!result.content?.trim(), result.content ?? "", result.usage, isOpenRouterProvider(args[2]) ? raw.usage?.cost : undefined);
+    return result;
+  } catch (error) { finish(false); throw error; }
+}
+
+async function sendOpenAIRequestOnceUntracked(
   endpoint: string,
   messages: ChatMessage[],
   config: ProviderConfig,
@@ -276,11 +287,11 @@ async function sendOpenAIRequestOnce(
   const content = raw.choices?.[0]?.message?.content;
   const finishReason = raw.choices?.[0]?.finish_reason;
 
-  const usage: ProviderUsage | undefined = raw.usage
+  const usage: ProviderUsage | undefined = raw.usage && Number.isFinite(raw.usage.prompt_tokens) && Number.isFinite(raw.usage.completion_tokens)
     ? {
         promptTokens: raw.usage.prompt_tokens ?? 0,
         completionTokens: raw.usage.completion_tokens ?? 0,
-        totalTokens: raw.usage.total_tokens ?? 0,
+        totalTokens: raw.usage.total_tokens ?? (raw.usage.prompt_tokens ?? 0) + (raw.usage.completion_tokens ?? 0),
         cacheReadTokens: raw.usage.cache_read_input_tokens ?? raw.usage.prompt_tokens_details?.cached_tokens,
         cacheCreationTokens: raw.usage.cache_creation_input_tokens ?? raw.usage.prompt_tokens_details?.cache_write_tokens,
       }
@@ -289,7 +300,17 @@ async function sendOpenAIRequestOnce(
   return { content, finishReason, raw, rawText, usage };
 }
 
-async function sendAnthropicRequest(
+async function sendAnthropicRequest(...args: Parameters<typeof sendAnthropicRequestUntracked>): ReturnType<typeof sendAnthropicRequestUntracked> {
+  const finish = beginProviderRequest(args[2], args[1]);
+  try {
+    const result = await sendAnthropicRequestUntracked(...args);
+    finish(!!result.content.trim(), result.content, result.usage);
+    if (!result.content.trim()) throw new Error("Provider returned no content.");
+    return result;
+  } catch (error) { finish(false); throw error; }
+}
+
+async function sendAnthropicRequestUntracked(
   endpoint: string,
   messages: ChatMessage[],
   config: ProviderConfig,
@@ -352,14 +373,13 @@ async function sendAnthropicRequest(
   // Narration and the memory envelope may arrive in separate text blocks.
   // Preserve every text block in order, including blocks splitting a JSON token.
   const textBlocks = raw.content?.filter((c) => c.type === "text" && typeof c.text === "string") ?? [];
-  if (!textBlocks.length) throw new Error(`Provider returned no content. Body: ${rawText.slice(0, 300)}`);
   const content = textBlocks.map((c) => c.text).join("");
 
-  const usage: ProviderUsage | undefined = raw.usage
+  const usage: ProviderUsage | undefined = raw.usage && Number.isFinite(raw.usage.input_tokens) && Number.isFinite(raw.usage.output_tokens)
     ? {
-        promptTokens: raw.usage.input_tokens ?? 0,
+        promptTokens: (raw.usage.input_tokens ?? 0) + (raw.usage.cache_read_input_tokens ?? 0) + (raw.usage.cache_creation_input_tokens ?? 0),
         completionTokens: raw.usage.output_tokens ?? 0,
-        totalTokens: (raw.usage.input_tokens ?? 0) + (raw.usage.output_tokens ?? 0),
+        totalTokens: (raw.usage.input_tokens ?? 0) + (raw.usage.cache_read_input_tokens ?? 0) + (raw.usage.cache_creation_input_tokens ?? 0) + (raw.usage.output_tokens ?? 0),
         cacheReadTokens: raw.usage.cache_read_input_tokens,
         cacheCreationTokens: raw.usage.cache_creation_input_tokens,
       }
