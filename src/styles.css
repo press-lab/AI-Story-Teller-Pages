@@ -5585,25 +5585,3 @@ summary {
 }
 
 .disabled-section { opacity: 0.4; pointer-events: none; }
-
-/* Story Director keeps review details bounded on desktop and mobile. */
-.director-panel { min-width: 0; }
-.director-heading, .director-mode-control { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
-.director-heading { justify-content: space-between; }
-.director-heading h3 { margin: 0; }
-.director-mode-control { margin-block: 10px; }
-.director-mode-control select { width: auto; max-width: 100%; }
-.director-mode-control p { flex-basis: 100%; margin: 0; }
-.director-mode-control.compact { margin: 0; font-size: 12px; }
-.director-mode-control.compact label { font-size: inherit; }
-.director-mode-control.compact select { padding: 4px; }
-.director-panel .editor-tabs { flex-wrap: wrap; }
-.director-entry { border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-block: 10px; min-width: 0; }
-.director-panel summary { cursor: pointer; overflow-wrap: anywhere; }
-.director-panel pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 300px; overflow: auto; background: var(--surface-code); padding: 10px; font-size: 12px; }
-.director-panel p, .director-panel blockquote { overflow-wrap: anywhere; }
-.director-panel blockquote { margin-inline: 12px; }
-.director-comparison { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.director-owner { border-top: 1px solid var(--border); margin-top: 12px; }
-.director-notice { background: var(--notice-bg); border: 1px solid var(--notice-border); border-radius: 6px; padding: 8px; }
-@media (max-width: 640px) { .director-comparison { grid-template-columns: minmax(0, 1fr); } }

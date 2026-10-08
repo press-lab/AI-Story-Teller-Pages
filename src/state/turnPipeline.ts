@@ -1,4 +1,3 @@
-import { evaluateStoryDirector } from '../memory/storyDirector';
 import { ONE_PASS_MEMORY_ID, onePassMemoryActions, parseOnePassMemory } from "../memory/onePassMemory";
 import { buildContext, extractInlineThoughts } from "../contextBuilder/contextBuilder";
 import { runContinuityCheck, scanForRiskyClaims } from "../continuityLint";
@@ -40,7 +39,6 @@ export interface RunTurnPipelineOptions {
   currentInputForContext?: string;
   incrementTurn?: boolean;
   advanceArcPacing?: boolean;
-  onStoryAccepted?: (adventure: Adventure) => void | Promise<void>;
 }
 
 export interface RunTurnPipelineResult {
@@ -66,7 +64,6 @@ export function latestAssistantOutput(adventure: Adventure): string | undefined 
 }
 
 interface ApplyProviderResponseOptions {
-  onStoryAccepted?: (adventure: Adventure) => void | Promise<void>;
   adventure: Adventure;
   response: MockableProviderResponse;
   mode: InputMode;
@@ -88,7 +85,6 @@ export async function applyProviderResponse({
   createdAt,
   incrementTurn = true,
   advanceArcPacing = true,
-  onStoryAccepted,
 }: ApplyProviderResponseOptions): Promise<{ adventure: Adventure; responseContent: string; continuityCorrected: boolean }> {
   let next = adventure;
 
@@ -146,16 +142,17 @@ export async function applyProviderResponse({
 
   next = applyRuntimeEngines(next, { source: "output", text: finalContent });
 
-  // Retired Arc Director: accepted turns no longer advance authored pacing.
+  // Arc Director: count only Story Card / Brain ids whose trigger patterns matched turn text.
+  // Pinned or always-on context can be included without counting as engagement.
+  const triggeredIds = preProviderContext.triggeredThreadIds;
+  if (advanceArcPacing && triggeredIds.length > 0) {
+    next = adventureReducer(next, { type: "ADVANCE_ARC_PACING", triggeredIds, turn: next.activeState.turn });
+  }
 
   if (incrementTurn) {
     next = adventureReducer(next, { type: "INCREMENT_TURN" });
   }
 
-  await onStoryAccepted?.(next);
-  if (mode !== "comms" && providerConfig) {
-    next = reduceActions(next, await evaluateStoryDirector(next, providerConfig));
-  }
   return { adventure: next, responseContent: finalContent, continuityCorrected };
 }
 
@@ -173,7 +170,6 @@ export async function runTurnPipeline({
   currentInputForContext,
   incrementTurn = true,
   advanceArcPacing = true,
-  onStoryAccepted,
 }: RunTurnPipelineOptions): Promise<RunTurnPipelineResult> {
   let next = adventure;
   if (recordUserInput) {
@@ -208,7 +204,6 @@ export async function runTurnPipeline({
     createdAt,
     incrementTurn,
     advanceArcPacing,
-    onStoryAccepted,
   });
   next = applied.adventure;
 

@@ -1,4 +1,3 @@
-import { DEFAULT_PLAY_LOOP, isPlayLoop, normalizeDirectorMode } from '../memory/storyDirectorState';
 import type {
   Adventure,
   ArcPacingState,
@@ -94,7 +93,6 @@ export const defaultMemoryDetectionSettings: MemoryDetectionSettings = {
 };
 
 export const defaultMemoryAutoApproveSettings: MemoryAutoApproveSettings = {
-  storyDirector: false,
   summaryUpdate: false,
   plotEssentialsUpdate: false,
   currentArcUpdate: false,
@@ -164,6 +162,8 @@ SCENE TRANSITIONS: Do not skip or decide meaningful player choices — if an NPC
 PROSE: Write with varied sentence rhythm — short punchy lines for action, longer sentences for atmosphere or tension. Favor dialogue, physical behavior, and sensory detail over internal summary or exposition. Scenes should feel like they are happening, not being described.`;
 
 export const defaultNarrationRulesContent = `You are the narrator of a collaborative interactive fiction adventure.
+Continue the active scene in response to the player, keeping the fiction live and unresolved.
+
 END OPEN: Never resolve a meaningful decision for the player. Do NOT end with explicit choices, questions directed at the player, option menus ("Want to X, or Y?"), summaries, fade-outs, or tidy scene conclusions. Write only the next immediate consequence, NPC reaction, dialogue exchange, or motion needed to keep the scene live, then stop when the player could reasonably act.
 
 PERSPECTIVE: Follow the perspective the player has established — first person, second person, or third person. Match it exactly. Do not override or reassign it.
@@ -199,7 +199,6 @@ export function createDefaultAdventure(title = "Untitled Adventure"): Adventure 
     autoSaveEnabled: true,
     autoSaveEveryNTurns: 3,
     components: [
-      makeComponent({ title: "Play Loop", type: "custom", contextRole: "playLoop", content: DEFAULT_PLAY_LOOP, alwaysOn: true, pinned: true, protected: true, priority: 100 }),
       makeComponent({
         title: "Global Generation Rules",
         type: "narrationRules",
@@ -220,15 +219,13 @@ export function createDefaultAdventure(title = "Untitled Adventure"): Adventure 
       forceIncludeNextTurn: [],
       triggerLog: [],
       evaluationLog: [],
-      storyDirectorEvaluations: [],
-      storyDirectorMode: 'AUTO',
       memoryProposals: [],
       pendingUpdates: [],
       storyUndoStack: [],
       storyRedoStack: [],
       nextTurnNote: defaultNextTurnNote(),
       rawImports: [],
-      stateFlags: { playLoopSeparated: true },
+      stateFlags: {},
       responseLengthHint: 250,
       backgroundTokenUsage: { promptTokens: 0, completionTokens: 0 },
       challengeMode: false,
@@ -255,7 +252,6 @@ export function makeComponent(
     title: overrides.title,
     type,
     content: overrides.content,
-    contextRole: overrides.contextRole,
     arcPremise: overrides.arcPremise,
     arcThreadKeys: overrides.arcThreadKeys,
     arcPace: overrides.arcPace,
@@ -272,7 +268,6 @@ export function makeComponent(
     state: overrides.state ?? "",
     tokenBudget: overrides.tokenBudget,
     autoUpdate: overrides.autoUpdate,
-    lockFromStoryDirector: overrides.lockFromStoryDirector,
     lastAutoUpdateTurn: overrides.lastAutoUpdateTurn,
     lastMemoryUpdatedAt: overrides.lastMemoryUpdatedAt,
     memoryUpdateHistory: overrides.memoryUpdateHistory,
@@ -311,7 +306,6 @@ export function makeStoryCard(overrides: Partial<StoryCard> & Pick<StoryCard, "t
     priority: overrides.priority ?? 0,
     autoUpdate: overrides.type === "event" ? false : overrides.autoUpdate ?? false,
     autoUpdateCooldownTurns: overrides.autoUpdateCooldownTurns ?? 3,
-    lockFromStoryDirector: overrides.lockFromStoryDirector,
     lastAutoUpdateTurn: overrides.lastAutoUpdateTurn,
     lastMemoryUpdatedAt: overrides.lastMemoryUpdatedAt,
     memoryUpdateHistory: overrides.memoryUpdateHistory,
@@ -521,8 +515,6 @@ export function normalizeAdventure(adventure: Adventure): Adventure {
       ...baseline.activeState,
       ...adventure.activeState,
       evaluationLog: adventure.activeState?.evaluationLog ?? [],
-      storyDirectorEvaluations: adventure.activeState?.storyDirectorEvaluations ?? [],
-      storyDirectorMode: normalizeDirectorMode(adventure.activeState?.storyDirectorMode),
       memoryProposals: adventure.activeState?.memoryProposals ?? [],
       pendingUpdates: adventure.activeState?.pendingUpdates ?? [],
       storyUndoStack: adventure.activeState?.storyUndoStack ?? [],
@@ -534,7 +526,6 @@ export function normalizeAdventure(adventure: Adventure): Adventure {
       rawImports: adventure.activeState?.rawImports ?? [],
       stateFlags: {
         ...(adventure.activeState?.stateFlags ?? {}),
-        playLoopSeparated: true,
         brainsAppendMigrated: true,
         guardedStoryCardsMigrated: true,
         compactStoryCardsMigrated: true,
@@ -589,8 +580,7 @@ export function normalizeAdventure(adventure: Adventure): Adventure {
       ...migrateBrainThoughts(brain),
       linkedStoryCardId: brain.linkedStoryCardId,
     })),
-    storyCards: (adventure.storyCards ?? []).map((card) => normalizeStoryCardEntry(card, migrateGuardedStoryCards
-      && !adventure.activeState?.canonBatches?.some(batch => batch.status === "applied" && batch.edits.some(edit => edit.kind === "storyCard" && edit.id === card.id)))),
+    storyCards: (adventure.storyCards ?? []).map((card) => normalizeStoryCardEntry(card, migrateGuardedStoryCards)),
     components: (() => {
       const existing = adventure.components ?? baseline.components;
       const normalized = existing.map((component) => {
@@ -617,18 +607,6 @@ export function normalizeAdventure(adventure: Adventure): Adventure {
         seenSingletons.add(component.type);
         return true;
       });
-      // Extract only the exact shipped sandbox sentence; never guess at authored prose.
-      const sentence = "Continue the active scene in response to the player, keeping the fiction live and unresolved.";
-      if (!adventure.activeState?.stateFlags?.playLoopSeparated && deduped.some(c => c.type === "narrationRules" && c.content.includes(sentence))) {
-        const loop = deduped.find(isPlayLoop);
-        const separated = deduped.map(c => c.type === "narrationRules" ? { ...c, content: c.content.replace(sentence, "").trim() }
-          : c.id === loop?.id && !c.content.includes(sentence) ? { ...c, content: c.content + "\n\n" + sentence } : c);
-        return loop ? separated : [...separated, makeComponent({ title: "Play Loop", type: "custom", contextRole: "playLoop", content: sentence, alwaysOn: true, pinned: true, protected: true, priority: 100 })];
-      }
-      if (!adventure.activeState?.stateFlags?.playLoopSeparated && !deduped.some(isPlayLoop)
-        && deduped.some(c => c.type === "narrationRules" && c.content === defaultNarrationRulesContent)) {
-        return [...deduped, makeComponent({ title: "Play Loop", type: "custom", contextRole: "playLoop", content: DEFAULT_PLAY_LOOP, alwaysOn: true, pinned: true, protected: true, priority: 100 })];
-      }
       return deduped;
     })(),
     triggerRules: (adventure.triggerRules ?? []).map((rule) => ({

@@ -2,7 +2,7 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createDefaultAdventure, defaultModelConfig, makeComponent, makeStoryCard, makeTriggerRule } from "../state/defaults";
+import { createDefaultAdventure, defaultModelConfig, makeStoryCard, makeTriggerRule } from "../state/defaults";
 import type { Adventure, MemoryDetectionSettings } from "../types/adventure";
 import { useAdventureRuntime } from "./useAdventureRuntime";
 import { sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
@@ -16,11 +16,8 @@ vi.mock("../triggers/semanticEngine", async importOriginal => ({
   runSemanticPostTurnEvaluation: vi.fn(),
 }));
 
-function setup(enabled = true, customRule = false, retiredArc = false) {
+function setup(enabled = true, customRule = false) {
   const initial = createDefaultAdventure("Call accounting");
-  // This suite isolates inline memory accounting; director calls have separate integration coverage.
-  initial.components = initial.components.filter(c => c.contextRole !== "playLoop");
-  if (retiredArc) initial.components.push(makeComponent({ id: 'old-arc', title: 'Old Arc', type: 'currentArc', content: 'The conflict ended.', arcAutoContinue: true, arcThreadKeys: ['mira'], arcState: { phase: 'aftermath', tier: 5, pendingBreak: false, threadEngagement: { mira: 20 } } }));
   initial.memoryDetectionSettings = { ...initial.memoryDetectionSettings, enabled: !enabled }; // deliberately stale saved settings
   initial.memoryAutoApprove = { ...initial.memoryAutoApprove, storyCard: true };
   if (customRule) initial.triggerRules.push(makeTriggerRule({ name: "Explicit custom rule", condition: "When Mira learns something", evaluationMode: "semantic" }));
@@ -42,17 +39,6 @@ describe("runtime one-pass call accounting", () => {
     vi.mocked(sendOpenAICompatibleChatCompletion).mockResolvedValue({ content: response, raw: {}, usage: { promptTokens: 2000, completionTokens: 140, totalTokens: 2140 } });
   });
   afterEach(cleanup);
-
-  it('does not generate or apply continuations for saved Arc Director settings', async () => {
-    const { result } = setup(true, false, true);
-    await act(async () => { await result.current.runtime.submitTurn('Mira explains.'); });
-    await act(async () => { await result.current.runtime.continueTurn(); });
-    expect(sendOpenAICompatibleChatCompletion).toHaveBeenCalledTimes(2);
-    const arc = result.current.adventure?.components.find(c => c.id === 'old-arc');
-    expect(arc?.arcState?.phase).toBe('aftermath');
-    expect(arc?.arcContinuationOptions).toBeUndefined();
-    expect(arc?.content).toBe('The conflict ended.');
-  });
 
   it("uses one API call per submit/continue/regenerate with automatic memory ON and no follow-up cycle", async () => {
     const { result } = setup();

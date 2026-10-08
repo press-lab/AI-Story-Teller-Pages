@@ -1,4 +1,3 @@
-import { batchIsCurrent, type CanonBatch } from './storyDirectorState';
 import { relationshipIsCurrent } from "./relationships";
 import type {
   Adventure,
@@ -10,7 +9,6 @@ import type {
 } from "../types/adventure";
 
 export type AIMemoryUpdate =
-  | { type: "canonReconciliation"; batch: CanonBatch }
   | { type: "relationshipProposal"; proposal: RelationshipProposal }
   | {
       type: "brainPatch";
@@ -84,18 +82,6 @@ export function applyAIMemoryUpdate(adventure: Adventure, updates: AIMemoryUpdat
   const changedItemIds: string[] = [];
 
   for (const update of updates) {
-    if (update.type === "canonReconciliation") {
-      if (!batchIsCurrent(adventure, update.batch)) {
-        rejectedUpdates.push(reject(update, "Invalid or stale canon reconciliation."));
-        continue;
-      }
-      const review = adventure.memoryAutoApprove.storyDirector !== true || adventure.semanticEvaluationSettings.requireApprovalForAutoUpdates || update.batch.edits.some(e =>
-        e.kind === "relationship" || (e.kind === "storyCard" && !adventure.memoryAutoApprove.storyCard)
-        || (e.kind === "brain" && !adventure.memoryAutoApprove.brainUpdate)
-        || (e.kind === "component" && !(adventure.components.find(c => c.id === e.id)?.type === "currentArc" ? adventure.memoryAutoApprove.currentArcUpdate : adventure.components.find(c => c.id === e.id)?.type === "activePressure" ? adventure.memoryAutoApprove.plotPressureUpdate : adventure.memoryAutoApprove.plotEssentialsUpdate)));
-      actions.push({ type: "RECONCILE_CANON", batch: update.batch, review });
-      continue;
-    }
     if (update.type === "relationshipProposal") {
       if (update.proposal.proposedType === "relationshipUpdate" && relationshipIsCurrent(adventure, update.proposal))
         actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal: update.proposal });

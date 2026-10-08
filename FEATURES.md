@@ -503,8 +503,3 @@ Event Memory (`type: event`) is a historical Story Card category for notable com
 Recall uses phrase matches and participant-assisted cue word overlap, with up to three automatically recalled Event Memories per context build, subject to existing context budgets. A participant name alone does not trigger their history. Pinned, always-on, and manually forced cards retain their explicit inclusion controls. Context Preview shows each included card and its recall reason. This is bounded cue retrieval, not embedding-based semantic search.
 
 Memory Suggestions offers “Find event memories in earlier play”: an explicit background-model scan of the Chronicle in overlapping 24-message excerpts, stepping by 20 messages. It displays progress, preserves completed suggestions on failure/cancellation, and stops after the current request when cancelled. Each excerpt uses one provider request. No scan runs automatically on import. Source evidence can be inspected on approved Event Memory cards; unavailable source messages are identified rather than fabricated.
-# Story-led plot progression
-
-A designated custom Play Loop now supports reversible context exclusion after accepted story events demonstrate earned progression or closure. Normal play is the conservative default. A separate semantic evaluator does not set authored Arc Director phases or plan future beats.
-
-Meaningful developments can produce evidence-backed, atomic replacements across existing state owners, with owner history, stale-batch rejection, existing approval controls, and explicit review for dynamic relationships. Inspect Components → Story state and Triggers evaluation logs. See [Story Director architecture and limits](docs/story-director.md).

@@ -1,4 +1,3 @@
-import { batchIsCurrent, playLoopSuspended, ownerSnapshot, normalizeDirectorMode } from '../memory/storyDirectorState';
 import { applyRelationship, duplicateRelationship, relationshipFocusCard, relationshipIsCurrent, stateKey, validRelationshipState } from "../memory/relationships";
 import { sameEventMemory } from "../memory/eventMemory";
 import type {
@@ -721,8 +720,15 @@ function sanitizeProposal(proposal: MemoryProposal): MemoryProposal | null {
   // summaryUpdate with blank content would immediately overwrite the real summary — hard drop
   if (proposal.proposedType === "summaryUpdate" && !content) return null;
 
-  // Retired Arc Director proposals cannot be created or approved, including old saves.
-  if (proposal.proposedType === "arcProposal") return null;
+  // arcProposal: content must be JSON carrying a non-empty premise, or the seed is meaningless
+  if (proposal.proposedType === "arcProposal") {
+    try {
+      const parsed = JSON.parse(content) as Record<string, unknown>;
+      if (typeof parsed.arcPremise !== "string" || !(parsed.arcPremise as string).trim()) return null;
+    } catch {
+      return null;
+    }
+  }
 
   // brainUpdate: if the content looks like JSON, validate it has at least one recognised field
   if (proposal.proposedType === "brainUpdate" && content.startsWith("{")) {
@@ -1179,63 +1185,8 @@ function applyCompanionMemoryProposals(
   return { patch, proposals: recorded };
 }
 
-function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
+export function adventureReducer(state: Adventure, action: AdventureAction): Adventure {
   switch (action.type) {
-    case "SET_STORY_DIRECTOR_MODE":
-      return touchAdventure(state, { activeState: { ...state.activeState, storyDirectorMode: normalizeDirectorMode(action.mode) } });
-    case "SET_STORY_DIRECTOR": {
-      const source = state.messages.find(m => m.id === action.state.sourceMessageId && m.role === "assistant");
-      if (!source || source.content !== action.state.sourceContent) return state;
-      const next = touchAdventure(state, { activeState: { ...state.activeState, storyDirector: action.state } });
-      const suspended = playLoopSuspended(next);
-      return adventureReducer(next, { type: "LOG_EVALUATION_RESULT", entry: {
-        id: createId("evaluation"), turn: state.activeState.turn, createdAt: nowIso(), conditionsEvaluated: [],
-        conditionsFired: ["Story Director"], actionsExecuted: [suspended ? "Play Loop suspended" : "Play Loop active / restored", action.state.reason], generatedContent: [], errors: [],
-      } });
-    }
-    case "REVIEW_CANON_BATCH": {
-      const batch = state.activeState.canonBatches?.find(b => b.id === action.batchId && b.status === "pending");
-      if (!batch) return state;
-      if (!action.approve) return touchAdventure(state, { activeState: { ...state.activeState, canonBatches: state.activeState.canonBatches!.map(b => b.id === batch.id ? { ...b, status: "rejected" } : b) } });
-      return adventureReducer(state, { type: "RECONCILE_CANON", batch, review: false });
-    }
-    case "RECONCILE_CANON": {
-      const batch = action.batch;
-      if (state.activeState.canonBatches?.some(b => b.id === batch.id && b.status !== "pending")) return state;
-      const valid = batchIsCurrent(state, batch);
-      const status = !valid ? "stale" : action.review ? "pending" : "applied";
-      let next = state;
-      if (status === "applied") {
-        const meta = { source: "aiMemoryUpdate" as const, operation: "replace" as const, sourceTurnId: batch.sourceMessageId };
-        // Validate every owner before replacing any. This bypass is deliberately confined
-        // to accepted-event reconciliation: old guarded assertions remain in history.
-        for (const e of batch.edits) {
-          if (e.kind === "component") next = { ...next, components: updateById(next.components, e.id, c => recordComponentMemoryUpdate(c, {
-            ...c, content: e.content!, state: e.state ?? "", ...(c.type === "currentArc" ? { arcPremise: "" } : {}),
-            ...(e.resolved ? { active: false, state: "resolved" } : {}),
-          }, meta)) };
-          if (e.kind === "storyCard") next = { ...next, storyCards: updateById(next.storyCards, e.id, c => recordStoryCardMemoryUpdate(c, {
-            ...c, content: e.content!, state: e.state ?? "", compactStatus: e.compactStatus, coreFacts: [], currentFacts: [], recentDevelopments: [],
-            // Prior archive remains in the update snapshot; legacy guarded helpers must not revive it.
-            archivedFacts: "",
-            ...(e.resolved ? { memoryMode: "historical", compactStatus: "resolved", state: "resolved", pinned: false, protected: false, autoUpdate: false } : {}),
-          }, meta)) };
-          if (e.kind === "brain") next = { ...next, brains: updateById(next.brains, e.id, b => ({ ...b, thoughts: e.thoughts!,
-            archivedThoughts: { ...b.archivedThoughts, ...Object.fromEntries(Object.entries(b.thoughts).filter(([k,v]) => e.thoughts![k] !== v).map(([k,v]) => [batch.id + ":" + k, v])) },
-            lastUpdatedAt: nowIso(), updatedAt: nowIso(),
-          })) };
-          if (e.kind === "relationship") next = { ...next, brains: updateById(next.brains, e.id, b => ({ ...b, relationships: b.relationships.map(r => r.id !== e.relationshipId ? r : {
-            ...r, current: e.relationship!, revision: r.revision + 1,
-            history: [...r.history, { id: createId("relationship-history"), sourceTurnId: batch.sourceMessageId, state: e.relationship!, evidence: e.evidence, createdAt: nowIso() }],
-          }) })) };
-        }
-      }
-      next = touchAdventure(next, { activeState: { ...next.activeState, canonBatches: [{ ...batch, status, ...(status === "applied" ? { after: batch.edits.map(e => ownerSnapshot(next, e, true)!) } : {}) }, ...(next.activeState.canonBatches ?? []).filter(b => b.id !== batch.id)] } });
-      return adventureReducer(next, { type: "LOG_EVALUATION_RESULT", entry: {
-        id: createId("evaluation"), turn: state.activeState.turn, createdAt: nowIso(), conditionsEvaluated: [], conditionsFired: ["Canon reconciliation"],
-        actionsExecuted: ["Canon batch " + status, ...batch.edits.map(e => e.change + ": " + e.kind + " " + e.id + "; removed: " + e.removedFacts.join("; "))], generatedContent: [], errors: valid ? [] : ["Source or owner changed; entire batch rejected as stale."],
-      } });
-    }
     case "SET_TITLE":
       return touchAdventure(state, { title: action.title });
     case "SET_OPENING_SCENE":
@@ -1544,16 +1495,6 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
         activeState: {
           ...state.activeState,
           evaluationLog: [action.entry, ...state.activeState.evaluationLog].slice(0, 100),
-        },
-      });
-    case "RECORD_STORY_DIRECTOR_EVALUATION":
-      return touchAdventure(state, {
-        activeState: {
-          ...state.activeState,
-          storyDirectorEvaluations: [
-            ...(state.activeState.storyDirectorEvaluations ?? []).filter(entry => entry.sourceMessageId !== action.evaluation.sourceMessageId),
-            action.evaluation,
-          ],
         },
       });
     case "FORCE_INCLUDE_NEXT_TURN":
@@ -1878,10 +1819,6 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
         activeState: {
           ...state.activeState,
           turn: 0,
-          storyDirector: undefined,
-          storyDirectorMode: 'AUTO',
-          storyDirectorEvaluations: [],
-          canonBatches: [],
           forceIncludeNextTurn: [],
           triggerLog: [],
           evaluationLog: [],
@@ -1902,38 +1839,4 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
       return exhaustive;
     }
   }
-}
-
-/** Rollback eligibility only: an updatedAt bump (e.g. toggling Lock from Story Director) must not block rollback. All other owner fields must match. */
-function sameOwnerIgnoringUpdatedAt(current: string | undefined, after: string): boolean {
-  if (current === undefined) return false;
-  const strip = (snapshot: string) => JSON.stringify({ ...JSON.parse(snapshot), updatedAt: undefined });
-  return strip(current) === strip(after);
-}
-
-/** Removing/editing accepted evidence must not leave its automatic canon writes live. */
-export function adventureReducer(state: Adventure, action: AdventureAction): Adventure {
-  let next = reduceAdventure(state, action);
-  if (next.messages === state.messages || !state.activeState.canonBatches?.some(b => b.status === "applied")) return next;
-  for (const batch of state.activeState.canonBatches.filter(b => b.status === "applied")) {
-    if (next.messages.some(m => m.id === batch.sourceMessageId && m.content === batch.sourceContent)) continue;
-    const canRestore = batch.after && batch.edits.every((e, i) => sameOwnerIgnoringUpdatedAt(ownerSnapshot(next, e, true), batch.after![i]));
-    if (canRestore) {
-      for (const e of [...batch.edits].reverse()) {
-        if (e.kind === "component") next = { ...next, components: updateById(next.components, e.id, c => ({ ...JSON.parse(e.before), memoryUpdateHistory: c.memoryUpdateHistory, lockFromStoryDirector: c.lockFromStoryDirector })) };
-        if (e.kind === "storyCard") next = { ...next, storyCards: updateById(next.storyCards, e.id, c => ({ ...JSON.parse(e.before), memoryUpdateHistory: c.memoryUpdateHistory, lockFromStoryDirector: c.lockFromStoryDirector })) };
-        if (e.kind === "brain") next = { ...next, brains: updateById(next.brains, e.id, b => {
-          const previous = JSON.parse(e.before) as BrainEntry;
-          return { ...previous,
-            archivedThoughts: Object.fromEntries(Object.entries(b.archivedThoughts).filter(([key]) => !key.startsWith(batch.id + ":"))),
-            relationships: previous.relationships.map(r => ({ ...r, history: b.relationships.find(current => current.id === r.id)?.history ?? [] })),
-          };
-        }) };
-        if (e.kind === "relationship") next = { ...next, brains: updateById(next.brains, e.id, b => ({ ...b, relationships: b.relationships.map(r => r.id === e.relationshipId ? { ...JSON.parse(e.before), history: r.history.filter(h => h.sourceTurnId !== batch.sourceMessageId) } : r) })) };
-      }
-    }
-    next = { ...next, activeState: { ...next.activeState, canonBatches: next.activeState.canonBatches?.map(b => b.id === batch.id ? { ...b, status: "stale" } : b) } };
-    next = reduceAdventure(next, { type: "LOG_EVALUATION_RESULT", entry: { id: createId("evaluation"), turn: next.activeState.turn, createdAt: nowIso(), conditionsEvaluated: [], conditionsFired: ["Canon evidence edited"], actionsExecuted: canRestore ? ["Reverted canon batch " + batch.id + " after its source was removed or edited."] : [], generatedContent: [], errors: canRestore ? [] : ["Canon source changed after further owner edits. Review stale batch " + batch.id + "; later changes were preserved."] } });
-  }
-  return next;
 }

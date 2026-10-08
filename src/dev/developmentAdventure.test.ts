@@ -25,7 +25,7 @@ describe("development adventure seed", () => {
     );
   });
 
-  it("preserves legacy Arc Director data without sending its directions", () => {
+  it("ships a configured Arc Director on the Current Story Arc", () => {
     const adventure = createDevelopmentAdventure();
     const arc = adventure.components.find((component) => component.type === "currentArc");
 
@@ -41,7 +41,7 @@ describe("development adventure seed", () => {
     const result = buildContext(adventure, { currentInput: "Setu reports to the palace." });
     const arcText = result.sections.find((section) => section.id === "currentArc")?.items.map((item) => item.content).join("\n") ?? "";
     expect(arcText).not.toContain(arc?.arcBreakInstruction ?? "NO BREAK");
-    expect(arcText).not.toContain(arc?.arcSimmerInstruction ?? "NO SIMMER");
+    expect(arcText).toContain(arc?.arcSimmerInstruction ?? "NO SIMMER");
   });
 
   it("builds inspectable context with triggered cards, brains, and summary", () => {
@@ -79,7 +79,7 @@ describe("development adventure seed", () => {
     expect(result.messages[0].content).toContain("# B. AI Instructions");
     expect(result.messages[0].content).toContain("# C. Plot Essentials");
     expect(result.messages[0].content).toContain("# F. Story Cards");
-    expect(result.sections.find((section) => section.id === "components")?.items.filter(item => item.title !== "Play Loop").map((item) => item.id)).toEqual([
+    expect(result.sections.find((section) => section.id === "components")?.items.map((item) => item.id)).toEqual([
       "dev-component-mission-loop",
       "dev-component-dragon-fire",
     ]);

@@ -220,7 +220,7 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
     id: "current-story-arc",
     title: "Current Story Arc",
     category: "Side Menu",
-    summary: "Existing component for the active larger story thread and its developments.",
+    summary: "Auto-updating arc log that tracks what's happening in the active story arc.",
     tags: ["current arc", "story arc", "arc log", "plot", "auto-update", "graduate"],
     body: (
       <>
@@ -231,17 +231,17 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
           problems and consequences, then becomes historical memory when complete.
         </p>
         <p>
-          <strong>Arc Premise (required for the older auto-update path):</strong> Seed the component with a one-line premise
+          <strong>Arc Premise (required for auto-update):</strong> Seed the component with a one-line premise
           describing what this arc is about. Example: <em>"Kira is building toward deserting the Fire Nation,
           but hasn't decided yet."</em> The semantic engine uses this premise as a filter — it only fires when
           a story event meaningfully advances or complicates that specific premise. Without a premise, no
           auto-updates fire.
         </p>
         <p>
-          <strong>Arc updates:</strong> The older premise-filtered path appends 1–3 sentences per relevant event.
-          The post-story canon reconciliation path can replace obsolete active state or clear a resolved arc.
-          Preserve useful past developments as history, but remove misleading live assertions.
-          The old authored Arc Director is retired; its pacing controls and instructions are disabled.
+          <strong>Arc Log:</strong> Each auto-update appends 1–3 sentences capturing a specific arc
+          development. This remains an append-based running record, subject to context budgets.
+          Preserve useful past developments, but mark resolutions and edit misleading active assertions.
+          Authored pacing direction is separate from events that have actually happened.
         </p>
         <h4>Best Practices</h4>
         <ul>
@@ -273,40 +273,6 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
     ),
   },
   {
-    id: "play-loop-story-state",
-    title: "Play Loop and Story State",
-    category: "Side Menu",
-    summary: "How ordinary sandbox play yields to earned plot progression and returns after resolution.",
-    tags: ["play loop", "story director", "active threads", "active pressure", "closure", "canon", "reconciliation"],
-    body: (
-      <>
-        <p>
-          New adventures include a designated <strong>Play Loop</strong> custom component. It supports ordinary life,
-          incidental scenes, NPC autonomy, and dormant possibilities. It is normally included in narrator context.
-          After an accepted story response, a separate evaluator considers the events that actually happened. It
-          suspends the Play Loop only when recent evidence shows material progression and sandbox drift would
-          obstruct it, or when a thread has naturally reached closure. A dormant hook or mention is insufficient.
-          Resolution restores the loop unless another thread independently needs progression or closure.
-        </p>
-        <p>
-          The evaluator does not choose future beats or an ending. Meaningful state changes can prompt a validated
-          reconciliation batch that replaces obsolete live facts in their existing owners while preserving history.
-          Relationship state tracked by an enrolled Brain direction remains there, not on the character card.
-          Review batches in <strong>Memory Suggestions → Story Director</strong> or Components; inspect mode changes in Automations logs and
-          Play Loop inclusion or exclusion in Context Preview. Replacements require approval by default. Auto-approval requires
-          both the Story Director toggle and every affected memory type's toggle, with the global review requirement off.
-          Relationship changes always require review, and item locks still block changes.
-        </p>
-        <p>
-          <strong>Active thread</strong> means a larger story problem actually underway. Current Story Arc is its
-          existing component home when one is used. <strong>Active Pressure</strong> is an older compatibility
-          component for short-lived immediate pressure, assembled with Plot Essentials. They serve different
-          purposes; there is no separate Active Threads component today. The old authored Arc Director is retired.
-        </p>
-      </>
-    ),
-  },
-  {
     id: "side-menu-world-blocks",
     title: "World Blocks",
     category: "Side Menu",
@@ -322,10 +288,8 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
           Custom components can be active, pinned, protected, prioritized, or manual.
         </p>
         <p>
-          The ordinary component-update helper is limited to Plot Essentials. The post-story reconciliation path
-          may also replace existing Current Story Arc and compatibility Active Pressure content, along with eligible
-          Story Cards, Brain thoughts, and enrolled directional relationships, subject to validation and approval.
-          Narration Rules, AI Instructions, Author's Note, and Play Loop are not autonomous rewrite targets.
+          AI-generated updates may only touch component content when the component type is Plot Essentials,
+          and only through approved mutation paths.
         </p>
       </>
     ),
@@ -476,7 +440,7 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
           <li>AI Instructions</li>
           <li>Plot Essentials (including existing Active Pressure)</li>
           <li>Current Story Arc</li>
-          <li>Components (including the designated Play Loop when normal play is active)</li>
+          <li>Components</li>
           <li>Story Cards</li>
           <li>Brains</li>
           <li>Author's Note</li>
@@ -834,11 +798,9 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
         <ul>
           <li>BrainEntry fields for existing BrainEntries.</li>
           <li>StoryCard content, triggers, and state.</li>
-          <li>Plot Essentials through the narrow component-update helper.</li>
-          <li>Existing Current Story Arc and compatibility Active Pressure through typed proposal/update paths.</li>
-          <li>Validated post-story replacement batches for eligible existing live owners, including enrolled directional relationship state; review settings still apply.</li>
+          <li>Component content only when the component type is <code>plotEssentials</code>.</li>
         </ul>
-        <p>Autonomous writes cannot rewrite Narration Rules, AI Instructions, Author's Note, Play Loop, authored Arc Director pacing, provider config, trigger definitions, raw imports, quest definitions, historical records, or the system shell.</p>
+        <p>Rejected AI writes include AI Instructions, Author's Note, provider config, trigger definitions, raw imports, quest definitions, and the system shell.</p>
       </>
     ),
   },

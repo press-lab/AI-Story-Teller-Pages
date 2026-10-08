@@ -602,7 +602,7 @@ export function SettingsPage({
                   <CheckboxField label="Plot Essentials" checked={activeSettings.memoryAutoApprove.plotEssentialsUpdate} onChange={(plotEssentialsUpdate) => updateMemoryAutoApprove({ plotEssentialsUpdate })} />
                   <CheckboxField label="Active Pressure" checked={activeSettings.memoryAutoApprove.plotPressureUpdate} onChange={(plotPressureUpdate) => updateMemoryAutoApprove({ plotPressureUpdate })} />
                   <CheckboxField label="Current Arc (off: review generated events before they become canon)" checked={activeSettings.memoryAutoApprove.currentArcUpdate} onChange={(currentArcUpdate) => updateMemoryAutoApprove({ currentArcUpdate })} />
-                  <CheckboxField label="Story Director (also requires approval settings for every affected memory type)" checked={activeSettings.memoryAutoApprove.storyDirector === true} onChange={(storyDirector) => updateMemoryAutoApprove({ storyDirector })} />
+                  <CheckboxField label="Arc Proposals" checked={activeSettings.memoryAutoApprove.arcProposal} onChange={(arcProposal) => updateMemoryAutoApprove({ arcProposal })} />
                   <CheckboxField label="Story Cards" checked={activeSettings.memoryAutoApprove.storyCard} onChange={(storyCard) => updateMemoryAutoApprove({ storyCard })} />
                   <CheckboxField label="Relationships (inline proposals still require knowledge/interpretation review)" checked={activeSettings.memoryAutoApprove.relationshipUpdate} onChange={(relationshipUpdate) => updateMemoryAutoApprove({ relationshipUpdate })} />
                   <CheckboxField label="Characters" checked={activeSettings.memoryAutoApprove.brainUpdate} onChange={(brainUpdate) => updateMemoryAutoApprove({ brainUpdate })} />
@@ -735,7 +735,7 @@ export function SettingsPage({
                 <h3>{dispatchAdventureTitle}</h3>
                 <p className="muted">
                   Loads the SDN superhero dispatch scenario: Seth / Titan (Absolute Adaptation), Z-Team, a
-                  five-way romantic tangle, a mission loop, preloaded brains, and a Current Story Arc
+                  five-way romantic tangle, a mission loop, preloaded brains, and a configured Arc Director
                   pointed at Shroud and the Red Ring.
                 </p>
               </div>

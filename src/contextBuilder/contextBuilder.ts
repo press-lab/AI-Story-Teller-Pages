@@ -1,4 +1,3 @@
-import { isPlayLoop, playLoopSuspended, currentDirector, effectiveDirectorMode, normalizeDirectorMode, PROGRESSION_DIRECTION, CLOSURE_DIRECTION, RESOLVED_DIRECTION } from '../memory/storyDirectorState';
 import { relationshipFocusCard, relationshipItemId, relationshipTargets, relationshipText } from "../memory/relationships";
 import { ONE_PASS_MEMORY_ID, onePassMemoryInstruction, relationshipMemoryInstruction } from "../memory/onePassMemory";
 import { selectEventMemories } from "../memory/eventMemory";
@@ -458,12 +457,22 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
       logExcludedOnce(component.id, component.title, "inactive");
       return [];
     }
-    // Legacy Arc Director pacing is retained in saves but never sent to the model.
-    if (!component.content.trim() && !component.arcPremise?.trim()) return [];
+    // Arc Director phase gate: the simmer instruction is injected while building;
+    // the break (cost) instruction is withheld from context entirely until the phase
+    // reaches "break", so the model cannot land the climax early on something it never sees.
+    const phase = component.arcState?.phase ?? "simmer";
+    const phaseDirection =
+      phase === "break"
+        ? component.arcBreakInstruction?.trim()
+        : phase === "simmer" || phase === "escalate"
+          ? component.arcSimmerInstruction?.trim()
+          : undefined;
+    if (!component.content.trim() && !component.arcPremise?.trim() && !phaseDirection) return [];
     const premiseHeader = component.arcPremise?.trim() ? `[Arc Premise: ${component.arcPremise.trim()}]\n` : "";
-    const arcContent = premiseHeader + (component.content.trim() || "(no entries yet)");
+    const directionBlock = phaseDirection ? `\n\n[ARC DIRECTION — ${phase.toUpperCase()}]\n${phaseDirection}` : "";
+    const arcContent = premiseHeader + (component.content.trim() || "(no entries yet)") + directionBlock;
     const next = item(component.id, "component", component.title, arcContent, component.priority, component.protected, component.pinned, component.active, component.inclusionPolicy, "user");
-    pushIncluded(next, `Current Story Arc loaded; priority=${component.priority}.`);
+    pushIncluded(next, `Current Story Arc loaded; priority=${component.priority}; arcPhase=${phase}.`);
     return [next];
   });
 
@@ -482,10 +491,6 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
   // E. Components — general always-on or pinned components (not a special typed section above)
   const generalComponentItems = prioritySort(adventure.components).flatMap((component) => {
     if (component.type === "narrationRules" || component.type === "aiInstructions" || component.type === "plotEssentials" || component.type === "currentArc" || component.type === "activePressure" || component.type === "immediateMomentum" || component.type === "authorNote") return [];
-    if (isPlayLoop(component) && playLoopSuspended(adventure)) {
-      logExcludedOnce(component.id, component.title, "inactive", "Play Loop temporarily suspended: " + (normalizeDirectorMode(adventure.activeState.storyDirectorMode) !== "AUTO" ? "Manual Story Director mode" : currentDirector(adventure)?.reason));
-      return [];
-    }
     if (!component.active) {
       logExcludedOnce(component.id, component.title, "inactive");
       return [];
@@ -495,14 +500,6 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
     pushIncluded(next, `Component loaded by ${component.pinned ? "pin" : `alwaysOn/inclusionPolicy=${component.inclusionPolicy}`}; priority=${component.priority}; protected=${component.protected}.`);
     return [next];
   });
-
-  if (playLoopSuspended(adventure)) {
-    const mode = effectiveDirectorMode(adventure);
-    const manual = normalizeDirectorMode(adventure.activeState.storyDirectorMode) !== "AUTO";
-    const direction = item("story-progression", "system", "Story progression permission", mode === "CLOSURE" ? CLOSURE_DIRECTION : mode === "RESOLVED" ? RESOLVED_DIRECTION : PROGRESSION_DIRECTION, 100, true, false, true, "always", manual ? "user" : "system");
-    generalComponentItems.push(direction);
-    pushIncluded(direction, manual ? "Manual Story Director mode; remains until Auto is selected." : "Post-generation semantic judgment; no planned beats or ending.");
-  }
 
   // F. Story Cards + Auto-Cards
   const storyCardItems: ContextItem[] = [];
@@ -802,7 +799,7 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
   const finalRecentMessages = recentMessages.filter((message) => finalRecentMessageIds.has(message.id));
 
   const pendingProposals: MemoryProposal[] = adventure.activeState.memoryProposals.filter(
-    (proposal) => proposal.status === "pending" && proposal.proposedType !== "arcProposal",
+    (proposal) => proposal.status === "pending",
   );
 
   return {

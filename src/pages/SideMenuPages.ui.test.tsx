@@ -7,7 +7,6 @@ import userEvent from "@testing-library/user-event";
 import { useState, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { adventureReducer } from "../state/adventureReducer";
-import { parseCanonBatch } from "../memory/storyDirector";
 import { createDefaultAdventure, makeBrain, makeComponent, makeStoryCard, makeTriggerRule } from "../state/defaults";
 import type { Adventure, AdventureAction } from "../types/adventure";
 
@@ -90,28 +89,7 @@ describe("side menu page smoke coverage", () => {
     }
   });
 
-  it('reviews Story Director suggestions in the inbox and keeps its auto-approval independent', async () => {
-    const user = userEvent.setup();
-    let initial = seedAdventure();
-    initial.storyCards = [makeStoryCard({ id: 'mira', title: 'Mira', type: 'character', content: 'Mira serves the duke.' })];
-    initial = adventureReducer(initial, { type: 'ADD_MESSAGE', role: 'assistant', id: 'evidence', content: 'Mira resigns from the guard.' });
-    const batch = parseCanonBatch(initial, { edits: [{ kind: 'storyCard', id: 'mira', content: 'Mira left the guard.', evidence: 'Mira resigns from the guard.', reason: 'Her resignation changes her role.', change: 'STATE_UPDATE', removedFacts: ['Mira serves the duke.'] }] });
-    initial = adventureReducer(initial, { type: 'RECONCILE_CANON', batch, review: true });
-    renderWithAdventure((adventure, dispatch) => <>
-      <MemoryInboxPage adventure={adventure} dispatch={dispatch} />
-      <span data-testid="canon-content">{adventure.storyCards[0].content}</span>
-    </>, initial);
-    const director = screen.getByRole('checkbox', { name: /Story Director \(also requires/ });
-    expect(director).not.toBeChecked();
-    await user.click(director);
-    expect(director).toBeChecked();
-    expect(screen.getByRole('checkbox', { name: 'Story Cards' })).not.toBeChecked();
-    expect(screen.getByTestId('canon-content')).toHaveTextContent('Mira serves the duke.');
-    await user.click(screen.getByRole('button', { name: 'Apply all replacements' }));
-    expect(screen.getByTestId('canon-content')).toHaveTextContent('Mira left the guard.');
-  });
-
-  it("hides the retired Arc Director while retaining Current Arc and Brain generation", async () => {
+  it("renders the Arc Director on a Current Arc component and the AI generators", async () => {
     const arcAdventure: Adventure = {
       ...seedAdventure(),
       components: [makeComponent({ title: "Current Story Arc", type: "currentArc", content: "The Red Ring tightens." })],
@@ -125,10 +103,10 @@ describe("side menu page smoke coverage", () => {
       />,
     );
     // jsdom keeps <details> content in the DOM regardless of open state
-    expect(screen.queryByText("🎬 Arc Director")).not.toBeInTheDocument();
-    expect(screen.queryByText(/Pacing triggers/)).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Generate Arc" })).not.toBeInTheDocument();
-    expect(screen.getByDisplayValue("The Red Ring tightens.")).toBeInTheDocument();
+    expect(screen.getByText("🎬 Arc Director")).toBeInTheDocument();
+    expect(screen.getByText(/Pacing triggers/)).toBeInTheDocument();
+    expect(screen.getByText(/Multiple matches add multiple points/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Generate Arc" })).toBeInTheDocument();
     cleanup();
 
     renderWithAdventure((adventure, dispatch) => (
@@ -137,7 +115,7 @@ describe("side menu page smoke coverage", () => {
     expect(screen.getByRole("button", { name: "✨ Generate from name" })).toBeInTheDocument();
   });
 
-  it("does not expose manual break controls for old configured arcs", async () => {
+  it("shows when the Current Arc break has been manually armed", async () => {
     const user = userEvent.setup();
     const arcAdventure: Adventure = {
       ...seedAdventure(),
@@ -157,11 +135,13 @@ describe("side menu page smoke coverage", () => {
       arcAdventure,
     );
 
-    expect(screen.queryByRole("button", { name: "Spring it now" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Break armed" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Spring it now" }));
+
+    expect(screen.getByRole("button", { name: "Break armed" })).toBeDisabled();
+    expect(screen.getByRole("status")).toHaveTextContent("Break armed for next output");
   });
 
-  it("hides Arc Director controls in the Play sidebar for an old aftermath arc", async () => {
+  it("keeps Arc Director controls visible in the Play sidebar for an empty aftermath arc", async () => {
     const user = userEvent.setup();
     const arcAdventure: Adventure = {
       ...seedAdventure(),
@@ -191,9 +171,12 @@ describe("side menu page smoke coverage", () => {
     await user.click(arcSummary as HTMLElement);
 
     const arcDetails = document.querySelector(".component-arc-details");
-    expect(arcDetails).toBeNull();
-    expect(screen.queryByText('AFTERMATH')).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Complete Arc → Story Card" })).toBeDisabled();
+    expect(arcDetails).toHaveAttribute("open");
+    expect(within(arcDetails as HTMLElement).getByText("Arc Director")).toBeInTheDocument();
+    expect(within(arcDetails as HTMLElement).getAllByText("AFTERMATH")).toHaveLength(2);
+    expect(within(arcDetails as HTMLElement).getByText("No arc log")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("No arc premise or log to save yet.");
+    expect(screen.getByRole("button", { name: "Complete Arc -> Story Card" })).toBeDisabled();
   });
 
   it("completes the Current Arc into a Story Card with visible feedback", async () => {
@@ -222,12 +205,11 @@ describe("side menu page smoke coverage", () => {
       arcAdventure,
     );
 
-    await user.click(screen.getByRole("button", { name: "Complete Arc → Story Card" }));
-    await user.click(screen.getByRole("button", { name: "Confirm — Graduate Arc" }));
+    await user.click(screen.getByRole("button", { name: "Complete Arc -> Story Card" }));
 
     expect(screen.getByRole("status")).toHaveTextContent("Completed arc saved as Story Card: Break the Red Ring.");
     expect(screen.getByTestId("story-card-count")).toHaveTextContent("1");
-    expect(screen.getByRole("button", { name: "Complete Arc → Story Card" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Complete Arc -> Story Card" })).toBeDisabled();
   });
 
   it("sends a guided Story Card builder request to the AI memory suggestion flow", async () => {

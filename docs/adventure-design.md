@@ -2,12 +2,6 @@
 
 Authoring reference: [Fact ownership and overlap audit](./fact-ownership.md).
 
-This guide explains an authored mission-loop and Arc Director approach. Those
-remain optional tools, not the default requirement for every scenario. New
-adventures already include a designated Play Loop, and a separate post-story
-evaluator can suspend it for earned progression or closure and restore it after
-resolution. See [Story-led progression and canon reconciliation](./story-director.md).
-
 This is the distilled design theory behind AI Story Teller's arc, brain, and
 component systems — what actually makes an adventure stay fun for hundreds or
 thousands of turns, and how the app's features map onto it. Written from a

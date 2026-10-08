@@ -1,4 +1,3 @@
-import { StoryDirectorModeControl } from '../components/StoryDirectorModeControl';
 import { useEffect, useRef, useState } from "react";
 import type { InputMode, Message } from "../types/adventure";
 import type { PlayRuntimeProps } from "./pageTypes";
@@ -154,8 +153,7 @@ export function PlayPage({
   const lastAssistant = [...adventure.messages].reverse().find((m) => m.role === "assistant");
   const latestMessageId = adventure.messages.at(-1)?.id;
   const nextTurnNote = adventure.activeState.nextTurnNote;
-  const pendingMemoryCount = adventure.activeState.memoryProposals.filter((p) => p.status === "pending" && p.proposedType !== "arcProposal").length
-    + (adventure.activeState.canonBatches?.filter(b => b.status === "pending").length ?? 0);
+  const pendingMemoryCount = adventure.activeState.memoryProposals.filter((p) => p.status === "pending").length;
 
   const budgetDropped = contextResult?.excludedItems.filter((i) => i.reason === "budget_exceeded") ?? [];
   const droppedMessages = budgetDropped.filter((i) => i.sourceType === "message").length;
@@ -466,7 +464,6 @@ export function PlayPage({
         {/* Compact tool strip — visible on tablet/mobile, hidden on desktop */}
         <nav className="play-tool-row" aria-label="Adventure tools">
           {toolButtons}
-          <StoryDirectorModeControl adventure={adventure} dispatch={dispatch} compact />
         </nav>
 
         {composerOpen && (
@@ -679,7 +676,6 @@ export function PlayPage({
 
         <nav className="play-tool-nav" aria-label="Adventure tools">
           {toolButtons}
-          <StoryDirectorModeControl adventure={adventure} dispatch={dispatch} compact />
         </nav>
 
         {playPanelContent && (

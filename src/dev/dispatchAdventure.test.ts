@@ -25,7 +25,7 @@ describe("dispatch adventure seed", () => {
     );
   });
 
-  it("preserves legacy Arc Director data without sending its directions", () => {
+  it("ships a configured Arc Director that starts simmering with the break withheld", () => {
     const adventure = createDispatchAdventure();
     const arc = adventure.components.find((component) => component.type === "currentArc");
 
@@ -40,7 +40,7 @@ describe("dispatch adventure seed", () => {
     const result = buildContext(adventure, { currentInput: "Seth reports to SDN." });
     const arcText = result.sections.find((section) => section.id === "currentArc")?.items.map((item) => item.content).join("\n") ?? "";
     expect(arcText).not.toContain(arc?.arcBreakInstruction ?? "NO BREAK");
-    expect(arcText).not.toContain(arc?.arcSimmerInstruction ?? "NO SIMMER");
+    expect(arcText).toContain(arc?.arcSimmerInstruction ?? "NO SIMMER");
   });
 
   it("gives every non-player character card a VOICE CONTRACT", () => {

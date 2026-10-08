@@ -57,7 +57,7 @@ const COMPONENT_GEN_PROMPTS: Partial<Record<ComponentType, string>> = {
   narrationRules:
     "Write a Narration Rules block — the per-adventure behavior contract. Cover POV and tense, prose format, player agency (never decide the player's actions, words, or feelings), continuity discipline, tone, and a few hard \"never\" rules. Make it behavioral and specific to THIS adventure, not generic boilerplate.",
   aiInstructions:
-    "Write an AI Instructions block — stable scenario-specific genre, drift-prevention, and prose behavior rules that complement, and do not duplicate, the narration rules. The existing designated Play Loop owns repeatable sandbox or mission-loop instructions; do not copy them here, where they cannot be suspended for earned plot progression. Do not store character facts, lore facts, current mission state, backstory, or card-like memory here. Use named ALL-CAPS sections with tight bullets.",
+    "Write an AI Instructions block — scenario-specific genre, drift-prevention, scene-loop, and prose behavior rules that complement, and do not duplicate, the narration rules. Do not store character facts, lore facts, current mission state, backstory, or card-like memory here. Use named ALL-CAPS sections with tight bullets.",
   authorNote:
     "Write a single concise Author's Note — near-context steering for the next few responses. Keep characters active and initiating and the scene moving. One or two sentences.",
 };

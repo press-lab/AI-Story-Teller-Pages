@@ -83,21 +83,30 @@ Memory Inbox / Memory Proposals is the path for **unstructured AI-suggested new 
 
 If you want to require user review for all semantic memory writes, set `requireApprovalForAutoUpdates` to `true` in Settings. Keep tests for both modes.
 
-## Story-led progression and canon reconciliation
+## Arc Director (deterministic story pacing)
 
-See [Story Director](docs/story-director.md). A designated custom Play Loop is conditionally included; post-generation semantic judgment never advances the authored Arc Director counters/phases. Keep its default conservative and preserve sandbox wording. Evaluation failures with no grounded items restore normal play in Auto; manual modes persist until Auto is selected. Evidence references resolve to exact accepted assistant text, with latest-only references for detected changes and canon edits. Invalid evaluator items must not discard independently validated threads, but canon batches remain atomic; canon reconciliation failures preserve an independently validated progression verdict. Preserve rejected provider responses and allow at most one validation repair request per stage.
+The Arc Director makes an antagonist's arc climb and *break* on its own, configured on a single `currentArc` component. The design rationale is in `docs/adventure-design.md`; this is the implementation contract.
 
-The dedicated `canonReconciliation` AI-update boundary is an explicit exception to the legacy narrow mutation rules above: evidence-backed atomic replacements may update existing state components (Plot Essentials, Current Arc, Active Pressure), nonhistorical cards, existing Brain thoughts, and enrolled relationships. It must preserve owner history, reject stale batches atomically, respect memory approval settings, and require review for relationships. It may not mutate narrator instructions, Play Loop text, authored pacing, or provider configuration. Keep discarded-generation rollback and mutation-boundary tests.
+**Where it lives**
+- `ArcPacingState` and the `arc*` fields on `ComponentEntry` (`arcThreadKeys`, `arcPace`, `arcTriggerMode`, `arcSimmerInstruction`, `arcBreakInstruction`, `arcState`) — `src/types/adventure.ts`.
+- The phase gate — the `currentArc` block in `src/contextBuilder/contextBuilder.ts`.
+- `ADVANCE_ARC_PACING` (per-turn engagement counter + phase transitions) and `SET_ARC_PHASE` (manual override / confirm a pending break), plus the pace→threshold table — `src/state/adventureReducer.ts`.
+- The engagement signal — `src/state/turnPipeline.ts` dispatches `ADVANCE_ARC_PACING` with the Story Card / Brain ids that triggered in-scene this turn.
+- Setup UI — the `ArcDirector` panel in `src/pages/ComponentsPage.tsx`.
 
-## Retired Arc Director
+**Phases:** `simmer → escalate → break → aftermath`. `simmer`/`escalate` inject `arcSimmerInstruction`; `break` injects `arcBreakInstruction`; `aftermath` injects neither.
 
-The authored Arc Director is retired. Keep its serialized fields and legacy types for save compatibility, but do not expose pacing controls, advance pacing during turns, generate continuations or arc proposals, or include simmer/break directions in provider context. Reject legacy `arcProposal` memory writes, including approval of proposals loaded from saves. Current Story Arc remains an active fact/state component; its content and premise are distinct from retired pacing instructions.
+**Invariants — do not break these:**
+- `arcBreakInstruction` (the cost) MUST NOT be assembled into context before `phase === "break"`. This is the core safety property — the model cannot land the climax on something it never sees. Any refactor of the `currentArc` context block must preserve it; a contextBuilder test guards it.
+- Pacing advances on COUNTED engagement (`threadEngagement`), never on an LLM verdict. Do not add a "let the model judge if it's dramatic yet" path — that reintroduces the unmanaged ledger the feature exists to delete.
+- Phase transitions are one-way except an explicit `SET_ARC_PHASE` reset to `simmer` (which clears `threadEngagement`).
+- Engagement counts only ids listed in the arc's `arcThreadKeys`.
 
-Story Director canon changes require explicit approval by default. Automatic application requires `memoryAutoApprove.storyDirector === true`, approval enabled for every affected memory type, and the global semantic review requirement off. Relationships still require review. Per-item Story Director locks continue to block changes. Pending batches are reviewable in Memory Suggestions and Components.
+**Model-fidelity constraint (system-wide):** the design assumes a model that honors long rule blocks (DeepSeek V3.2 / `deepseek-chat` class). The Arc Director controls only *when* the break instruction appears; whether the model *spends the authored cost* at the climax is a model-capability matter the code does not and cannot enforce. Flash-tier models skim long prompts and will fake the cost.
 
 ## AI Generation Buttons (user-initiated)
 
-`src/ai/generators.ts` powers the user-initiated Generate buttons for component content and character Brains. These run only on explicit user action and remain distinct from autonomous memory writes. Legacy authored Arc Director generators are no longer exposed in the UI; do not restore their controls or automatic continuation calls.
+`src/ai/generators.ts` powers the ✨ Generate buttons: component content (Narration Rules / AI Instructions / Author's Note), a full Arc Director setup from a concept, and a character Brain from a name. These are distinct from autonomous AI memory mutation: they run only on an explicit user click, are grounded in a compact adventure snapshot, and produce content the user reviews (preview → Apply) or that lands via a reducer action the user invoked. They are therefore allowed to populate `narrationRules` / `aiInstructions` / `authorNote` / `currentArc` arc fields / new Brains — which *autonomous* AI memory updates may NOT touch. Keep that distinction: the AI-write boundary in the Memory Placement Policy governs *unprompted* writes, not user-requested generation.
 
 ## Adding a Memory Surface
 

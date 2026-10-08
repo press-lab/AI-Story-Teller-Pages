@@ -419,8 +419,7 @@ export default function App() {
     }
   }
 
-  const pendingProposalCount = (adventure?.activeState.memoryProposals.filter((p) => p.status === "pending" && p.proposedType !== "arcProposal").length ?? 0)
-    + (adventure?.activeState.canonBatches?.filter(b => b.status === "pending").length ?? 0);
+  const pendingProposalCount = adventure?.activeState.memoryProposals.filter((p) => p.status === "pending").length ?? 0;
 
   const page = (() => {
     if (activeTab === "adventures") {

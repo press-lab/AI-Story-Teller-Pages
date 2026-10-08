@@ -6,10 +6,8 @@ The hands-on recipe for authoring an adventure that runs long and well. This is
 the *how*; for the *why* behind every choice, read
 [`adventure-design.md`](./adventure-design.md). The worked example throughout is
 the dev scenario **Heir of the Dragon Throne**
-([`src/dev/developmentAdventure.ts`](../src/dev/developmentAdventure.ts)) — study
-its shape as a worked example. Its authored Arc Director is optional; the current
-default is a designated Play Loop plus post-generation story-state evaluation.
-See [Story-led progression and canon reconciliation](./story-director.md).
+([`src/dev/developmentAdventure.ts`](../src/dev/developmentAdventure.ts)) — copy
+its shape.
 
 > **Model first.** Author and play these on **DeepSeek V3.2 (`deepseek-chat`)**
 > or better. The whole design assumes a model that honours long rule blocks and
@@ -21,21 +19,18 @@ See [Story-led progression and canon reconciliation](./story-director.md).
 
 ## The shape of a scenario
 
-A scenario draws on these parts as needed:
+A scenario is six things working together:
 
 | Piece | Component / object | Job |
 |---|---|---|
 | **Current truth + premise** | Plot Essentials | What is happening now + always-on constraints |
 | **The cast** | Story Cards (`character`) **+ Voice Contracts** | Who's fun in a room |
 | **Interior life** | Brains | Event-specific thoughts, reactions, and situational intentions |
-| **The engine** | the designated Play Loop custom component | Ordinary sandbox rhythm, temporarily omitted during earned progression or closure |
-| **The active thread** | Current Story Arc when used | The larger conflict actually underway and its current consequences |
-| **Optional authored pacing** | Arc Director on Current Story Arc | A separately authored simmer/break instruction for scenarios that want it |
+| **The engine** | a custom "missions" component | The repeatable loop that prints scenes |
+| **The spine** | Current Story Arc + **Arc Director** | The conflict that climbs and breaks |
 | **The hook** | Opening Scene + Author's Note | Where it starts, what is pressing now, how it sounds |
 
-Build only the pieces the scenario needs. A dormant possibility does not need an
-active Current Story Arc or an Arc Director. Active Pressure is a separate older
-compatibility component for immediate pressure, not an active-thread owner.
+Build them in that order.
 
 ---
 
@@ -48,8 +43,8 @@ Essentials, Author's Note, Story Cards, and Brains.
 | Want | Choose | What it changes |
 |---|---|---|
 | Open-ended exploration | Sandbox | Lighter AI Instructions, broader factions/locations, looser hooks, lean PE |
-| Jobs and team fallout | Mission loop | Tailor the existing Play Loop after creation; place current truth where nearly always needed and team/enemy facts on cards |
-| Investigation | Mystery | Current known question in PE only when nearly always needed, clues/suspects/secrets on cards, earned answers allowed |
+| Jobs and team fallout | Mission loop | A custom loop component, current assignment pressure, team/enemy cards |
+| Investigation | Mystery | Current known question in PE, clues/suspects/secrets on cards, no early answer |
 | Power games | Faction politics | Public pressure in PE, faction leverage and secrets on cards |
 | Relationship heat | Romance drama | Choice-driven tension, one relationship owner plus event-specific Brain reactions, no forced commitment |
 | Danger and dread | Survival / horror | Threat rules, scarcity, safe places, consequences |
@@ -170,33 +165,27 @@ is authoring guidance, not a change to the generator or an automatic promotion r
 
 ---
 
-## Step 4 — The engine: tailor the existing Play Loop when useful
+## Step 4 — The engine: a mission-loop component
 
-New adventures already have a designated Play Loop custom component. Its normal
-sandbox behavior can be tailored for a mission-oriented scenario. An older
-version of *Heir* used the following always-on "The Crown's Missions" block:
+Add one always-on `custom` component that defines the **repeatable loop** — the
+thing that prints the next scene without you writing plot. From *Heir*'s "The
+Crown's Missions":
 
 > A job comes down → the player and crew run it → fallout is processed back home
 > through banter, rivalry, romance, training, court politics → someone levels up,
-> makes an enemy, or learns something → another assignment may arrive. Let
-> missions occasionally expose fragments of the larger conspiracy.
+> makes an enemy, or learns something → the next job arrives. **Always leave a new
+> job, complication, or loose thread on the table when a scene resolves.** Let
+> missions bleed fragments of the larger conspiracy into view over time.
 
-The test of a useful mission rhythm is whether ordinary scenes remain enjoyable
-between major developments. Tailor the existing designated Play Loop in Components
-if a dispatcher or recurring assignment cycle helps the scenario. Do not create
-a second always-on loop or require a new job after every resolution. Keep
-assignments, profiles, and active-thread state with their respective owners.
+The test of a good loop: **does each phase manufacture the input to the next?**
+If yes, it runs forever. Add a dispatcher figure (a handler who hands down jobs)
+so the loop has an in-world source. Declare this component's purpose as the
+reusable mission loop; keep assignments, profiles, and arc progress with their
+respective owners.
 
 ---
 
-## Step 5 — Optional active thread and authored Arc Director
-
-Current Story Arc can hold the active larger thread. The post-story evaluator
-can suspend the Play Loop on earned progression or closure and reconcile its
-current state after accepted events. No authored phase, timer, or next beat is
-required. The following Arc Director setup is an optional approach used by the
-worked example; its deterministic engagement count remains separate from the
-semantic story-state evaluator.
+## Step 5 — The spine: the Arc Director
 
 On a **Current Story Arc** component, open the Arc Director and set:
 
@@ -250,20 +239,16 @@ Set the **response length** to a target (slider on the Play page) — V3.2 write
 
 ## Step 7 — Run it
 
-- In default play, a dormant thread can stay background indefinitely. Material
-  investigation or confrontation can shift the post-story director into
-  progression or closure without predetermining the next scene or answer.
-- If using the optional authored Arc Director, its selected-card engagements
-  advance its phase independently of the post-story semantic decision.
-- With the authored Arc Director, when you reach the real confrontation, **Arc Director → "Spring it now."** The
+- The arc **climbs on what you keep touching** — lean into the conspiracy thread
+  and it builds; ignore it and it stays background.
+- When you reach the real confrontation, **Arc Director → "Spring it now."** The
   cost instruction enters context and the model lands the climax with stakes.
   ("Reset to simmer" pulls it back if you sprang early.)
-- After an authored break resolves (aftermath), the Arc Director **drafts next-arc directions
+- After the break resolves (aftermath), the Director **drafts next-arc directions
   and offers them in the Arc Director.** Pick one → the finished arc is **banked
   as a Story Card** and the next arc seeds, simmering. That's how the story
-  can continue when you choose. A resolved plot does not require a replacement;
-  ordinary sandbox play can resume. If you want another authored arc, a surviving
-  thread can be promoted (e.g. *Azula takes the leaderless Society*).
+  self-continues — a stranger never becomes the next villain; a surviving thread
+  is promoted (e.g. *Azula takes the leaderless Society*).
 - Bank completed arcs with **"Complete Arc → Story Card"** (the next-arc chooser
   does this for you automatically).
 
@@ -292,8 +277,9 @@ Set the **response length** to a target (slider on the Play page) — V3.2 write
       mode and triggers chosen deliberately.
 - [ ] Brains for major characters: event-specific reactions and situational intentions; durable agendas stay on cards; PC brain respects player control.
 - [ ] Run the [ownership overlap audit](./fact-ownership.md#overlap-audit), including enrolled relationship state and duplicate behavior rules.
-- [ ] The existing designated Play Loop preserves enjoyable ordinary play; tailor it only if a mission rhythm helps.
-- [ ] Current Story Arc for an active larger thread when needed; optional Arc Director only if authored simmer/break pacing is desired.
+- [ ] A mission-loop component whose phases feed each other; a dispatcher figure.
+- [ ] Current Story Arc + Arc Director: baddie threads, simmer + cost
+      instructions, sensible pace, **Ask** mode, **starts simmering**.
 - [ ] Opening scene = backdrop + power + relationship + hook.
 - [ ] Author's Note for tone; response length set as a target.
 - [ ] Running on DeepSeek V3.2 or better.

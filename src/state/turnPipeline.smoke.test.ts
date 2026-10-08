@@ -482,7 +482,7 @@ describe("full turn smoke path", () => {
     expect(result.responseContent).toBe("Margo sees the ward answer Seth first.");
   });
 
-  it("does not advance retired Arc Director pacing even when a thread matches", async () => {
+  it("does not advance Arc Director pacing from pinned context unless the thread actually matched", async () => {
     let adventure = createDefaultAdventure("Pinned Arc");
     adventure = dispatch(adventure, {
       type: "UPSERT_STORY_CARD",
@@ -536,7 +536,7 @@ describe("full turn smoke path", () => {
 
     expect(matched.preProviderContext.triggeredThreadIds).toContain("card-shroud");
     arc = matched.adventure.components.find((component) => component.id === "component-arc");
-    expect(arc?.arcState?.threadEngagement["card-shroud"] ?? 0).toBe(0);
+    expect(arc?.arcState?.threadEngagement["card-shroud"]).toBe(1);
   });
 
   it("supports a silent continue cue while still processing one-pass memory updates", async () => {

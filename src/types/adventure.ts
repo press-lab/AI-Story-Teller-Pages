@@ -1,4 +1,3 @@
-import type { CanonBatch, StoryDirectorEvaluation, StoryDirectorMode, StoryDirectorState } from '../memory/storyDirectorState';
 export type ISODateString = string;
 export type JsonObject = Record<string, unknown>;
 
@@ -94,9 +93,6 @@ export interface MemoryUpdateHistoryEntry {
 }
 
 export interface ComponentEntry {
-  contextRole?: "playLoop" | "general";
-  /** Plot Essentials / Current Arc only: Story Director reconciliation may not make new edits. Other update paths ignore it. */
-  lockFromStoryDirector?: boolean;
   id: string;
   title: string;
   type: ComponentType;
@@ -195,8 +191,6 @@ export interface StoryCard {
   archivedFacts?: string;
   /** When true, the LLM will automatically update this card after relevant scenes. */
   autoUpdate: boolean;
-  /** Story Director reconciliation may not make new edits to this card. Other update paths ignore it. */
-  lockFromStoryDirector?: boolean;
   /** Minimum turns between AI-generated updates or proposals for this card. */
   autoUpdateCooldownTurns: number;
   lastAutoUpdateTurn?: number;
@@ -612,11 +606,6 @@ export interface StoryEditHistoryEntry {
 }
 
 export interface ActiveState {
-  storyDirector?: StoryDirectorState;
-  storyDirectorMode?: StoryDirectorMode;
-  /** Complete per-response evaluation history for reviewing Story Director against the play transcript. */
-  storyDirectorEvaluations?: StoryDirectorEvaluation[];
-  canonBatches?: CanonBatch[];
   turn: number;
   forceIncludeNextTurn: ForceIncludeEntry[];
   triggerLog: TriggerLogEntry[];
@@ -669,8 +658,6 @@ export interface Adventure {
 }
 
 export interface MemoryAutoApproveSettings {
-  /** Story Director also requires each affected memory type to permit auto-approval. */
-  storyDirector: boolean;
   summaryUpdate: boolean;
   plotEssentialsUpdate: boolean;
   currentArcUpdate: boolean;
@@ -821,10 +808,6 @@ export type BrainPatch = {
 };
 
 export type AdventureAction =
-  | { type: "SET_STORY_DIRECTOR_MODE"; mode: StoryDirectorMode }
-  | { type: "SET_STORY_DIRECTOR"; state: StoryDirectorState }
-  | { type: "RECONCILE_CANON"; batch: CanonBatch; review: boolean }
-  | { type: "REVIEW_CANON_BATCH"; batchId: string; approve: boolean }
   | { type: "SET_TITLE"; title: string }
   | { type: "SET_OPENING_SCENE"; content: string }
   | { type: "UPDATE_METADATA"; metadata: JsonObject }
@@ -877,7 +860,6 @@ export type AdventureAction =
   | { type: "MARK_TRIGGER_FIRED"; triggerRuleId: string; turn: number }
   | { type: "LOG_TRIGGER_FIRE"; entry: TriggerLogEntry }
   | { type: "LOG_EVALUATION_RESULT"; entry: EvaluationLogEntry }
-  | { type: "RECORD_STORY_DIRECTOR_EVALUATION"; evaluation: StoryDirectorEvaluation }
   | { type: "FORCE_INCLUDE_NEXT_TURN"; targetType: ForceIncludeTargetType; targetId: string }
   | { type: "ADD_RAW_IMPORT"; rawImport: RawImportEntry }
   | { type: "UPDATE_RAW_IMPORT"; rawImportId: string; patch: Partial<RawImportEntry> }

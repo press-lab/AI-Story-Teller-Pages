@@ -5,7 +5,7 @@ import { saveAdventure } from "../db/adventureDb";
 import { scanEventMemories } from "../memory/eventMemoryScan";
 import { regenerateProposalContent } from "../memory/memoryDetection";
 import { runCompactMemoryFallback } from "../memory/compactMemoryFallback";
-import { generateArcDirector, generateArcFromHistory, generateBrainFromName as generateBrainEntry, generateComponentContent } from "../ai/generators";
+import { generateArcContinuations, generateArcDirector, generateArcFromHistory, generateBrainFromName as generateBrainEntry, generateComponentContent, pickConvergentContinuation } from "../ai/generators";
 import { PLOT_ESSENTIALS_BEST_PRACTICES } from "../ai/authoringBestPractices";
 import { runStoryCardAudit, type AuditRecommendation } from "../memory/storyCardAudit";
 import { runComponentAudit, type ComponentAuditRecommendation } from "../memory/componentAudit";
@@ -179,6 +179,7 @@ export function useAdventureRuntime(
   const isSubmittingRef = useRef(false);
   const semanticInFlight = useRef(new Set<string>());
   const memoryFallbackInFlight = useRef(new Set<string>());
+  const arcInFlight = useRef(new Set<string>());
   const queuedUpdatesRef = useRef<PendingAdventureUpdate[]>([]);
   const wasHiddenRef = useRef(false);
   const pendingRetryRef = useRef(false);
@@ -249,7 +250,7 @@ export function useAdventureRuntime(
 
   async function startMemoryFallback(snapshot: Adventure) {
     if (!snapshot.memoryDetectionSettings.enabled || memoryFallbackInFlight.current.has(snapshot.id)) return;
-    const latest = snapshot.activeState.evaluationLog.find(log => log.turn >= snapshot.activeState.turn - 1 && log.actionsExecuted.includes("One-pass memory: no additional API call"));
+    const latest = snapshot.activeState.evaluationLog[0];
     const onePassFailed = latest?.actionsExecuted.includes("One-pass memory: no additional API call")
       && latest.errors.some(message => /Memory envelope missing|Incomplete or oversized memory envelope|Invalid memory JSON/.test(message));
     if (!onePassFailed) return;
@@ -321,6 +322,38 @@ export function useAdventureRuntime(
     setContextResult(buildContext({ ...adventure, memoryDetectionSettings: globalMemorySettings }, { latestModelOutput: latestAssistantOutput(adventure) }));
   }, [adventure, globalMemorySettings, setContextResult]);
 
+  // When an arc reaches aftermath, draft next-arc directions once so the player can pick
+  // where the story goes next without architecting it. Gated by arcContinuationOptions
+  // being undefined so it runs a single time per resolution.
+  async function checkArcContinuation(snapshot: Adventure) {
+    const arc = snapshot.components.find(
+      (c) =>
+        c.type === "currentArc" &&
+        c.arcState?.phase === "aftermath" &&
+        c.arcContinuationOptions === undefined &&
+        (c.arcThreadKeys?.length ?? 0) > 0,
+    );
+    if (!arc || arcInFlight.current.has(snapshot.id)) return;
+    arcInFlight.current.add(snapshot.id);
+    try {
+      const options = await generateArcContinuations(snapshot, activeProviderConfig, arc);
+      if (adventureRef.current?.id !== snapshot.id) return;
+      if (arc.arcAutoContinue) {
+        // Silent auto-continue: the Director picks the most convergent direction and seeds it
+        // itself — no chooser, no spoiler. The new threat surfaces through play.
+        const pick = pickConvergentContinuation(options, arc.arcState?.threadEngagement ?? {});
+        if (pick) applyActionsAndPersist([{ type: "APPLY_ARC_CONTINUATION", componentId: arc.id, option: pick }]);
+        else applyActionsAndPersist([{ type: "SET_ARC_CONTINUATIONS", componentId: arc.id, options: [] }]);
+      } else {
+        applyActionsAndPersist([{ type: "SET_ARC_CONTINUATIONS", componentId: arc.id, options }]);
+      }
+    } catch {
+      // non-fatal — options stay ungenerated and we retry next turn
+    } finally {
+      arcInFlight.current.delete(snapshot.id);
+    }
+  }
+
   async function submitTurn(text: string, mode: InputMode = "story") {
     if (!adventure || loading || isSubmittingRef.current) return;
     isSubmittingRef.current = true;
@@ -339,7 +372,6 @@ export function useAdventureRuntime(
         text,
         mode,
         providerConfig: mergeProviderConfig(base, providerSettings),
-        onStoryAccepted: async snapshot => { setAdventure(snapshot); await saveAdventure(snapshot); },
         sendChatCompletion: async (messages, snapshot, context) => {
           snapshotWithUserMsg = snapshot;
           setAdventure(snapshot);
@@ -370,6 +402,7 @@ export function useAdventureRuntime(
       if (mode !== "comms") {
         void startMemoryFallback(next);
         void startSemanticEvaluation(next);
+        void checkArcContinuation(next);
       }
     } catch (providerError) {
       const errMsg = providerError instanceof Error ? providerError.message : "Provider request failed.";
@@ -413,7 +446,6 @@ export function useAdventureRuntime(
         recordUserInput: false,
         providerCue: "[continue]",
         providerConfig: mergeProviderConfig(base, providerSettings),
-        onStoryAccepted: async snapshot => { setAdventure(snapshot); await saveAdventure(snapshot); },
         sendChatCompletion: async (messages, snapshot, context) => {
           setAdventure(snapshot);
           setContextResult(context);
@@ -439,6 +471,7 @@ export function useAdventureRuntime(
       isSubmittingRef.current = false;
       void startMemoryFallback(next);
       void startSemanticEvaluation(next);
+      void checkArcContinuation(next);
     } catch (providerError) {
       setError(providerError instanceof Error ? providerError.message : "Continue failed.");
       setAdventure(adventure);
@@ -479,7 +512,6 @@ export function useAdventureRuntime(
         response,
         mode: "story",
         providerConfig: regenConfig,
-        onStoryAccepted: async snapshot => { setAdventure(snapshot); await saveAdventure(snapshot); },
         preProviderContext: context,
         incrementTurn: false,
         advanceArcPacing: false,

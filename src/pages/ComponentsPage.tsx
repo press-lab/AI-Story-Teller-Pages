@@ -1,12 +1,250 @@
-import { StoryDirectorPanel } from '../components/StoryDirectorPanel';
-import { isPlayLoop } from '../memory/storyDirectorState';
 import { useState } from "react";
-import type { ComponentEntry, ComponentType, ContextInclusionPolicy, PlotAIBuilderRequest } from "../types/adventure";
+import type { Adventure, AdventureAction, ArcPace, ArcPhase, ArcTriggerMode, ComponentEntry, ComponentType, ContextInclusionPolicy, PlotAIBuilderRequest } from "../types/adventure";
 import type { ComponentAuditRecommendation } from "../memory/componentAudit";
 import { makeComponent } from "../state/defaults";
 import { approximateTokenCount } from "../tokenizer/approximateTokenCount";
 import type { AdventurePageProps } from "./pageTypes";
 import { CheckboxField, Field, Highlight, MemoryUpdateHistory, NumberInput, TokenCountBadge, UpdatedAtBadge, contentSnippet, formatCompactTimestamp } from "./shared";
+
+const ARC_PACE_LABELS: Record<ArcPace, string> = {
+  short: "Short — breaks quickly",
+  medium: "Medium",
+  long: "Long",
+  epic: "Epic — a slow, season-long burn",
+};
+
+/**
+ * Arc Director — set the antagonist ("the Baddie"), the pace ("the Timer"), the cost,
+ * and who springs the climax. Pacing is deterministic; the break instruction is withheld
+ * from the AI's context until the arc actually reaches the break phase.
+ */
+function ArcDirector({
+  adventure,
+  component,
+  dispatch,
+  onGenerateArc,
+  onProposeArcFromHistory,
+  loading,
+}: {
+  adventure: Adventure;
+  component: ComponentEntry;
+  dispatch: (action: AdventureAction) => void;
+  onGenerateArc?: (componentId: string, concept: string) => Promise<void>;
+  onProposeArcFromHistory?: (componentId: string) => Promise<void>;
+  loading?: boolean;
+}) {
+  const [concept, setConcept] = useState("");
+  const [arcActionStatus, setArcActionStatus] = useState("");
+  const arc = component.arcState ?? { phase: "simmer" as ArcPhase, tier: 0, threadEngagement: {}, pendingBreak: false };
+  const threadKeys = component.arcThreadKeys ?? [];
+  const threadSet = new Set(threadKeys);
+  const turn = adventure.activeState.turn;
+  const configured = threadKeys.length > 0;
+  const totalEngagement = threadKeys.reduce((sum, key) => sum + (arc.threadEngagement[key] ?? 0), 0);
+  const canCompleteArc = Boolean(component.arcPremise?.trim() || component.content.trim());
+  const phaseStatus = arc.phase === "break"
+    ? "Break armed for next output. Press Continue or take a turn."
+    : arc.phase === "aftermath"
+      ? canCompleteArc
+        ? "Arc is in aftermath. Complete it to a Story Card or choose the next direction."
+        : "No arc premise or log to save yet."
+      : "";
+
+  const candidates = [
+    ...adventure.storyCards.map((card) => ({ id: card.id, label: card.title, kind: "Card" })),
+    ...adventure.brains.map((brain) => ({ id: brain.id, label: brain.characterName, kind: "Brain" })),
+  ];
+
+  const patch = (next: Partial<ComponentEntry>) =>
+    dispatch({ type: "UPDATE_COMPONENT", componentId: component.id, patch: next });
+  const setPhase = (phase: ArcPhase) => {
+    const statusByPhase: Record<ArcPhase, string> = {
+      simmer: "Arc reset to simmer. Engagement counters are cleared.",
+      escalate: "Arc moved to escalate. It will keep building until the break gate opens.",
+      break: "Break armed for next output. Press Continue or take a turn to let the model see the cost instruction.",
+      aftermath: "Arc moved to aftermath. Complete it into a Story Card or choose the next direction.",
+    };
+    setArcActionStatus(statusByPhase[phase]);
+    dispatch({ type: "SET_ARC_PHASE", componentId: component.id, phase, turn });
+  };
+  const completeArcToStoryCard = () => {
+    const title = component.arcPremise?.trim() || component.title;
+    dispatch({ type: "COMPLETE_ARC_TO_STORY_CARD", componentId: component.id });
+    setArcActionStatus(`Completed arc saved as Story Card: ${title}. Current Arc is clear and simmering.`);
+  };
+  const toggleThread = (id: string, on: boolean) =>
+    patch({ arcThreadKeys: on ? [...threadKeys, id] : threadKeys.filter((key) => key !== id) });
+
+  return (
+    <div className="editor-card" style={{ borderLeft: "3px solid #b9770e", marginBottom: "0.75rem" }}>
+      <strong>🎬 Arc Director</strong>
+      <p className="muted" style={{ fontSize: "0.85em", marginTop: "0.25rem" }}>
+        Make the antagonist's arc climb out of the loop and actually break. Pacing is automatic and
+        deterministic — the cost instruction is withheld from the AI until the arc is ripe, so it can't
+        land the climax early. See <code>docs/adventure-design.md</code>.
+      </p>
+
+      {onGenerateArc && (
+        <Field label="✨ Generate this arc from a concept">
+          <div className="row" style={{ gap: "0.5rem", alignItems: "stretch" }}>
+            <input
+              style={{ flex: 1 }}
+              placeholder="e.g. a gang leader who killed my father runs the city's underworld"
+              value={concept}
+              onChange={(event) => setConcept(event.target.value)}
+            />
+            <button
+              type="button"
+              disabled={loading || !concept.trim()}
+              onClick={() => void onGenerateArc(component.id, concept.trim()).then(() => setConcept(""))}
+              title="Write the premise, simmer behavior, cost, pace, and trigger mode following best practices. You still pick the threads below."
+            >
+              {loading ? "Generating…" : "Generate Arc"}
+            </button>
+          </div>
+        </Field>
+      )}
+
+      {onProposeArcFromHistory && (
+        <div style={{ margin: "0.25rem 0 0.5rem" }}>
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => void onProposeArcFromHistory(component.id)}
+            title="Read the last ~50 turns and draft an arc that grows out of what's been happening. It goes to the Memory Inbox for your approval — nothing is applied until you approve it."
+          >
+            {loading ? "Reading the story…" : "✨ Suggest an arc from recent play → Inbox"}
+          </button>
+          <p className="muted" style={{ fontSize: "0.8em", margin: "0.25rem 0 0" }}>
+            For a story that's gone quiet. The AI reads recent play and proposes a new arc; review and
+            approve it in the Memory Inbox. Approving seeds this arc and starts it simmering.
+          </p>
+        </div>
+      )}
+
+      <div className="row" style={{ alignItems: "center", gap: "0.75rem", margin: "0.5rem 0" }}>
+        <span className="badge badge-priority">{arc.phase.toUpperCase()}</span>
+        <span className="muted">Tier {arc.tier}/5 · engagement {totalEngagement}</span>
+        {arc.pendingBreak && <span className="badge badge-protected">Ready to break</span>}
+      </div>
+
+      {arc.pendingBreak && (
+        <div className="row" style={{ gap: "0.5rem", margin: "0.5rem 0", alignItems: "center" }}>
+          <span>The arc is ripe — let it break?</span>
+          <button type="button" className="danger" onClick={() => setPhase("break")}>Let it break</button>
+          <button type="button" onClick={() => patch({ arcState: { ...arc, pendingBreak: false } })}>Not yet</button>
+        </div>
+      )}
+
+      {arc.phase === "aftermath" && (component.arcContinuationOptions?.length ?? 0) > 0 && (
+        <div className="editor-card" style={{ borderLeft: "3px solid #2e7d32", margin: "0.5rem 0" }}>
+          <strong>This arc resolved — where does it go next?</strong>
+          <p className="muted" style={{ fontSize: "0.85em", margin: "0.25rem 0" }}>
+            Picking one banks the finished arc as a Story Card and starts the next arc fresh (simmering). Or write your own below.
+          </p>
+          {component.arcContinuationOptions!.map((opt, index) => (
+            <div key={index} style={{ marginTop: "0.4rem" }}>
+              <button
+                type="button"
+                onClick={() => dispatch({ type: "APPLY_ARC_CONTINUATION", componentId: component.id, option: opt })}
+                title={opt.premise}
+              >
+                {opt.label}
+              </button>
+              <span className="muted" style={{ fontSize: "0.85em", marginLeft: "0.5rem" }}>{opt.premise}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <Field label="Pacing triggers — which Story Cards / Brains advance this arc?">
+        <p className="muted">Each selected card or brain that triggers adds one engagement per turn. Multiple matches add multiple points, even during ordinary conversation. Choose specific threats or evidence; selecting a frequent companion or a broad deal card can rush the arc. With no selections, pacing stays manual.</p>
+        <div style={{ maxHeight: "9rem", overflowY: "auto", border: "1px solid #444", borderRadius: "4px", padding: "0.4rem" }}>
+          {candidates.length === 0 && <p className="muted" style={{ margin: 0 }}>Create Story Cards or Brains first.</p>}
+          {candidates.map((candidate) => (
+            <label key={candidate.id} className="arc-thread-option">
+              <input type="checkbox" checked={threadSet.has(candidate.id)} onChange={(event) => toggleThread(candidate.id, event.target.checked)} />
+              <span>
+                {candidate.label} <span className="muted">({candidate.kind}){threadSet.has(candidate.id) ? ` · ${arc.threadEngagement[candidate.id] ?? 0} engagements` : ""}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+      </Field>
+
+      <div className="grid two">
+        <Field label="The Timer — how long should it simmer?">
+          <select value={component.arcPace ?? "medium"} onChange={(event) => patch({ arcPace: event.target.value as ArcPace })}>
+            {(["short", "medium", "long", "epic"] as ArcPace[]).map((pace) => (
+              <option key={pace} value={pace}>{ARC_PACE_LABELS[pace]}</option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Who springs the break?">
+          <select value={component.arcTriggerMode ?? "ask"} onChange={(event) => patch({ arcTriggerMode: event.target.value as ArcTriggerMode })}>
+            <option value="ask">Ask me first (leash)</option>
+            <option value="auto">Let the AI spring it (auto)</option>
+          </select>
+        </Field>
+      </div>
+
+      <CheckboxField
+        label="Auto-continue the next arc (surprise me — no chooser, no spoiler)"
+        checked={component.arcAutoContinue === true}
+        onChange={(arcAutoContinue) => patch({ arcAutoContinue })}
+      />
+      <p className="muted" style={{ fontSize: "0.8em", margin: "0 0 0.5rem" }}>
+        When this arc resolves, the Director silently picks the most convergent next arc and seeds it
+        simmering — you meet the new threat in the story, not a menu. Off = you pick from drafted directions.
+      </p>
+
+      <Field label="How the baddie behaves while building (simmer)">
+        <textarea
+          rows={3}
+          placeholder="Recur through traps, hostage plays, near-misses. Stay off-screen — glimpses, not monologues. Always connected to the larger plan."
+          value={component.arcSimmerInstruction ?? ""}
+          onChange={(event) => patch({ arcSimmerInstruction: event.target.value })}
+        />
+      </Field>
+      <Field label="How the confrontation lands — the cost (only injected at break)">
+        <textarea
+          rows={3}
+          placeholder="The antagonist forces a confrontation that can't be deferred. It is allowed to cost the cast — named allies can die, ground can be lost. The player stays the strongest; the win is just expensive."
+          value={component.arcBreakInstruction ?? ""}
+          onChange={(event) => patch({ arcBreakInstruction: event.target.value })}
+        />
+      </Field>
+
+      {(configured || canCompleteArc || arcActionStatus || phaseStatus) && (
+        <div className="row" style={{ gap: "0.5rem", marginTop: "0.5rem" }}>
+          <button
+            type="button"
+            disabled={!configured || arc.phase === "break"}
+            onClick={() => setPhase("break")}
+            title="Force the climax now, regardless of pacing."
+          >
+            {arc.phase === "break" ? "Break armed" : "Spring it now"}
+          </button>
+          <button type="button" disabled={!configured} onClick={() => setPhase("aftermath")} title="Mark the arc resolved, without archiving it yet.">Move to aftermath</button>
+          <button
+            type="button"
+            disabled={!canCompleteArc}
+            onClick={completeArcToStoryCard}
+            title="Create a historical plot Story Card from this arc log, then clear Current Arc for the next arc."
+          >
+            {"Complete Arc -> Story Card"}
+          </button>
+          <button type="button" disabled={!configured} onClick={() => setPhase("simmer")} title="Reset pacing and start a fresh climb.">Reset to simmer</button>
+          {(arcActionStatus || phaseStatus) && (
+            <span className="badge badge-protected" role="status">
+              {arcActionStatus || phaseStatus}
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const SINGLETON_TYPES = new Set<ComponentType>(["narrationRules", "aiInstructions", "plotEssentials", "currentArc", "authorNote"]);
 
@@ -27,23 +265,32 @@ const TYPE_LABELS: Record<ComponentType, string> = {
 
 const TYPE_DESCRIPTIONS: Record<ComponentType, string> = {
   narrationRules: "The primary per-adventure behavior contract — POV, format, player agency, continuity, tone, and hard writing rules. Loaded first with the system shell. It is valid to keep all stable generation rules here and use no AI Instructions block.",
-  aiInstructions: "Optional stable scenario-specific rules separated for organization. Use this for a distinct drift-prevention or genre contract outside Narration Rules. Keep repeatable sandbox play in the designated Play Loop custom component so it can be temporarily suspended. Do not duplicate Narration Rules; both blocks load every turn.",
+  aiInstructions: "Optional scenario-specific rules separated for organization. Use this only when you want a distinct drift-prevention or genre contract outside Narration Rules. Do not duplicate rules already present in Narration Rules; both blocks load every turn.",
   plotEssentials: "Compact current operating truth, premise, and constraints needed in nearly every plausible next response. Essential status or an always-present party may qualify; importance alone does not. Keep profiles on cards and active larger-thread progress in Current Story Arc. Reconcile changed facts and stale copies; removing an assertion alone does not create an event card.",
-  currentArc: "Existing home for an active larger story thread. The older premise-filtered update path appends developments; post-story canon reconciliation can replace stale current state or clear a resolved arc. An Arc Premise is needed for older auto-updates. Complete an arc to bank it as a historical Story Card.",
-  activePressure: "Older compatibility surface for short-lived immediate pressure in existing adventures, assembled alongside Plot Essentials. It is distinct from an active larger story thread in Current Story Arc. Clear or revise resolved pressure; do not create it for new adventures or use it as lore or a relationship tracker.",
+  currentArc: "A running log of the active story arc — auto-updated as arc-relevant events occur. Seed it with a one-line Arc Premise that defines what this arc is about. The AI only appends entries when something genuinely advances or complicates that premise. When the arc is complete, graduate it to a Story Card and start fresh.",
+  activePressure: "Compatibility surface for existing adventures, editable here and assembled alongside Plot Essentials. Clear or revise resolved pressure; do not use it as a permanent lore or relationship tracker.",
   immediateMomentum: "Disabled legacy component. Immediate next-beat direction now belongs in Recent Messages or the one-turn Next Output Bias.",
   authorNote: "Tone, style, and near-context narrative direction. May persist until edited; clear resolved direction. Keep durable psychology, lore, and relationship state with their owners. Use Next Output Bias for steering that normally expires after one successful generation.",
   memory: "Legacy lore block. Move content to a Story Card with type Lore for triggered inclusion.",
-  custom: "Declare one specific purpose. New adventures already include a designated Play Loop for normal sandbox play; edit that component for a mission rhythm rather than creating a competing loop. The story director can temporarily omit it during earned progression or closure. Do not copy cards, Plot Essentials, Brains, or Current Story Arc into a catch-all block.",
+  custom: "Declare one specific purpose, such as a reusable mission loop. Do not copy cards, Plot Essentials, Brains, or Current Story Arc into a catch-all block. Configure inclusion policy, priority, and protection manually.",
 };
 
 function componentContextText(component: ComponentEntry): string {
   if (component.type !== "currentArc") return component.content;
 
-  if (!component.content.trim() && !component.arcPremise?.trim()) return "";
+  const phase = component.arcState?.phase ?? "simmer";
+  const phaseDirection =
+    phase === "break"
+      ? component.arcBreakInstruction?.trim()
+      : phase === "simmer" || phase === "escalate"
+        ? component.arcSimmerInstruction?.trim()
+        : undefined;
+
+  if (!component.content.trim() && !component.arcPremise?.trim() && !phaseDirection) return "";
 
   const premiseHeader = component.arcPremise?.trim() ? `[Arc Premise: ${component.arcPremise.trim()}]\n` : "";
-  return premiseHeader + (component.content.trim() || "(no entries yet)");
+  const directionBlock = phaseDirection ? `\n\n[ARC DIRECTION \u2014 ${phase.toUpperCase()}]\n${phaseDirection}` : "";
+  return premiseHeader + (component.content.trim() || "(no entries yet)") + directionBlock;
 }
 
 function ComponentSummary({ component, query }: { component: ComponentEntry; query: string }) {
@@ -52,7 +299,7 @@ function ComponentSummary({ component, query }: { component: ComponentEntry; que
   const tokenEstimate = approximateTokenCount(componentContextText(component));
   return (
     <span className="story-card-summary">
-      <span className="story-card-title"><Highlight text={isPlayLoop(component) ? "Play Loop" : TYPE_LABELS[component.type]} query={query} /></span>
+      <span className="story-card-title"><Highlight text={TYPE_LABELS[component.type]} query={query} /></span>
       <span className="story-card-badges">
         {!component.active && <span className="badge badge-inactive">Inactive</span>}
         {component.pinned && <span className="badge badge-pinned">Pinned</span>}
@@ -275,7 +522,6 @@ export function ComponentsPage({ adventure, dispatch, loading, onSuggestPlotUpda
 
   return (
     <section className="page editor-surface components-page">
-      <StoryDirectorPanel adventure={adventure} dispatch={dispatch} />
       <div className="editor-page-summary">
         <p className="muted">
           Always-on plot truth, narration rules, author direction, and custom context blocks.
@@ -479,6 +725,9 @@ export function ComponentsPage({ adventure, dispatch, loading, onSuggestPlotUpda
                   </p>
                   <h3>{TYPE_LABELS[component.type]}</h3>
                   <div className="story-card-badges">
+                    {component.type === "currentArc" && (
+                      <span className="badge badge-priority">{(component.arcState?.phase ?? "simmer").toUpperCase()}</span>
+                    )}
                     {component.pinned && <span className="badge badge-pinned">Pinned</span>}
                     {component.protected && <span className="badge badge-protected">Protected</span>}
                     {component.priority > 0 && <span className="badge badge-priority">p{component.priority}</span>}
@@ -551,6 +800,18 @@ export function ComponentsPage({ adventure, dispatch, loading, onSuggestPlotUpda
                   </p>
                 </Field>
               )}
+              {component.type === "currentArc" && (
+                <details className="brain-secondary-details item-secondary-details component-arc-details" open>
+                  <summary className="component-arc-summary">
+                    <span>Arc Director</span>
+                    <span className="badge badge-priority">{(component.arcState?.phase ?? "simmer").toUpperCase()}</span>
+                    {!(component.arcPremise?.trim() || component.content.trim()) && (
+                      <span className="badge badge-type">No arc log</span>
+                    )}
+                  </summary>
+                  <ArcDirector adventure={adventure} component={component} dispatch={dispatch} onGenerateArc={onGenerateArc} onProposeArcFromHistory={onProposeArcFromHistory} loading={loading} />
+                </details>
+              )}
               <section className="item-focus-section">
                 <div className="item-section-heading">
                   <div>
@@ -586,13 +847,6 @@ export function ComponentsPage({ adventure, dispatch, loading, onSuggestPlotUpda
                       label="Auto-suggest full replacements when current truth drifts"
                       checked={component.autoUpdate ?? adventure.memoryDetectionSettings.enabled}
                       onChange={(autoUpdate) => dispatch({ type: "UPDATE_COMPONENT", componentId: component.id, patch: { autoUpdate } })}
-                    />
-                  )}
-                  {(component.type === "plotEssentials" || component.type === "currentArc") && (
-                    <CheckboxField
-                      label="Lock from Story Director"
-                      checked={component.lockFromStoryDirector === true}
-                      onChange={(lockFromStoryDirector) => dispatch({ type: "UPDATE_COMPONENT", componentId: component.id, patch: { lockFromStoryDirector } })}
                     />
                   )}
                   <Field label="Auto-update cooldown (turns)">
@@ -637,11 +891,10 @@ export function ComponentsPage({ adventure, dispatch, loading, onSuggestPlotUpda
                 />
               </div>
               <CheckboxField
-                label="Always on (subject to Play Loop suspension when designated)"
+                label="Always on (ignore inclusion policy — load every turn)"
                 checked={component.alwaysOn}
                 onChange={(checked) => dispatch({ type: "UPDATE_COMPONENT", componentId: component.id, patch: { alwaysOn: checked } })}
               />
-              {component.type === "custom" && <CheckboxField label="Play Loop (temporarily omitted during earned plot progression)" checked={isPlayLoop(component)} onChange={checked => dispatch({ type: "UPDATE_COMPONENT", componentId: component.id, patch: { contextRole: checked ? "playLoop" : "general", ...(checked ? { alwaysOn: true, inclusionPolicy: "always" } : {}) } })} />}
               <div className="grid two">
                 <CheckboxField
                   label="Protected (cannot be dropped by token truncation)"
