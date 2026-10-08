@@ -141,6 +141,11 @@ npm.cmd run test:live   # optional, uses .env.test.local`}</pre>
           after cleanup, run cleanup again before approving that change.
         </p>
         <p>
+          Unrecorded developments appear in the same pending suggestion list. Their source narration
+          and any dropped candidates are available for review. Approving an evidence-only suggestion
+          marks it reviewed; it does not invent or apply a missing memory update.
+        </p>
+        <p>
           Pending proposals are not active context. Approving a proposal routes it to a Story Card, Brain
           update, Plot Essentials update, or legacy Rolling Summary update through reducer-backed paths.
         </p>

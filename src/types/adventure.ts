@@ -114,6 +114,7 @@ export interface WorldHistoryEntry {
   createdAt: string;
 }
 export interface WorldEvolutionIssue {
+  reviewStatus?: "approved" | "rejected" | "ignored";
   id: string;
   sourceTurnId: string;
   reason: string;
@@ -603,6 +604,7 @@ export interface MemoryProposal {
   worldChange?: WorldChange;
   /** User-requested card cleanup, always reviewed through Suggestions. */
   cardAudit?: { action: "edit" | "delete" | "create"; expectedRevision: string | null };
+  worldIssueId?: string;
   relationship?: RelationshipTransition;
   /** Consequential automatic changes require explicit review, regardless of generic auto-approval. */
   requiresReview?: boolean;

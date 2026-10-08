@@ -1,7 +1,7 @@
 import { cardAuditReviewError } from "../memory/storyCardAuditSuggestions";
 import { relationshipIsCurrent } from "../memory/relationships";
 import { validateWorldChange } from "../memory/worldEvolution";
-import { WorldEvolutionPanel } from "./WorldEvolutionPanel";
+import { suggestionList } from "../memory/suggestionList";
 import { useState } from "react";
 import { classifyMemory } from "../memory/classificationPolicy";
 import { resolveMemoryTarget } from "../memory/resolveMemoryTarget";
@@ -31,7 +31,7 @@ interface MemoryInboxPageProps extends AdventurePageProps {
 }
 
 export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onReconcileMemory, onFindEventMemories, loading = false }: MemoryInboxPageProps) {
-  const allProposals = [...adventure.activeState.memoryProposals].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const allProposals = suggestionList(adventure).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const [eventScan, setEventScan] = useState<AbortController>();
   const [eventProgress, setEventProgress] = useState("");
   const [sourceText, setSourceText] = useState("");
@@ -52,6 +52,18 @@ export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onR
   const isStale = (proposal: MemoryProposal) => proposal.cardAudit ? !!cardAuditReviewError(adventure, proposal) : proposal.worldChange
     ? !!validateWorldChange(adventure, proposal.worldChange, adventure.messages.find(m => m.id === proposal.sourceTurnId)?.content ?? "")
     : proposal.proposedType === "relationshipUpdate" && !relationshipIsCurrent(adventure, proposal);
+
+  const reviewDispatch: AdventurePageProps["dispatch"] = action => {
+    if (action.type === "APPROVE_MEMORY_PROPOSAL" || action.type === "REJECT_MEMORY_PROPOSAL" || action.type === "IGNORE_MEMORY_PROPOSAL") {
+      const proposal = allProposals.find(p => p.id === action.proposalId);
+      const issue = adventure.worldEvolutionState?.issues.find(i => i.id === proposal?.worldIssueId);
+      if (issue) {
+        dispatch({ type: "SET_WORLD_ISSUE", issue: { ...issue, status: "dismissed", reviewStatus: action.type === "APPROVE_MEMORY_PROPOSAL" ? "approved" : action.type === "REJECT_MEMORY_PROPOSAL" ? "rejected" : "ignored" } });
+        return;
+      }
+    }
+    dispatch(action);
+  };
 
   function updateProposal(proposal: MemoryProposal, patch: Partial<MemoryProposal>) {
     dispatch({ type: "UPDATE_MEMORY_PROPOSAL", proposalId: proposal.id, patch });
@@ -113,7 +125,6 @@ export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onR
 
   return (
     <section className="page editor-surface memory-inbox-page">
-      <WorldEvolutionPanel adventure={adventure} dispatch={dispatch} />
       <div className="editor-page-summary">
         <p className="muted">
           Review proposed memory writes before they become active story context. Event Memories always wait for your approval.
@@ -218,7 +229,7 @@ export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onR
       <div className="list">
         {pending.length === 0 && <p className="muted">No pending memory suggestions.</p>}
         {pending.map((proposal) => (
-          <ProposalCard key={proposal.id} proposal={proposal} stale={isStale(proposal)} dispatch={dispatch} onUpdate={updateProposal} onRegenerate={onRegenerateProposal} />
+          <ProposalCard key={proposal.id} proposal={proposal} stale={isStale(proposal)} dispatch={reviewDispatch} onUpdate={updateProposal} onRegenerate={onRegenerateProposal} />
         ))}
       </div>
 
@@ -227,7 +238,7 @@ export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onR
           <summary>History ({resolved.length})</summary>
           <div className="list" style={{ marginTop: "0.75rem" }}>
             {resolved.map((proposal) => (
-              <ProposalCard key={proposal.id} proposal={proposal} stale={isStale(proposal)} dispatch={dispatch} onUpdate={updateProposal} onRegenerate={onRegenerateProposal} />
+              <ProposalCard key={proposal.id} proposal={proposal} stale={isStale(proposal)} dispatch={reviewDispatch} onUpdate={updateProposal} onRegenerate={onRegenerateProposal} />
             ))}
           </div>
         </details>
@@ -289,7 +300,7 @@ function ProposalCard({ proposal, stale, dispatch, onUpdate, onRegenerate }: Pro
           {proposal.cardAudit.action !== "create" && <details><summary>Card content at audit time</summary><pre>{proposal.sourceText}</pre></details>}
           {isPending && stale && <p role="alert">This cleanup is stale or incomplete. Check the card fields, or reject it and run cleanup again.</p>}
         </section>}
-          {isPending && !proposal.cardAudit && !proposal.worldChange && <section>
+          {isPending && !proposal.cardAudit && !proposal.worldChange && !proposal.worldIssueId && <section>
             <CheckboxField label="I have reviewed the semantic effects" checked={proposal.semanticEffects !== undefined} onChange={checked => onUpdate(proposal, { semanticEffects: checked ? [] : undefined })} />
             {proposal.semanticEffects !== undefined && (["development", "betrayal", "redemption", "hiddenMotivation", "reinterpretation", "identity"] as const).map(effect => <CheckboxField key={effect} label={effect} checked={proposal.semanticEffects!.includes(effect)} onChange={checked => onUpdate(proposal, { semanticEffects: checked ? [...proposal.semanticEffects!, effect] : proposal.semanticEffects!.filter(e => e !== effect) })} />)}
             <Field label="Established motivation evidence"><textarea value={proposal.motivationEvidence ?? ""} onChange={event => onUpdate(proposal, { motivationEvidence: event.target.value })} /></Field>
@@ -309,7 +320,7 @@ function ProposalCard({ proposal, stale, dispatch, onUpdate, onRegenerate }: Pro
           <input
             value={proposal.title}
             onChange={(event) => onUpdate(proposal, { title: event.target.value })}
-            disabled={!isPending || !!proposal.relationship}
+            disabled={!isPending || !!proposal.relationship || !!proposal.worldIssueId}
           />
         </div>
         <div className="row">
@@ -322,7 +333,7 @@ function ProposalCard({ proposal, stale, dispatch, onUpdate, onRegenerate }: Pro
           </button>
           {isPending && (
             <>
-              {onRegenerate && !proposal.relationship && !proposal.cardAudit && !proposal.worldChange && (
+              {onRegenerate && !proposal.relationship && !proposal.cardAudit && !proposal.worldChange && !proposal.worldIssueId && (
                 <button type="button" disabled={regenerating} onClick={handleRegenerate}>
                   {regenerating ? "…" : "Regenerate"}
                 </button>
@@ -350,7 +361,7 @@ function ProposalCard({ proposal, stale, dispatch, onUpdate, onRegenerate }: Pro
         value={proposal.content}
         onChange={(event) => onUpdate(proposal, { content: event.target.value })}
         placeholder="Proposed content..."
-        disabled={proposal.status === "approved" || !!proposal.relationship || proposal.cardAudit?.action === "delete"}
+        disabled={!isPending || !!proposal.relationship || !!proposal.worldIssueId || proposal.cardAudit?.action === "delete"}
       />
 
       <details className="editor-tools-panel">
@@ -377,7 +388,7 @@ function ProposalCard({ proposal, stale, dispatch, onUpdate, onRegenerate }: Pro
             <select
               value={proposal.proposedType}
               onChange={(event) => onUpdate(proposal, { proposedType: event.target.value as MemoryProposalType })}
-              disabled={!isPending || !!proposal.relationship || !!proposal.cardAudit}
+              disabled={!isPending || !!proposal.relationship || !!proposal.cardAudit || !!proposal.worldIssueId}
             >
               {proposal.relationship && <option value="relationshipUpdate">relationshipUpdate</option>}
               {proposalTypes.map((type) => (
@@ -393,7 +404,7 @@ function ProposalCard({ proposal, stale, dispatch, onUpdate, onRegenerate }: Pro
                 <select
                   value={proposal.storyCardType ?? "custom"}
                   onChange={(event) => onUpdate(proposal, { storyCardType: event.target.value as StoryCardType })}
-                  disabled={!isPending || !!proposal.relationship}
+                  disabled={!isPending || !!proposal.relationship || !!proposal.worldIssueId}
                 >
                   {storyCardTypes.map((type) => <option key={type} value={type}>{type === "event" ? "Event Memory" : type}</option>)}
                 </select>
@@ -402,7 +413,7 @@ function ProposalCard({ proposal, stale, dispatch, onUpdate, onRegenerate }: Pro
                 <select
                   value={proposal.memoryMode ?? "static"}
                   onChange={(event) => onUpdate(proposal, { memoryMode: event.target.value as MemoryProposal["memoryMode"] })}
-                  disabled={!isPending || !!proposal.relationship}
+                  disabled={!isPending || !!proposal.relationship || !!proposal.worldIssueId}
                 >
                   <option value="static">static</option>
                   <option value="living">living</option>
@@ -430,7 +441,7 @@ function ProposalCard({ proposal, stale, dispatch, onUpdate, onRegenerate }: Pro
             <CheckboxField
               label="Let AI auto-update this card after relevant scenes"
               checked={proposal.autoUpdate === true}
-              disabled={!isPending || !!proposal.relationship}
+              disabled={!isPending || !!proposal.relationship || !!proposal.worldIssueId}
               onChange={(autoUpdate) => onUpdate(proposal, { autoUpdate })}
             />
             <Field label="Auto-update cooldown">

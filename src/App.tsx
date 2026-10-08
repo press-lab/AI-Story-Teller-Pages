@@ -1,3 +1,4 @@
+import { pendingSuggestionCount } from "./memory/suggestionList";
 import { useCallback, useEffect, useState } from "react";
 import { adventureReducer } from "./state/adventureReducer";
 import { saveAdventure } from "./db/adventureDb";
@@ -419,8 +420,7 @@ export default function App() {
     }
   }
 
-  const pendingProposalCount = (adventure?.activeState.memoryProposals.filter((p) => p.status === "pending").length ?? 0)
-    + (adventure?.worldEvolutionState?.issues.filter(i => i.status === "unrecorded").length ?? 0);
+  const pendingProposalCount = pendingSuggestionCount(adventure);
 
   const page = (() => {
     if (activeTab === "adventures") {

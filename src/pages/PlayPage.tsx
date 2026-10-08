@@ -1,3 +1,4 @@
+import { pendingSuggestionCount } from "../memory/suggestionList";
 import { useEffect, useRef, useState } from "react";
 import type { InputMode, Message } from "../types/adventure";
 import type { PlayRuntimeProps } from "./pageTypes";
@@ -153,8 +154,7 @@ export function PlayPage({
   const lastAssistant = [...adventure.messages].reverse().find((m) => m.role === "assistant");
   const latestMessageId = adventure.messages.at(-1)?.id;
   const nextTurnNote = adventure.activeState.nextTurnNote;
-  const pendingMemoryCount = adventure.activeState.memoryProposals.filter((p) => p.status === "pending").length
-    + (adventure.worldEvolutionState?.issues.filter(i => i.status === "unrecorded").length ?? 0);
+  const pendingMemoryCount = pendingSuggestionCount(adventure);
 
   const budgetDropped = contextResult?.excludedItems.filter((i) => i.reason === "budget_exceeded") ?? [];
   const droppedMessages = budgetDropped.filter((i) => i.sourceType === "message").length;
