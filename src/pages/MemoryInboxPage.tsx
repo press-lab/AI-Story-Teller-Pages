@@ -248,18 +248,6 @@ function ProposalCard({ proposal, stale, dispatch, onUpdate, onRegenerate }: Pro
   const isPending = proposal.status === "pending";
   const [regenerating, setRegenerating] = useState(false);
 
-  if (proposal.worldChange) return <article className={`card proposal-card proposal-${proposal.status}`}>
-    <h4>{proposal.title} · {proposal.worldChange.operation} · {proposal.status}</h4>
-    <p>{proposal.worldChange.owner}: {proposal.targetId} · Expected revision: {proposal.worldChange.expectedRevision ?? "new"}</p>
-    <p>{proposal.rationale}</p><p>Previous fact: {proposal.worldChange.previous || "(new)"}</p><pre>{proposal.content || "(removed)"}</pre>
-    <p>Evidence: {proposal.sourceText}</p>
-    {proposal.worldChange.motivationEvidence && <p>Established motivation: {proposal.worldChange.motivationEvidence}</p>}
-    {proposal.worldChange.knowledgeEvidence && <p>Knowledge: {proposal.worldChange.knowledgeEvidence}</p>}
-    {isPending && stale && <p role="alert">This change is stale or no longer permitted. Reject it and review current canon.</p>}
-    {isPending && <div className="row"><button type="button" disabled={stale} onClick={() => dispatch({ type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id })}>Approve</button>
-      <button type="button" onClick={() => dispatch({ type: "REJECT_MEMORY_PROPOSAL", proposalId: proposal.id })}>Reject</button></div>}
-  </article>;
-
   async function handleRegenerate() {
     if (!onRegenerate || regenerating) return;
     setRegenerating(true);
@@ -285,6 +273,15 @@ function ProposalCard({ proposal, stale, dispatch, onUpdate, onRegenerate }: Pro
       </summary>
 
       <div className="proposal-card-body">
+        {proposal.worldChange && <section>
+          <p>{proposal.worldChange.owner} · {proposal.worldChange.operation} · Expected revision: {proposal.worldChange.expectedRevision ?? "new"}</p>
+          <p>Previous fact: {proposal.worldChange.previous || "(new)"}</p>
+          <p>Evidence: {proposal.sourceText}</p>
+          {proposal.worldChange.motivationEvidence && <p>Established motivation: {proposal.worldChange.motivationEvidence}</p>}
+          {proposal.worldChange.knowledgeEvidence && <p>Knowledge: {proposal.worldChange.knowledgeEvidence}</p>}
+          {isPending && stale && <p role="alert">This change is stale or no longer permitted. Reject it and review current canon.</p>}
+        </section>}
+
         {proposal.cardAudit && <section>
           <h4>Story Card Cleanup · {proposal.cardAudit.action}</h4>
           <p>{proposal.rationale}</p>
@@ -292,7 +289,7 @@ function ProposalCard({ proposal, stale, dispatch, onUpdate, onRegenerate }: Pro
           {proposal.cardAudit.action !== "create" && <details><summary>Card content at audit time</summary><pre>{proposal.sourceText}</pre></details>}
           {isPending && stale && <p role="alert">This cleanup is stale or incomplete. Check the card fields, or reject it and run cleanup again.</p>}
         </section>}
-          {isPending && !proposal.cardAudit && <section>
+          {isPending && !proposal.cardAudit && !proposal.worldChange && <section>
             <CheckboxField label="I have reviewed the semantic effects" checked={proposal.semanticEffects !== undefined} onChange={checked => onUpdate(proposal, { semanticEffects: checked ? [] : undefined })} />
             {proposal.semanticEffects !== undefined && (["development", "betrayal", "redemption", "hiddenMotivation", "reinterpretation", "identity"] as const).map(effect => <CheckboxField key={effect} label={effect} checked={proposal.semanticEffects!.includes(effect)} onChange={checked => onUpdate(proposal, { semanticEffects: checked ? [...proposal.semanticEffects!, effect] : proposal.semanticEffects!.filter(e => e !== effect) })} />)}
             <Field label="Established motivation evidence"><textarea value={proposal.motivationEvidence ?? ""} onChange={event => onUpdate(proposal, { motivationEvidence: event.target.value })} /></Field>
@@ -325,7 +322,7 @@ function ProposalCard({ proposal, stale, dispatch, onUpdate, onRegenerate }: Pro
           </button>
           {isPending && (
             <>
-              {onRegenerate && !proposal.relationship && !proposal.cardAudit && (
+              {onRegenerate && !proposal.relationship && !proposal.cardAudit && !proposal.worldChange && (
                 <button type="button" disabled={regenerating} onClick={handleRegenerate}>
                   {regenerating ? "…" : "Regenerate"}
                 </button>

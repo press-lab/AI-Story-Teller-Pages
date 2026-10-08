@@ -419,7 +419,8 @@ export default function App() {
     }
   }
 
-  const pendingProposalCount = adventure?.activeState.memoryProposals.filter((p) => p.status === "pending").length ?? 0;
+  const pendingProposalCount = (adventure?.activeState.memoryProposals.filter((p) => p.status === "pending").length ?? 0)
+    + (adventure?.worldEvolutionState?.issues.filter(i => i.status === "unrecorded").length ?? 0);
 
   const page = (() => {
     if (activeTab === "adventures") {

@@ -153,7 +153,8 @@ export function PlayPage({
   const lastAssistant = [...adventure.messages].reverse().find((m) => m.role === "assistant");
   const latestMessageId = adventure.messages.at(-1)?.id;
   const nextTurnNote = adventure.activeState.nextTurnNote;
-  const pendingMemoryCount = adventure.activeState.memoryProposals.filter((p) => p.status === "pending").length;
+  const pendingMemoryCount = adventure.activeState.memoryProposals.filter((p) => p.status === "pending").length
+    + (adventure.worldEvolutionState?.issues.filter(i => i.status === "unrecorded").length ?? 0);
 
   const budgetDropped = contextResult?.excludedItems.filter((i) => i.reason === "budget_exceeded") ?? [];
   const droppedMessages = budgetDropped.filter((i) => i.sourceType === "message").length;
@@ -319,7 +320,6 @@ export function PlayPage({
 
   return (
     <section className="page play-layout">
-        {adventure.worldEvolutionSettings?.enabled && adventure.worldEvolutionState?.issues.some(i => i.status === "unrecorded" && i.sourceTurnId === [...adventure.messages].reverse().find(m => m.role === "assistant")?.id) && <p role="status" className="muted">World event capture needs review. Open Memory Suggestions to inspect the accepted narration and unrecorded events.</p>}
       {error && (
         <div className="error-box error-dismissible">
           <span>{error}</span>
@@ -425,16 +425,6 @@ export function PlayPage({
                         <span title={`Background (cumulative): ${adventure.activeState.backgroundTokenUsage.promptTokens} prompt + ${adventure.activeState.backgroundTokenUsage.completionTokens} completion`}>
                           {" · "}bg ↑{adventure.activeState.backgroundTokenUsage.promptTokens} ↓{adventure.activeState.backgroundTokenUsage.completionTokens}
                         </span>
-                      )}
-                      {message.id === lastAssistant?.id && pendingMemoryCount > 0 && (
-                        <button
-                          type="button"
-                          className="context-drop-warning"
-                          title="Open memory inbox"
-                          onClick={(e) => { e.stopPropagation(); openTool("memoryInbox"); }}
-                        >
-                          {" · "}{pendingMemoryCount} suggestion{pendingMemoryCount !== 1 ? "s" : ""}
-                        </button>
                       )}
                     </span>
                   )}
