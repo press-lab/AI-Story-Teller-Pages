@@ -50,6 +50,22 @@ function approve(a: Adventure) {
 }
 
 describe("world evolution through narration, persistence and next context", () => {
+  it("reserves ordinary memory slots against multiple significant world records", () => {
+    const a = sandbox();
+    const updates = ["Mira", "Nora"].map(target => ({ kind: "thought", target, content: "I will investigate.", evidence: origin, reason: "Private plan" }));
+    const worldChanges = ["one", "two", "three", "four"].map(targetId => change(a, { targetId, evidence: origin }));
+    const selected = boundMemoryEnvelope({ updates, worldChanges }, true, origin);
+    expect(selected.updates).toHaveLength(2);
+    expect(selected.worldChanges).toHaveLength(2);
+    expect(selected.droppedRecords).toHaveLength(2);
+  });
+  it("prefers ordinary memory over routine plot bookkeeping", () => {
+    const updates = ["Mira", "Nora", "Marcus", "Seth"].map(target => ({ kind: "thought", target, content: "I will investigate.", evidence: origin, reason: "Private plan" }));
+    const selected = boundMemoryEnvelope({ updates, newPlots: [newPlot()] }, true, origin);
+    expect(selected.updates).toHaveLength(4);
+    expect(selected.newPlots).toHaveLength(0);
+    expect(selected.droppedRecords?.[0].route).toBe("newPlots");
+  });
   it("preserves complete ordinary records from a malformed tail and keeps narration intact", async () => {
     const a = sandbox(); a.brains = [makeBrain({ id: "brain", characterName: "Marcus", thoughts: { old: "I await the news." }, pinned: true })];
     a.memoryAutoApprove.brainUpdate = true;

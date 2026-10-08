@@ -103,7 +103,7 @@ export function boundMemoryEnvelope(envelope: { updates: unknown[]; worldChanges
       // Duplicates of invalid candidates do not reserve identities.
       seen.add(identity);
       const significantCanon = key === "worldChanges" && (["replace", "supersede", "remove", "resolve"].includes(String(r.operation)) || Array.isArray(r.effects) && r.effects.length > 0);
-      const priority = terminal ? 100 : significantCanon ? 90 : key === "plotEvents" ? 65 : key === "newPlots" ? 60 : r.kind === "relationshipChange" ? 55 : r.kind === "thought" || key === "worldChanges" && r.owner === "brain" ? 50 : 40;
+      const priority = terminal ? 100 : significantCanon ? 90 : r.kind === "relationshipChange" ? 55 : r.kind === "thought" ? 50 : key === "updates" ? 40 : 30;
       candidates.push({ key, record: r, priority, identity });
     }
   }
@@ -114,7 +114,17 @@ export function boundMemoryEnvelope(envelope: { updates: unknown[]; worldChanges
     if (dropped.length < 4 && JSON.stringify([...dropped, candidate]).length <= MAX_WORLD_OUTPUT_CHARS && approximateTokenCount(JSON.stringify([...dropped, candidate])) <= MAX_WORLD_OUTPUT_TOKENS_ESTIMATE) dropped.push(candidate);
   };
   let count = 0;
+  let worldCount = 0;
+  let worldTokens = 0;
+  let worldChars = 0;
+  const worldLimit = MAX_MEMORY_UPDATES - Math.min(2, candidates.filter(c => c.key === "updates").length);
   for (const { key, record, identity } of candidates) {
+    if (key !== "updates" && worldCount >= worldLimit) { retainForReview(key, record); issues.push("World record deferred to preserve ordinary memory capacity; review accepted narration."); continue; }
+    const serialized = JSON.stringify(record);
+    const tokens = approximateTokenCount(serialized);
+    if (key !== "updates" && worldLimit < MAX_MEMORY_UPDATES && (worldTokens + tokens > MAX_WORLD_OUTPUT_TOKENS_ESTIMATE / 2 || worldChars + serialized.length > MAX_WORLD_OUTPUT_CHARS / 2)) {
+      retainForReview(key, record); issues.push("World record deferred to preserve ordinary memory token budget; review accepted narration."); continue;
+    }
     if (count >= MAX_MEMORY_UPDATES) { retainForReview(key, record); issues.push(`Structured update limit reached; ${identity.slice(0, 100)} needs review in accepted narration.`); continue; }
     result[key] ??= [];
     result[key]!.push(record);
@@ -122,6 +132,7 @@ export function boundMemoryEnvelope(envelope: { updates: unknown[]; worldChanges
       result[key]!.pop(); retainForReview(key, record); issues.push(`Incomplete or oversized memory envelope; ${identity.slice(0, 100)} needs review.`); continue;
     }
     count++;
+    if (key !== "updates") { worldCount++; worldTokens += tokens; worldChars += serialized.length; }
   }
   if (dropped.length) result.droppedRecords = dropped;
   if (issues.length) result.error = [...new Set(issues)].slice(0, 8).join(" ");

@@ -1,7 +1,10 @@
 import { cardAuditReviewError } from "../memory/storyCardAuditSuggestions";
 import { relationshipIsCurrent } from "../memory/relationships";
 import { validateWorldChange } from "../memory/worldEvolution";
-import { suggestionList } from "../memory/suggestionList";
+import { suggestionList, isCaptureFailure } from "../memory/suggestionList";
+import { WorldEvolutionControls } from "./WorldEvolutionControls";
+import { WorldEvolutionPanel } from "./WorldEvolutionPanel";
+import { legacyWorldEvolutionSettings } from "../state/defaults";
 import { useState } from "react";
 import { classifyMemory } from "../memory/classificationPolicy";
 import { resolveMemoryTarget } from "../memory/resolveMemoryTarget";
@@ -58,6 +61,12 @@ export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onR
       const proposal = allProposals.find(p => p.id === action.proposalId);
       const issue = adventure.worldEvolutionState?.issues.find(i => i.id === proposal?.worldIssueId);
       if (issue) {
+        if (isCaptureFailure(issue) && issue.status === "unrecorded") {
+          for (const failure of adventure.worldEvolutionState!.issues.filter(i => i.status === "unrecorded" && isCaptureFailure(i))) {
+            dispatch({ type: "SET_WORLD_ISSUE", issue: { ...failure, status: "dismissed", reviewStatus: action.type === "APPROVE_MEMORY_PROPOSAL" ? "approved" : action.type === "REJECT_MEMORY_PROPOSAL" ? "rejected" : "ignored" } });
+          }
+          return;
+        }
         dispatch({ type: "SET_WORLD_ISSUE", issue: { ...issue, status: "dismissed", reviewStatus: action.type === "APPROVE_MEMORY_PROPOSAL" ? "approved" : action.type === "REJECT_MEMORY_PROPOSAL" ? "rejected" : "ignored" } });
         return;
       }
@@ -125,6 +134,11 @@ export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onR
 
   return (
     <section className="page editor-surface memory-inbox-page">
+      <details className="panel editor-tools-panel">
+        <summary>World Evolution</summary>
+        <WorldEvolutionControls settings={adventure.worldEvolutionSettings ?? legacyWorldEvolutionSettings} onChange={patch => dispatch({ type: "SET_WORLD_EVOLUTION_SETTINGS", patch })} />
+        <WorldEvolutionPanel adventure={adventure} dispatch={dispatch} />
+      </details>
       <div className="editor-page-summary">
         <p className="muted">
           Review proposed memory writes before they become active story context. Event Memories always wait for your approval.

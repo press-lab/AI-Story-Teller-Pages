@@ -20,7 +20,7 @@ it("puts existing unrecorded events in the ordinary pending list and resolves th
     return <MemoryInboxPage adventure={adventure} dispatch={action => setAdventure(a => adventureReducer(a, action))} />;
   }
   render(<Harness />);
-  expect(screen.queryByText("World Evolution record")).toBeNull();
+  expect(screen.getByText("World Evolution")).toBeTruthy();
   expect(screen.queryByText("No pending memory suggestions.")).toBeNull();
   expect(screen.getByText("1 pending")).toBeTruthy();
   expect(pendingSuggestionCount(latest)).toBe(1);
@@ -30,6 +30,22 @@ it("puts existing unrecorded events in the ordinary pending list and resolves th
   expect(pendingSuggestionCount(latest)).toBe(0);
   expect(screen.getByText("1 resolved")).toBeTruthy();
   expect(latest.storyCards).toEqual(initial.storyCards);
+});
+
+it("groups recurring capture failures and reviews the whole group without losing evidence", () => {
+  const initial = createDefaultAdventure("Capture failures");
+  initial.worldEvolutionState!.issues = [1, 2, 3].map(n => ({ id: `missing-${n}`, sourceTurnId: `turn-${n}`, status: "unrecorded", reason: "Memory envelope missing; story preserved." }));
+  let latest = initial;
+  function Harness() {
+    const [adventure, setAdventure] = useState(initial); latest = adventure;
+    return <MemoryInboxPage adventure={adventure} dispatch={action => setAdventure(a => adventureReducer(a, action))} />;
+  }
+  render(<Harness />);
+  expect(pendingSuggestionCount(latest)).toBe(1);
+  expect(screen.getByText("Review memory capture failures")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Ignore" }));
+  expect(pendingSuggestionCount(latest)).toBe(0);
+  expect(latest.worldEvolutionState!.issues.every(i => i.status === "dismissed")).toBe(true);
 });
 
 it("approves a cleanup deletion from Suggestions through the real card reducer", () => {

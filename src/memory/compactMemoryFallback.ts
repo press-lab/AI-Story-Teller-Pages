@@ -82,6 +82,11 @@ export async function runCompactMemoryFallback(
     const actions = onePassMemoryActions(adventure, context, envelope.updates, latestStory.content,
       latestStory.id, undefined, "Compact memory fallback: one API call", playerInput, recentEvidence);
     actions.push(...worldEvolutionActions(adventure, context, envelope, latestStory.content, latestStory.id));
+    // A valid empty envelope means there was nothing to record, not failed capture.
+    if (!envelope.error) {
+      const issue = adventure.worldEvolutionState?.issues.find(i => i.sourceTurnId === latestStory.id && i.status === "unrecorded");
+      if (issue) actions.push({ type: "SET_WORLD_ISSUE", issue: { ...issue, status: "recovered", reason: "Accepted narration checked by compact memory recovery." } });
+    }
     if ("error" in envelope) actions.push({ type: "SET_WORLD_ISSUE", issue: { id: `world-issue:${latestStory.id}`, sourceTurnId: latestStory.id, status: "unrecorded", reason: String(envelope.error), droppedRecords: envelope.droppedRecords } });
     return { actions, tokenUsage, valid: true };
   } catch {

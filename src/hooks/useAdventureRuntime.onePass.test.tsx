@@ -126,6 +126,7 @@ describe("runtime one-pass call accounting", () => {
     await act(async () => { await result.current.runtime.submitTurn("Mira explains."); });
     await waitFor(() => expect(sendOpenAICompatibleChatCompletion).toHaveBeenCalledTimes(2));
     expect(runMemoryCycle).not.toHaveBeenCalled();
+    await waitFor(() => expect(result.current.adventure?.worldEvolutionState?.issues.at(-1)?.status).toBe("recovered"));
     expect(result.current.adventure?.messages.at(-1)?.content).toBe(story);
     expect(result.current.adventure?.activeState.evaluationLog.some(log => log.errors.some(error => error.includes("Memory envelope missing")))).toBe(true);
   });

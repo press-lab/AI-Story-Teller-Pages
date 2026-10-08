@@ -8,6 +8,7 @@ import { createDefaultAdventure, defaultModelConfig } from "../state/defaults";
 import { adventureReducer } from "../state/adventureReducer";
 import { worldPresetName } from "../memory/worldPresets";
 import { ComponentsPage } from "./ComponentsPage";
+import { MemoryInboxPage } from "./MemoryInboxPage";
 import { SettingsPage } from "./SettingsPage";
 import { defaultGlobalAdventureSettings, defaultUiPreferences } from "./pageTypes";
 import type { Adventure, NewAdventureSetup } from "../types/adventure";
@@ -16,12 +17,20 @@ import { WorldEvolutionPanel } from "./WorldEvolutionPanel";
 
 afterEach(cleanup);
 describe("scenario configuration controls", () => {
+  it("keeps World Evolution in Memory rather than Plot", () => {
+    const a = createDefaultAdventure("Routing");
+    const { unmount } = render(<ComponentsPage adventure={a} dispatch={vi.fn()} />);
+    expect(screen.queryByText("World Evolution")).not.toBeInTheDocument();
+    unmount();
+    render(<MemoryInboxPage adventure={a} dispatch={vi.fn()} />);
+    expect(screen.getByText("World Evolution")).toBeInTheDocument();
+  });
   it("applies every explicit preset mapping in the adventure editor and derives Custom from individual edits", async () => {
     const user = userEvent.setup();
     let latest!: Adventure;
     function Editor() {
       const [a, setA] = useState(createDefaultAdventure("Scenario")); latest = a;
-      return <ComponentsPage adventure={a} dispatch={action => setA(old => adventureReducer(old, action))} />;
+      return <MemoryInboxPage adventure={a} dispatch={action => setA(old => adventureReducer(old, action))} />;
     }
     render(<Editor />);
     expect(screen.getByRole("article", { name: "Scenario Configuration" })).toBeInTheDocument();
