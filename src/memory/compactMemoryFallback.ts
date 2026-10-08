@@ -3,6 +3,7 @@ import { resolveBackgroundProviderConfig } from "../providers/backgroundProvider
 import { sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
 import type { Adventure, AdventureAction, ChatMessage, ProviderConfig } from "../types/adventure";
 import { MEMORY_OUTPUT_RESERVE, ONE_PASS_MEMORY_ID, onePassMemoryActions } from "./onePassMemory";
+import { worldEvolutionActions } from "./worldEvolution";
 
 export interface CompactMemoryFallbackResult {
   actions: AdventureAction[];
@@ -76,6 +77,11 @@ export async function runCompactMemoryFallback(
     const recentEvidence = adventure.messages.slice(-recentCount).map(message => message.content);
     const actions = onePassMemoryActions(adventure, context, parsed.updates, latestStory.content,
       latestStory.id, undefined, "Compact memory fallback: one API call", playerInput, recentEvidence);
+    actions.push(...worldEvolutionActions(adventure, context, {
+      plotEvents: "plotEvents" in parsed && Array.isArray(parsed.plotEvents) ? parsed.plotEvents : [],
+      worldChanges: "worldChanges" in parsed && Array.isArray(parsed.worldChanges) ? parsed.worldChanges : [],
+      newPlots: "newPlots" in parsed && Array.isArray(parsed.newPlots) ? parsed.newPlots : [],
+    }, latestStory.content, latestStory.id));
     return { actions, tokenUsage, valid: true };
   } catch {
     return { ...empty, tokenUsage };

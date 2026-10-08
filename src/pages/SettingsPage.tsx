@@ -173,7 +173,9 @@ export function SettingsPage({
     <section className="page editor-surface settings-page">
       {adventure && world && <article className="panel settings-card">
         <h3>World Evolution</h3>
-        <p className="muted">These settings are saved with this scenario. Plot progression and offscreen plot event gates are active. The other controls are saved but their runtime behavior is not implemented yet.</p>
+        <p className="muted">These settings govern narration and validated world changes, and are saved with this scenario. Established changes use the same narration response. Review major canon changes in Memory Suggestions.</p>
+        <CheckboxField label="Enable persistent world evolution" checked={world.enabled === true} onChange={value => updateWorld("enabled", value)} />
+        {!world.enabled && <p className="muted">Legacy behavior is preserved until you enable this for the scenario.</p>}
         {([
           ["plotProgression", "Plot progression", ["off", "natural", "active"]],
           ["plotResolution", "Plot resolution", ["openEnded", "decisive"]],

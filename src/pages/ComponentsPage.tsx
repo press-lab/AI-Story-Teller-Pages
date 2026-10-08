@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { WorldEvolutionPanel } from "./WorldEvolutionPanel";
 import type { Adventure, AdventureAction, ArcPace, ArcPhase, ArcTriggerMode, ComponentEntry, ComponentType, ContextInclusionPolicy, PlotAIBuilderRequest } from "../types/adventure";
 import type { ComponentAuditRecommendation } from "../memory/componentAudit";
 import { makeComponent } from "../state/defaults";
@@ -522,6 +523,7 @@ export function ComponentsPage({ adventure, dispatch, loading, onSuggestPlotUpda
 
   return (
     <section className="page editor-surface components-page">
+      <WorldEvolutionPanel adventure={adventure} dispatch={dispatch} />
       <div className="editor-page-summary">
         <p className="muted">
           Always-on plot truth, narration rules, author direction, and custom context blocks.

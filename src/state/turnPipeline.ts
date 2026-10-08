@@ -1,4 +1,5 @@
-import { ONE_PASS_MEMORY_ID, onePassMemoryActions, parseOnePassMemory, plotEventActions } from "../memory/onePassMemory";
+import { ONE_PASS_MEMORY_ID, onePassMemoryActions, parseOnePassMemory } from "../memory/onePassMemory";
+import { worldRuntimeActive, worldEvolutionActions } from "../memory/worldEvolution";
 import { buildContext, extractInlineThoughts } from "../contextBuilder/contextBuilder";
 import { runContinuityCheck, scanForRiskyClaims } from "../continuityLint";
 import { evaluateTriggerRules, type TriggerEvaluationEvent } from "../triggers/triggerEngine";
@@ -120,7 +121,6 @@ export async function applyProviderResponse({
         : [memory.error, response.memoryDiscardReason].filter(Boolean).join(" ") || undefined);
     const before = next;
     next = reduceActions(next, actions);
-    if (!continuityCorrected) next = reduceActions(next, plotEventActions(next, memory.plotEvents ?? [], finalContent, messageId));
     const visibleThoughts = next.brains.filter(b => b.printThoughts).flatMap(b => {
       const old = before.brains.find(previous => previous.id === b.id);
       return Object.entries(b.thoughts).filter(([key, value]) => old?.thoughts[key] !== value)
@@ -139,6 +139,12 @@ export async function applyProviderResponse({
     createdAt,
     usage: response.usage,
   });
+  if (mode !== "comms" && worldRuntimeActive(next)) {
+    if (memoryEnabled && !continuityCorrected && !response.memoryDiscardReason) next = reduceActions(next, worldEvolutionActions(next, preProviderContext, memory, finalContent, messageId));
+    const failure = continuityCorrected ? "World changes from the discarded draft were not applied. Review accepted narration." : response.memoryDiscardReason ?? memory.error
+      ?? (!memoryEnabled ? "World event capture is paused because one-pass memory was disabled or omitted by the context budget." : undefined);
+    if (failure) next = adventureReducer(next, { type: "SET_WORLD_ISSUE", issue: { id: `world-issue:${messageId}`, sourceTurnId: messageId, status: "unrecorded", reason: failure } });
+  }
   next = adventureReducer(next, { type: "CONSUME_NEXT_TURN_NOTE" });
 
   next = applyRuntimeEngines(next, { source: "output", text: finalContent });

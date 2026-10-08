@@ -21,12 +21,14 @@ import { applyGuardedStoryCardPolicy, restoreGuardedFactsToLiveContent } from ".
 import { createId, nowIso } from "../utils/id";
 
 export const defaultWorldEvolutionSettings: WorldEvolutionSettings = {
+  enabled: true,
   plotProgression: "active", plotResolution: "decisive", newPlotGeneration: "occasional",
   npcAutonomy: "independent", offscreenEvents: true, characterDevelopment: true,
   relationshipEvolution: true, betrayal: "off", redemption: "earned",
   hiddenMotivations: true, canonReinterpretation: "review",
 };
 export const legacyWorldEvolutionSettings: WorldEvolutionSettings = {
+  enabled: false,
   plotProgression: "off", plotResolution: "openEnded", newPlotGeneration: "off",
   npcAutonomy: "reactive", offscreenEvents: false, characterDevelopment: false,
   relationshipEvolution: false, betrayal: "off", redemption: "off",
@@ -252,6 +254,7 @@ export function createDefaultAdventure(title = "Untitled Adventure"): Adventure 
     memoryDetectionSettings: defaultMemoryDetectionSettings,
     systemTriggers: defaultSystemTriggerSettings,
     worldEvolutionSettings: { ...defaultWorldEvolutionSettings },
+    worldEvolutionState: { threads: [], history: [], issues: [] },
   };
 }
 
@@ -317,6 +320,7 @@ export function makeStoryCard(overrides: Partial<StoryCard> & Pick<StoryCard, "t
     active: overrides.active ?? true,
     pinned: overrides.pinned ?? false,
     protected: overrides.protected ?? false,
+    evolutionProtection: overrides.evolutionProtection,
     inclusionPolicy: overrides.inclusionPolicy ?? "triggered",
     priority: overrides.priority ?? 0,
     autoUpdate: overrides.type === "event" ? false : overrides.autoUpdate ?? false,
@@ -521,7 +525,8 @@ export function normalizeAdventure(adventure: Adventure): Adventure {
   return {
     ...baseline,
     ...adventure,
-    worldEvolutionSettings: { ...legacyWorldEvolutionSettings, ...(adventure.worldEvolutionSettings ?? {}) },
+    worldEvolutionSettings: { ...legacyWorldEvolutionSettings, ...(adventure.worldEvolutionSettings ?? {}), enabled: adventure.worldEvolutionSettings?.enabled ?? (adventure.worldEvolutionSettings?.plotProgression !== undefined && adventure.worldEvolutionSettings.plotProgression !== "off") },
+    worldEvolutionState: { threads: [], history: [], issues: [], ...(adventure.worldEvolutionState ?? {}) },
     openingScene: adventure.openingScene ?? "",
     messages,
     metadata: adventure.metadata ?? {},

@@ -33,6 +33,8 @@ export type MemoryUpdateSource = "aiMemoryUpdate" | "memoryProposal";
 export type ArcPhase = "simmer" | "escalate" | "break" | "aftermath";
 
 export interface WorldEvolutionSettings {
+  /** Old adventures keep their original memory and Arc Director behavior until opted in. */
+  enabled?: boolean;
   plotProgression: "off" | "natural" | "active";
   plotResolution: "openEnded" | "decisive";
   newPlotGeneration: "off" | "occasional" | "frequent";
@@ -55,6 +57,69 @@ export interface PlotEvent {
   sourceTurnId: string;
   turn: number;
   offscreen?: boolean;
+  expectedRevision?: number;
+  objective?: string;
+  certainty?: "confirmed" | "rumor" | "plan";
+  autonomous?: boolean;
+  resolution?: { verdict: "victory" | "failure" | "abandonment" | "partial" | "unresolved"; centralObjective: boolean; remainingObstacles: string[]; closureEvidence: string };
+}
+
+export type WorldOperation = "create" | "append" | "replace" | "remove" | "supersede" | "resolve";
+export type WorldEffect = "development" | "betrayal" | "redemption" | "hiddenMotivation" | "reinterpretation" | "identity";
+export interface WorldChange {
+  owner: "storyCard" | "brain" | "plotEssentials";
+  targetId: string;
+  operation: WorldOperation;
+  expectedRevision: string | null;
+  previous: string;
+  content: string;
+  evidence: string;
+  reason: string;
+  requiresReview: boolean;
+  certainty: "confirmed" | "rumor" | "plan";
+  effects: WorldEffect[];
+  autonomous: boolean;
+  offscreen: boolean;
+  motivationEvidence?: string;
+  knowledgeEvidence?: string;
+  field?: "currentState" | "emotionalInterpretation" | "recentDevelopments" | "notes";
+  characterId?: string;
+  title?: string;
+  cardType?: StoryCardType;
+  triggers?: string[];
+}
+export interface PlotThread {
+  id: string;
+  title: string;
+  objective: string;
+  participants: string[];
+  originEvidence: string;
+  sourceTurnId: string;
+  phase: ArcPhase;
+  revision: number;
+  events: PlotEvent[];
+  outcome?: string;
+}
+export interface WorldHistoryEntry {
+  id: string;
+  proposalId: string;
+  change: WorldChange;
+  sourceTurnId: string;
+  previous: StoryCard | BrainEntry | ComponentEntry | null;
+  next: StoryCard | BrainEntry | ComponentEntry;
+  rolledBack?: boolean;
+  createdAt: string;
+}
+export interface WorldEvolutionIssue {
+  id: string;
+  sourceTurnId: string;
+  reason: string;
+  status: "unrecorded" | "recovered" | "dismissed";
+}
+export interface WorldEvolutionState {
+  threads: PlotThread[];
+  history: WorldHistoryEntry[];
+  issues: WorldEvolutionIssue[];
 }
 
 export interface ArcPacingState {
@@ -69,6 +134,7 @@ export interface ArcPacingState {
   brokeAtTurn?: number;
   outcome?: string;
   events?: PlotEvent[];
+  revision?: number;
 }
 
 export type ArcPace = "short" | "medium" | "long" | "epic";
@@ -197,6 +263,7 @@ export interface StoryCard {
   active: boolean;
   pinned: boolean;
   protected: boolean;
+  evolutionProtection?: { betrayal: boolean; identity: boolean };
   inclusionPolicy: ContextInclusionPolicy;
   priority: number;
   state: string;
@@ -260,6 +327,7 @@ export interface RelationshipTransition {
 }
 
 export interface BrainEntry {
+  evolvedFields?: WorldChange["field"][];
   relationships: DynamicRelationship[];
   id: string;
   characterName: string;
@@ -505,6 +573,7 @@ export type MemoryProposalType =
 export type MemoryProposalStatus = "pending" | "approved" | "rejected" | "ignored";
 
 export interface MemoryProposal {
+  worldChange?: WorldChange;
   relationship?: RelationshipTransition;
   /** Consequential automatic changes require explicit review, regardless of generic auto-approval. */
   requiresReview?: boolean;
@@ -683,6 +752,7 @@ export interface Adventure {
   memoryDetectionSettings: MemoryDetectionSettings;
   systemTriggers: SystemTriggerSettings;
   worldEvolutionSettings?: WorldEvolutionSettings;
+  worldEvolutionState?: WorldEvolutionState;
 }
 
 export interface MemoryAutoApproveSettings {
@@ -868,6 +938,9 @@ export type AdventureAction =
   | { type: "MARK_COMPONENT_UPDATED"; componentId: string; turn: number }
   | { type: "ADVANCE_ARC_PACING"; triggeredIds: string[]; turn: number }
   | { type: "APPLY_PLOT_EVENT"; event: PlotEvent }
+  | { type: "REGISTER_PLOT_THREAD"; thread: PlotThread }
+  | { type: "ROLLBACK_WORLD_CHANGE"; historyId: string }
+  | { type: "SET_WORLD_ISSUE"; issue: WorldEvolutionIssue }
   | { type: "SET_WORLD_EVOLUTION_SETTINGS"; patch: Partial<WorldEvolutionSettings> }
   | { type: "SET_ARC_PHASE"; componentId: string; phase: ArcPhase; turn?: number }
   | { type: "SET_ARC_CONTINUATIONS"; componentId: string; options: ArcContinuationOption[] }

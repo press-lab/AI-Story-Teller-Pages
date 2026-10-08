@@ -1,4 +1,5 @@
 import { relationshipIsCurrent } from "./relationships";
+import { mutationPermissionError } from "./worldEvolution";
 import type {
   Adventure,
   AdventureAction,
@@ -82,6 +83,9 @@ export function applyAIMemoryUpdate(adventure: Adventure, updates: AIMemoryUpdat
   const changedItemIds: string[] = [];
 
   for (const update of updates) {
+    const targetId = "brainId" in update ? update.brainId : "storyCardId" in update ? update.storyCardId : "componentId" in update ? update.componentId : undefined;
+    const permission = mutationPermissionError(adventure, targetId, JSON.stringify(update), [], update.type === "storyCardUpdate" && adventure.storyCards.some(c => c.id === targetId && c.type === "character"));
+    if (permission) { rejectedUpdates.push(reject(update, permission)); continue; }
     if (update.type === "relationshipProposal") {
       if (update.proposal.proposedType === "relationshipUpdate" && relationshipIsCurrent(adventure, update.proposal))
         actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal: update.proposal });

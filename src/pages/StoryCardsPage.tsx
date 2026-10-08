@@ -1005,6 +1005,10 @@ export function StoryCardsPage({
                       : "With no structured facts, Content is the entire card text sent when this card is included."}
                   </p>
                   <Field label="Content">
+                    {card.type === "character" && <div>
+                      <CheckboxField label="Protect from betrayal" checked={card.evolutionProtection?.betrayal ?? false} onChange={value => dispatch({ type: "UPDATE_STORY_CARD", storyCardId: card.id, patch: { evolutionProtection: { identity: card.evolutionProtection?.identity ?? false, betrayal: value } } })} />
+                      <CheckboxField label="Protect core identity" checked={card.evolutionProtection?.identity ?? false} onChange={value => dispatch({ type: "UPDATE_STORY_CARD", storyCardId: card.id, patch: { evolutionProtection: { betrayal: card.evolutionProtection?.betrayal ?? false, identity: value } } })} />
+                    </div>}
                     <textarea
                       rows={6}
                       value={card.content}

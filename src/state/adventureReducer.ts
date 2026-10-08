@@ -1,5 +1,6 @@
 import { applyRelationship, duplicateRelationship, relationshipFocusCard, relationshipIsCurrent, stateKey, validRelationshipState } from "../memory/relationships";
 import { sameEventMemory } from "../memory/eventMemory";
+import { applyWorldChange, changeNeedsReview, eventPhase, mutationPermissionError, rollbackWorldChange, validatePlotEvent, validateWorldChange, worldEnabled, worldState } from "../memory/worldEvolution";
 import type {
   Adventure,
   AdventureAction,
@@ -1315,6 +1316,7 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
         components: updateById(state.components, action.componentId, (item) => mergePatch<ComponentEntry>(item, action.patch)),
       });
     case "APPLY_COMPONENT_UPDATE": {
+      if (mutationPermissionError(state, action.componentId, action.content)) return state;
       const target = state.components.find((component) => component.id === action.componentId);
       if (!target) return state;
       const basePatch: Partial<Adventure> = {
@@ -1347,6 +1349,7 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
         }),
       });
     case "APPLY_STORY_CARD_UPDATE":
+      if (mutationPermissionError(state, action.storyCardId, action.content ?? "", [], state.storyCards.some(c => c.id === action.storyCardId && c.type === "character"))) return state;
       if (state.storyCards.some(card => card.id === action.storyCardId && card.type === "event")) return state;
       if (action.content === undefined && (!action.patch || Object.keys(action.patch).length === 0)) return state;
       return touchAdventure(state, {
@@ -1377,25 +1380,46 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
         components: updateById(state.components, action.componentId, (item) => touch({ ...item, lastAutoUpdateTurn: action.turn })),
       });
     case "ADVANCE_ARC_PACING":
-      if (state.worldEvolutionSettings?.plotProgression !== undefined && state.worldEvolutionSettings.plotProgression !== "off") return state;
+      if (worldEnabled(state)) return state;
       return touchAdventure(state, {
         components: state.components.map((component) =>
           component.type === "currentArc" ? advanceArcComponent(component, action.triggeredIds, action.turn) : component,
         ),
       });
     case "SET_WORLD_EVOLUTION_SETTINGS":
-      return touchAdventure(state, { worldEvolutionSettings: { ...state.worldEvolutionSettings!, ...action.patch } });
+      return touchAdventure(state, { worldEvolutionSettings: { ...state.worldEvolutionSettings!, enabled: true, ...action.patch } });
+    case "SET_WORLD_ISSUE": {
+      const world = worldState(state);
+      return touchAdventure(state, { worldEvolutionState: { ...world, issues: [...world.issues.filter(i => i.id !== action.issue.id), action.issue] } });
+    }
+    case "ROLLBACK_WORLD_CHANGE":
+      return touchAdventure(state, rollbackWorldChange(state, action.historyId));
+    case "REGISTER_PLOT_THREAD": {
+      const world = worldState(state), t = action.thread, settings = state.worldEvolutionSettings;
+      const story = state.messages.find(m => m.id === t.sourceTurnId && m.role === "assistant")?.content ?? "";
+      if (!worldEnabled(state) || settings?.newPlotGeneration === "off" || settings?.plotProgression === "off"
+        || world.threads.some(p => p.id === t.id || p.objective === t.objective) || !story.includes(t.originEvidence)
+        || !t.objective.trim() || t.participants.some(id => ![...state.storyCards, ...state.brains].some(c => c.id === id))) return state;
+      return touchAdventure(state, { worldEvolutionState: { ...world, threads: [...world.threads, t] } });
+    }
     case "APPLY_PLOT_EVENT": {
-      if (!state.worldEvolutionSettings || state.worldEvolutionSettings.plotProgression === "off") return state;
-      if (action.event.offscreen && (state.worldEvolutionSettings?.npcAutonomy !== "independent" || !state.worldEvolutionSettings.offscreenEvents)) return state;
+      const story = state.messages.find(m => m.id === action.event.sourceTurnId && m.role === "assistant")?.content ?? "";
+      if (validatePlotEvent(state, action.event, story)) return state;
       const arc = state.components.find(component => component.id === action.event.targetId && component.type === "currentArc" && component.active);
-      if (!arc || !arc.arcState || arc.arcState.outcome || !action.event.evidence.trim() || !action.event.outcome.trim()) return state;
       const terminal = ["resolved", "failed", "abandoned"].includes(action.event.kind);
+      const phase = eventPhase(action.event);
+      if (!arc) {
+        const world = worldState(state);
+        return touchAdventure(state, { worldEvolutionState: { ...world, threads: world.threads.map(t => t.id !== action.event.targetId ? t : {
+          ...t, phase, revision: t.revision + 1, events: [...t.events, action.event], outcome: terminal ? action.event.outcome : undefined,
+        }) } });
+      }
       return touchAdventure(state, { components: updateById(state.components, arc.id, item => touch({
         ...item,
         arcState: {
           ...item.arcState!,
-          phase: terminal ? "aftermath" : item.arcState!.phase,
+          phase,
+          revision: (item.arcState?.revision ?? 0) + 1,
           outcome: terminal ? action.event.outcome : undefined,
           events: [...(item.arcState!.events ?? []), action.event],
         },
@@ -1470,6 +1494,7 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
         brains: updateById(state.brains, action.brainId, (item) => updateBrainField(item, action.field, action.text, "replace")),
       });
     case "APPLY_BRAIN_UPDATE": {
+      if (mutationPermissionError(state, action.brainId, JSON.stringify(action.patch))) return state;
       const target = state.brains.find((brain) => brain.id === action.brainId);
       if (!target) return state;
       const basePatch: Partial<Adventure> = {
@@ -1589,6 +1614,16 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
       }) }) });
     }
     case "ADD_MEMORY_PROPOSAL": {
+      if (action.proposal.worldChange) {
+        const p = action.proposal, c = p.worldChange!;
+        const story = state.messages.find(m => m.id === p.sourceTurnId && m.role === "assistant")?.content ?? "";
+        if (validateWorldChange(state, c, story) || state.activeState.memoryProposals.some(q => q.worldChange?.targetId === c.targetId && q.sourceTurnId === p.sourceTurnId)) return state;
+        const approved = !changeNeedsReview(state, c) && !!state.memoryAutoApprove[p.proposedType as keyof typeof state.memoryAutoApprove];
+        const proposal = { ...p, requiresReview: changeNeedsReview(state, c), status: approved ? "approved" as const : "pending" as const };
+        return touchAdventure(state, { ...(approved ? applyWorldChange(state, proposal) : {}), activeState: { ...state.activeState, memoryProposals: [proposal, ...state.activeState.memoryProposals] } });
+      }
+      if (mutationPermissionError(state, action.proposal.targetId, action.proposal.content + " " + action.proposal.sourceText, [],
+        action.proposal.proposedType === "storyCard" && (action.proposal.storyCardType === "character" || state.storyCards.some(c => c.id === action.proposal.targetId && c.type === "character")))) return state;
       const clean = sanitizeProposal(routedProposal(state, action.proposal));
       if (!clean) return state;
       if (clean.proposedType === "plotPressureUpdate" && !state.components.some(c => c.type === "activePressure" && (!clean.targetId || c.id === clean.targetId))) return state;
@@ -1685,6 +1720,7 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
       });
     }
     case "UPDATE_MEMORY_PROPOSAL":
+      if (state.activeState.memoryProposals.some(p => p.id === action.proposalId && p.worldChange)) return state;
       return touchAdventure(state, {
         activeState: {
           ...state.activeState,
@@ -1695,9 +1731,16 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
       });
     case "APPROVE_MEMORY_PROPOSAL": {
       const existing = state.activeState.memoryProposals.find((proposal) => proposal.id === action.proposalId);
+      if (existing?.worldChange) {
+        const story = state.messages.find(m => m.id === existing.sourceTurnId && m.role === "assistant")?.content ?? "";
+        if (existing.status !== "pending" || validateWorldChange(state, existing.worldChange, story)) return state;
+        const applied = applyWorldChange(state, existing);
+        return touchAdventure(state, { ...applied, activeState: { ...state.activeState, memoryProposals: state.activeState.memoryProposals.map(p => p.id === existing.id ? { ...p, status: "approved" } : p) } });
+      }
       if (!existing || (existing.proposedType === "relationshipUpdate" && (existing.status !== "pending" || !relationshipIsCurrent(state, existing)))) return state;
       const proposal = sanitizeProposal(routedProposal(state, proposalWithEdits(existing, action.editedProposal)));
       if (!proposal || (proposal.proposedType === "relationshipUpdate" && !relationshipIsCurrent(state, proposal))) return state;
+      if (mutationPermissionError(state, proposal.targetId, proposal.content + " " + proposal.sourceText, [], proposal.proposedType === "storyCard" && state.storyCards.some(c => c.id === proposal.targetId && c.type === "character"))) return state;
       const approved = updateMemoryProposal(proposal, { status: "approved" });
       const applied = applyApprovedMemoryProposal(state, approved);
       return touchAdventure(state, {

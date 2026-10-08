@@ -1,4 +1,6 @@
 import { relationshipIsCurrent } from "../memory/relationships";
+import { validateWorldChange } from "../memory/worldEvolution";
+import { WorldEvolutionPanel } from "./WorldEvolutionPanel";
 import { useState } from "react";
 import { classifyMemory } from "../memory/classificationPolicy";
 import { resolveMemoryTarget } from "../memory/resolveMemoryTarget";
@@ -46,6 +48,9 @@ export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onR
   const resolved = visibleProposals.filter((p) => p.status !== "pending");
   const totalPending = allProposals.filter((p) => p.status === "pending").length;
   const totalResolved = allProposals.length - totalPending;
+  const isStale = (proposal: MemoryProposal) => proposal.worldChange
+    ? !!validateWorldChange(adventure, proposal.worldChange, adventure.messages.find(m => m.id === proposal.sourceTurnId)?.content ?? "")
+    : proposal.proposedType === "relationshipUpdate" && !relationshipIsCurrent(adventure, proposal);
 
   function updateProposal(proposal: MemoryProposal, patch: Partial<MemoryProposal>) {
     dispatch({ type: "UPDATE_MEMORY_PROPOSAL", proposalId: proposal.id, patch });
@@ -107,6 +112,7 @@ export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onR
 
   return (
     <section className="page editor-surface memory-inbox-page">
+      <WorldEvolutionPanel adventure={adventure} dispatch={dispatch} />
       <div className="editor-page-summary">
         <p className="muted">
           Review proposed memory writes before they become active story context. Event Memories always wait for your approval.
@@ -211,7 +217,7 @@ export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onR
       <div className="list">
         {pending.length === 0 && <p className="muted">No pending memory suggestions.</p>}
         {pending.map((proposal) => (
-          <ProposalCard key={proposal.id} proposal={proposal} stale={proposal.proposedType === "relationshipUpdate" && !relationshipIsCurrent(adventure, proposal)} dispatch={dispatch} onUpdate={updateProposal} onRegenerate={onRegenerateProposal} />
+          <ProposalCard key={proposal.id} proposal={proposal} stale={isStale(proposal)} dispatch={dispatch} onUpdate={updateProposal} onRegenerate={onRegenerateProposal} />
         ))}
       </div>
 
@@ -220,7 +226,7 @@ export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onR
           <summary>History ({resolved.length})</summary>
           <div className="list" style={{ marginTop: "0.75rem" }}>
             {resolved.map((proposal) => (
-              <ProposalCard key={proposal.id} proposal={proposal} stale={proposal.proposedType === "relationshipUpdate" && !relationshipIsCurrent(adventure, proposal)} dispatch={dispatch} onUpdate={updateProposal} onRegenerate={onRegenerateProposal} />
+              <ProposalCard key={proposal.id} proposal={proposal} stale={isStale(proposal)} dispatch={dispatch} onUpdate={updateProposal} onRegenerate={onRegenerateProposal} />
             ))}
           </div>
         </details>
@@ -240,6 +246,18 @@ interface ProposalCardProps {
 function ProposalCard({ proposal, stale, dispatch, onUpdate, onRegenerate }: ProposalCardProps) {
   const isPending = proposal.status === "pending";
   const [regenerating, setRegenerating] = useState(false);
+
+  if (proposal.worldChange) return <article className={`card proposal-card proposal-${proposal.status}`}>
+    <h4>{proposal.title} · {proposal.worldChange.operation} · {proposal.status}</h4>
+    <p>{proposal.worldChange.owner}: {proposal.targetId} · Expected revision: {proposal.worldChange.expectedRevision ?? "new"}</p>
+    <p>{proposal.rationale}</p><p>Previous fact: {proposal.worldChange.previous || "(new)"}</p><pre>{proposal.content || "(removed)"}</pre>
+    <p>Evidence: {proposal.sourceText}</p>
+    {proposal.worldChange.motivationEvidence && <p>Established motivation: {proposal.worldChange.motivationEvidence}</p>}
+    {proposal.worldChange.knowledgeEvidence && <p>Knowledge: {proposal.worldChange.knowledgeEvidence}</p>}
+    {isPending && stale && <p role="alert">This change is stale or no longer permitted. Reject it and review current canon.</p>}
+    {isPending && <div className="row"><button type="button" disabled={stale} onClick={() => dispatch({ type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id })}>Approve</button>
+      <button type="button" onClick={() => dispatch({ type: "REJECT_MEMORY_PROPOSAL", proposalId: proposal.id })}>Reject</button></div>}
+  </article>;
 
   async function handleRegenerate() {
     if (!onRegenerate || regenerating) return;

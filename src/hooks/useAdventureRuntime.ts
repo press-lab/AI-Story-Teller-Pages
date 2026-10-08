@@ -1,4 +1,5 @@
 import { ONE_PASS_MEMORY_ID, MEMORY_OUTPUT_RESERVE } from "../memory/onePassMemory";
+import { worldRuntimeActive } from "../memory/worldEvolution";
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { buildContext } from "../contextBuilder/contextBuilder";
 import { saveAdventure } from "../db/adventureDb";
@@ -269,7 +270,8 @@ export function useAdventureRuntime(
       };
       const actions = compact.valid
         ? [...compact.actions, { type: "SET_LAST_MEMORY_CYCLE_TURN" as const, turn: snapshot.activeState.turn }, compactUsage]
-        : [...(await runMemoryCycle(snapshot, config)).actions, compactUsage];
+        : worldRuntimeActive(snapshot) ? [{ type: "SET_LAST_MEMORY_CYCLE_TURN" as const, turn: snapshot.activeState.turn }, compactUsage]
+          : [...(await runMemoryCycle(snapshot, config)).actions, compactUsage];
       if (adventureRef.current?.id !== snapshot.id) return;
       if (isSubmittingRef.current) {
         queuePendingUpdate(actions, "memoryCycle");
@@ -327,7 +329,7 @@ export function useAdventureRuntime(
   // being undefined so it runs a single time per resolution.
   async function checkArcContinuation(snapshot: Adventure) {
     // World evolution uses only the narration response; legacy arcs retain their old chooser.
-    if (snapshot.worldEvolutionSettings?.plotProgression !== "off") return;
+    if (worldRuntimeActive(snapshot)) return;
     const arc = snapshot.components.find(
       (c) =>
         c.type === "currentArc" &&

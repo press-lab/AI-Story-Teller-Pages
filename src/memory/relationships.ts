@@ -1,5 +1,6 @@
 import type { Adventure, BrainEntry, ContextBuildResult, DynamicRelationship, MemoryProposal, RelationshipProposal, RelationshipState } from "../types/adventure";
 import { createId, nowIso } from "../utils/id";
+import { mutationPermissionError, worldEnabled } from "./worldEvolution";
 export interface RelationshipTarget {
   target: string;
   npc: string;
@@ -30,6 +31,8 @@ export function relationshipText(r: DynamicRelationship, focus = r.focus): strin
   return `Focus: ${focus}\nRevision: ${r.revision}\nBond: ${r.current.bond}\nStatus: ${r.current.status}\n${Object.entries(r.current.dimensions).map(([k,v]) => `${k}: ${v}`).join("\n")}`;
 }
 export function relationshipIsCurrent(a: Adventure, p: MemoryProposal): boolean {
+  if (worldEnabled(a) && !a.worldEvolutionSettings!.relationshipEvolution) return false;
+  if (mutationPermissionError(a, p.targetId, p.content + " " + p.sourceText)) return false;
   const t = p.relationship;
   const r = a.brains.find(b => b.id === p.targetId)?.relationships?.find(r => r.id === t?.relationshipId);
   return !!t && !!r && !!relationshipFocusCard(a, r) && t.focusStoryCardId === r.focusStoryCardId && validRelationshipState(t.previous) && validRelationshipState(t.proposed)
@@ -56,6 +59,9 @@ export function relationshipConflicts(a: Adventure, brain: BrainEntry, focus: st
     .filter(c => `${c.title} ${c.content}`.toLowerCase().includes(brain.characterName.toLowerCase()) && `${c.title} ${c.content}`.toLowerCase().includes(focus.toLowerCase()));
 }
 export function relationshipCandidate(a: Adventure, context: ContextBuildResult, u: Record<string, unknown>, story: string, player: string, sourceTurnId: string): RelationshipProposal | string {
+  if (worldEnabled(a) && !a.worldEvolutionSettings!.relationshipEvolution) return "Relationship evolution is disabled.";
+  const permission = mutationPermissionError(a, typeof u.target === "string" ? u.target : undefined, JSON.stringify(u.proposed) + " " + u.evidence);
+  if (permission) return permission;
   const brain = a.brains.find(b => b.id === u.target && b.active);
   const r = brain?.relationships?.find(r => r.id === u.relationshipId && r.focusStoryCardId === u.focusStoryCardId && relationshipFocusCard(a, r)?.title === u.focus);
   if (!brain || !r || !relationshipFocusCard(a, r)) return "unenrolled Brain-focus target";
