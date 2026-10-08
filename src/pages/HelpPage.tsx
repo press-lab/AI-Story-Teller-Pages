@@ -135,6 +135,12 @@ npm.cmd run test:live   # optional, uses .env.test.local`}</pre>
           text, proposed type, rationale, confidence, and suggested triggers.
         </p>
         <p>
+          Story Card Cleanup also sends recommended edits, new cards, and deletions here.
+          Review or edit each suggestion, then Approve, Reject, or Ignore it. Cleanup suggestions
+          are saved with the adventure and always require approval. If the target card changes
+          after cleanup, run cleanup again before approving that change.
+        </p>
+        <p>
           Pending proposals are not active context. Approving a proposal routes it to a Story Card, Brain
           update, Plot Essentials update, or legacy Rolling Summary update through reducer-backed paths.
         </p>

@@ -1,5 +1,6 @@
 import { applyRelationship, duplicateRelationship, relationshipFocusCard, relationshipIsCurrent, stateKey, validRelationshipState } from "../memory/relationships";
 import { sameEventMemory } from "../memory/eventMemory";
+import { cardAuditReviewError } from "../memory/storyCardAuditSuggestions";
 import { applyWorldChange, changeNeedsReview, eventPhase, MAX_ACTIVE_PLOTS, mutationPermissionError, needsSemanticReview, rollbackWorldChange, validatePlotEvent, validateWorldChange, worldEnabled, worldState } from "../memory/worldEvolution";
 import type {
   Adventure,
@@ -1623,6 +1624,14 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
       }) }) });
     }
     case "ADD_MEMORY_PROPOSAL": {
+      if (action.proposal.cardAudit) {
+        const p = sanitizeProposal(action.proposal);
+        if (!p || p.proposedType !== "storyCard" || !["edit", "delete", "create"].includes(p.cardAudit!.action)) return state;
+        if (state.activeState.memoryProposals.some(q => q.cardAudit?.action === p.cardAudit!.action && q.targetId === p.targetId
+          && q.cardAudit.expectedRevision === p.cardAudit!.expectedRevision && q.title === p.title && q.content === p.content
+          && JSON.stringify(q.suggestedTriggers) === JSON.stringify(p.suggestedTriggers) && q.storyCardType === p.storyCardType && q.memoryMode === p.memoryMode)) return state;
+        return touchAdventure(state, { activeState: { ...state.activeState, memoryProposals: [{ ...p, requiresReview: true, status: "pending" }, ...state.activeState.memoryProposals] } });
+      }
       if (action.proposal.worldChange) {
         const p = action.proposal, c = p.worldChange!;
         const story = state.messages.find(m => m.id === p.sourceTurnId && m.role === "assistant")?.content ?? "";
@@ -1735,12 +1744,24 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
         activeState: {
           ...state.activeState,
           memoryProposals: updateById(state.activeState.memoryProposals, action.proposalId, (proposal) =>
-            updateMemoryProposal(proposal, action.patch),
+            updateMemoryProposal(proposal, proposal.cardAudit ? { ...action.patch, cardAudit: proposal.cardAudit, targetId: proposal.targetId, proposedType: "storyCard", requiresReview: true } : action.patch),
           ),
         },
       });
     case "APPROVE_MEMORY_PROPOSAL": {
       const existing = state.activeState.memoryProposals.find((proposal) => proposal.id === action.proposalId);
+      if (existing?.cardAudit) {
+        if (existing.status !== "pending") return state;
+        const p = sanitizeProposal({ ...proposalWithEdits(existing, action.editedProposal), cardAudit: existing.cardAudit, targetId: existing.targetId, proposedType: "storyCard", requiresReview: true });
+        if (!p || cardAuditReviewError(state, p)) return state;
+        // Explicit authoring approval retains the previous cleanup/manual editor route.
+        const next = p.cardAudit!.action === "delete"
+          ? adventureReducer(state, { type: "DELETE_STORY_CARD", storyCardId: p.targetId! })
+          : p.cardAudit!.action === "edit"
+            ? adventureReducer(state, { type: "UPDATE_STORY_CARD", storyCardId: p.targetId!, patch: { title: p.title, content: p.content, keys: p.suggestedTriggers, type: p.storyCardType, memoryMode: p.memoryMode } })
+            : adventureReducer(state, { type: "UPSERT_STORY_CARD", storyCard: makeStoryCard({ title: p.title, content: p.content, keys: p.suggestedTriggers, type: p.storyCardType, memoryMode: p.memoryMode }) });
+        return touchAdventure(next, { activeState: { ...next.activeState, memoryProposals: next.activeState.memoryProposals.map(q => q.id === p.id ? { ...p, status: "approved" } : q) } });
+      }
       if (existing?.worldChange) {
         const story = state.messages.find(m => m.id === existing.sourceTurnId && m.role === "assistant")?.content ?? "";
         if (existing.status !== "pending" || validateWorldChange(state, existing.worldChange, story)) return state;

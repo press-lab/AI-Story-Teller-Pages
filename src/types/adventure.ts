@@ -601,6 +601,8 @@ export interface MemoryProposal {
   semanticEffects?: WorldEffect[];
   motivationEvidence?: string;
   worldChange?: WorldChange;
+  /** User-requested card cleanup, always reviewed through Suggestions. */
+  cardAudit?: { action: "edit" | "delete" | "create"; expectedRevision: string | null };
   relationship?: RelationshipTransition;
   /** Consequential automatic changes require explicit review, regardless of generic auto-approval. */
   requiresReview?: boolean;

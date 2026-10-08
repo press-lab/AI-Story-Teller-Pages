@@ -241,7 +241,7 @@ describe("side menu page smoke coverage", () => {
 
   it("surfaces Story Card cleanup as a maintenance action", async () => {
     const user = userEvent.setup();
-    const onAuditStoryCards = vi.fn(async () => []);
+    const onAuditStoryCards = vi.fn(async () => undefined);
     const onSuggestCardUpdates = vi.fn(async () => undefined);
 
     renderWithAdventure((adventure, dispatch) => (
@@ -263,6 +263,9 @@ describe("side menu page smoke coverage", () => {
 
     await user.click(screen.getByRole("button", { name: "Clean Up Cards" }));
     expect(onAuditStoryCards).toHaveBeenCalledWith(20, false);
+    expect(screen.queryByText("Story Card Cleanup")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("in Suggestions");
   });
 
   it("surfaces Plot Component cleanup as a maintenance action", async () => {

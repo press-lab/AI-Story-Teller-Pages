@@ -8,7 +8,8 @@ import { regenerateProposalContent } from "../memory/memoryDetection";
 import { runCompactMemoryFallback } from "../memory/compactMemoryFallback";
 import { generateArcContinuations, generateArcDirector, generateArcFromHistory, generateBrainFromName as generateBrainEntry, generateComponentContent, pickConvergentContinuation } from "../ai/generators";
 import { PLOT_ESSENTIALS_BEST_PRACTICES } from "../ai/authoringBestPractices";
-import { runStoryCardAudit, type AuditRecommendation } from "../memory/storyCardAudit";
+import { runStoryCardAudit } from "../memory/storyCardAudit";
+import { storyCardAuditSuggestions } from "../memory/storyCardAuditSuggestions";
 import { runComponentAudit, type ComponentAuditRecommendation } from "../memory/componentAudit";
 import { runBrainAudit, type BrainAuditRecommendation } from "../memory/brainAudit";
 import { sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
@@ -681,9 +682,12 @@ export function useAdventureRuntime(
     }
   }
 
-  async function auditStoryCards(nTurns: number, includeAI = false): Promise<AuditRecommendation[]> {
-    if (!adventure) return [];
-    return runStoryCardAudit(adventure, activeProviderConfig, nTurns, { includeAI });
+  async function auditStoryCards(nTurns: number, includeAI = false): Promise<void> {
+    if (!adventure) return;
+    const recommendations = await runStoryCardAudit(adventure, activeProviderConfig, nTurns, { includeAI });
+    if (adventureRef.current?.id !== adventure.id) return;
+    applyActionsAndPersist(storyCardAuditSuggestions(adventure, recommendations).map(proposal => ({ type: "ADD_MEMORY_PROPOSAL", proposal })));
+    openTab("memoryInbox");
   }
 
   async function auditComponents(nTurns: number, includeAI = false): Promise<ComponentAuditRecommendation[]> {
