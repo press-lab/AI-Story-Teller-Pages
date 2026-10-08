@@ -199,32 +199,6 @@ export function appendSourceTurnIds(existing: string[] | undefined, sourceTurnId
   return Array.from(new Set([...(existing ?? []), sourceTurnId]));
 }
 
-/** Keep a character's existing profile in the same editable card, outside the
- * rolling additions budget. Recover only recognizable archived profiles; do not
- * promote arbitrary historical events or superseded assertions into current canon.
- */
-export function retainCharacterFoundation(card: StoryCard): StoryCard {
-  if (card.type !== "character" || card.memoryMode !== "living" || card.coreFacts?.length) return card;
-  const archived = splitStoryCardFacts(card.archivedFacts ?? "");
-  const history = card.memoryUpdateHistory ?? [];
-  const lastReplacement = history.map(h => h.operation).lastIndexOf("replace");
-  const original = history.slice(lastReplacement + 1).find(h => h.operation === "append" && h.previous)?.previous?.content;
-  const originalFacts = splitStoryCardFacts(original ?? "");
-  const archivedSet = new Set(archived.map(normalizeStoryCardFact));
-  const liveSet = new Set(splitStoryCardFacts(card.content).map(normalizeStoryCardFact));
-  const recoverable = originalFacts.some(f => archivedSet.has(normalizeStoryCardFact(f))) && originalFacts.every(f => archivedSet.has(normalizeStoryCardFact(f)) || liveSet.has(normalizeStoryCardFact(f)))
-    ? originalFacts
-    : archived.filter(f => /\bVOICE\s*(?:CONTRACT|\/BEHAVIOR)\s*:/i.test(f));
-  const foundation = recoverable.length ? recoverable : splitStoryCardFacts(card.content);
-  const core = new Set(foundation.map(normalizeStoryCardFact));
-  return {
-    ...card,
-    coreFacts: foundation,
-    content: splitStoryCardFacts(card.content).filter(f => !core.has(normalizeStoryCardFact(f))).join("\n"),
-    archivedFacts: archived.filter(f => !core.has(normalizeStoryCardFact(f))).join("\n"),
-  };
-}
-
 export function storyCardContextContent(card: StoryCard): string {
   const hasStructuredFacts =
     (card.coreFacts?.length ?? 0) > 0 ||
@@ -235,7 +209,7 @@ export function storyCardContextContent(card: StoryCard): string {
   }
 
   const sections: string[] = [
-    card.type === "character" ? "Character profile:" : `Compact: ${card.compactKind ?? "unspecified"} (${card.compactStatus ?? DEFAULT_COMPACT_STATUS})`,
+    `Compact: ${card.compactKind ?? "unspecified"} (${card.compactStatus ?? DEFAULT_COMPACT_STATUS})`,
   ];
   if (card.coreFacts?.length) sections.push(["Core facts:", ...card.coreFacts.map((fact) => `- ${fact.replace(/^[-*\u2022]\s*/, "")}`)].join("\n"));
   if (card.currentFacts?.length) sections.push(["Current facts:", ...card.currentFacts.map((fact) => `- ${fact.replace(/^[-*\u2022]\s*/, "")}`)].join("\n"));

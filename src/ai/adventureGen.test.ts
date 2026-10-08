@@ -45,7 +45,7 @@ describe("runAdventureGen", () => {
 
     const result = await runAdventureGen("A premise", config);
 
-    expect(result.components.map((component) => component.title)).toEqual(["Premise"]);
+    expect(result.components.map((component) => component.title)).toEqual(["Premise", "Pressure"]);
     expect(result.storyCards.map((card) => card.title)).toEqual(["Margo"]);
   });
 
@@ -109,8 +109,9 @@ describe("runAdventureGen", () => {
     const request = vi.mocked(sendOpenAICompatibleChatCompletion).mock.calls[0][0];
     expect(request.responseFormat).toBe("json_object");
     expect(request.thinking).toBe("disabled");
-    expect(request.messages[0].content).not.toContain("activePressure");
+    expect(request.messages[0].content).toContain('"activePressure"');
     expect(request.messages[0].content).not.toContain('"immediateMomentum"');
+    expect(request.messages[0].content).toContain("exactly one concise sentence");
     expect(request.messages[0].content).toContain('"authorNote"');
     expect(request.messages[0].content).toContain("Do not create cards for current scene position");
   });

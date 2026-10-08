@@ -89,7 +89,6 @@ describe("runtime one-pass call accounting", () => {
     await waitFor(() => expect(sendOpenAICompatibleChatCompletion).toHaveBeenCalledTimes(3));
     expect(result.current.adventure?.messages.at(-1)?.content).toBe("The duke waits for an answer.");
     expect(result.current.adventure?.messages.at(-1)?.usage?.totalTokens).toBe(2370);
-    expect(result.current.adventure?.activeState.evaluationLog.some(log => log.errors.some(error => error.includes("visible-story correction")))).toBe(true);
     expect(result.current.adventure?.storyCards[0].content).toBe("Mira is a scout.");
     const correction = vi.mocked(sendOpenAICompatibleChatCompletion).mock.calls[1][0];
     expect(correction.messages.map(m => m.content).join("\n")).not.toContain("<memory_updates>");

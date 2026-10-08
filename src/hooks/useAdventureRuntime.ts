@@ -7,8 +7,7 @@ import { regenerateProposalContent } from "../memory/memoryDetection";
 import { runCompactMemoryFallback } from "../memory/compactMemoryFallback";
 import { generateArcContinuations, generateArcDirector, generateArcFromHistory, generateBrainFromName as generateBrainEntry, generateComponentContent, pickConvergentContinuation } from "../ai/generators";
 import { PLOT_ESSENTIALS_BEST_PRACTICES } from "../ai/authoringBestPractices";
-import { runStoryCardAudit } from "../memory/storyCardAudit";
-import { storyCardAuditSuggestions } from "../memory/storyCardAuditSuggestions";
+import { runStoryCardAudit, type AuditRecommendation } from "../memory/storyCardAudit";
 import { runComponentAudit, type ComponentAuditRecommendation } from "../memory/componentAudit";
 import { runBrainAudit, type BrainAuditRecommendation } from "../memory/brainAudit";
 import { sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
@@ -118,7 +117,7 @@ async function sendStoryCompletionWithGuard({
   config: RuntimeProviderSettings;
   responseLengthHint: number;
   playerInput: string;
-}): Promise<{ content: string; usage?: ProviderUsage; memoryDiscardReason?: string }> {
+}): Promise<{ content: string; usage?: ProviderUsage }> {
   const response = await sendOpenAICompatibleChatCompletion({ messages, config });
   const guard = evaluateStoryResponseGuard(response.content, responseLengthHint, playerInput);
   if (!guard.needsCorrection) return response;
@@ -136,11 +135,7 @@ async function sendStoryCompletionWithGuard({
     // default thinking mode can otherwise consume the entire small correction budget.
     thinking: "disabled",
   });
-  return {
-    content: corrected.content,
-    usage: combineProviderUsage(response.usage, corrected.usage),
-    memoryDiscardReason: "Original memory discarded by visible-story correction; recover from the corrected story only.",
-  };
+  return { content: corrected.content, usage: combineProviderUsage(response.usage, corrected.usage) };
 }
 
 function stripThinkTags(text: string): string {
@@ -662,12 +657,9 @@ export function useAdventureRuntime(
     }
   }
 
-  async function auditStoryCards(nTurns: number, includeAI = false): Promise<void> {
-    if (!adventure) return;
-    const recommendations = await runStoryCardAudit(adventure, activeProviderConfig, nTurns, { includeAI });
-    if (adventureRef.current?.id !== adventure.id) return;
-    applyActionsAndPersist(storyCardAuditSuggestions(adventure, recommendations).map(proposal => ({ type: "ADD_MEMORY_PROPOSAL", proposal })));
-    openTab("memoryInbox");
+  async function auditStoryCards(nTurns: number, includeAI = false): Promise<AuditRecommendation[]> {
+    if (!adventure) return [];
+    return runStoryCardAudit(adventure, activeProviderConfig, nTurns, { includeAI });
   }
 
   async function auditComponents(nTurns: number, includeAI = false): Promise<ComponentAuditRecommendation[]> {

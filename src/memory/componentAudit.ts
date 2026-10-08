@@ -208,14 +208,14 @@ RECENT STORY:
 ${recentStory || "(none)"}
 
 Return ONLY a JSON array - no markdown, no prose. Each item must be one of:
-- {"action":"edit","componentId":"...","title":"...","rationale":"...","suggestedContent":"...","suggestedType":"plotEssentials"${components.some(c => c.type === "activePressure") ? '|"activePressure"' : ""}|"currentArc"|"custom"|"memory"}
+- {"action":"edit","componentId":"...","title":"...","rationale":"...","suggestedContent":"...","suggestedType":"plotEssentials"|"activePressure"|"currentArc"|"custom"|"memory"}
 - {"action":"delete","componentId":"...","title":"...","rationale":"..."}
-- {"action":"create","title":"...","rationale":"...","suggestedContent":"...","suggestedType":"plotEssentials"|"currentArc"|"custom"|"memory"}
+- {"action":"create","title":"...","rationale":"...","suggestedContent":"...","suggestedType":"plotEssentials"|"activePressure"|"currentArc"|"custom"|"memory"}
 
 Rules:
 - Plot Essentials is compact current operating truth: active stakes, constraints, obligations, and open tensions. Prefer 4-7 tight lines.
 - Plot Essentials should not hoard completed history. If replacing it removes durable history, the app will preserve outgoing facts as historical Story Card suggestions.
-${components.some(c => c.type === "activePressure") ? "- Existing Active Pressure blocks may be shortened to one sentence; never create one or convert another component into one." : ""}
+- Active Pressure is exactly one sentence naming the current external threat, obligation, deadline, pursuit, debt, or force pressing on the player character.
 - Current Story Arc is a past-tense running log of arc developments. Do not duplicate Plot Essentials or write live scene directions there.
 - Custom/memory blocks should hold stable always-on rules or lore only when they truly need to load every turn; otherwise recommend a Story Card in the rationale instead of bloating a component.
 - Do not propose edits to AI Instructions, Narration Rules, or Author's Note; those are not included in this review.
@@ -305,7 +305,7 @@ export async function runComponentAudit(
           { role: "user", content: "Clean up these plot components and return your recommendations as a JSON array." },
         ],
       });
-      llmRecs = parseLLMResponse(response.content).filter(rec => rec.suggestedType !== "activePressure" || (rec.action !== "create" && llmComponents.some(c => c.type === "activePressure" && c.id === rec.componentId)));
+      llmRecs = parseLLMResponse(response.content);
     } catch (err) {
       const issue = backgroundProviderConfigIssue(adventure);
       const cause = err instanceof Error ? err.message : String(err);

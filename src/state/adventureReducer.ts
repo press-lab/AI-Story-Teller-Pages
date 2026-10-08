@@ -1,6 +1,4 @@
-import { applyRelationship, duplicateRelationship, relationshipFocusCard, relationshipIsCurrent, stateKey, validRelationshipState } from "../memory/relationships";
 import { sameEventMemory } from "../memory/eventMemory";
-import { cardAuditReviewError } from "../memory/storyCardAuditSuggestions";
 import type {
   Adventure,
   AdventureAction,
@@ -35,7 +33,6 @@ import {
   isGuardedStoryCardMemory,
   normalizeStoryCardFact,
   restoreGuardedFactsToLiveContent,
-  retainCharacterFoundation,
 } from "../memory/storyCardPolicy";
 import { dedupeBrainThoughts, normalizeThoughtForDedupe } from "../memory/thoughtDedupe";
 
@@ -387,7 +384,7 @@ function mergeCardContentToBudget(
   guardedCard?: StoryCard,
 ): { content: string; archivedFacts: string } {
   const archivedFacts = splitCardFacts(archived);
-  const guardSource = guardedCard?.type !== "character" && guardedCard && isGuardedStoryCardMemory(guardedCard, newContent)
+  const guardSource = guardedCard && isGuardedStoryCardMemory(guardedCard, newContent)
     ? { ...guardedCard, content: [guardedCard.content, newContent].filter(Boolean).join("\n") }
     : undefined;
   const kept: string[] = [];
@@ -436,12 +433,10 @@ function appendCardContent(existingContent: string, newContent: string): string 
 }
 
 function guardStoryCard(card: StoryCard): StoryCard {
-  if (card.type === "character") return retainCharacterFoundation(card);
-  return retainCharacterFoundation(applyGuardedStoryCardPolicy(restoreGuardedFactsToLiveContent(card)));
+  return applyGuardedStoryCardPolicy(restoreGuardedFactsToLiveContent(card));
 }
 
 function replacementContentWithGuardedFacts(existing: StoryCard, replacementContent: string): string {
-  if (existing.type === "character") return replacementContent;
   const archivedFacts = [existing.archivedFacts, existing.content].filter(Boolean).join("\n");
   return restoreGuardedFactsToLiveContent({
     ...existing,
@@ -481,9 +476,7 @@ function applyBrainUpdate(
   preview?: string,
 ): BrainEntry {
   const timestamp = nowIso();
-  // Custom semantic rules and legacy Brain proposals cannot write enrolled relationships.
-  const allowed = new Set(["thoughts", "currentState", "relationshipPressure", "emotionalInterpretation", "recentDevelopments", "notes"]);
-  const { thoughts: thoughtsPatch, ...stringPatch } = Object.fromEntries(Object.entries(patch).filter(([key]) => allowed.has(key))) as BrainPatch;
+  const { thoughts: thoughtsPatch, ...stringPatch } = patch;
 
   const { thoughts: nextThoughts, archivedThoughts: nextArchivedThoughts } = thoughtsPatch
     ? mode === "replace"
@@ -760,7 +753,6 @@ function sanitizeProposal(proposal: MemoryProposal): MemoryProposal | null {
 }
 
 function routedProposal(state: Adventure, proposal: MemoryProposal): MemoryProposal {
-  if (proposal.proposedType === "relationshipUpdate") return proposal;
   if (proposal.proposedType === "storyCard" && proposal.storyCardType === "event") return { ...proposal, memoryMode: "historical", autoUpdate: false, targetId: undefined, appendContent: undefined };
   const routed = resolveMemoryTarget(state, {
     proposedType: proposal.proposedType,
@@ -845,7 +837,6 @@ function outgoingBrainFieldProposalsForReplacement(
 }
 
 function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal): Partial<Adventure> {
-  if (proposal.proposedType === "relationshipUpdate") return { brains: applyRelationship(state, proposal) };
   const proposalMemoryMeta = (operation: MemoryUpdateOperation): MemoryUpdateMeta => ({
     source: "memoryProposal",
     operation,
@@ -924,7 +915,7 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal)
       storyCard = recordStoryCardMemoryUpdate(
         existing,
         guardStoryCard({
-          ...retainCharacterFoundation(existing),
+          ...existing,
           content: replacementContentWithGuardedFacts(existing, safeContent),
           // Merge, never overwrite, keys — a sparse update must not strip a card's aliases (which would
           // break alias-matching and let the card be duplicated again later).
@@ -1054,8 +1045,11 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal)
   if (proposal.proposedType === "plotPressureUpdate") {
     if (!proposal.content.trim()) return {};
     const componentType = "activePressure";
+    const defaultTitle = "Active Pressure";
+    const defaultPriority = 245;
     const existing =
-      state.components.find((c) => c.type === componentType && (!proposal.targetId || c.id === proposal.targetId));
+      state.components.find((c) => c.id === proposal.targetId && c.type === componentType) ??
+      state.components.find((c) => c.type === componentType);
     const turn = state.activeState.turn;
     if (existing) {
       return {
@@ -1065,7 +1059,21 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal)
         ),
       };
     }
-    return {};
+    const component = recordComponentMemoryUpdate(
+      undefined,
+      makeComponent({
+        title: defaultTitle,
+        type: componentType,
+        content: proposal.content,
+        active: true,
+        alwaysOn: false,
+        pinned: false,
+        priority: defaultPriority,
+        ...proposal.componentPatch,
+      }),
+      proposalMemoryMeta("create"),
+    );
+    return { components: upsertById(state.components, { ...component, lastAutoUpdateTurn: turn }) };
   }
 
   if (proposal.proposedType === "currentArcUpdate") {
@@ -1354,14 +1362,13 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
       if (action.content === undefined && (!action.patch || Object.keys(action.patch).length === 0)) return state;
       return touchAdventure(state, {
         storyCards: updateById(state.storyCards, action.storyCardId, (item) => {
-          const prepared = retainCharacterFoundation(item);
-          const stripped = action.content !== undefined ? stripLeadingCardTitle(item.title, action.content) : prepared.content;
+          const stripped = action.content !== undefined ? stripLeadingCardTitle(item.title, action.content) : item.content;
           const content = action.content !== undefined
             ? replacementContentWithGuardedFacts(item, stripped)
             : stripped;
           return recordStoryCardMemoryUpdate(
             item,
-            guardStoryCard({ ...prepared, ...action.patch, content }),
+            guardStoryCard({ ...item, ...action.patch, content }),
             { source: "aiMemoryUpdate", operation: action.content !== undefined ? "replace" : "patch" },
           );
         }),
@@ -1543,57 +1550,9 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
           rawImports: deleteById(state.activeState.rawImports, action.rawImportId),
         },
       });
-    case "ENROLL_RELATIONSHIP": {
-      const brain = state.brains.find(b => b.id === action.brainId);
-      const card = state.storyCards.find(c => c.id === action.focusStoryCardId && c.type === "character");
-      if (!card || card.id === brain?.linkedStoryCardId) return state;
-      const focus = card.title.trim();
-      if (!brain || !focus || focus.length > 100 || focus.toLowerCase() === brain.characterName.toLowerCase() || !validRelationshipState(action.state)
-        || (brain.relationships ?? []).length >= 12 || brain.relationships?.some(r => r.focusStoryCardId === card.id)) return state;
-      const relationship = { id: createId("relationship"), focus, focusStoryCardId: card.id, current: action.state, revision: 0,
-        recalledHistoryIds: [], history: [{ id: createId("relationship-history"), state: action.state, sourceTurnId: "player-setup", evidence: "Player-authored starting relationship", createdAt: nowIso() }] };
-      return touchAdventure(state, { brains: state.brains.map(b => b.id === brain.id ? { ...b, relationships: [...(b.relationships ?? []), relationship] } : b) });
-    }
-    case "LINK_RELATIONSHIP_FOCUS": {
-      const brain = state.brains.find(b => b.id === action.brainId);
-      const r = brain?.relationships.find(r => r.id === action.relationshipId);
-      const card = state.storyCards.find(c => c.id === action.focusStoryCardId && c.type === "character");
-      if (!brain || !r || relationshipFocusCard(state, r) || !card || !card.title.trim() || card.id === brain.linkedStoryCardId
-        || card.title.trim().toLowerCase() === brain.characterName.trim().toLowerCase()
-        || brain.relationships.some(other => other.id !== r.id && other.focusStoryCardId === card.id)) return state;
-      return touchAdventure(state, { brains: state.brains.map(b => b.id !== brain.id ? b : { ...b,
-        relationships: b.relationships.map(entry => entry.id !== r.id ? entry : { ...entry, focusStoryCardId: card.id, focus: card.title, revision: entry.revision + 1 }) }) });
-    }
-    case "EDIT_RELATIONSHIP":
-    case "RECALL_RELATIONSHIP_HISTORY": {
-      return touchAdventure(state, { brains: state.brains.map(b => b.id !== action.brainId ? b : { ...b, relationships: b.relationships.map(r => {
-        if (r.id !== action.relationshipId) return r;
-        if (action.type === "RECALL_RELATIONSHIP_HISTORY") return { ...r, recalledHistoryIds: [...new Set(action.historyIds)].filter(id => r.history.some(h => h.id === id)).slice(0, 3) };
-        if (!validRelationshipState(action.state) || stateKey(r.current) === stateKey(action.state)) return r;
-        return { ...r, current: action.state, revision: r.revision + 1, history: [...r.history, { id: createId("relationship-history"), sourceTurnId: "player-edit", state: action.state, evidence: "Player edit", createdAt: nowIso() }] };
-      }) }) });
-    }
     case "ADD_MEMORY_PROPOSAL": {
-      if (action.proposal.cardAudit) {
-        const p = sanitizeProposal(action.proposal);
-        if (!p || p.proposedType !== "storyCard" || !["edit", "delete", "create"].includes(p.cardAudit!.action)) return state;
-        if (state.activeState.memoryProposals.some(q => q.cardAudit?.action === p.cardAudit!.action && q.targetId === p.targetId
-          && q.cardAudit.expectedRevision === p.cardAudit!.expectedRevision && q.title === p.title && q.content === p.content
-          && JSON.stringify(q.suggestedTriggers) === JSON.stringify(p.suggestedTriggers) && q.storyCardType === p.storyCardType && q.memoryMode === p.memoryMode)) return state;
-        return touchAdventure(state, { activeState: { ...state.activeState, memoryProposals: [{ ...p, requiresReview: true, status: "pending" }, ...state.activeState.memoryProposals] } });
-      }
       const clean = sanitizeProposal(routedProposal(state, action.proposal));
       if (!clean) return state;
-      if (clean.proposedType === "plotPressureUpdate" && !state.components.some(c => c.type === "activePressure" && (!clean.targetId || c.id === clean.targetId))) return state;
-      if (clean.proposedType === "relationshipUpdate") {
-        if (!relationshipIsCurrent(state, clean) || duplicateRelationship(state, clean)) return state;
-        const t = clean.relationship!;
-        const major = t.previous.bond !== t.proposed.bond || t.previous.status !== t.proposed.status;
-        const approved = state.memoryAutoApprove.relationshipUpdate && !clean.requiresReview && !major;
-        const proposal = { ...clean, status: approved ? "approved" as const : "pending" as const };
-        return touchAdventure(state, { ...(approved ? { brains: applyRelationship(state, proposal) } : {}),
-          activeState: { ...state.activeState, memoryProposals: [proposal, ...state.activeState.memoryProposals] } });
-      }
       if (clean.storyCardType === "event" && [...state.storyCards.filter(c => c.type === "event"), ...state.activeState.memoryProposals.filter(p => p.storyCardType === "event")].some(c => sameEventMemory(c, clean))) return state;
       // Dedup: drop a proposal that duplicates one already pending, one the user already
       // dismissed (rejected/ignored), or a NEW story card whose title already exists as a card.
@@ -1682,26 +1641,15 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
         activeState: {
           ...state.activeState,
           memoryProposals: updateById(state.activeState.memoryProposals, action.proposalId, (proposal) =>
-            updateMemoryProposal(proposal, proposal.cardAudit ? { ...action.patch, cardAudit: proposal.cardAudit, targetId: proposal.targetId, proposedType: "storyCard", requiresReview: true } : action.patch),
+            updateMemoryProposal(proposal, action.patch),
           ),
         },
       });
     case "APPROVE_MEMORY_PROPOSAL": {
-      const existing = state.activeState.memoryProposals.find(p => p.id === action.proposalId);
-      if (existing?.cardAudit) {
-        if (existing.status !== "pending") return state;
-        const p = sanitizeProposal({ ...proposalWithEdits(existing, action.editedProposal), cardAudit: existing.cardAudit, targetId: existing.targetId, proposedType: "storyCard", requiresReview: true });
-        if (!p || cardAuditReviewError(state, p)) return state;
-        const next = p.cardAudit!.action === "delete"
-          ? adventureReducer(state, { type: "DELETE_STORY_CARD", storyCardId: p.targetId! })
-          : p.cardAudit!.action === "edit"
-            ? adventureReducer(state, { type: "UPDATE_STORY_CARD", storyCardId: p.targetId!, patch: { title: p.title, content: p.content, coreFacts: [], currentFacts: [], recentDevelopments: [], keys: p.suggestedTriggers, type: p.storyCardType, memoryMode: p.memoryMode } })
-            : adventureReducer(state, { type: "UPSERT_STORY_CARD", storyCard: makeStoryCard({ title: p.title, content: p.content, keys: p.suggestedTriggers, type: p.storyCardType, memoryMode: p.memoryMode }) });
-        return touchAdventure(next, { activeState: { ...next.activeState, memoryProposals: next.activeState.memoryProposals.map(q => q.id === p.id ? { ...p, status: "approved" } : q) } });
-      }
-      if (!existing || (existing.proposedType === "relationshipUpdate" && (existing.status !== "pending" || !relationshipIsCurrent(state, existing)))) return state;
+      const existing = state.activeState.memoryProposals.find((proposal) => proposal.id === action.proposalId);
+      if (!existing) return state;
       const proposal = sanitizeProposal(routedProposal(state, proposalWithEdits(existing, action.editedProposal)));
-      if (!proposal || (proposal.proposedType === "relationshipUpdate" && !relationshipIsCurrent(state, proposal))) return state;
+      if (!proposal) return state;
       const approved = updateMemoryProposal(proposal, { status: "approved" });
       const applied = applyApprovedMemoryProposal(state, approved);
       return touchAdventure(state, {

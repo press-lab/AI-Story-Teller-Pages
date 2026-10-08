@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { ContextInclusionPolicy, StoryCard, StoryCardAIBuilderIntent, StoryCardCompactKind, StoryCardCompactStatus, StoryCardMemoryMode, StoryCardType, TriggerMatchType, StoryCardAIBuilderRequest } from "../types/adventure";
+import type { AuditRecommendation } from "../memory/storyCardAudit";
 import { storyCardContextContent } from "../memory/storyCardPolicy";
 import { makeStoryCard } from "../state/defaults";
 import { approximateTokenCount } from "../tokenizer/approximateTokenCount";
@@ -111,10 +112,6 @@ function cardFactLines(text: string | undefined): string[] {
     .filter(Boolean);
 }
 
-function hasStructuredFacts(card: StoryCard): boolean {
-  return Boolean(card.coreFacts?.length || card.currentFacts?.length || card.recentDevelopments?.length);
-}
-
 function factListText(facts: string[] | undefined): string {
   return (facts ?? []).join("\n");
 }
@@ -181,11 +178,12 @@ interface StoryCardsPageProps extends AdventurePageProps {
   loading?: boolean;
   onBuildStoryCardMemory?: (request: StoryCardAIBuilderRequest) => Promise<void>;
   onSuggestCardUpdates?: () => Promise<void>;
-  onAuditStoryCards?: (nTurns: number, includeAI: boolean) => Promise<void>;
+  onAuditStoryCards?: (nTurns: number, includeAI: boolean) => Promise<AuditRecommendation[]>;
 }
 
 type AuditState = {
   status: "running" | "done" | "error";
+  recommendations: AuditRecommendation[];
   errorMessage?: string;
 };
 
@@ -217,14 +215,54 @@ export function StoryCardsPage({
   const [audit, setAudit] = useState<AuditState | null>(null);
   const newCardRef = useRef<HTMLDetailsElement | null>(null);
 
+  function updateRec(id: string, patch: Partial<AuditRecommendation>) {
+    setAudit((prev) => prev && {
+      ...prev,
+      recommendations: prev.recommendations.map((r) => r.id === id ? { ...r, ...patch } : r),
+    });
+  }
+
+  function approveRec(rec: AuditRecommendation) {
+    if (rec.action === "delete" && rec.cardId) {
+      dispatch({ type: "DELETE_STORY_CARD", storyCardId: rec.cardId });
+    } else if (rec.action === "edit" && rec.cardId) {
+      dispatch({
+        type: "UPDATE_STORY_CARD",
+        storyCardId: rec.cardId,
+        patch: {
+          content: rec.editedContent,
+          keys: rec.editedKeys.split(",").map((k) => k.trim()).filter(Boolean),
+          type: rec.suggestedType,
+          memoryMode: rec.suggestedMemoryMode,
+        },
+      });
+    } else if (rec.action === "create") {
+      const validTypes = new Set<StoryCardType>(["character", "location", "lore", "plot", "event", "custom"]);
+      const type: StoryCardType = validTypes.has(rec.suggestedType as StoryCardType)
+        ? (rec.suggestedType as StoryCardType)
+        : "custom";
+      dispatch({
+        type: "UPSERT_STORY_CARD",
+        storyCard: makeStoryCard({
+          title: rec.title,
+          content: rec.editedContent,
+          keys: rec.editedKeys.split(",").map((k) => k.trim()).filter(Boolean),
+          type,
+          memoryMode: rec.suggestedMemoryMode,
+        }),
+      });
+    }
+    updateRec(rec.id, { decision: "approved" });
+  }
+
   async function runAudit() {
     if (!onAuditStoryCards) return;
-    setAudit({ status: "running" });
+    setAudit({ status: "running", recommendations: [] });
     try {
-      await onAuditStoryCards(auditTurns, auditIncludeAI);
-      setAudit({ status: "done" });
+      const recs = await onAuditStoryCards(auditTurns, auditIncludeAI);
+      setAudit({ status: "done", recommendations: recs });
     } catch (err) {
-      setAudit({ status: "error", errorMessage: err instanceof Error ? err.message : "Audit failed." });
+      setAudit({ status: "error", recommendations: [], errorMessage: err instanceof Error ? err.message : "Audit failed." });
     }
   }
 
@@ -537,7 +575,7 @@ export function StoryCardsPage({
                 <div className="story-card-tool-copy">
                   <h3>Clean up existing cards</h3>
                   <p className="muted">
-                    Find broad triggers, stale facts, misplaced history, and duplicate cards. Cleanup results go to Suggestions for approval.
+                    Find broad triggers, stale current facts, misplaced history, duplicate cards, and profile details that should be split into living or historical cards.
                   </p>
                 </div>
                 <div className="story-card-tool-controls">
@@ -681,8 +719,95 @@ export function StoryCardsPage({
         </p>
       )}
 
-      {audit?.status === "error" && <p role="alert" className="audit-error">{audit.errorMessage}</p>}
-      {audit?.status === "done" && <p role="status" className="muted">Card cleanup finished. Any recommended edits, new cards, or deletions are in Suggestions.</p>}
+      {audit && audit.status !== "running" && (
+        <div className="audit-modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setAudit(null); }}>
+          <div className="audit-modal">
+            <div className="audit-modal-header">
+              <h3>Story Card Cleanup</h3>
+              <button type="button" className="audit-modal-close" onClick={() => setAudit(null)}>✕</button>
+            </div>
+
+            {audit.status === "error" && (
+              <p className="audit-error">{audit.errorMessage}</p>
+            )}
+
+            {audit.status === "done" && audit.recommendations.length === 0 && (
+              <p className="muted">No changes recommended — your story cards look good.</p>
+            )}
+
+            {audit.recommendations.map((rec) => (
+              <div key={rec.id} className={`audit-rec ${rec.decision !== "pending" ? `audit-rec-${rec.decision}` : ""}`}>
+                <div className="audit-rec-header">
+                  <span className={`audit-badge audit-badge-${rec.action}`}>{rec.action.toUpperCase()}</span>
+                  {rec.source === "deterministic" && <span className="audit-badge audit-badge-det">DETECTED</span>}
+                  {rec.action !== "delete" && <span className="audit-badge audit-badge-det">{rec.suggestedMemoryMode}</span>}
+                  <span className="audit-rec-title">{rec.title}</span>
+                  {rec.decision !== "pending" && (
+                    <span className={`audit-badge audit-badge-decision-${rec.decision}`}>{rec.decision}</span>
+                  )}
+                </div>
+                <p className="audit-rec-rationale">{rec.rationale}</p>
+
+                {rec.action !== "delete" && rec.decision === "pending" && (
+                  <div className="audit-rec-fields">
+                    <label className="field">
+                      <span>Content</span>
+                      <textarea
+                        rows={5}
+                        value={rec.editedContent}
+                        onChange={(e) => updateRec(rec.id, { editedContent: e.target.value })}
+                        spellCheck={false}
+                      />
+                    </label>
+                    <label className="field">
+                      <span>Keys (comma-separated)</span>
+                      <input
+                        value={rec.editedKeys}
+                        onChange={(e) => updateRec(rec.id, { editedKeys: e.target.value })}
+                      />
+                    </label>
+                    <div className="field-row">
+                      <label className="field">
+                        <span>Type</span>
+                        <select
+                          value={rec.suggestedType}
+                          onChange={(e) => updateRec(rec.id, { suggestedType: e.target.value as StoryCardType })}
+                        >
+                          {TYPE_ORDER.map((type) => (
+                            <option key={type} value={type}>{TYPE_LABELS[type]}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="field">
+                        <span>Memory mode</span>
+                        <select
+                          value={rec.suggestedMemoryMode}
+                          onChange={(e) => updateRec(rec.id, { suggestedMemoryMode: e.target.value as StoryCardMemoryMode })}
+                        >
+                          {MEMORY_MODE_OPTIONS.map((mode) => (
+                            <option key={mode} value={mode}>{mode}</option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                  </div>
+                )}
+
+                {rec.decision === "pending" && (
+                  <div className="audit-rec-actions">
+                    <button type="button" onClick={() => approveRec(rec)}>Approve</button>
+                    <button type="button" className="danger" onClick={() => updateRec(rec.id, { decision: "rejected" })}>Reject</button>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            <div className="audit-modal-footer">
+              <button type="button" onClick={() => setAudit(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {groups.map(({ type, cards }) => (
         <div key={type} className="card-group">
@@ -783,17 +908,11 @@ export function StoryCardsPage({
                   <section className="item-focus-section">
                     <div className="item-section-heading">
                       <div>
-                        <p className="eyebrow">{card.type === "character" ? "character memory" : "compact memory"}</p>
-                        <h4>{card.type === "character" ? "Character foundations and developments" : "Structured compact facts"}</h4>
+                        <p className="eyebrow">compact memory</p>
+                        <h4>Structured compact facts</h4>
                       </div>
                       {card.compactKind && <span className="badge badge-priority">{card.compactStatus ?? "active"}</span>}
                     </div>
-                    <p className="muted">
-                      When this card is included by a trigger, pin, Always policy, or manual force, these facts are sent
-                      in Core, Current, Recent order. Kind and Status label that text; they do not trigger the card.
-                      Character foundations remain in editable Core Facts while later additions use the Content budget.
-                      Editing Content directly does not change Core Facts.
-                    </p>
                     <div className="grid two">
                       <Field label="Compact Kind">
                         <select
@@ -865,16 +984,11 @@ export function StoryCardsPage({
                   <section className="item-focus-section">
                     <div className="item-section-heading">
                       <div>
-                        <p className="eyebrow">content field</p>
-                        <h4>{hasStructuredFacts(card) ? "Additional notes sent with structured facts" : "Card text sent when included"}</h4>
+                        <p className="eyebrow">live memory</p>
+                        <h4>Card text sent when triggered</h4>
                       </div>
                       <span className="muted">{cardFactLines(card.content).length} line{cardFactLines(card.content).length === 1 ? "" : "s"}</span>
                     </div>
-                  <p className="muted">
-                    {hasStructuredFacts(card)
-                      ? "The structured facts above are the main card text. Content is appended as Notes; an empty box here does not mean the card is empty."
-                      : "With no structured facts, Content is the entire card text sent when this card is included."}
-                  </p>
                   <Field label="Content">
                     <textarea
                       rows={6}
@@ -882,10 +996,6 @@ export function StoryCardsPage({
                       onChange={(event) => dispatch({ type: "UPDATE_STORY_CARD", storyCardId: card.id, patch: { content: event.target.value } })}
                     />
                   </Field>
-                  <details>
-                    <summary>Preview assembled Story Card fields (before context budgeting)</summary>
-                    <pre className="context-item-text">{storyCardContextContent(card) || "(empty card)"}</pre>
-                  </details>
                   </section>
                   <StoryCardFactHistory
                     card={card}

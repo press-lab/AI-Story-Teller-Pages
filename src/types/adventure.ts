@@ -173,13 +173,13 @@ export interface StoryCard {
   inclusionPolicy: ContextInclusionPolicy;
   priority: number;
   state: string;
-  /** Token cap for rolling live Content; character Core Facts are retained separately. 0/undefined = default. */
+  /** Token cap for this card's live content; overflow is moved to archivedFacts. 0/undefined = default. */
   tokenBudget?: number;
   /** Structured compact memory type for pacts, promises, cover stories, debts, and similar ongoing constraints. */
   compactKind?: StoryCardCompactKind;
   /** Lifecycle for compact memory. Active/strained/broken compacts stay prominent; resolved/superseded compacts can age out. */
   compactStatus?: StoryCardCompactStatus;
-  /** Editable character foundations or compact terms; rendered before budgeted additions. */
+  /** Non-prunable compact terms. These are rendered before current/recent compact facts in context. */
   coreFacts?: string[];
   /** Current operating facts for the compact. */
   currentFacts?: string[];
@@ -200,40 +200,7 @@ export interface StoryCard {
   updatedAt: ISODateString;
 }
 
-export interface RelationshipState {
-  bond: string;
-  status: string;
-  dimensions: Record<string, string>;
-}
-export interface RelationshipHistoryEntry {
-  id: string;
-  sourceTurnId: string;
-  state: RelationshipState;
-  evidence: string;
-  createdAt: string;
-}
-export interface DynamicRelationship {
-  /** Absent only on legacy relationships awaiting a character-card link. */
-  focusStoryCardId?: string;
-  id: string;
-  focus: string;
-  current: RelationshipState;
-  revision: number;
-  history: RelationshipHistoryEntry[];
-  recalledHistoryIds: string[];
-}
-export interface RelationshipTransition {
-  focusStoryCardId?: string;
-  relationshipId: string;
-  focus: string;
-  revision: number;
-  previous: RelationshipState;
-  proposed: RelationshipState;
-  knowledgeEvidence: string;
-}
-
 export interface BrainEntry {
-  relationships: DynamicRelationship[];
   id: string;
   characterName: string;
   triggers: string[];
@@ -466,7 +433,6 @@ export interface SystemTriggerSettings {
 export type MemoryProposalType =
   | "storyCard"
   | "brainUpdate"
-  | "relationshipUpdate"
   | "plotEssentialsUpdate"
   | "currentArcUpdate"
   | "arcProposal"
@@ -478,9 +444,6 @@ export type MemoryProposalType =
 export type MemoryProposalStatus = "pending" | "approved" | "rejected" | "ignored";
 
 export interface MemoryProposal {
-  /** User-requested card cleanup, always reviewed through Suggestions. */
-  cardAudit?: { action: "edit" | "delete" | "create"; expectedRevision: string | null };
-  relationship?: RelationshipTransition;
   /** Consequential automatic changes require explicit review, regardless of generic auto-approval. */
   requiresReview?: boolean;
   id: string;
@@ -504,12 +467,6 @@ export interface MemoryProposal {
   componentPatch?: Partial<Pick<ComponentEntry, "active" | "pinned" | "protected" | "inclusionPolicy" | "priority" | "state" | "autoUpdate" | "autoUpdateCooldownTurns">>;
   createdAt: ISODateString;
   updatedAt: ISODateString;
-}
-
-export interface RelationshipProposal extends MemoryProposal {
-  proposedType: "relationshipUpdate";
-  targetId: string;
-  relationship: RelationshipTransition;
 }
 
 export interface MemoryReconcileRequest {
@@ -668,7 +625,6 @@ export interface MemoryAutoApproveSettings {
   plotMomentumUpdate: boolean;
   storyCard: boolean;
   brainUpdate: boolean;
-  relationshipUpdate: boolean;
 }
 
 export interface AdventureThumbnailImage {
@@ -866,10 +822,6 @@ export type AdventureAction =
   | { type: "ADD_RAW_IMPORT"; rawImport: RawImportEntry }
   | { type: "UPDATE_RAW_IMPORT"; rawImportId: string; patch: Partial<RawImportEntry> }
   | { type: "DELETE_RAW_IMPORT"; rawImportId: string }
-  | { type: "ENROLL_RELATIONSHIP"; brainId: string; focusStoryCardId: string; state: RelationshipState }
-  | { type: "LINK_RELATIONSHIP_FOCUS"; brainId: string; relationshipId: string; focusStoryCardId: string }
-  | { type: "EDIT_RELATIONSHIP"; brainId: string; relationshipId: string; state: RelationshipState }
-  | { type: "RECALL_RELATIONSHIP_HISTORY"; brainId: string; relationshipId: string; historyIds: string[] }
   | { type: "ADD_MEMORY_PROPOSAL"; proposal: MemoryProposal }
   | { type: "UPDATE_MEMORY_PROPOSAL"; proposalId: string; patch: Partial<MemoryProposal> }
   | { type: "APPROVE_MEMORY_PROPOSAL"; proposalId: string; editedProposal?: Partial<MemoryProposal> }

@@ -17,8 +17,6 @@ import { adventureReducer } from "./adventureReducer";
 export interface MockableProviderResponse {
   content: string;
   usage?: ProviderUsage;
-  /** A visible-story rewrite intentionally omitted the original draft's memory. */
-  memoryDiscardReason?: string;
 }
 
 export interface RunTurnPipelineOptions {
@@ -116,8 +114,7 @@ export async function applyProviderResponse({
   if (memoryEnabled) {
     // Never apply memory from a discarded draft after a continuity rewrite.
     const actions = onePassMemoryActions(next, preProviderContext, continuityCorrected ? [] : memory.updates,
-      finalContent, messageId, continuityCorrected ? "Memory skipped after continuity correction."
-        : [memory.error, response.memoryDiscardReason].filter(Boolean).join(" ") || undefined);
+      finalContent, messageId, continuityCorrected ? "Memory skipped after continuity correction." : memory.error);
     const before = next;
     next = reduceActions(next, actions);
     const visibleThoughts = next.brains.filter(b => b.printThoughts).flatMap(b => {

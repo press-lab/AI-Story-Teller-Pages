@@ -1,4 +1,3 @@
-import { RelationshipsEditor } from "./RelationshipsEditor";
 import type { BrainEntry, ContextInclusionPolicy } from "../types/adventure";
 import type { BrainAuditRecommendation } from "../memory/brainAudit";
 import { dedupeThoughtRecord } from "../memory/thoughtDedupe";
@@ -471,7 +470,6 @@ export function BrainsPage({ adventure, dispatch, loading, onUpdateBrainNow, onA
               </Field>
             </div>
 
-            <RelationshipsEditor adventure={adventure} dispatch={dispatch} brain={brain} />
             <section className="brain-focus-section">
               <div className="brain-section-heading">
                 <div>
@@ -549,7 +547,7 @@ export function BrainsPage({ adventure, dispatch, loading, onUpdateBrainNow, onA
                 onChange={(event) => dispatch({ type: "UPDATE_BRAIN", brainId: brain.id, patch: { linkedStoryCardId: event.target.value || undefined } })}
               >
                 <option value="">None</option>
-                {adventure.storyCards.filter((card) => card.type === "character").map((card) => (
+                {adventure.storyCards.map((card) => (
                   <option key={card.id} value={card.id}>{card.title}</option>
                 ))}
               </select>

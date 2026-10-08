@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { createDefaultAdventure, makeComponent } from "../state/defaults";
 import { runComponentAudit } from "./componentAudit";
 
@@ -65,21 +65,4 @@ describe("runComponentAudit", () => {
       ]),
     );
   });
-});
-
-it("does not suggest creating or converting to pressure when it is absent", async () => {
-  const provider = await import("../providers/openAICompatible");
-  const mock = vi.spyOn(provider, "sendOpenAICompatibleChatCompletion").mockResolvedValue({ content: JSON.stringify([
-    { action: "create", title: "Pressure", rationale: "A threat appeared.", suggestedContent: "The duke demands tribute.", suggestedType: "activePressure" },
-    { action: "edit", componentId: "plot", title: "Pressure", rationale: "A threat appeared.", suggestedContent: "The duke demands tribute.", suggestedType: "activePressure" },
-    { action: "edit", componentId: "plot", title: "Plot", rationale: "Clarify the premise.", suggestedContent: "The exiles seek a home.", suggestedType: "plotEssentials" }
-  ]), raw: {} });
-  try {
-    const adventure = createDefaultAdventure("No pressure");
-    adventure.components = [makeComponent({ id: "plot", title: "Plot", type: "plotEssentials", content: "The exiles need a home." })];
-    const recs = await runComponentAudit(adventure, adventure.modelConfig, 20, { includeAI: true });
-    expect(recs.some(r => r.suggestedType === "activePressure")).toBe(false);
-    expect(recs.some(r => r.suggestedType === "plotEssentials")).toBe(true);
-    expect(mock.mock.calls[0][0].messages[0].content).not.toMatch(/Active Pressure|activePressure/);
-  } finally { mock.mockRestore(); }
 });

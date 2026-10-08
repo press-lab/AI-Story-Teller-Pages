@@ -69,26 +69,6 @@ describe("side menu page smoke coverage", () => {
     expect(screen.getByDisplayValue("Blazer, Blonde Blazer, Mandy")).toBeInTheDocument();
   });
 
-  it("lists only explicit character Story Cards in Brain card selectors", () => {
-    const adventure: Adventure = {
-      ...seedAdventure(),
-      brains: [makeBrain({ id: "brain-kori", characterName: "Kori" })],
-      storyCards: [
-        makeStoryCard({ id: "seth-card", title: "Seth", type: "character", content: "Seth is a character." }),
-        makeStoryCard({ id: "seth-lore", title: "Seth's history", type: "lore", content: "A past event." }),
-        makeStoryCard({ id: "tavern", title: "Tavern", type: "location", content: "A place." }),
-      ],
-    };
-    render(<BrainsPage adventure={adventure} dispatch={() => undefined} loading={false} onUpdateBrainNow={async () => undefined} />);
-    const brainCardSelect = screen.getByRole("combobox", { name: "Linked Story Card (for trait proposals)" });
-    const relationshipSelect = screen.getByRole("combobox", { name: "Focus character" });
-    for (const select of [brainCardSelect, relationshipSelect]) {
-      expect(within(select).getByRole("option", { name: "Seth" })).toBeInTheDocument();
-      expect(within(select).queryByRole("option", { name: "Seth's history" })).not.toBeInTheDocument();
-      expect(within(select).queryByRole("option", { name: "Tavern" })).not.toBeInTheDocument();
-    }
-  });
-
   it("renders the Arc Director on a Current Arc component and the AI generators", async () => {
     const arcAdventure: Adventure = {
       ...seedAdventure(),
@@ -241,7 +221,7 @@ describe("side menu page smoke coverage", () => {
 
   it("surfaces Story Card cleanup as a maintenance action", async () => {
     const user = userEvent.setup();
-    const onAuditStoryCards = vi.fn(async () => undefined);
+    const onAuditStoryCards = vi.fn(async () => []);
     const onSuggestCardUpdates = vi.fn(async () => undefined);
 
     renderWithAdventure((adventure, dispatch) => (
@@ -263,9 +243,6 @@ describe("side menu page smoke coverage", () => {
 
     await user.click(screen.getByRole("button", { name: "Clean Up Cards" }));
     expect(onAuditStoryCards).toHaveBeenCalledWith(20, false);
-    expect(screen.queryByText("Story Card Cleanup")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("in Suggestions");
   });
 
   it("surfaces Plot Component cleanup as a maintenance action", async () => {

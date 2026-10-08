@@ -1,5 +1,4 @@
-import { relationshipFocusCard, relationshipItemId, relationshipTargets, relationshipText } from "../memory/relationships";
-import { ONE_PASS_MEMORY_ID, onePassMemoryInstruction, relationshipMemoryInstruction } from "../memory/onePassMemory";
+import { ONE_PASS_MEMORY_ID, onePassMemoryInstruction } from "../memory/onePassMemory";
 import { selectEventMemories } from "../memory/eventMemory";
 import { PLOT_MEMORY_THRESHOLD } from "../ai/authoringBestPractices";
 import type {
@@ -24,7 +23,7 @@ const SYSTEM_SHELL = `You are the story engine for AI Story Teller. The context 
 
 CONTEXT SECTIONS (read all, honour their order):
   B. AI Instructions — narrative rules and style for this adventure.
-  C. Plot Essentials — overarching premise, long-term conflict, and persistent story-wide constraints.
+  C. Plot Essentials — overarching premise, long-term conflict, and persistent story-wide constraints. Active Pressure names the immediate external threat or obligation.
   C2. Current Story Arc — active arc log and any gated Arc Director phase instruction.
   E. Components — general world-building context (always-on or pinned entries).
   F. Story Cards — World Info entries injected when their trigger keywords appear in recent text.
@@ -376,7 +375,7 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
   const turnScopeText = buildTurnScopeContract(adventure.activeState.responseLengthHint);
   const captureEligible = options.skipThoughtCapture ? [] : eligibleBrainsForCapture(adventure, triggerText);
   const memoryText = !options.skipThoughtCapture && adventure.memoryDetectionSettings.enabled
-    ? onePassMemoryInstruction(captureEligible, enabledMemoryCategories(adventure), [], adventure.components.some(c => c.type === "activePressure" && c.active && c.autoUpdate !== false)) : undefined;
+    ? onePassMemoryInstruction(captureEligible, enabledMemoryCategories(adventure)) : undefined;
   function pushExcluded(
     sourceType: ExcludedContextItem["sourceType"],
     id: string,
@@ -547,35 +546,15 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
     // relationshipPressure / recentDevelopments fields are NOT injected: they have no editor field,
     // append unbounded, and ballooned context (a high-frequency character hit ~9KB). History lives
     // in the thought archive and in arc-graduated story cards, not in an ever-growing state blob.
-    const relationshipItems = (brain.relationships ?? []).flatMap(r => {
-      const id = relationshipItemId(brain.id, r.id);
-      const focusCard = relationshipFocusCard(adventure, r);
-      if (!focusCard) {
-        pushExcluded("brain", id, `${brain.characterName} → ${r.focus}`, "inactive", "Relationship needs an existing character Story Card link.");
-        return [];
-      }
-      if (!matchPatterns(triggerText, [focusCard.title, ...focusCard.keys], "phrase").matched) {
-        pushExcluded("brain", id, `${brain.characterName} → ${r.focus}`, "not_triggered", "Relationship focus is not relevant.");
-        return [];
-      }
-      const current = item(id, "brain", `${brain.characterName} → ${focusCard.title}: current relationship`, relationshipText(r, focusCard.title), brain.priority, brain.protected, brain.pinned, true, brain.inclusionPolicy, r.history.at(-1)?.sourceTurnId.startsWith("player-") ? "user" : "ai");
-      pushIncluded(current, "Enrolled directional relationship; Brain and focus relevant. Current state only.");
-      return [current, ...r.history.filter(h => r.recalledHistoryIds.includes(h.id)).slice(0, 3).map(h => {
-        const recalled = item(`${id}:history:${h.id}`, "brain", `${brain.characterName} → ${focusCard.title}: approved history (${h.sourceTurnId})`,
-          `Source turn: ${h.sourceTurnId}\n${JSON.stringify(h.state)}\nEvidence: ${h.evidence}`, brain.priority - 1, false, false, true, brain.inclusionPolicy, h.sourceTurnId.startsWith("player-") ? "user" : "ai");
-        pushIncluded(recalled, "Player-selected approved relationship history; clear selection on Brain page to stop recall.");
-        return recalled;
-      })];
-    });
     const thoughtsForContext = dedupeThoughtRecord(brain.thoughts);
     if (Object.keys(thoughtsForContext).length === 0) {
       pushExcluded("brain", brain.id, brain.characterName, "not_triggered", "Brain triggered but has no thoughts yet — nothing to inject.");
-      return relationshipItems;
+      return [];
     }
     const content = Object.entries(thoughtsForContext).map(([k, v]) => `${k}: ${v}`).join("\n");
     const next = item(brain.id, "brain", brain.characterName, content, brain.priority, brain.protected, brain.pinned, brain.active, brain.inclusionPolicy, sourceToGeneratedBy(brain.source));
     pushIncluded(next, `Brain included by ${brain.pinned ? "pin" : forced ? "manual force" : brain.inclusionPolicy === "always" ? "always policy" : `trigger ${match.pattern}`}; priority=${brain.priority}; protected=${brain.protected}.`);
-    return [next, ...relationshipItems];
+    return [next];
   });
 
   // J. Next Output Bias (+ response length hint)
@@ -588,7 +567,6 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
       cards: storyCardItems.map(entry => entry.title),
       components: editableComponents.map(entry => ({ title: entry.title, type: adventure.components.find(c => c.id === entry.id)?.type })),
     })}`;
-    memoryItem.content += relationshipMemoryInstruction(relationshipTargets(adventure, new Set(brainItems.map(i => i.id))));
     memoryItem.tokenEstimate = approximateTokenCount(memoryItem.content);
   }
 
@@ -772,15 +750,6 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
     if (!changed) break;
   }
 
-  // Filtering budget-dropped targets only reduces the already-budgeted instruction.
-  const finalMemory = sections.flatMap(s => s.items).find(i => i.id === ONE_PASS_MEMORY_ID);
-  if (finalMemory) {
-    const ids = new Set(sections.flatMap(s => s.items).map(i => i.id));
-    finalMemory.content = finalMemory.content.replace(/\n\[DYNAMIC RELATIONSHIPS\][\s\S]*?\[\/DYNAMIC RELATIONSHIPS\]/g, "")
-      + relationshipMemoryInstruction(relationshipTargets(adventure, ids));
-    finalMemory.tokenEstimate = approximateTokenCount(finalMemory.content);
-    sections = recalculate(sections);
-  }
   sections.forEach((contextSection) => {
     contextSection.items.forEach((entry, index) => {
       decisions.push(

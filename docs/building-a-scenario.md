@@ -1,7 +1,5 @@
 # Building a Scenario
 
-Authoring reference: [Fact ownership and overlap audit](./fact-ownership.md).
-
 The hands-on recipe for authoring an adventure that runs long and well. This is
 the *how*; for the *why* behind every choice, read
 [`adventure-design.md`](./adventure-design.md). The worked example throughout is
@@ -25,10 +23,10 @@ A scenario is six things working together:
 |---|---|---|
 | **Current truth + premise** | Plot Essentials | What is happening now + always-on constraints |
 | **The cast** | Story Cards (`character`) **+ Voice Contracts** | Who's fun in a room |
-| **Interior life** | Brains | Event-specific thoughts, reactions, and situational intentions |
+| **Interior life** | Brains | Hidden agendas that simmer and persist |
 | **The engine** | a custom "missions" component | The repeatable loop that prints scenes |
 | **The spine** | Current Story Arc + **Arc Director** | The conflict that climbs and breaks |
-| **The hook** | Opening Scene + Author's Note | Where it starts, what is pressing now, how it sounds |
+| **The hook** | Opening Scene + one-sentence Active Pressure + Author's Note | Where it starts, what is pressing now, how it sounds |
 
 Build them in that order.
 
@@ -38,7 +36,7 @@ Build them in that order.
 
 The New Adventure generator asks for outcome choices before it drafts the setup.
 Pick the result you want; the app routes the details into AI Instructions, Plot
-Essentials, Author's Note, Story Cards, and Brains.
+Essentials, Active Pressure, Author's Note, Story Cards, and Brains.
 
 | Want | Choose | What it changes |
 |---|---|---|
@@ -46,8 +44,8 @@ Essentials, Author's Note, Story Cards, and Brains.
 | Jobs and team fallout | Mission loop | A custom loop component, current assignment pressure, team/enemy cards |
 | Investigation | Mystery | Current known question in PE, clues/suspects/secrets on cards, no early answer |
 | Power games | Faction politics | Public pressure in PE, faction leverage and secrets on cards |
-| Relationship heat | Romance drama | Choice-driven tension, one relationship owner plus event-specific Brain reactions, no forced commitment |
-| Danger and dread | Survival / horror | Threat rules, scarcity, safe places, consequences |
+| Relationship heat | Romance drama | Choice-driven tension, living relationship cards/Brains, no forced commitment |
+| Danger and dread | Survival / horror | Threat rules, scarcity, safe places, active pressure, consequences |
 
 Prose mode is separate from story shape. Minimalist is fast and lean; novelistic
 is richer and slower; cinematic focuses on visible action and blocking;
@@ -66,7 +64,7 @@ separable.
 
 The generator should still keep Plot Essentials tight. Relationship trackers,
 voice guides, quest logs, secrets, and recurring locations usually belong in
-the appropriate Story Card, enrolled relationship state, or event-specific Brain thoughts, not in PE. Review generated setup against the ownership reference; generators do not enforce every boundary.
+Story Cards or Brains, not in PE.
 
 ---
 
@@ -78,14 +76,13 @@ enjoy**. Decide the one-line premise *and* the slow-burn arc it builds toward.
 *Heir of the Dragon Throne:* post-war Avatar world (backdrop), an overpowered
 dragon-fire crown prince (fantasy), and a premise where the antagonist is
 **personal and convergent** — the conspiracy is run by the love interest's
-father. Give **Plot Essentials** only the premise and compact operating truth
-needed in nearly every plausible next response. Put the conspiracy's active
-progress in **Current Story Arc**, character secrets and power mechanics on
-their character cards, and faction lore on its own card. Importance alone
-does not justify repeating those facts in PE.
+father. Write this into **Plot Essentials** (always-on, protected) as the
+current operating truth: what is happening now, open tensions, obligations, and
+major constraints that must shape every scene. Keep it tight; this is what the
+model writes *toward*.
 
 Two rules from experience:
-- **Let the player be OP.** State the behavioral rule once in Narration Rules or optional AI Instructions: *"NPCs respect, fear,
+- **Let the player be OP.** State it in AI Instructions: *"NPCs respect, fear,
   court, and test his power — do not nerf him. Stakes are political, social, and
   personal, not a power-level problem."* The cost lands in the arc, never on the
   player's competence.
@@ -124,15 +121,12 @@ Rules learned the hard way:
   on the card — e.g. *"Formally Lady Nyxa or Lady Renzan; called Nyx by those
   close to her."* Use the correct in-world title.
 - **Relationship cards are living cards only when the relationship is its own
-  recurring subject.** Otherwise choose one character card as the fact's owner. Enrolled directional
-  relationship state owns the mutable pair facts it tracks; do not duplicate
-  those on cards or in freeform thoughts.
+  recurring subject.** Otherwise keep the fact on the character cards/brains.
   Do not make vague "Dynamic between X and Y" cards with both character names as
   broad triggers.
-- **Pick the memory mode.** `static` = relatively stable present-tense facts (still revisable),
+- **Pick the memory mode.** `static` = always-true present-tense facts,
   `living` = current evolving subject whose updates merge/archive, and
-  `historical` = useful completed events and consequences in past tense.
-  Removing a PE assertion alone does not establish an event.
+  `historical` = completed event or retired Plot Essentials fact in past tense.
 - **Keep triggers narrow.** Character aliases belong on the character's identity
   card. Event, relationship, or subplot cards should use specific consequences,
   objects, locations, factions, or case names instead of broad character names.
@@ -143,25 +137,58 @@ match. But hand-author the core cast for control.
 
 ---
 
-## Step 3 — Brains: event-specific interior responses
+## Step 3 — Brains: interior life that simmers
 
-Give an opt-in Brain to major characters whose reactions matter. Keep identity,
-enduring wants, values, beliefs, fears, motivations, secrets, and Voice Contract
-on the character card. Seed only responses to the opening's actual circumstances:
+Give a Brain to every **major** player (protagonist's inner circle + the
+antagonist). Not to every walk-on — major characters only. A Brain is private
+narrator-only interior state that **accumulates** (thoughts append, they don't
+overwrite).
 
-- Lord Renzan: “Tonight's inspection may expose the broker. I need to divert it.”
-- Mai: “Those three shipments look suspicious; I intend to ask about the broker.”
-- Nyxa: “After that summons, I am unsure what my father expects me to say.”
+Write brains **behavioral, not adjectival**, and — the lesson that made *Heir*
+click — **preload each NPC's hidden agenda as starting thoughts so the story is
+legible from turn one.** The player can read the Brains panel and immediately
+understand what's really going on:
 
-These are interpretations and situational intentions, not proof of the underlying
-facts. A durable ambition belongs on the card even if it is hidden. Brain thoughts
-accumulate, are validated and may be condensed/archived; older thoughts are not
-necessarily current beliefs. Use the reference's psychology/relationship example.
+- *Lord Renzan:* `"The armory was a message, not a theft. Let the Fire Lord chase
+  shadows while the real work moves. Nothing leads back to me."`
+- *Mai:* `"Three shipments of 'ceremonial' steel rerouted through a
+  Renzan-friendly broker. I haven't told Zuko yet."`
+- *Nyxa:* `"My father wants the throne and I want Setu, and I'm not sure those are
+  different wishes."`
 
-Keep the protagonist's Brain light and respect player-owned thoughts and choices.
-“Generate from name” can draft broader material than this boundary recommends;
-review the draft and put durable characterization on its character card. This
-is authoring guidance, not a change to the generator or an automatic promotion rule.
+Keep the **protagonist's** brain light — the player drives him. Give the
+**antagonist** a rich brain: it's the will that drives the arc's simmer.
+
+The **"Generate from name"** button on the Brains page drafts a behavioral brain
+from just a name (it produces a brain, not a card — pair it with a character card
+for the voice contract).
+
+---
+
+## Step 3.5 — Active Pressure: one sentence of now
+
+Active Pressure is not a second plot summary. It is the single external force
+pressing on the player character right now: the deadline, pursuit, debt, failing
+system, public challenge, or visible consequence that keeps the next response
+from floating.
+
+Write it as exactly one sentence. If you need more than that, the durable part
+belongs in Plot Essentials, the climbing part belongs in Current Story Arc, and
+the live next beat belongs in Recent Messages or Next Output Bias.
+
+Good:
+
+```
+The Fire Lord's messenger has arrived with news of another New Ozai Society strike, forcing Setu to leave training and answer the crisis now.
+```
+
+Bad:
+
+```
+Setu feels torn between duty, Nyxa, and the burden of being the Dragon's Heir.
+```
+
+That second one is emotion and theme. It can be true, but it is not pressure.
 
 ---
 
@@ -179,9 +206,7 @@ Crown's Missions":
 
 The test of a good loop: **does each phase manufacture the input to the next?**
 If yes, it runs forever. Add a dispatcher figure (a handler who hands down jobs)
-so the loop has an in-world source. Declare this component's purpose as the
-reusable mission loop; keep assignments, profiles, and arc progress with their
-respective owners.
+so the loop has an in-world source.
 
 ---
 
@@ -228,9 +253,7 @@ beat.
 Set an **Author's Note** for tone (it loads near the recent messages, highest
 steering weight): *"Blockbuster-sequel energy… keep the larger story serious, but
 outside danger let the cast be sharp, funny, human."* Use it later as your
-mid-session steering wheel if narration drifts. It persists until edited;
-clear resolved direction and keep durable character traits on the card. Use
-Next Output Bias for steering that normally expires after one successful generation.
+mid-session steering wheel if a character drifts.
 
 Set the **response length** to a target (slider on the Play page) — V3.2 writes
 *to* it, so 300–500 gives substantive beats.
@@ -270,13 +293,16 @@ Set the **response length** to a target (slider on the Play page) — V3.2 write
 
 ## Quick checklist
 
-- [ ] Backdrop you like; power facts on the character card; capability-preservation rule written once.
-- [ ] Plot Essentials: tight operating truth needed nearly every response; no copied profiles or chronological log.
+- [ ] Backdrop you like + OP fantasy stated in AI Instructions.
+- [ ] Plot Essentials: tight current operating truth, antagonist
+      personal/convergent, no chronological log.
+- [ ] Active Pressure: exactly one sentence naming the external force pressing
+      right now.
 - [ ] One `character` card per recurring figure; **Voice Contract on every NPC**,
       none on the PC; canon voices accurate; formal + nickname noted; memory
       mode and triggers chosen deliberately.
-- [ ] Brains for major characters: event-specific reactions and situational intentions; durable agendas stay on cards; PC brain respects player control.
-- [ ] Run the [ownership overlap audit](./fact-ownership.md#overlap-audit), including enrolled relationship state and duplicate behavior rules.
+- [ ] Brains for the inner circle + antagonist; behavioral; **hidden agendas
+      preloaded** so the story reads from turn one; PC brain light.
 - [ ] A mission-loop component whose phases feed each other; a dispatcher figure.
 - [ ] Current Story Arc + Arc Director: baddie threads, simmer + cost
       instructions, sensible pace, **Ask** mode, **starts simmering**.

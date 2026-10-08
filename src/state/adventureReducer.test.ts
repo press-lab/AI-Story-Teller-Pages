@@ -55,10 +55,6 @@ const testedActionTypes = [
   "ADD_RAW_IMPORT",
   "UPDATE_RAW_IMPORT",
   "DELETE_RAW_IMPORT",
-  "ENROLL_RELATIONSHIP",
-  "LINK_RELATIONSHIP_FOCUS",
-  "EDIT_RELATIONSHIP",
-  "RECALL_RELATIONSHIP_HISTORY",
   "ADD_MEMORY_PROPOSAL",
   "UPDATE_MEMORY_PROPOSAL",
   "APPROVE_MEMORY_PROPOSAL",
@@ -1760,32 +1756,5 @@ describe("adventureReducer", () => {
     state = reduce(state, { type: "SET_ARC_PHASE", componentId: arc.id, phase: "simmer", turn: 15 });
     expect(get().arcState?.threadEngagement).toEqual({});
     expect(get().arcState?.tier).toBe(0);
-  });
-});
-
-describe("missing pressure target", () => {
-  it.each([true, false])("ignores proposals without a component with auto-approval %s", autoApprove => {
-    const adventure = createDefaultAdventure("No pressure");
-    adventure.components = adventure.components.filter(c => c.type !== "activePressure");
-    adventure.memoryAutoApprove.plotPressureUpdate = autoApprove;
-    const proposal = makeMemoryProposal({ proposedType: "plotPressureUpdate", content: "The duke demands tribute." });
-    expect(adventureReducer(adventure, { type: "ADD_MEMORY_PROPOSAL", proposal })).toBe(adventure);
-  });
-
-  it("does not recreate a deleted component when a queued proposal is approved", () => {
-    const adventure = createDefaultAdventure("Deleted pressure");
-    adventure.components = adventure.components.filter(c => c.type !== "activePressure");
-    const proposal = makeMemoryProposal({ proposedType: "plotPressureUpdate", targetId: "deleted", content: "The duke demands tribute." });
-    adventure.activeState.memoryProposals = [proposal];
-    const result = adventureReducer(adventure, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id });
-    expect(result.components).toEqual(adventure.components);
-  });
-
-  it("does not redirect a stale proposal to a replacement component", () => {
-    const adventure = createDefaultAdventure("Replacement pressure");
-    const pressure = makeComponent({ id: "replacement", type: "activePressure", title: "Pressure", content: "The gate is failing." });
-    adventure.components.push(pressure);
-    const proposal = makeMemoryProposal({ proposedType: "plotPressureUpdate", targetId: "deleted", content: "The duke demands tribute." });
-    expect(adventureReducer(adventure, { type: "ADD_MEMORY_PROPOSAL", proposal })).toBe(adventure);
   });
 });

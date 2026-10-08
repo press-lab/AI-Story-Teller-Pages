@@ -16,7 +16,7 @@ import type {
   ProviderRequestThrottle,
 } from "../types/adventure";
 import { dedupeBrainThoughts } from "../memory/thoughtDedupe";
-import { applyGuardedStoryCardPolicy, restoreGuardedFactsToLiveContent, retainCharacterFoundation } from "../memory/storyCardPolicy";
+import { applyGuardedStoryCardPolicy, restoreGuardedFactsToLiveContent } from "../memory/storyCardPolicy";
 import { createId, nowIso } from "../utils/id";
 
 export const defaultTokenBudgetSettings: TokenBudgetSettings = {
@@ -101,7 +101,6 @@ export const defaultMemoryAutoApproveSettings: MemoryAutoApproveSettings = {
   plotMomentumUpdate: false,
   storyCard: false,
   brainUpdate: false,
-  relationshipUpdate: false,
 };
 
 export const defaultSystemTriggerSettings: SystemTriggerSettings = {
@@ -207,6 +206,7 @@ export function createDefaultAdventure(title = "Untitled Adventure"): Adventure 
         alwaysOn: true,
         pinned: true,
       }),
+      makeComponent({ title: "Active Pressure", type: "activePressure", content: "", priority: 245, active: true }),
     ],
     storyCards: [],
     brains: [],
@@ -340,7 +340,6 @@ export function makeBrain(overrides: Partial<BrainEntry> & Pick<BrainEntry, "cha
     thoughts: overrides.thoughts ?? {},
     archivedThoughts: overrides.archivedThoughts ?? {},
     linkedStoryCardId: overrides.linkedStoryCardId,
-    relationships: overrides.relationships ?? [],
     relationshipPressure: overrides.relationshipPressure ?? "",
     emotionalInterpretation: overrides.emotionalInterpretation ?? "",
     recentDevelopments: overrides.recentDevelopments ?? "",
@@ -455,7 +454,6 @@ function normalizeStoryCardEntry(card: StoryCard, migrateGuardedFacts: boolean):
     recentDevelopments: card.recentDevelopments ?? [],
     sourceTurnIds: card.sourceTurnIds ?? [],
   };
-  if (normalized.type === "character") return retainCharacterFoundation(normalized);
   return migrateGuardedFacts
     ? applyGuardedStoryCardPolicy(restoreGuardedFactsToLiveContent(normalized))
     : normalized;
@@ -556,11 +554,6 @@ export function normalizeAdventure(adventure: Adventure): Adventure {
     sceneState: adventure.sceneState ?? { content: "", updatedAt: nowIso() },
     brains: (adventure.brains ?? []).map((brain) => ({
       ...brain,
-      relationships: (brain.relationships ?? []).map(r => {
-        if (r.focusStoryCardId) return r;
-        const matches = (adventure.storyCards ?? []).filter(c => c.type === "character" && c.title.trim().toLowerCase() === r.focus.trim().toLowerCase());
-        return matches.length === 1 ? { ...r, focusStoryCardId: matches[0].id } : r;
-      }),
       source: brain.source ?? "manual",
       protected: brain.protected ?? false,
       inclusionPolicy: brain.inclusionPolicy ?? "triggered",
@@ -608,7 +601,11 @@ export function normalizeAdventure(adventure: Adventure): Adventure {
         seenSingletons.add(component.type);
         return true;
       });
-      return deduped;
+      const hasActivePressure = deduped.some((c) => c.type === "activePressure");
+      return [
+        ...deduped,
+        ...(hasActivePressure ? [] : [makeComponent({ title: "Active Pressure", type: "activePressure", content: "", priority: 245, active: true })]),
+      ];
     })(),
     triggerRules: (adventure.triggerRules ?? []).map((rule) => ({
       ...rule,

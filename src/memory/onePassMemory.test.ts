@@ -58,6 +58,7 @@ describe("one-pass memory quality boundary", () => {
     ["truncated opening tag", `${story}<memory_up`],
     ["invalid JSON", `${story}<memory_updates>{oops}</memory_updates>`],
     ["multiple tails", `${envelope([])}<memory_updates>{"updates":[]}</memory_updates>`],
+    ["too many updates", envelope(Array(5).fill(update))],
   ])("preserves good story after %s memory output without a retry", async (_label, content) => {
     const adventure = fixture();
     const provider = vi.fn(async () => ({ content }));
@@ -267,18 +268,5 @@ describe("one-pass memory quality boundary", () => {
     expect(next.storyCards).toEqual(adventure.storyCards);
     expect(next.activeState.memoryProposals).toHaveLength(1);
     expect(next.activeState.memoryProposals[0]).toMatchObject({ status: "pending", requiresReview: true });
-  });
-});
-
-describe("optional pressure capture", () => {
-  it.each(["missing", "inactive", "disabled", "enabled"])("only offers eligible pressure capture: %s", state => {
-    const adventure = fixture();
-    if (state === "missing") adventure.components = adventure.components.filter(c => c.type !== "activePressure");
-    else adventure.components = adventure.components.map(c => c.type !== "activePressure" ? c : { ...c, active: state !== "inactive", autoUpdate: state !== "disabled" });
-    const context = buildContext(adventure);
-    const instruction = context.sections.flatMap(s => s.items).find(i => i.id === ONE_PASS_MEMORY_ID)?.content;
-    expect(instruction?.includes('- "pressure":')).toBe(state === "enabled");
-    const actions = onePassMemoryActions(adventure, context, [{ kind: "pressure", target: "Pressure", content: "The duke has ended the tribute demand.", evidence: "The duke has ended the tribute demand.", reason: "The obligation ended." }], story, "turn-pressure");
-    expect(actions.some(a => a.type === "ADD_MEMORY_PROPOSAL" && a.proposal.proposedType === "plotPressureUpdate")).toBe(state === "enabled");
   });
 });

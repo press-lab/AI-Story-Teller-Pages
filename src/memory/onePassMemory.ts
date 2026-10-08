@@ -1,25 +1,12 @@
-import { relationshipCandidate, type RelationshipTarget } from "./relationships";
 import type { Adventure, AdventureAction, BrainEntry, ContextBuildResult, MemoryProposal, StoryCardType } from "../types/adventure";
 import { createId, nowIso } from "../utils/id";
 import { cardMatchesName } from "../state/defaults";
 import { applyAIMemoryUpdate } from "./applyAIMemoryUpdate";
-import { storyCardContextContent } from "./storyCardPolicy";
 
 export const ONE_PASS_MEMORY_ID = "one-pass-memory";
 export const MEMORY_OUTPUT_RESERVE = 1400;
-export const MAX_MEMORY_UPDATES = 4;
 
-/** Opt-in: do not alter the ordinary memory prompt when no pair is eligible. */
-export function relationshipMemoryInstruction(relationships: RelationshipTarget[]): string {
-  if (!relationships.length) return "";
-  return `\n[DYNAMIC RELATIONSHIPS]
-An eligible Brain may also propose a "relationshipChange" in the same memory_updates envelope. Ordinary thoughts still use "thought"; do not suppress thoughts to fill relationship slots. The shared limit remains four small updates; never invent updates.
-Use exact target (Brain ID), relationshipId, focusStoryCardId and focus from the inventory, plus revision. Instead of content provide proposed: {bond,status,dimensions}, the complete new state with unchanged dimension names. Include evidence and knowledgeEvidence: exact quotes from this turn establishing the change and how the NPC witnessed or learned it; also include reason. No numeric meters. Bond/status transitions require explicit in-story evidence naming the resulting state and review; rudeness alone never means a breakup. Quote matching proves provenance, not knowledge. Uncertain knowledge and interpretation require review. Keep ordinary thoughts as private reactions, Story Cards as profiles and untracked relationships. Never write relationshipPressure.
-Eligible relationship targets: ${JSON.stringify(relationships)}
-[/DYNAMIC RELATIONSHIPS]`;
-}
-
-export function onePassMemoryInstruction(brains: BrainEntry[], categories: string[], relationships: RelationshipTarget[] = [], hasPressure = false): string {
+export function onePassMemoryInstruction(brains: BrainEntry[], categories: string[]): string {
   return `[ONE-PASS MEMORY]
 Write the requested narrative first, preserving its quality and visible word limit. Then append exactly one hidden JSON envelope:
 <memory_updates>{"updates":[]}</memory_updates>
@@ -28,15 +15,16 @@ Each update has: kind, target, content, evidence, reason. evidence is an EXACT q
 Allowed kinds:
 - "thought": target is an eligible character name below; content is ONE new first-person internal reaction, belief, or private plan (max 45 words). Capture only if the character participated or learned something this turn. Never repeat existing thoughts or put generic world facts here.
 - "card": target is the EXACT title of an existing Story Card visible in context; content is only a NEW durable fact (max 70 words) to append. Character cards are profiles: add ONE lasting ability, trait, relationship, or obligation only when the quoted evidence EXPLICITLY establishes it as an enduring fact. A single action or reaction does not prove a habit or personality trait. Never generalize one fight, meal, joke, or exchange into what someone usually does. Put consequential shared history on lore/location cards; otherwise leave it in the transcript. Preserve identity and existing facts. Never overwrite or contradict canon; corrections need explicit review outside this automatic path. Omit already-known facts and rephrasings.
-- "lore": target is the EXACT title of an existing lore/location/custom Story Card, or a narrow NEW subject title. An existing lore/location card may be named in the supplied target inventory even when it was not triggered into model context this turn; such an update requires review. Persist consequential established actions, revelations, allegations and their known consequences as historical lore; preserve who did, claimed or learned what. Secret surveillance of an ally is an action, not a new personality; implication in a conspiracy is an allegation, not proven guilt. Use Dynamic Relationships for evidenced changes to enrolled pair state. Create an INDEPENDENT historical lore card for a distinctive completed event worth recalling later. It need not establish a new rule or ongoing obligation. Give it a specific title, concise attributed past-tense facts, 1-3 narrow recall triggers, and category "plot_beat". It becomes a reviewable lore card with historical memory mode. Use category "world_fact" for a reusable rule, place, or subject instead. Do not create lore for routine movement, a passing reaction, or generic scene filler. Never append the event to a participant's character card.
+- "lore": target is the EXACT title of an existing lore/location/custom Story Card, or a narrow NEW subject title. An existing lore/location card may be named in the supplied target inventory even when it was not triggered into model context this turn; such an update requires review. Create an INDEPENDENT historical lore card for a distinctive completed shared event worth recalling later, such as a first fight, first meeting, major battle, revelation, or consequential choice. It need not establish a new rule or ongoing obligation. Give the new card a specific event title, concise past-tense facts naming participants, place, and outcome, 1-3 narrow recall triggers, and category "plot_beat". It becomes a reviewable lore card with historical memory mode. Use category "world_fact" for a reusable rule, place, or subject instead. Do not create lore for routine movement, a passing reaction, or generic scene filler. Never append the event to a participant's character card.
 - "newCard": target is a genuinely new recurring subject's name, content max 90 words. Also provide cardType (character, location, lore, custom, plot), memoryMode (static or living), triggers (1-3 narrow phrases), and category from: ${categories.join(", ") || "NONE (no new cards allowed)"}. Reuse existing subjects; never create sibling cards for a conversation, invitation, repeated affection, room movement, routine choice, or temporary mood. A plot card requires a consequential lasting obligation, alliance, betrayal, secret, or irreversible change; it will require review. Use "lore" above, not "newCard", for a distinctive completed event.
-${hasPressure ? '- "pressure": target is the EXACT title of an active Active Pressure component; content is its full replacement, ONE sentence (max 45 words) identifying the external threat or obligation pressing on the player. Only when it materially changes or resolves; no cosmetic rewrites.\n' : ""}- "arc": target is the EXACT title of the active Current Arc; content is one concise, completed development (max 45 words) directly relevant to its premise, to append to its log. Skip scene filler, repeated beats, possibilities, and future events. Never change the premise, phase, or pacing.
+- "pressure": target is the EXACT title of an active Active Pressure component; content is its full replacement, ONE sentence (max 45 words) identifying the external threat or obligation pressing on the player. Only when it materially changes or resolves; no cosmetic rewrites.
+- "arc": target is the EXACT title of the active Current Arc; content is one concise, completed development (max 45 words) directly relevant to its premise, to append to its log. Skip scene filler, repeated beats, possibilities, and future events. Never change the premise, phase, or pacing.
 - "essentials": target is the EXACT title of a Plot Essentials component; content is its full replacement (max 180 words), preserving still-valid foundations. Only when the overarching premise, central long-term conflict, or persistent story-wide constraint fundamentally changes. This always requires review. NOT scene summaries, temporary whereabouts, immediate threats, or current-arc progress.
-Current Arc holds the ongoing storyline and its authored pacing. Do not alter arc phases, break instructions, or create a new arc here. Record arc progress there; a distinct completed event may also earn its own historical lore card when users will want to recall the occurrence itself. Plot Essentials is the overarching story. Character Story Cards hold profiles, lore cards hold reusable setting and shared history, and Brains hold private internal state. Routine scene beats stay in the transcript.
+Current Arc holds the ongoing storyline and its authored pacing. Do not alter arc phases, break instructions, or create a new arc here. Record arc progress there; a distinct completed event may also earn its own historical lore card when users will want to recall the occurrence itself. Plot Essentials is the overarching story; Active Pressure is what presses NOW. Character Story Cards hold profiles, lore cards hold reusable setting and shared history, and Brains hold private internal state. Routine scene beats stay in the transcript.
 For example: {"kind":"card","target":"Mira","content":"Mira is allergic to silver.","evidence":"Silver gives me a rash, Mira says.","reason":"Persistent vulnerability"}.
-
+Historical lore example: {"kind":"lore","target":"Seth and Buu's First Fight","content":"Seth and Buu fought for the first time on Hercule's estate. Seth blasted Buu into orbit; Buu returned unharmed and asked to continue.","evidence":"Buu returned unharmed and asked to continue.","reason":"Distinct first fight worth recalling","category":"plot_beat","triggers":["Seth and Buu first fight","Buu sent into orbit"]}.
 Eligible thought targets: ${brains.map(b => JSON.stringify(b.characterName)).join(", ") || "none"}.
-Only output changes supported by this turn and consistent with ALL supplied canon. These hidden updates are not narrative and must never steer the scene merely to create memory.${relationshipMemoryInstruction(relationships)}`;
+Only output changes supported by this turn and consistent with ALL supplied canon. These hidden updates are not narrative and must never steer the scene merely to create memory.`;
 }
 
 /** A broken/truncated tail must never leak JSON into the story or discard good prose. */
@@ -49,7 +37,7 @@ export function parseOnePassMemory(text: string): { story: string; updates: unkn
   if (!match || match[1].length > 16000) return { story, updates: [], error: "Incomplete or oversized memory envelope; story preserved." };
   try {
     const parsed: unknown = JSON.parse(match[1]);
-    if (!parsed || typeof parsed !== "object" || !("updates" in parsed) || !Array.isArray(parsed.updates)) throw new Error();
+    if (!parsed || typeof parsed !== "object" || !("updates" in parsed) || !Array.isArray(parsed.updates) || parsed.updates.length > 4) throw new Error();
     return { story, updates: parsed.updates };
   } catch {
     return { story, updates: [], error: "Invalid memory JSON; story preserved." };
@@ -85,7 +73,7 @@ function isSingleCharacterFact(content: string): boolean {
 }
 
 /** Local structural/evidence checks, not a claim that a quote proves every inference. */
-export function onePassMemoryActions(adventure: Adventure, context: ContextBuildResult, updates: unknown[], story: string, sourceTurnId: string, error?: string, sourceLabel = "One-pass memory: no additional API call", playerInputOverride?: string, recentEvidence: string[] = [], maxNewCards = 1, olderCharacterEvidence: string[] = []): AdventureAction[] {
+export function onePassMemoryActions(adventure: Adventure, context: ContextBuildResult, updates: unknown[], story: string, sourceTurnId: string, error?: string, sourceLabel = "One-pass memory: no additional API call", playerInputOverride?: string, recentEvidence: string[] = []): AdventureAction[] {
   const actions: AdventureAction[] = [];
   const errors = error ? [error] : [];
   const executed: string[] = [];
@@ -96,39 +84,19 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
   const evidenceSources = [norm(story), norm(playerInput), ...recentEvidence.map(norm)];
   const seen = new Set<string>();
   let newCards = 0;
-  let accepted = 0;
-  // Overproduction is not broken JSON. Keep valid thoughts before other candidates
-  // in an oversized batch; malformed and ineligible entries consume no write slots.
-  const isThought = (u: unknown) => !!u && typeof u === "object" && "kind" in u && u.kind === "thought";
-  const candidates = updates.length > MAX_MEMORY_UPDATES
-    ? [...updates.filter(isThought), ...updates.filter(u => !isThought(u))] : updates;
-  for (const raw of candidates) {
+  for (const raw of updates) {
     const reject = (reason: string) => errors.push(`One-pass memory skipped: ${reason}`);
-    if (accepted >= MAX_MEMORY_UPDATES) { reject(`[${sourceLabel}] update limit reached; retained ${accepted} accepted updates`); continue; }
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) { reject("invalid update"); continue; }
     const u = raw as Record<string, unknown>;
-    if (u.kind === "relationshipChange") {
-      const result = relationshipCandidate(adventure, context, u, story, playerInput, sourceTurnId);
-      if (typeof result === "string") { reject(`relationshipChange [${sourceLabel}]: ${result}`); continue; }
-      const key = `relationship:${result.targetId}:${result.relationship?.relationshipId}`;
-      if (seen.has(key)) { reject(`relationshipChange [${sourceLabel}]: duplicate pair in envelope`); continue; }
-      seen.add(key);
-      const boundary = applyAIMemoryUpdate(adventure, [{ type: "relationshipProposal", proposal: result }]);
-      actions.push(...boundary.actions);
-      accepted++;
-      executed.push(`relationshipChange [${sourceLabel}]: accepted for review — ${result.title}; ${result.rationale}`);
-      continue;
-    }
-    const missing = ["kind", "target", "content", "evidence", "reason"].filter(field => typeof u[field] !== "string" || !(u[field] as string).trim());
-    if (missing.length) { reject(`missing fields (${missing.join(", ")}); target=${typeof u.target === "string" ? u.target.slice(0, 150) : "unknown"}`); continue; }
+    if (![u.kind, u.target, u.content, u.evidence, u.reason].every(v => typeof v === "string" && v.trim())) { reject("missing fields"); continue; }
     const kind = u.kind as string, target = (u.target as string).trim(), content = (u.content as string).trim(), evidence = (u.evidence as string).trim();
     const quote = norm(evidence);
-    const candidateEvidence = kind === "newCard" && u.cardType === "character" ? [...evidenceSources, ...olderCharacterEvidence.map(norm)] : evidenceSources;
-    if (quote.length < 12 || !candidateEvidence.some(s => s.includes(quote))) { reject(`${target}: evidence is not in this turn`); continue; }
+    if (quote.length < 12 || !evidenceSources.some(s => s.includes(quote))) { reject(`${target}: evidence is not in this turn`); continue; }
     if (words(content) > (kind === "essentials" ? 180 : kind === "newCard" || kind === "lore" ? 90 : kind === "card" ? 70 : 45)) { reject(`${target}: content exceeds limit`); continue; }
     if (content.includes("<") || content.length > 4000 || target.length > 150 || (u.reason as string).length > 600) { reject(`${target}: invalid content`); continue; }
     const key = `${kind}:${norm(target)}`;
     if (seen.has(key)) { reject(`${target}: repeated target`); continue; }
+    seen.add(key);
     const timestamp = nowIso();
     const proposal: MemoryProposal = {
       id: createId("proposal"), sourceTurnId, sourceText: evidence, proposedType: "storyCard", title: target,
@@ -148,8 +116,6 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
       const boundary = applyAIMemoryUpdate(adventure, [{ type: "brainPatch", brainId: brain.id, patch, mode: "append", turn: adventure.activeState.turn, preview: content }]);
       if (adventure.memoryAutoApprove.brainUpdate) actions.push(...boundary.actions);
       else actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal: { ...proposal, proposedType: "brainUpdate", targetId: brain.id, content: JSON.stringify(patch) } });
-      seen.add(key);
-      accepted++;
       executed.push(`Thought: ${target}`);
       continue;
     }
@@ -165,7 +131,7 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
         if (kind === "lore" && !["lore", "location", "custom"].includes(existing.type)) { reject(`${target}: lore cannot update a character card`); continue; }
         if (existing.type === "character" && isSceneRecapForCharacter(content)) { reject(`${target}: scene recap belongs in lore or transcript`); continue; }
         if (existing.type === "character" && (!hasDurableCharacterEvidence(evidence) || !isSingleCharacterFact(content))) { reject(`${target}: character fact lacks explicit durable evidence`); continue; }
-        if (norm(storyCardContextContent(existing)).includes(norm(content))) continue;
+        if (norm(existing.content).includes(norm(content))) continue;
         proposal.title = existing.title;
         proposal.targetId = existing.id;
         proposal.appendContent = true;
@@ -178,17 +144,12 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
         const allowedCategory = kind === "lore"
           ? (category === "world_fact" || category === "plot_beat") && adventure.systemTriggers?.categories[category as "world_fact" | "plot_beat"]
           : allowedTypes.includes(u.cardType as StoryCardType) && adventure.systemTriggers?.categories[category as keyof typeof adventure.systemTriggers.categories];
-        if ((kind !== "newCard" && kind !== "lore") || newCards >= maxNewCards || !adventure.systemTriggers?.enabled || !allowedCategory) {
-          reject(`${target}: new card not allowed (kind=${kind}, cardType=${String(u.cardType)}, category=${category || "missing"}, enabled=${!!adventure.systemTriggers?.enabled}, categoryAllowed=${!!allowedCategory}, slots=${newCards}/${maxNewCards})`);
-          continue;
-        }
+        if ((kind !== "newCard" && kind !== "lore") || ++newCards > 1 || !adventure.systemTriggers?.enabled || !allowedCategory) { reject(`${target}: new card not allowed`); continue; }
         if (!Array.isArray(u.triggers) || !u.triggers.length || u.triggers.length > 3 || u.triggers.some(t => typeof t !== "string" || t.trim().length < 3 || t.length > 80)) { reject(`${target}: invalid triggers`); continue; }
         proposal.storyCardType = kind === "lore" ? "lore" : u.cardType as StoryCardType;
         proposal.memoryMode = category === "plot_beat" ? "historical" : u.memoryMode === "living" ? "living" : "static";
         proposal.suggestedTriggers = u.triggers as string[];
         proposal.requiresReview = kind === "lore" || u.cardType === "plot";
-        if (kind === "newCard" && u.cardType === "character") proposal.requiresReview = true;
-        newCards++;
       }
     } else if (kind === "essentials" || kind === "pressure" || kind === "arc") {
       const type = kind === "essentials" ? "plotEssentials" : kind === "arc" ? "currentArc" : "activePressure";
@@ -206,8 +167,6 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
     } else { reject(`${target}: unsupported memory kind`); continue; }
     if (proposal.requiresReview && kind !== "essentials") proposal.rationale += " Consequential memory change: review required.";
     actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal });
-    seen.add(key);
-    accepted++;
     executed.push(`Proposed ${kind}: ${target}`);
   }
   actions.push({ type: "LOG_EVALUATION_RESULT", entry: {
