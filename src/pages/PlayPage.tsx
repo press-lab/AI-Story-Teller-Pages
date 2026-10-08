@@ -1,3 +1,4 @@
+import { StoryDirectorModeControl } from '../components/StoryDirectorModeControl';
 import { useEffect, useRef, useState } from "react";
 import type { InputMode, Message } from "../types/adventure";
 import type { PlayRuntimeProps } from "./pageTypes";
@@ -465,6 +466,7 @@ export function PlayPage({
         {/* Compact tool strip — visible on tablet/mobile, hidden on desktop */}
         <nav className="play-tool-row" aria-label="Adventure tools">
           {toolButtons}
+          <StoryDirectorModeControl adventure={adventure} dispatch={dispatch} compact />
         </nav>
 
         {composerOpen && (
@@ -677,6 +679,7 @@ export function PlayPage({
 
         <nav className="play-tool-nav" aria-label="Adventure tools">
           {toolButtons}
+          <StoryDirectorModeControl adventure={adventure} dispatch={dispatch} compact />
         </nav>
 
         {playPanelContent && (

@@ -6,7 +6,7 @@ import { adventureReducer } from '../state/adventureReducer';
 import { buildContext } from '../contextBuilder/contextBuilder';
 import { applyAIMemoryUpdate } from './applyAIMemoryUpdate';
 import { currentDirector, isPlayLoop, playLoopSuspended, ownerSnapshot, storyDirectorSourceFingerprint } from './storyDirectorState';
-import { evaluateStoryDirector, parseCanonBatch, parseStoryState, reconciliationOwners, recentDirectorMessages, RECONCILE_PROMPT, STORY_STATE_PROMPT } from './storyDirector';
+import { directorEvidence, evaluateStoryDirector, parseCanonBatch, parseStoryState, reconciliationOwners, recentDirectorMessages, RECONCILE_PROMPT, STORY_STATE_PROMPT } from './storyDirector';
 import { parseComponentsJson } from '../importers/componentParser';
 import { sendOpenAICompatibleChatCompletion } from '../providers/openAICompatible';
 import { runTurnPipeline } from '../state/turnPipeline';
@@ -422,4 +422,128 @@ describe.skipIf(!existsSync(saves))('real long-form saved histories (structural 
     expect(messages).toBeGreaterThan(5000);
     expect(checked).toBeGreaterThan(300);
   });
+});
+
+describe('evidence references and partial evaluator recovery', () => {
+  it('resolves supplied evidence IDs to exact text and the correct source without model transcription', () => {
+    const a = base();
+    const ref = directorEvidence(a)[0];
+    const parsed = parseStoryState(a, { reason: 'An investigation is underway.', threads: [{ id: 'case', mode: 'CLOSURE', confidence: 0.95, loopObstructs: true, reason: 'An answer exists.', evidenceId: ref.id }], changes: [{ change: 'STATE_UPDATE', reason: 'An admission.', evidenceId: ref.id }] });
+    expect(parsed.state.threads[0]).toMatchObject({ evidence: event, sourceMessageId: 'accepted' });
+    const batch = parseCanonBatch(a, { edits: [{ ...edit(), evidence: undefined, evidenceId: ref.id }] });
+    expect(batch.edits[0].evidence).toBe(event);
+    expect(adventureReducer(a, { type: 'RECONCILE_CANON', batch, review: true }).activeState.canonBatches?.[0].status).toBe('pending');
+  });
+  it('rejects invented IDs, user evidence, and older evidence for latest changes or canon writes', () => {
+    let a = base();
+    a = adventureReducer(a, { type: 'ADD_MESSAGE', role: 'user', id: 'user', content: 'An unsupported allegation.' });
+    a = adventureReducer(a, { type: 'ADD_MESSAGE', role: 'assistant', id: 'new', content: 'Mara sits down.' });
+    const refs = directorEvidence(a);
+    expect(refs.some(e => e.sourceMessageId === 'user')).toBe(false);
+    for (const evidenceId of ['E9999', refs.find(e => e.sourceMessageId === 'accepted')!.id]) {
+      expect(() => parseCanonBatch(a, { edits: [{ ...edit(), evidenceId }] })).toThrow();
+      expect(() => parseStoryState(a, { ...verdict(), changes: [{ change: 'STATE_UPDATE', reason: 'Old claim', evidenceId }] })).toThrow();
+    }
+  });
+  it('preserves valid progression when another thread or change fails both repair attempts', async () => {
+    const a = base();
+    const invalid = { ...verdict('CLOSURE'), changes: [{ change: 'CANON_COMMIT', reason: 'Older claim', evidence: 'old text' }] };
+    invalid.threads.push({ ...invalid.threads[0], id: 'bad', evidence: 'stitched ... quotation' });
+    vi.mocked(sendOpenAICompatibleChatCompletion)
+      .mockResolvedValueOnce({ content: JSON.stringify(invalid), raw: {} })
+      .mockResolvedValueOnce({ content: JSON.stringify(invalid), raw: {} })
+      .mockResolvedValueOnce({ content: JSON.stringify({ edits: [] }), raw: {} });
+    const n = (await evaluateStoryDirector(a, a.modelConfig)).reduce(adventureReducer, a);
+    expect(playLoopSuspended(n)).toBe(true);
+    expect(n.activeState.storyDirector?.threads).toHaveLength(1);
+    expect(n.activeState.storyDirectorEvaluations?.[0].changes).toEqual([]);
+    expect(n.activeState.storyDirectorEvaluations?.[0].rejectedResponses).toHaveLength(2);
+    expect(n.activeState.storyDirectorEvaluations?.[0].evidenceSources?.[0].quote).toBe(event);
+    expect(n.activeState.storyDirectorEvaluations?.[0].errors.join(' ')).toContain('excluded');
+    expect(n.storyCards).toEqual(a.storyCards);
+  });
+  it('keeps validated items if the repair request fails in transport', async () => {
+    const a = base();
+    vi.mocked(sendOpenAICompatibleChatCompletion)
+      .mockResolvedValueOnce({ content: JSON.stringify({ ...verdict('CLOSURE'), changes: [{ change: 'STATE_UPDATE', reason: 'Invalid', evidence: 'missing' }] }), raw: {} })
+      .mockRejectedValueOnce(new Error('repair offline'))
+      .mockResolvedValueOnce({ content: JSON.stringify({ edits: [] }), raw: {} });
+    const n = (await evaluateStoryDirector(a, a.modelConfig)).reduce(adventureReducer, a);
+    expect(playLoopSuspended(n)).toBe(true);
+    expect(n.activeState.storyDirectorEvaluations?.[0].errors).toContain('repair offline');
+  });
+});
+describe('manual Story Director modes', () => {
+  it.each(['NORMAL_PLAY', 'ACTIVE_PROGRESSION', 'CLOSURE', 'RESOLVED'] as const)('persists %s through save import, turns, and evaluator failures without bypassing canon review', async mode => {
+    const a = adventureReducer(base(), { type: 'SET_STORY_DIRECTOR_MODE', mode });
+    const loaded = importAdventureJson(exportAdventureJson(a));
+    expect(loaded.activeState.storyDirectorMode).toBe(mode);
+    const next = adventureReducer(loaded, { type: 'ADD_MESSAGE', role: 'assistant', id: 'next', content: 'A new scene.' });
+    vi.mocked(sendOpenAICompatibleChatCompletion).mockRejectedValue(new Error('offline'));
+    const n = (await evaluateStoryDirector(next, next.modelConfig)).reduce(adventureReducer, next);
+    expect(playLoopSuspended(n)).toBe(mode !== 'NORMAL_PLAY');
+    expect(n.activeState.storyDirectorEvaluations?.at(-1)).toMatchObject({ modeOverride: mode, playLoopSuspended: mode !== 'NORMAL_PLAY' });
+    const context = buildContext(n);
+    const direction = context.sections.flatMap(s => s.items).find(i => i.id === 'story-progression');
+    expect(Boolean(direction)).toBe(mode !== 'NORMAL_PLAY');
+    if (direction) expect(direction.generatedBy).toBe('user');
+    expect(n.storyCards).toEqual(loaded.storyCards);
+    expect(n.memoryAutoApprove.storyDirector).toBe(false);
+    expect(playLoopSuspended(adventureReducer(n, { type: 'SET_STORY_DIRECTOR_MODE', mode: 'AUTO' }))).toBe(false);
+    expect(adventureReducer(n, { type: 'RESET_RUNTIME_STATE' }).activeState.storyDirectorMode).toBe('AUTO');
+  });
+  it('overrides a valid automatic verdict immediately and restores it on Auto', () => {
+    let a = adventureReducer(base(), { type: 'SET_STORY_DIRECTOR', state: parseStoryState(base(), verdict('CLOSURE')).state });
+    a = adventureReducer(a, { type: 'SET_STORY_DIRECTOR_MODE', mode: 'NORMAL_PLAY' });
+    expect(playLoopSuspended(a)).toBe(false);
+    a = adventureReducer(a, { type: 'SET_STORY_DIRECTOR_MODE', mode: 'AUTO' });
+    expect(playLoopSuspended(a)).toBe(true);
+  });
+  it('normalizes old or invalid modes to Auto', () => {
+    const a = base();
+    delete a.activeState.storyDirectorMode;
+    expect(normalizeAdventure(a).activeState.storyDirectorMode).toBe('AUTO');
+    expect(normalizeAdventure({ ...a, activeState: { ...a.activeState, storyDirectorMode: 'invalid' } } as unknown as Adventure).activeState.storyDirectorMode).toBe('AUTO');
+  });
+});
+
+// Opt-in regression replay: private exports are read in place and never copied to fixtures.
+const rejectionSave = process.env.STORY_DIRECTOR_REJECTION_SAVE;
+describe.skipIf(!rejectionSave || !existsSync(rejectionSave))('local rejected-response replay', () => {
+  it('retains grounded items from captured failures and resolves new references against actual accepted text', async () => {
+    const a = normalizeAdventure(JSON.parse(readFileSync(rejectionSave!, 'utf8')) as Adventure);
+    let grounded = 0;
+    for (const e of a.activeState.storyDirectorEvaluations ?? []) {
+      if (!e.rejectedResponses?.length) continue;
+      const index = a.messages.findIndex(m => m.id === e.sourceMessageId);
+      if (index < 0) continue;
+      const atTurn = { ...a, messages: a.messages.slice(0, index + 1) };
+      const refs = directorEvidence(atTurn);
+      expect(refs.every(ref => atTurn.messages.some(m => m.role === 'assistant' && m.id === ref.sourceMessageId && m.content.includes(ref.quote)))).toBe(true);
+      const response = e.rejectedResponses.at(-1)!.response;
+      vi.mocked(sendOpenAICompatibleChatCompletion).mockReset()
+        .mockResolvedValueOnce({ content: response, raw: {} })
+        .mockResolvedValueOnce({ content: response, raw: {} })
+        .mockResolvedValue({ content: JSON.stringify({ edits: [] }), raw: {} });
+      const n = (await evaluateStoryDirector(atTurn, atTurn.modelConfig)).reduce(adventureReducer, atTurn);
+      if (n.activeState.storyDirectorEvaluations?.at(-1)?.verdict?.threads.length) grounded++;
+      expect(n.messages).toEqual(atTurn.messages);
+      expect(n.storyCards).toEqual(atTurn.storyCards);
+      const latestRef = refs.find(ref => ref.latest)!;
+      const parsed = parseStoryState(atTurn, { reason: 'Reference transport check', threads: [{ id: 'transport-only', mode: 'ACTIVE_PROGRESSION', confidence: 0.95, loopObstructs: true, evidenceId: latestRef.id, reason: 'Transport check only, not a live semantic judgment.' }], changes: [] });
+      expect(parsed.state.threads[0].evidence).toBe(latestRef.quote);
+    }
+    expect(grounded).toBeGreaterThan(0);
+  });
+});
+
+it('resolves relationship knowledge references without bypassing mandatory review', () => {
+  const a = base();
+  a.brains = [makeBrain({ id: 'mara', characterName: 'Mara', relationships: [{ id: 'pair', focus: 'Track Star', focusStoryCardId: 'star', current: { bond: 'teammate', status: 'active', dimensions: { trust: 'trusts him' } }, revision: 0, history: [], recalledHistoryIds: [] }] })];
+  const ref = directorEvidence(a)[0];
+  const batch = parseCanonBatch(a, { edits: [{ kind: 'relationship', id: 'mara', relationshipId: 'pair', relationship: { bond: 'teammate', status: 'active', dimensions: { trust: 'distrusts him after hearing his confession' } }, evidenceId: ref.id, knowledgeEvidenceId: ref.id, reason: 'She heard the confession.', change: 'STATE_UPDATE', removedFacts: [] }] });
+  const n = applyAIMemoryUpdate(a, [{ type: 'canonReconciliation', batch }]).actions.reduce(adventureReducer, a);
+  expect(n.activeState.canonBatches?.[0].status).toBe('pending');
+  expect(n.brains).toEqual(a.brains);
+  expect(batch.edits[0].reason).toContain(event);
 });

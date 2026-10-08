@@ -1,4 +1,4 @@
-import { isPlayLoop, playLoopSuspended, currentDirector, PROGRESSION_DIRECTION, CLOSURE_DIRECTION } from '../memory/storyDirectorState';
+import { isPlayLoop, playLoopSuspended, currentDirector, effectiveDirectorMode, normalizeDirectorMode, PROGRESSION_DIRECTION, CLOSURE_DIRECTION, RESOLVED_DIRECTION } from '../memory/storyDirectorState';
 import { relationshipFocusCard, relationshipItemId, relationshipTargets, relationshipText } from "../memory/relationships";
 import { ONE_PASS_MEMORY_ID, onePassMemoryInstruction, relationshipMemoryInstruction } from "../memory/onePassMemory";
 import { selectEventMemories } from "../memory/eventMemory";
@@ -483,7 +483,7 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
   const generalComponentItems = prioritySort(adventure.components).flatMap((component) => {
     if (component.type === "narrationRules" || component.type === "aiInstructions" || component.type === "plotEssentials" || component.type === "currentArc" || component.type === "activePressure" || component.type === "immediateMomentum" || component.type === "authorNote") return [];
     if (isPlayLoop(component) && playLoopSuspended(adventure)) {
-      logExcludedOnce(component.id, component.title, "inactive", "Play Loop temporarily suspended: " + currentDirector(adventure)?.reason);
+      logExcludedOnce(component.id, component.title, "inactive", "Play Loop temporarily suspended: " + (normalizeDirectorMode(adventure.activeState.storyDirectorMode) !== "AUTO" ? "Manual Story Director mode" : currentDirector(adventure)?.reason));
       return [];
     }
     if (!component.active) {
@@ -497,10 +497,11 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
   });
 
   if (playLoopSuspended(adventure)) {
-    const closure = currentDirector(adventure)?.threads.some(t => t.mode === "CLOSURE" && t.confidence >= 0.9);
-    const direction = item("story-progression", "system", "Story progression permission", closure ? CLOSURE_DIRECTION : PROGRESSION_DIRECTION, 100, true, false, true, "always", "system");
+    const mode = effectiveDirectorMode(adventure);
+    const manual = normalizeDirectorMode(adventure.activeState.storyDirectorMode) !== "AUTO";
+    const direction = item("story-progression", "system", "Story progression permission", mode === "CLOSURE" ? CLOSURE_DIRECTION : mode === "RESOLVED" ? RESOLVED_DIRECTION : PROGRESSION_DIRECTION, 100, true, false, true, "always", manual ? "user" : "system");
     generalComponentItems.push(direction);
-    pushIncluded(direction, "Post-generation semantic judgment; no planned beats or ending.");
+    pushIncluded(direction, manual ? "Manual Story Director mode; remains until Auto is selected." : "Post-generation semantic judgment; no planned beats or ending.");
   }
 
   // F. Story Cards + Auto-Cards

@@ -1,4 +1,4 @@
-import { DEFAULT_PLAY_LOOP, isPlayLoop } from '../memory/storyDirectorState';
+import { DEFAULT_PLAY_LOOP, isPlayLoop, normalizeDirectorMode } from '../memory/storyDirectorState';
 import type {
   Adventure,
   ArcPacingState,
@@ -221,6 +221,7 @@ export function createDefaultAdventure(title = "Untitled Adventure"): Adventure 
       triggerLog: [],
       evaluationLog: [],
       storyDirectorEvaluations: [],
+      storyDirectorMode: 'AUTO',
       memoryProposals: [],
       pendingUpdates: [],
       storyUndoStack: [],
@@ -521,6 +522,7 @@ export function normalizeAdventure(adventure: Adventure): Adventure {
       ...adventure.activeState,
       evaluationLog: adventure.activeState?.evaluationLog ?? [],
       storyDirectorEvaluations: adventure.activeState?.storyDirectorEvaluations ?? [],
+      storyDirectorMode: normalizeDirectorMode(adventure.activeState?.storyDirectorMode),
       memoryProposals: adventure.activeState?.memoryProposals ?? [],
       pendingUpdates: adventure.activeState?.pendingUpdates ?? [],
       storyUndoStack: adventure.activeState?.storyUndoStack ?? [],

@@ -1,4 +1,4 @@
-import type { CanonBatch, StoryDirectorEvaluation, StoryDirectorState } from '../memory/storyDirectorState';
+import type { CanonBatch, StoryDirectorEvaluation, StoryDirectorMode, StoryDirectorState } from '../memory/storyDirectorState';
 export type ISODateString = string;
 export type JsonObject = Record<string, unknown>;
 
@@ -613,6 +613,7 @@ export interface StoryEditHistoryEntry {
 
 export interface ActiveState {
   storyDirector?: StoryDirectorState;
+  storyDirectorMode?: StoryDirectorMode;
   /** Complete per-response evaluation history for reviewing Story Director against the play transcript. */
   storyDirectorEvaluations?: StoryDirectorEvaluation[];
   canonBatches?: CanonBatch[];
@@ -820,6 +821,7 @@ export type BrainPatch = {
 };
 
 export type AdventureAction =
+  | { type: "SET_STORY_DIRECTOR_MODE"; mode: StoryDirectorMode }
   | { type: "SET_STORY_DIRECTOR"; state: StoryDirectorState }
   | { type: "RECONCILE_CANON"; batch: CanonBatch; review: boolean }
   | { type: "REVIEW_CANON_BATCH"; batchId: string; approve: boolean }

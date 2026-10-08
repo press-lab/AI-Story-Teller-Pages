@@ -6,6 +6,7 @@ import { makeMemoryProposal } from "../test/goldenAdventure";
 
 const testedActionTypes = [
   "SET_STORY_DIRECTOR",
+  "SET_STORY_DIRECTOR_MODE",
   "RECONCILE_CANON",
   "REVIEW_CANON_BATCH",
   "SET_TITLE",

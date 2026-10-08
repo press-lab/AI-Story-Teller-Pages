@@ -1,4 +1,4 @@
-import { batchIsCurrent, playLoopSuspended, ownerSnapshot } from '../memory/storyDirectorState';
+import { batchIsCurrent, playLoopSuspended, ownerSnapshot, normalizeDirectorMode } from '../memory/storyDirectorState';
 import { applyRelationship, duplicateRelationship, relationshipFocusCard, relationshipIsCurrent, stateKey, validRelationshipState } from "../memory/relationships";
 import { sameEventMemory } from "../memory/eventMemory";
 import type {
@@ -1181,6 +1181,8 @@ function applyCompanionMemoryProposals(
 
 function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
   switch (action.type) {
+    case "SET_STORY_DIRECTOR_MODE":
+      return touchAdventure(state, { activeState: { ...state.activeState, storyDirectorMode: normalizeDirectorMode(action.mode) } });
     case "SET_STORY_DIRECTOR": {
       const source = state.messages.find(m => m.id === action.state.sourceMessageId && m.role === "assistant");
       if (!source || source.content !== action.state.sourceContent) return state;
@@ -1877,6 +1879,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
           ...state.activeState,
           turn: 0,
           storyDirector: undefined,
+          storyDirectorMode: 'AUTO',
           storyDirectorEvaluations: [],
           canonBatches: [],
           forceIncludeNextTurn: [],

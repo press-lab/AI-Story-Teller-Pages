@@ -2,6 +2,12 @@ import { validRelationshipState } from './relationships';
 import type { Adventure, ComponentEntry, RelationshipState, StoryCardCompactStatus } from '../types/adventure';
 
 export type StoryMode = 'NORMAL_PLAY' | 'ACTIVE_PROGRESSION' | 'CLOSURE' | 'RESOLVED';
+export type StoryDirectorMode = 'AUTO' | StoryMode;
+export const STORY_DIRECTOR_MODES: StoryDirectorMode[] = ['AUTO', 'NORMAL_PLAY', 'ACTIVE_PROGRESSION', 'CLOSURE', 'RESOLVED'];
+export const STORY_MODE_LABELS: Record<StoryDirectorMode, string> = { AUTO: 'Auto', NORMAL_PLAY: 'Normal play', ACTIVE_PROGRESSION: 'Active progression', CLOSURE: 'Closure', RESOLVED: 'Resolved / aftermath' };
+export function normalizeDirectorMode(value: unknown): StoryDirectorMode {
+  return STORY_DIRECTOR_MODES.includes(value as StoryDirectorMode) ? value as StoryDirectorMode : 'AUTO';
+}
 export interface StoryThread {
   id: string;
   mode: StoryMode;
@@ -28,6 +34,8 @@ export interface StoryDirectorEvaluation {
   sourceContentFingerprint: string;
   turn: number;
   createdAt: string;
+  modeOverride?: StoryDirectorMode;
+  evidenceSources?: { id: string; sourceMessageId: string; quote: string }[];
   rejectedResponses?: { stage: 'evaluation' | 'reconciliation'; attempt: number; response: string; error: string }[];
   verdict?: Pick<StoryDirectorState, 'reason' | 'threads'>;
   changes: StoryDirectorDetectedChange[];
@@ -76,17 +84,26 @@ export function isPlayLoop(c: ComponentEntry): boolean {
   return c.type === 'custom' && (c.contextRole === 'playLoop' || (c.contextRole === undefined && /^(?:core gameplay loop|play loop)$/i.test(c.title.trim())));
 }
 export function directorEnabled(a: Adventure): boolean {
-  return a.components.some(c => c.active && isPlayLoop(c));
+  return normalizeDirectorMode(a.activeState.storyDirectorMode) !== 'AUTO' || a.components.some(c => c.active && isPlayLoop(c));
 }
 export function currentDirector(a: Adventure): StoryDirectorState | undefined {
   const d = a.activeState.storyDirector;
   const latest = [...a.messages].reverse().find(m => m.role === 'assistant');
   return d && latest?.id === d.sourceMessageId && latest.content === d.sourceContent ? d : undefined;
 }
-export function playLoopSuspended(a: Adventure): boolean {
-  return directorEnabled(a) && !!currentDirector(a)?.threads.some(t =>
-    t.confidence >= 0.9 && (t.mode === 'CLOSURE' || (t.mode === 'ACTIVE_PROGRESSION' && t.loopObstructs)));
+export function effectiveDirectorMode(a: Adventure): StoryMode {
+  const override = normalizeDirectorMode(a.activeState.storyDirectorMode);
+  if (override !== 'AUTO') return override;
+  if (!directorEnabled(a)) return 'NORMAL_PLAY';
+  const threads = currentDirector(a)?.threads.filter(t => t.confidence >= 0.9) ?? [];
+  if (threads.some(t => t.mode === 'CLOSURE')) return 'CLOSURE';
+  if (threads.some(t => t.mode === 'ACTIVE_PROGRESSION' && t.loopObstructs)) return 'ACTIVE_PROGRESSION';
+  return 'NORMAL_PLAY';
 }
+export function playLoopSuspended(a: Adventure): boolean {
+  return ['ACTIVE_PROGRESSION', 'CLOSURE', 'RESOLVED'].includes(effectiveDirectorMode(a));
+}
+
 function stableSnapshot(value: unknown): string {
   return JSON.stringify(value, (_key, item: unknown) => item && typeof item === 'object' && !Array.isArray(item)
     ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
@@ -128,3 +145,5 @@ export function batchIsCurrent(a: Adventure, b: CanonBatch): boolean {
 }
 export const PROGRESSION_DIRECTION = `The recent story has earned active progression. Allow actions already underway to change the thread and establish new facts. Do not force escalation, a next scene, an ending, or a player decision. An open player decision does not require an unresolved plot.`;
 export const CLOSURE_DIRECTION = `The recent story has naturally converged. Allow definitive answers, decisive NPC action, and consequences supported by established events. Do not preserve uncertainty by adding another clue, intermediary, hidden layer, or deeper mastermind merely to keep the thread alive. Do not predetermine an ending or decide the player's actions, dialogue, consent, or choices. Keep their next action open even when the problem resolves.`;
+
+export const RESOLVED_DIRECTION = `The player requests aftermath and ordinary life. Let completed consequences stand and allow unrelated activity. Do not reopen a resolved problem or invent a successor to keep a plot going. This direction does not establish new canon or decide the player's actions.`;
