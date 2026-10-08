@@ -85,7 +85,7 @@ function isSingleCharacterFact(content: string): boolean {
 }
 
 /** Local structural/evidence checks, not a claim that a quote proves every inference. */
-export function onePassMemoryActions(adventure: Adventure, context: ContextBuildResult, updates: unknown[], story: string, sourceTurnId: string, error?: string, sourceLabel = "One-pass memory: no additional API call", playerInputOverride?: string, recentEvidence: string[] = []): AdventureAction[] {
+export function onePassMemoryActions(adventure: Adventure, context: ContextBuildResult, updates: unknown[], story: string, sourceTurnId: string, error?: string, sourceLabel = "One-pass memory: no additional API call", playerInputOverride?: string, recentEvidence: string[] = [], maxNewCards = 1): AdventureAction[] {
   const actions: AdventureAction[] = [];
   const errors = error ? [error] : [];
   const executed: string[] = [];
@@ -176,12 +176,14 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
         const allowedCategory = kind === "lore"
           ? (category === "world_fact" || category === "plot_beat") && adventure.systemTriggers?.categories[category as "world_fact" | "plot_beat"]
           : allowedTypes.includes(u.cardType as StoryCardType) && adventure.systemTriggers?.categories[category as keyof typeof adventure.systemTriggers.categories];
-        if ((kind !== "newCard" && kind !== "lore") || ++newCards > 1 || !adventure.systemTriggers?.enabled || !allowedCategory) { reject(`${target}: new card not allowed`); continue; }
+        if ((kind !== "newCard" && kind !== "lore") || newCards >= maxNewCards || !adventure.systemTriggers?.enabled || !allowedCategory) { reject(`${target}: new card not allowed`); continue; }
         if (!Array.isArray(u.triggers) || !u.triggers.length || u.triggers.length > 3 || u.triggers.some(t => typeof t !== "string" || t.trim().length < 3 || t.length > 80)) { reject(`${target}: invalid triggers`); continue; }
         proposal.storyCardType = kind === "lore" ? "lore" : u.cardType as StoryCardType;
         proposal.memoryMode = category === "plot_beat" ? "historical" : u.memoryMode === "living" ? "living" : "static";
         proposal.suggestedTriggers = u.triggers as string[];
         proposal.requiresReview = kind === "lore" || u.cardType === "plot";
+        if (kind === "newCard" && u.cardType === "character") proposal.requiresReview = true;
+        newCards++;
       }
     } else if (kind === "essentials" || kind === "pressure" || kind === "arc") {
       const type = kind === "essentials" ? "plotEssentials" : kind === "arc" ? "currentArc" : "activePressure";
