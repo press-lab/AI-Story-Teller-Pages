@@ -2203,6 +2203,16 @@ button.primary-action:hover:not(:disabled),
   padding: 0;
 }
 
+.play-sidebar-panel-body .memory-inbox-page {
+  grid-template-columns: minmax(0, 1fr);
+  width: 100%;
+}
+
+.play-sidebar-panel-body .memory-inbox-page > * {
+  grid-column: 1;
+  min-width: 0;
+}
+
 .play-sidebar-panel-body .editor-surface,
 .play-sidebar-panel-body .editor-surface > *,
 .play-sidebar-panel-body .split-editor-list,
@@ -2290,6 +2300,47 @@ button.primary-action:hover:not(:disabled),
 .play-sidebar-panel-body .story-card-badges {
   justify-content: flex-start;
   min-width: 0;
+}
+
+/* Suggestions must fit the tool panel rather than their full-page intrinsic width. */
+.play-sidebar-panel-body .proposal-card,
+.play-sidebar-panel-body .proposal-card-body,
+.play-sidebar-panel-body .proposal-card-body > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.play-sidebar-panel-body .proposal-card-body {
+  grid-template-columns: minmax(0, 1fr);
+  overflow-wrap: anywhere;
+}
+
+.play-sidebar-panel-body .proposal-card .panel-heading {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.play-sidebar-panel-body .proposal-card .panel-heading > .row {
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.play-sidebar-panel-body .proposal-card input,
+.play-sidebar-panel-body .proposal-card textarea,
+.play-sidebar-panel-body .proposal-card select {
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.play-sidebar-panel-body .proposal-card pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.play-sidebar-panel-body .proposal-card .grid {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .play-sidebar-panel-body .story-card-title,
