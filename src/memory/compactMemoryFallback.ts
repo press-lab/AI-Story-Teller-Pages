@@ -3,6 +3,7 @@ import { resolveBackgroundProviderConfig } from "../providers/backgroundProvider
 import { sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
 import type { Adventure, AdventureAction, ChatMessage, ProviderConfig } from "../types/adventure";
 import { MEMORY_OUTPUT_RESERVE, ONE_PASS_MEMORY_ID, onePassMemoryActions } from "./onePassMemory";
+import { overlookedCharacterEvidence } from "./discoveryEvidence";
 
 export interface CompactMemoryFallbackResult {
   actions: AdventureAction[];
@@ -34,6 +35,7 @@ export async function runCompactMemoryFallback(
   const recentCount = Math.min(8, Math.max(4, 2 * (adventure.memoryDetectionSettings.everyNTurns ?? 1)));
   const recent = adventure.messages.slice(-recentCount)
     .map(message => `${message.role}: ${message.content}`).join("\n\n");
+  const overlooked = overlookedCharacterEvidence(adventure, recentCount);
   const playerInput = adventure.messages.at(-2)?.role === "user" ? adventure.messages.at(-2)!.content : "";
   const reusableTargets = adventure.storyCards
     .filter(card => card.active && card.memoryMode !== "historical" && card.inclusionPolicy !== "manual" && ["lore", "location", "custom"].includes(card.type))
@@ -56,6 +58,8 @@ export async function runCompactMemoryFallback(
     { role: "user", content: "Relevant current canon:\n" + references.join("\n\n") },
     { role: "user", content: "Existing lore, location, and shared-history targets (prefer the appropriate subject; these titles may be used even if the card was not triggered into context): " + JSON.stringify(reusableTargets) + "\nCharacter titles (update only for an explicitly evidenced enduring profile fact): " + JSON.stringify(characterTitles) + "\nPending Story Card titles (do not duplicate): " + JSON.stringify(pendingTitles) },
     { role: "user", content: "Recent story context; relationshipChange evidence and knowledgeEvidence MUST come from the latest player/story exchange only; other memory evidence may come from any supplied exchange:\n" + recent },
+    { role: "user", content: "Older overlooked-subject excerpts (retrieval hints, not proof of a character). Use ONLY to propose missing new character cards when these excerpts establish identity and an ongoing role; never use for thoughts, relationship changes, or existing-memory updates:\n" + overlooked.join("\n\n") },
+    { role: "user", content: 'Required response schema: {"updates":[]}. Every update MUST include kind, target, content, evidence, reason as nonempty strings. For a missing character use exactly: {"kind":"newCard","target":"character name","content":"Short established profile only","evidence":"Exact quote from supplied story","reason":"Established role and ongoing involvement","cardType":"character","memoryMode":"static","category":"character_reveal","triggers":["character name"]}. Never use name/title/type instead of target/kind. Return at most four updates total, including at most three new cards. A named envoy negotiating an ongoing meeting or named traders interacting with the team qualify. Empty updates are allowed when nothing qualifies.' },
   ];
   let response;
   try {
@@ -81,7 +85,9 @@ export async function runCompactMemoryFallback(
       || !Array.isArray(parsed.updates)) return { ...empty, tokenUsage };
     const recentEvidence = adventure.messages.slice(-recentCount).map(message => message.content);
     const actions = onePassMemoryActions(adventure, context, parsed.updates, latestStory.content,
-      latestStory.id, undefined, "Compact memory fallback: one API call", playerInput, recentEvidence, 3);
+      latestStory.id, undefined, "Compact memory fallback: one API call", playerInput, recentEvidence, 3, overlooked);
+    const log = actions.find(action => action.type === "LOG_EVALUATION_RESULT");
+    if (log?.type === "LOG_EVALUATION_RESULT") log.entry.actionsExecuted.push("Character discovery v2: explicit schema; bounded older evidence");
     return { actions, tokenUsage, valid: true };
   } catch {
     return { ...empty, tokenUsage };

@@ -85,7 +85,7 @@ function isSingleCharacterFact(content: string): boolean {
 }
 
 /** Local structural/evidence checks, not a claim that a quote proves every inference. */
-export function onePassMemoryActions(adventure: Adventure, context: ContextBuildResult, updates: unknown[], story: string, sourceTurnId: string, error?: string, sourceLabel = "One-pass memory: no additional API call", playerInputOverride?: string, recentEvidence: string[] = [], maxNewCards = 1): AdventureAction[] {
+export function onePassMemoryActions(adventure: Adventure, context: ContextBuildResult, updates: unknown[], story: string, sourceTurnId: string, error?: string, sourceLabel = "One-pass memory: no additional API call", playerInputOverride?: string, recentEvidence: string[] = [], maxNewCards = 1, olderCharacterEvidence: string[] = []): AdventureAction[] {
   const actions: AdventureAction[] = [];
   const errors = error ? [error] : [];
   const executed: string[] = [];
@@ -119,10 +119,12 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
       executed.push(`relationshipChange [${sourceLabel}]: accepted for review — ${result.title}; ${result.rationale}`);
       continue;
     }
-    if (![u.kind, u.target, u.content, u.evidence, u.reason].every(v => typeof v === "string" && v.trim())) { reject("missing fields"); continue; }
+    const missing = ["kind", "target", "content", "evidence", "reason"].filter(field => typeof u[field] !== "string" || !(u[field] as string).trim());
+    if (missing.length) { reject(`missing fields (${missing.join(", ")}); target=${typeof u.target === "string" ? u.target.slice(0, 150) : "unknown"}`); continue; }
     const kind = u.kind as string, target = (u.target as string).trim(), content = (u.content as string).trim(), evidence = (u.evidence as string).trim();
     const quote = norm(evidence);
-    if (quote.length < 12 || !evidenceSources.some(s => s.includes(quote))) { reject(`${target}: evidence is not in this turn`); continue; }
+    const candidateEvidence = kind === "newCard" && u.cardType === "character" ? [...evidenceSources, ...olderCharacterEvidence.map(norm)] : evidenceSources;
+    if (quote.length < 12 || !candidateEvidence.some(s => s.includes(quote))) { reject(`${target}: evidence is not in this turn`); continue; }
     if (words(content) > (kind === "essentials" ? 180 : kind === "newCard" || kind === "lore" ? 90 : kind === "card" ? 70 : 45)) { reject(`${target}: content exceeds limit`); continue; }
     if (content.includes("<") || content.length > 4000 || target.length > 150 || (u.reason as string).length > 600) { reject(`${target}: invalid content`); continue; }
     const key = `${kind}:${norm(target)}`;
@@ -176,7 +178,10 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
         const allowedCategory = kind === "lore"
           ? (category === "world_fact" || category === "plot_beat") && adventure.systemTriggers?.categories[category as "world_fact" | "plot_beat"]
           : allowedTypes.includes(u.cardType as StoryCardType) && adventure.systemTriggers?.categories[category as keyof typeof adventure.systemTriggers.categories];
-        if ((kind !== "newCard" && kind !== "lore") || newCards >= maxNewCards || !adventure.systemTriggers?.enabled || !allowedCategory) { reject(`${target}: new card not allowed`); continue; }
+        if ((kind !== "newCard" && kind !== "lore") || newCards >= maxNewCards || !adventure.systemTriggers?.enabled || !allowedCategory) {
+          reject(`${target}: new card not allowed (kind=${kind}, cardType=${String(u.cardType)}, category=${category || "missing"}, enabled=${!!adventure.systemTriggers?.enabled}, categoryAllowed=${!!allowedCategory}, slots=${newCards}/${maxNewCards})`);
+          continue;
+        }
         if (!Array.isArray(u.triggers) || !u.triggers.length || u.triggers.length > 3 || u.triggers.some(t => typeof t !== "string" || t.trim().length < 3 || t.length > 80)) { reject(`${target}: invalid triggers`); continue; }
         proposal.storyCardType = kind === "lore" ? "lore" : u.cardType as StoryCardType;
         proposal.memoryMode = category === "plot_beat" ? "historical" : u.memoryMode === "living" ? "living" : "static";

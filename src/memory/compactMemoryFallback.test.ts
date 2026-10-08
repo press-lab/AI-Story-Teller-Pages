@@ -23,6 +23,30 @@ function adventureWithMissingEnvelope() {
 describe("compact memory fallback", () => {
   beforeEach(() => vi.clearAllMocks());
 
+  it("recovers an overlooked envoy from bounded older evidence without authorizing old thoughts", async () => {
+    let adventure = adventureWithMissingEnvelope();
+    const evidence = "Kikono introduces himself as Frieza's envoy and arranges an inspection. Edythe watches Kikono.";
+    for (const content of [evidence, "Kikono returns to negotiate the meeting.", ...Array(8).fill("Edythe waits by the water.")]) {
+      adventure = adventureReducer(adventure, { type: "ADD_MESSAGE", role: "assistant", content });
+    }
+    provider.mockResolvedValue({ content: JSON.stringify({ updates: [
+      { kind: "newCard", target: "Kikono", content: "Kikono is Frieza's envoy arranging an inspection.", evidence, reason: "Ongoing envoy", cardType: "character", memoryMode: "static", category: "character_reveal", triggers: ["Kikono"] },
+      { kind: "thought", target: "Edythe", content: "I distrust the envoy.", evidence, reason: "Old reaction" },
+      { name: "Brann", type: "character", content: "Trader" },
+    ] }), raw: {} });
+    const result = await runCompactMemoryFallback(adventure, config);
+    expect(provider).toHaveBeenCalledTimes(1);
+    const prompt = provider.mock.calls[0][0].messages.map(m => m.content).join("\n");
+    expect(prompt).toContain(evidence);
+    expect(prompt).toContain('"cardType":"character"');
+    const next = result.actions.reduce(adventureReducer, adventure);
+    expect(next.activeState.memoryProposals).toHaveLength(1);
+    expect(next.activeState.memoryProposals[0].title).toBe("Kikono");
+    expect(next.brains).toEqual(adventure.brains);
+    expect(next.activeState.evaluationLog[0].errors.join(" ")).toContain("missing fields (kind, target, evidence, reason)");
+    expect(next.activeState.evaluationLog[0].actionsExecuted).toContain("Character discovery v2: explicit schema; bounded older evidence");
+  });
+
   it("catches up three missing characters and a thought in the same bounded request", async () => {
     let adventure = adventureWithMissingEnvelope();
     const evidence = [
