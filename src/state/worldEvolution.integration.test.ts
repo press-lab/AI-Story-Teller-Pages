@@ -212,7 +212,8 @@ describe("world evolution through narration, persistence and next context", () =
     }
   });
   it("does not revive superseded loyalty through legacy append memory", async () => {
-    let a = approve(await turn(sandbox(), allegiance, { worldChanges: [change(sandbox())] }));
+    let a = sandbox();
+    a = approve(await turn(a, allegiance, { worldChanges: [change(a)] }));
     a = await turn(a, "Marcus is loyal to the king.", { updates: [{ kind: "card", target: "Marcus", content: "Marcus is loyal to the king.", evidence: "Marcus is loyal to the king.", reason: "Allegiance", effects: [] }] });
     expect(a.storyCards[0].content).not.toContain("loyal to the king");
   });
