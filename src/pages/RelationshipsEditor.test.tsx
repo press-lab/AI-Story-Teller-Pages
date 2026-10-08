@@ -30,7 +30,7 @@ it("shows both states, evidence, source and an approval that appends history", (
   let a = adventureReducer(base(), { type: "ENROLL_RELATIONSHIP", brainId: "kori", focusStoryCardId: "seth-card", state });
   const r = a.brains[0].relationships[0];
   const evidence = "Kori watches Seth return her keepsake.";
-  a = onePassMemoryActions(a, buildContext(a, { currentInput: "Kori and Seth meet." }), [{ kind: "relationshipChange", effects: [], target: "kori", relationshipId: r.id, focus: "Seth", focusStoryCardId: "seth-card", revision: 0,
+  a = onePassMemoryActions(a, buildContext(a, { currentInput: "Kori and Seth meet." }), [{ kind: "relationshipChange", target: "kori", relationshipId: r.id, focus: "Seth", focusStoryCardId: "seth-card", revision: 0,
     proposed: { ...state, dimensions: { trust: "growing" } }, evidence, knowledgeEvidence: evidence, reason: "Observed care" }], evidence, "source-turn-7").reduce(adventureReducer, a);
   function Harness() { const [adventure, dispatch] = useReducer(adventureReducer, a); return <><MemoryInboxPage adventure={adventure} dispatch={dispatch} /><output>History count: {adventure.brains[0].relationships[0].history.length}</output></>; }
   render(<Harness />);

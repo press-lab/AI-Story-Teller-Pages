@@ -28,7 +28,7 @@ describe("ordinary Brain thoughts alongside optional relationships", () => {
     const text = onePassMemoryInstruction([makeBrain({ characterName: "Mira" })], ["world_fact"]);
     // Baseline excludes optional pressure capture and relationship instructions.
     expect(createHash("sha256").update(text.replaceAll("\r\n", "\n")).digest("hex"))
-      .toBe("0d6fd600d76e67ab59642cb644b2f02f048041b8b62b2fdde7f51c4126b6493f");
+      .toBe("d8945cdabef25ffeb2b4338d2c4e8fd25fa2a1c5e74e30951428e275f9071b69");
     expect(MEMORY_OUTPUT_RESERVE).toBe(1400);
     const a = fixture();
     const context = buildContext(a, { currentInput: names.join(" and ") });

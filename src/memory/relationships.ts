@@ -1,6 +1,5 @@
 import type { Adventure, BrainEntry, ContextBuildResult, DynamicRelationship, MemoryProposal, RelationshipProposal, RelationshipState } from "../types/adventure";
 import { createId, nowIso } from "../utils/id";
-import { mutationPermissionError, worldEnabled } from "./worldEvolution";
 export interface RelationshipTarget {
   target: string;
   npc: string;
@@ -31,8 +30,6 @@ export function relationshipText(r: DynamicRelationship, focus = r.focus): strin
   return `Focus: ${focus}\nRevision: ${r.revision}\nBond: ${r.current.bond}\nStatus: ${r.current.status}\n${Object.entries(r.current.dimensions).map(([k,v]) => `${k}: ${v}`).join("\n")}`;
 }
 export function relationshipIsCurrent(a: Adventure, p: MemoryProposal): boolean {
-  if (worldEnabled(a) && !a.worldEvolutionSettings!.relationshipEvolution) return false;
-  if (p.semanticEffects !== undefined && mutationPermissionError(a, p.targetId, p.content + " " + p.sourceText, p.semanticEffects, false, p.motivationEvidence)) return false;
   const t = p.relationship;
   const r = a.brains.find(b => b.id === p.targetId)?.relationships?.find(r => r.id === t?.relationshipId);
   return !!t && !!r && !!relationshipFocusCard(a, r) && t.focusStoryCardId === r.focusStoryCardId && validRelationshipState(t.previous) && validRelationshipState(t.proposed)
@@ -59,9 +56,6 @@ export function relationshipConflicts(a: Adventure, brain: BrainEntry, focus: st
     .filter(c => `${c.title} ${c.content}`.toLowerCase().includes(brain.characterName.toLowerCase()) && `${c.title} ${c.content}`.toLowerCase().includes(focus.toLowerCase()));
 }
 export function relationshipCandidate(a: Adventure, context: ContextBuildResult, u: Record<string, unknown>, story: string, player: string, sourceTurnId: string): RelationshipProposal | string {
-  if (worldEnabled(a) && !a.worldEvolutionSettings!.relationshipEvolution) return "Relationship evolution is disabled.";
-  const permission = Array.isArray(u.effects) ? mutationPermissionError(a, typeof u.target === "string" ? u.target : undefined, JSON.stringify(u.proposed) + " " + u.evidence, u.effects as MemoryProposal["semanticEffects"], false, typeof u.motivationEvidence === "string" ? u.motivationEvidence : undefined) : undefined;
-  if (permission) return permission;
   const brain = a.brains.find(b => b.id === u.target && b.active);
   const r = brain?.relationships?.find(r => r.id === u.relationshipId && r.focusStoryCardId === u.focusStoryCardId && relationshipFocusCard(a, r)?.title === u.focus);
   if (!brain || !r || !relationshipFocusCard(a, r)) return "unenrolled Brain-focus target";
@@ -83,8 +77,6 @@ export function relationshipCandidate(a: Adventure, context: ContextBuildResult,
     || (r.current.bond !== u.proposed.bond && !u.evidence.toLowerCase().includes(u.proposed.bond.toLowerCase())))) return "major transition lacks explicit in-story bond/status evidence; a rude exchange is insufficient";
   const timestamp = nowIso();
   const p: RelationshipProposal = { id: createId("proposal"), proposedType: "relationshipUpdate", targetId: brain.id,
-    semanticEffects: Array.isArray(u.effects) ? u.effects as MemoryProposal["semanticEffects"] : undefined,
-    motivationEvidence: typeof u.motivationEvidence === "string" ? u.motivationEvidence : undefined,
     title: `${brain.characterName} → ${focus}`, sourceTurnId, sourceText: u.evidence,
     content: JSON.stringify(u.proposed), suggestedTriggers: [], confidence: 0.75, status: "pending",
     requiresReview: true, rationale: `${u.reason} Review NPC knowledge and interpretation${major ? "; major bond/status transition" : ""}. Exact quote matching does not establish knowledge.`,

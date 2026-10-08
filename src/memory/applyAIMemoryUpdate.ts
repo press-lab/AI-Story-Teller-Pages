@@ -1,6 +1,4 @@
 import { relationshipIsCurrent } from "./relationships";
-import { characterForTarget, mutationPermissionError, worldEnabled } from "./worldEvolution";
-import { createId, nowIso } from "../utils/id";
 import type {
   Adventure,
   AdventureAction,
@@ -8,10 +6,9 @@ import type {
   RelationshipProposal,
   ComponentEntry,
   StoryCard,
-  WorldEffect,
 } from "../types/adventure";
 
-export type AIMemoryUpdate = { semanticEffects?: WorldEffect[]; motivationEvidence?: string } & (
+export type AIMemoryUpdate =
   | { type: "relationshipProposal"; proposal: RelationshipProposal }
   | {
       type: "brainPatch";
@@ -37,7 +34,7 @@ export type AIMemoryUpdate = { semanticEffects?: WorldEffect[]; motivationEviden
       type: "providerConfigUpdate" | "triggerRuleUpdate" | "questDefinitionUpdate" | "rawImportUpdate" | "systemShellUpdate";
       targetId?: string;
       description?: string;
-    });
+    };
 
 export interface AppliedAIMemoryUpdate {
   targetType: "brain" | "storyCard" | "component";
@@ -85,22 +82,6 @@ export function applyAIMemoryUpdate(adventure: Adventure, updates: AIMemoryUpdat
   const changedItemIds: string[] = [];
 
   for (const update of updates) {
-    const targetId = "brainId" in update ? update.brainId : "storyCardId" in update ? update.storyCardId : "componentId" in update ? update.componentId : undefined;
-    if (update.type === "brainPatch" && !adventure.brains.some(b => b.id === update.brainId)) { rejectedUpdates.push(reject(update, "Brain not found.")); continue; }
-    if (update.type === "storyCardUpdate" && adventure.storyCards.some(c => c.id === update.storyCardId && (c.type === "event" || c.memoryMode === "historical"))) { rejectedUpdates.push(reject(update, "Historical memories require explicit editing.")); continue; }
-    if (update.type === "componentUpdate" && !adventure.components.some(c => c.id === update.componentId && c.type === "plotEssentials")) { rejectedUpdates.push(reject(update, `${adventure.components.find(c => c.id === update.componentId)?.type ?? "Missing"} component is protected or not Plot Essentials.`)); continue; }
-    const thoughtOnly = update.type === "brainPatch" && Object.keys(update.patch).filter(k => k !== "relationships").every(k => k === "thoughts");
-    const review = worldEnabled(adventure) && !thoughtOnly && update.type !== "relationshipProposal" && (update.semanticEffects === undefined || (update.semanticEffects.includes("reinterpretation") && adventure.worldEvolutionSettings!.canonReinterpretation === "review"));
-    if (review && (update.type === "storyCardUpdate" || update.type === "brainPatch" || update.type === "componentUpdate")) {
-      const content = update.type === "brainPatch" ? JSON.stringify(update.patch) : update.content ?? "";
-      const timestamp = nowIso();
-      actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal: { id: createId("proposal"), proposedType: update.type === "brainPatch" ? "brainUpdate" : update.type === "storyCardUpdate" ? "storyCard" : "plotEssentialsUpdate", targetId,
-        title: adventure.storyCards.find(c => c.id === targetId)?.title ?? targetId ?? "AI update", content, sourceTurnId: adventure.messages.at(-1)?.id ?? "", sourceText: adventure.messages.at(-1)?.content ?? "",
-        semanticEffects: update.semanticEffects, motivationEvidence: update.motivationEvidence, requiresReview: true, status: "pending", suggestedTriggers: [], confidence: 0.5, rationale: "Review consequential state and semantic effects before applying.", createdAt: timestamp, updatedAt: timestamp } });
-      continue;
-    }
-    const permission = mutationPermissionError(adventure, targetId, JSON.stringify(update), update.semanticEffects, update.type === "storyCardUpdate" && characterForTarget(adventure, targetId).length > 0, update.motivationEvidence);
-    if (permission) { rejectedUpdates.push(reject(update, permission)); continue; }
     if (update.type === "relationshipProposal") {
       if (update.proposal.proposedType === "relationshipUpdate" && relationshipIsCurrent(adventure, update.proposal))
         actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal: update.proposal });
@@ -124,7 +105,6 @@ export function applyAIMemoryUpdate(adventure: Adventure, updates: AIMemoryUpdat
         mode: update.mode,
         turn: update.turn,
         preview: update.preview,
-        semanticEffects: update.semanticEffects, motivationEvidence: update.motivationEvidence,
       };
       actions.push(action);
       appliedUpdates.push({ targetType: "brain", targetId: update.brainId, actionTypes: [action.type] });
@@ -151,7 +131,6 @@ export function applyAIMemoryUpdate(adventure: Adventure, updates: AIMemoryUpdat
       const storyActions: AdventureAction[] = [{
         type: "APPLY_STORY_CARD_UPDATE",
         storyCardId: update.storyCardId,
-        semanticEffects: update.semanticEffects, motivationEvidence: update.motivationEvidence,
         ...(update.content !== undefined ? { content: update.content } : {}),
         ...(Object.keys(metadataPatch).length > 0 ? { patch: metadataPatch } : {}),
       }];
@@ -175,7 +154,7 @@ export function applyAIMemoryUpdate(adventure: Adventure, updates: AIMemoryUpdat
         rejectedUpdates.push(reject(update, "AI may only update component content when component.type is plotEssentials."));
         continue;
       }
-      const action: AdventureAction = { type: "APPLY_COMPONENT_UPDATE", componentId: update.componentId, content: update.content, semanticEffects: update.semanticEffects, motivationEvidence: update.motivationEvidence };
+      const action: AdventureAction = { type: "APPLY_COMPONENT_UPDATE", componentId: update.componentId, content: update.content };
       actions.push(action);
       appliedUpdates.push({ targetType: "component", targetId: update.componentId, actionTypes: [action.type] });
       changedItemIds.push(update.componentId);

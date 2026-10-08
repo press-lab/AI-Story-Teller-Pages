@@ -38,7 +38,6 @@ const providerConfig = {
 function baseAdventure(): Adventure {
   return {
     ...createDefaultAdventure("Semantic Test"),
-    worldEvolutionSettings: { ...createDefaultAdventure().worldEvolutionSettings!, enabled: false },
     memoryDetectionSettings: { enabled: false, everyNTurns: 1, generateContent: true },
     activeState: {
       ...createDefaultAdventure("Semantic Test").activeState,

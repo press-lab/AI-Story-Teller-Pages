@@ -2,8 +2,7 @@ import { buildContext } from "../contextBuilder/contextBuilder";
 import { resolveBackgroundProviderConfig } from "../providers/backgroundProvider";
 import { sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
 import type { Adventure, AdventureAction, ChatMessage, ProviderConfig } from "../types/adventure";
-import { boundMemoryEnvelope, MEMORY_OUTPUT_RESERVE, ONE_PASS_MEMORY_ID, onePassMemoryActions } from "./onePassMemory";
-import { worldEvolutionActions, worldRuntimeActive } from "./worldEvolution";
+import { MEMORY_OUTPUT_RESERVE, ONE_PASS_MEMORY_ID, onePassMemoryActions } from "./onePassMemory";
 
 export interface CompactMemoryFallbackResult {
   actions: AdventureAction[];
@@ -56,7 +55,7 @@ export async function runCompactMemoryFallback(
   try {
     const backgroundConfig = resolveBackgroundProviderConfig(adventure, providerConfig);
     response = await sendOpenAICompatibleChatCompletion({
-      config: { ...backgroundConfig, requestContext: backgroundConfig.requestContext && { ...backgroundConfig.requestContext, purpose: "compactMemoryFallback" }, maxOutputTokens: Math.min(backgroundConfig.maxOutputTokens, MEMORY_OUTPUT_RESERVE) }, messages,
+      config: { ...backgroundConfig, maxOutputTokens: Math.min(backgroundConfig.maxOutputTokens, MEMORY_OUTPUT_RESERVE) }, messages,
       responseFormat: "json_object",
     });
   } catch {
@@ -75,19 +74,8 @@ export async function runCompactMemoryFallback(
     if (raw.length > 16000 || !parsed || typeof parsed !== "object" || !("updates" in parsed)
       || !Array.isArray(parsed.updates)) return { ...empty, tokenUsage };
     const recentEvidence = adventure.messages.slice(-recentCount).map(message => message.content);
-    const envelope = boundMemoryEnvelope({ updates: parsed.updates,
-      plotEvents: "plotEvents" in parsed && Array.isArray(parsed.plotEvents) ? parsed.plotEvents : [],
-      worldChanges: "worldChanges" in parsed && Array.isArray(parsed.worldChanges) ? parsed.worldChanges : [],
-      newPlots: "newPlots" in parsed && Array.isArray(parsed.newPlots) ? parsed.newPlots : [] }, worldRuntimeActive(adventure), recentEvidence.join("\n"), { adventure, context, playerInput, recentEvidence }, latestStory.content);
-    const actions = onePassMemoryActions(adventure, context, envelope.updates, latestStory.content,
+    const actions = onePassMemoryActions(adventure, context, parsed.updates, latestStory.content,
       latestStory.id, undefined, "Compact memory fallback: one API call", playerInput, recentEvidence);
-    actions.push(...worldEvolutionActions(adventure, context, envelope, latestStory.content, latestStory.id));
-    // A valid empty envelope means there was nothing to record, not failed capture.
-    if (!envelope.error) {
-      const issue = adventure.worldEvolutionState?.issues.find(i => i.sourceTurnId === latestStory.id && i.status === "unrecorded");
-      if (issue) actions.push({ type: "SET_WORLD_ISSUE", issue: { ...issue, status: "recovered", reason: "Accepted narration checked by compact memory recovery." } });
-    }
-    if ("error" in envelope) actions.push({ type: "SET_WORLD_ISSUE", issue: { id: `world-issue:${latestStory.id}`, sourceTurnId: latestStory.id, status: "unrecorded", reason: String(envelope.error), droppedRecords: envelope.droppedRecords } });
     return { actions, tokenUsage, valid: true };
   } catch {
     return { ...empty, tokenUsage };

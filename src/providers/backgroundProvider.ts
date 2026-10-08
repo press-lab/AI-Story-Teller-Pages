@@ -31,13 +31,11 @@ export function resolveBackgroundProviderConfig(
       baseUrl,
       apiKey: bg.apiKey?.trim() ? bg.apiKey : providerConfig.apiKey,
       model: bg.model?.trim() || providerConfig.model,
-      pricing: baseUrl === providerConfig.baseUrl && (!bg.model?.trim() || bg.model === providerConfig.model) ? providerConfig.pricing : undefined,
       promptCaching: baseUrl === providerConfig.baseUrl ? providerConfig.promptCaching : undefined,
     };
   }
   return {
     ...providerConfig,
     model: adventure.semanticEvaluationSettings.evaluationModel || providerConfig.model,
-    pricing: !adventure.semanticEvaluationSettings.evaluationModel || adventure.semanticEvaluationSettings.evaluationModel === providerConfig.model ? providerConfig.pricing : undefined,
   };
 }

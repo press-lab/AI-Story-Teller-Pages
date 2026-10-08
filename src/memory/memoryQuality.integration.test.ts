@@ -16,7 +16,6 @@ function makeMemoryProposal(fields: Partial<MemoryProposal>): MemoryProposal {
 }
 function seattle() {
   const a = createDefaultAdventure("Seattle regression");
-  a.worldEvolutionSettings!.enabled = false; // Legacy memory quality fixture.
   a.memoryDetectionSettings.enabled = false;
   a.activeState.turn = 245;
   a.components = [

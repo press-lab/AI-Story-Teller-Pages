@@ -163,6 +163,7 @@ export function SettingsPage({
   const backgroundStatus = activeSettings.semanticEvaluationSettings.enabled
     ? `every ${activeSettings.semanticEvaluationSettings.semanticEvalEveryNTurns ?? 1} turns`
     : "off";
+
   return (
     <section className="page editor-surface settings-page">
       <div className="editor-page-summary">

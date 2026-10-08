@@ -29,7 +29,7 @@ function fixture() {
   a = adventureReducer(a, { type: "ENROLL_RELATIONSHIP", brainId: "kori", focusStoryCardId: "seth-card", state: initial });
   return a;
 }
-function candidate(a = fixture()) { return { kind: "relationshipChange", effects: [], target: "kori", relationshipId: a.brains[0].relationships[0].id, focus: "Seth", focusStoryCardId: "seth-card", revision: 0, proposed,
+function candidate(a = fixture()) { return { kind: "relationshipChange", target: "kori", relationshipId: a.brains[0].relationships[0].id, focus: "Seth", focusStoryCardId: "seth-card", revision: 0, proposed,
   evidence: "Kori thanks Seth for keeping his promise.", knowledgeEvidence: "Kori watches Seth return the stolen keepsake.", reason: "Observed follow-through supports a small trust shift" }; }
 function propose(a = fixture(), u: unknown = candidate(a), text = story) {
   return onePassMemoryActions(a, buildContext(a, { currentInput: "Kori and Seth talk." }), [u], text, "story-1").reduce(adventureReducer, a);

@@ -1,4 +1,3 @@
-import { pendingSuggestionCount } from "../memory/suggestionList";
 import { useEffect, useRef, useState } from "react";
 import type { InputMode, Message } from "../types/adventure";
 import type { PlayRuntimeProps } from "./pageTypes";
@@ -154,7 +153,7 @@ export function PlayPage({
   const lastAssistant = [...adventure.messages].reverse().find((m) => m.role === "assistant");
   const latestMessageId = adventure.messages.at(-1)?.id;
   const nextTurnNote = adventure.activeState.nextTurnNote;
-  const pendingMemoryCount = pendingSuggestionCount(adventure);
+  const pendingMemoryCount = adventure.activeState.memoryProposals.filter((p) => p.status === "pending").length;
 
   const budgetDropped = contextResult?.excludedItems.filter((i) => i.reason === "budget_exceeded") ?? [];
   const droppedMessages = budgetDropped.filter((i) => i.sourceType === "message").length;
@@ -425,6 +424,16 @@ export function PlayPage({
                         <span title={`Background (cumulative): ${adventure.activeState.backgroundTokenUsage.promptTokens} prompt + ${adventure.activeState.backgroundTokenUsage.completionTokens} completion`}>
                           {" · "}bg ↑{adventure.activeState.backgroundTokenUsage.promptTokens} ↓{adventure.activeState.backgroundTokenUsage.completionTokens}
                         </span>
+                      )}
+                      {message.id === lastAssistant?.id && pendingMemoryCount > 0 && (
+                        <button
+                          type="button"
+                          className="context-drop-warning"
+                          title="Open memory inbox"
+                          onClick={(e) => { e.stopPropagation(); openTool("memoryInbox"); }}
+                        >
+                          {" · "}{pendingMemoryCount} suggestion{pendingMemoryCount !== 1 ? "s" : ""}
+                        </button>
                       )}
                     </span>
                   )}

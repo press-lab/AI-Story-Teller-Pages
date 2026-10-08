@@ -1,11 +1,9 @@
 import { relationshipCandidate, type RelationshipTarget } from "./relationships";
-import type { Adventure, AdventureAction, BrainEntry, ContextBuildResult, MemoryProposal, StoryCardType, WorldEvolutionSettings, WorldEffect, WorldEvolutionIssue } from "../types/adventure";
+import type { Adventure, AdventureAction, BrainEntry, ContextBuildResult, MemoryProposal, StoryCardType } from "../types/adventure";
 import { createId, nowIso } from "../utils/id";
 import { cardMatchesName } from "../state/defaults";
 import { applyAIMemoryUpdate } from "./applyAIMemoryUpdate";
-import { MAX_WORLD_OUTPUT_CHARS, MAX_WORLD_OUTPUT_TOKENS_ESTIMATE, MAX_WORLD_RECORD_CHARS, worldEvolutionActions } from "./worldEvolution";
-import { adventureReducer } from "../state/adventureReducer";
-import { approximateTokenCount } from "../tokenizer/approximateTokenCount";
+import { storyCardContextContent } from "./storyCardPolicy";
 
 export const ONE_PASS_MEMORY_ID = "one-pass-memory";
 export const MEMORY_OUTPUT_RESERVE = 1400;
@@ -21,146 +19,41 @@ Eligible relationship targets: ${JSON.stringify(relationships)}
 [/DYNAMIC RELATIONSHIPS]`;
 }
 
-export function onePassMemoryInstruction(brains: BrainEntry[], categories: string[], relationships: RelationshipTarget[] = [], hasPressure = false, arcId?: string, world?: WorldEvolutionSettings): string {
+export function onePassMemoryInstruction(brains: BrainEntry[], categories: string[], relationships: RelationshipTarget[] = [], hasPressure = false): string {
   return `[ONE-PASS MEMORY]
 Write the requested narrative first, preserving its quality and visible word limit. Then append exactly one hidden JSON envelope:
 <memory_updates>{"updates":[]}</memory_updates>
-${arcId ? `The same envelope may include "plotEvents": [{"kind":"progress|setback|revelation|confrontation|resolved|failed|abandoned","targetId":"${arcId}","evidence":"exact visible story quote","outcome":"brief established result","offscreen":false}]. Emit only events actually established in visible narration. Set offscreen true for actions away from the player. Resolve only with a conclusive outcome; do not invent a successor threat merely to extend the arc. Ordinary sandbox scenes need no event. ${world?.plotProgression === "active" ? "Pursue meaningful conclusions without a schedule." : "Let plot progress arise naturally."} ${world?.offscreenEvents && world?.npcAutonomy === "independent" ? "NPCs may act offscreen." : "Do not narrate autonomous offscreen plot events."}` + "\n" : ""}An empty updates array is normal. Never invent changes to fill it. Maximum 4 small updates and at most ONE new card per turn. No other thought/memory tags.
+An empty updates array is normal. Never invent changes to fill it. Maximum 4 small updates and at most ONE new card per turn. No other thought/memory tags.
 Each update has: kind, target, content, evidence, reason. evidence is an EXACT quote from this turn's player input or your visible story, establishing the change. reason explains why it will matter beyond this scene. Do not treat a suggestion, possibility, or plan as an accomplished fact. Do not give absent characters knowledge they did not receive.
 Allowed kinds:
 - "thought": target is an eligible character name below; content is ONE new first-person internal reaction, belief, or private plan (max 45 words). Capture only if the character participated or learned something this turn. Never repeat existing thoughts or put generic world facts here.
 - "card": target is the EXACT title of an existing Story Card visible in context; content is only a NEW durable fact (max 70 words) to append. Character cards are profiles: add ONE lasting ability, trait, relationship, or obligation only when the quoted evidence EXPLICITLY establishes it as an enduring fact. A single action or reaction does not prove a habit or personality trait. Never generalize one fight, meal, joke, or exchange into what someone usually does. Put consequential shared history on lore/location cards; otherwise leave it in the transcript. Preserve identity and existing facts. Never overwrite or contradict canon; corrections need explicit review outside this automatic path. Omit already-known facts and rephrasings.
-- "lore": target is the EXACT title of an existing lore/location/custom Story Card, or a narrow NEW subject title. An existing lore/location card may be named in the supplied target inventory even when it was not triggered into model context this turn; such an update requires review. Create an INDEPENDENT historical lore card for a distinctive completed shared event worth recalling later, such as a first fight, first meeting, major battle, revelation, or consequential choice. It need not establish a new rule or ongoing obligation. Give the new card a specific event title, concise past-tense facts naming participants, place, and outcome, 1-3 narrow recall triggers, and category "plot_beat". It becomes a reviewable lore card with historical memory mode. Use category "world_fact" for a reusable rule, place, or subject instead. Do not create lore for routine movement, a passing reaction, or generic scene filler. Never append the event to a participant's character card.
+- "lore": target is the EXACT title of an existing lore/location/custom Story Card, or a narrow NEW subject title. An existing lore/location card may be named in the supplied target inventory even when it was not triggered into model context this turn; such an update requires review. Persist consequential established actions, revelations, allegations and their known consequences as historical lore; preserve who did, claimed or learned what. Secret surveillance of an ally is an action, not a new personality; implication in a conspiracy is an allegation, not proven guilt. Use Dynamic Relationships for evidenced changes to enrolled pair state. Create an INDEPENDENT historical lore card for a distinctive completed event worth recalling later. It need not establish a new rule or ongoing obligation. Give it a specific title, concise attributed past-tense facts, 1-3 narrow recall triggers, and category "plot_beat". It becomes a reviewable lore card with historical memory mode. Use category "world_fact" for a reusable rule, place, or subject instead. Do not create lore for routine movement, a passing reaction, or generic scene filler. Never append the event to a participant's character card.
 - "newCard": target is a genuinely new recurring subject's name, content max 90 words. Also provide cardType (character, location, lore, custom, plot), memoryMode (static or living), triggers (1-3 narrow phrases), and category from: ${categories.join(", ") || "NONE (no new cards allowed)"}. Reuse existing subjects; never create sibling cards for a conversation, invitation, repeated affection, room movement, routine choice, or temporary mood. A plot card requires a consequential lasting obligation, alliance, betrayal, secret, or irreversible change; it will require review. Use "lore" above, not "newCard", for a distinctive completed event.
 ${hasPressure ? '- "pressure": target is the EXACT title of an active Active Pressure component; content is its full replacement, ONE sentence (max 45 words) identifying the external threat or obligation pressing on the player. Only when it materially changes or resolves; no cosmetic rewrites.\n' : ""}- "arc": target is the EXACT title of the active Current Arc; content is one concise, completed development (max 45 words) directly relevant to its premise, to append to its log. Skip scene filler, repeated beats, possibilities, and future events. Never change the premise, phase, or pacing.
 - "essentials": target is the EXACT title of a Plot Essentials component; content is its full replacement (max 180 words), preserving still-valid foundations. Only when the overarching premise, central long-term conflict, or persistent story-wide constraint fundamentally changes. This always requires review. NOT scene summaries, temporary whereabouts, immediate threats, or current-arc progress.
 Current Arc holds the ongoing storyline and its authored pacing. Do not alter arc phases, break instructions, or create a new arc here. Record arc progress there; a distinct completed event may also earn its own historical lore card when users will want to recall the occurrence itself. Plot Essentials is the overarching story. Character Story Cards hold profiles, lore cards hold reusable setting and shared history, and Brains hold private internal state. Routine scene beats stay in the transcript.
 For example: {"kind":"card","target":"Mira","content":"Mira is allergic to silver.","evidence":"Silver gives me a rash, Mira says.","reason":"Persistent vulnerability"}.
-Historical lore example: {"kind":"lore","target":"Seth and Buu's First Fight","content":"Seth and Buu fought for the first time on Hercule's estate. Seth blasted Buu into orbit; Buu returned unharmed and asked to continue.","evidence":"Buu returned unharmed and asked to continue.","reason":"Distinct first fight worth recalling","category":"plot_beat","triggers":["Seth and Buu first fight","Buu sent into orbit"]}.
+
 Eligible thought targets: ${brains.map(b => JSON.stringify(b.characterName)).join(", ") || "none"}.
 Only output changes supported by this turn and consistent with ALL supplied canon. These hidden updates are not narrative and must never steer the scene merely to create memory.${relationshipMemoryInstruction(relationships)}`;
 }
 
 /** A broken/truncated tail must never leak JSON into the story or discard good prose. */
-export interface MemorySelectionContext { adventure: Adventure; context: ContextBuildResult; playerInput: string; recentEvidence?: string[] }
-
-export function parseOnePassMemory(text: string, compact = false, evidenceSource = "", selection?: MemorySelectionContext): { story: string; updates: unknown[]; plotEvents?: unknown[]; worldChanges?: unknown[]; newPlots?: unknown[]; error?: string; droppedRecords?: WorldEvolutionIssue["droppedRecords"] } {
+export function parseOnePassMemory(text: string): { story: string; updates: unknown[]; error?: string } {
   const start = text.search(/<memory_(?:updates\b|[a-z]*$)/i);
   if (start < 0) return { story: text, updates: [], error: "Memory envelope missing; story preserved." };
   const story = text.slice(0, start).trimEnd();
   const tail = text.slice(start);
   const match = /^<memory_updates\s*>([\s\S]*?)<\/memory_updates>\s*$/i.exec(tail);
-  if (!match || match[1].length > 16000) return { story, ...boundMemoryEnvelope({ updates: [], ...recoverWorldRecords(tail, compact) }, compact, story + "\n" + evidenceSource, selection, story), error: "Incomplete or oversized memory envelope; story preserved." };
+  if (!match || match[1].length > 16000) return { story, updates: [], error: "Incomplete or oversized memory envelope; story preserved." };
   try {
     const parsed: unknown = JSON.parse(match[1]);
     if (!parsed || typeof parsed !== "object" || !("updates" in parsed) || !Array.isArray(parsed.updates)) throw new Error();
-    return { story, ...boundMemoryEnvelope({ updates: parsed.updates,
-      ...("plotEvents" in parsed && Array.isArray(parsed.plotEvents) ? { plotEvents: parsed.plotEvents } : {}),
-      ...("worldChanges" in parsed && Array.isArray(parsed.worldChanges) ? { worldChanges: parsed.worldChanges } : {}),
-      ...("newPlots" in parsed && Array.isArray(parsed.newPlots) ? { newPlots: parsed.newPlots } : {}) }, compact, story + "\n" + evidenceSource, selection, story) };
+    return { story, updates: parsed.updates };
   } catch {
-    return { story, ...boundMemoryEnvelope({ updates: [], ...recoverWorldRecords(tail, compact) }, compact, story + "\n" + evidenceSource, selection, story), error: "Invalid memory JSON; story preserved." };
+    return { story, updates: [], error: "Invalid memory JSON; story preserved." };
   }
-}
-
-export function boundMemoryEnvelope(envelope: { updates: unknown[]; worldChanges?: unknown[]; newPlots?: unknown[]; plotEvents?: unknown[] }, compact: boolean, evidenceSource = "", selection?: MemorySelectionContext, story = evidenceSource): typeof envelope & { error?: string; droppedRecords?: WorldEvolutionIssue["droppedRecords"] } {
-  if (!compact) return envelope;
-  const result: typeof envelope & { error?: string; droppedRecords?: WorldEvolutionIssue["droppedRecords"] } = { updates: [] };
-  for (const key of ["worldChanges", "newPlots", "plotEvents"] as const) if (envelope[key]) result[key] = [];
-  const issues: string[] = [];
-  const candidates: { key: "updates" | "worldChanges" | "newPlots" | "plotEvents"; record: Record<string, unknown>; priority: number; identity: string }[] = [];
-  const seen = new Set<string>();
-  for (const key of ["updates", "worldChanges", "newPlots", "plotEvents"] as const) {
-    for (const raw of envelope[key] ?? []) {
-      const r = raw as Record<string, unknown>;
-      const invalid = !r || typeof r !== "object" || Array.isArray(r) || typeof r.evidence !== "string" || !r.evidence.trim()
-        || evidenceSource && !evidenceSource.includes(r.evidence)
-        || key === "updates" && (![r.kind, r.target, r.reason].every(v => typeof v === "string" && v.trim()) || r.kind !== "relationshipChange" && typeof r.content !== "string")
-        || key !== "updates" && (typeof r.autonomous !== "boolean" || typeof r.offscreen !== "boolean");
-      if (invalid) { issues.push("Invalid structured candidate omitted; review accepted narration."); continue; }
-      const serialized = JSON.stringify(r);
-      if (serialized.length > MAX_WORLD_RECORD_CHARS || approximateTokenCount(serialized) > 600) { issues.push("Incomplete or oversized memory envelope; excess records need review."); continue; }
-      // Ask existing validators whether a record can enter its own route. No writes occur here.
-      if (selection) {
-        const { context, playerInput } = selection;
-        const adventure = { ...selection.adventure, messages: [...selection.adventure.messages, { id: "selection", role: "assistant" as const, content: story, createdAt: nowIso() }] };
-        const actions = key === "updates"
-          ? onePassMemoryActions(adventure, context, [r], story, "selection", undefined, "Selection validation", playerInput, selection.recentEvidence)
-          : worldEvolutionActions(adventure, context, { [key]: [r] }, story, "selection");
-        const writes = actions.filter(a => !["LOG_EVALUATION_RESULT", "SET_WORLD_ISSUE"].includes(a.type));
-        // Preview each specialized reducer action against an immutable copy. This also
-        // excludes stale/protected writes and already-pending duplicate proposals.
-        if (!writes.some(action => adventureReducer(adventure, action) !== adventure)) {
-          const reason = actions.flatMap(a => a.type === "SET_WORLD_ISSUE" ? [a.issue.reason] : a.type === "LOG_EVALUATION_RESULT" ? a.entry.errors : []).join(" ");
-          issues.push(reason || "Invalid structured candidate omitted; review accepted narration."); continue;
-        }
-      }
-      const terminal = key === "plotEvents" && ["resolved", "failed", "abandoned"].includes(String(r.kind));
-      if (terminal && (!r.resolution || r.certainty !== "confirmed")) { issues.push("Invalid terminal candidate omitted; review accepted narration."); continue; }
-      const identity = key === "updates" ? r.kind === "relationshipChange" ? `relationship:${r.target}:${r.relationshipId}` : `${r.kind}:${r.target}`
-        : `${key}:${r.targetId ?? r.id}`;
-      if (seen.has(identity)) { issues.push("Duplicate structured candidate omitted."); continue; }
-      // Duplicates of invalid candidates do not reserve identities.
-      seen.add(identity);
-      const significantCanon = key === "worldChanges" && (["replace", "supersede", "remove", "resolve"].includes(String(r.operation)) || Array.isArray(r.effects) && r.effects.length > 0);
-      const priority = terminal ? 100 : significantCanon ? 90 : r.kind === "relationshipChange" ? 55 : r.kind === "thought" ? 50 : key === "updates" ? 40 : 30;
-      candidates.push({ key, record: r, priority, identity });
-    }
-  }
-  candidates.sort((a, b) => b.priority - a.priority);
-  const dropped: NonNullable<WorldEvolutionIssue["droppedRecords"]> = [];
-  const retainForReview = (route: string, record: Record<string, unknown>) => {
-    const candidate = { route, record };
-    if (dropped.length < 4 && JSON.stringify([...dropped, candidate]).length <= MAX_WORLD_OUTPUT_CHARS && approximateTokenCount(JSON.stringify([...dropped, candidate])) <= MAX_WORLD_OUTPUT_TOKENS_ESTIMATE) dropped.push(candidate);
-  };
-  let count = 0;
-  let worldCount = 0;
-  let worldTokens = 0;
-  let worldChars = 0;
-  const worldLimit = MAX_MEMORY_UPDATES - Math.min(2, candidates.filter(c => c.key === "updates").length);
-  for (const { key, record, identity } of candidates) {
-    if (key !== "updates" && worldCount >= worldLimit) { retainForReview(key, record); issues.push("World record deferred to preserve ordinary memory capacity; review accepted narration."); continue; }
-    const serialized = JSON.stringify(record);
-    const tokens = approximateTokenCount(serialized);
-    if (key !== "updates" && worldLimit < MAX_MEMORY_UPDATES && (worldTokens + tokens > MAX_WORLD_OUTPUT_TOKENS_ESTIMATE / 2 || worldChars + serialized.length > MAX_WORLD_OUTPUT_CHARS / 2)) {
-      retainForReview(key, record); issues.push("World record deferred to preserve ordinary memory token budget; review accepted narration."); continue;
-    }
-    if (count >= MAX_MEMORY_UPDATES) { retainForReview(key, record); issues.push(`Structured update limit reached; ${identity.slice(0, 100)} needs review in accepted narration.`); continue; }
-    result[key] ??= [];
-    result[key]!.push(record);
-    if (JSON.stringify(result).length > MAX_WORLD_OUTPUT_CHARS || approximateTokenCount(JSON.stringify(result)) > MAX_WORLD_OUTPUT_TOKENS_ESTIMATE) {
-      result[key]!.pop(); retainForReview(key, record); issues.push(`Incomplete or oversized memory envelope; ${identity.slice(0, 100)} needs review.`); continue;
-    }
-    count++;
-    if (key !== "updates") { worldCount++; worldTokens += tokens; worldChars += serialized.length; }
-  }
-  if (dropped.length) result.droppedRecords = dropped;
-  if (issues.length) result.error = [...new Set(issues)].slice(0, 8).join(" ");
-  return result;
-}
-
-/** Recover only complete JSON objects. Never complete a cut-off quote or use prose from a discarded draft. */
-function recoverWorldRecords(tail: string, includeUpdates = false): { updates?: unknown[]; plotEvents?: unknown[]; worldChanges?: unknown[]; newPlots?: unknown[] } {
-  tail = tail.slice(0, 16000);
-  const result: Record<string, unknown[]> = {};
-  for (const key of [...(includeUpdates ? ["updates"] : []), "plotEvents", "worldChanges", "newPlots"]) {
-    const start = tail.indexOf(`"${key}"`);
-    if (start < 0) continue;
-    const array = tail.indexOf("[", start);
-    if (array < 0) continue;
-    let depth = 0, inString = false, escape = false, objectStart = -1;
-    const records: unknown[] = [];
-    for (let i = array + 1; i < tail.length && records.length < 32; i++) {
-      const c = tail[i];
-      if (inString) { if (escape) escape = false; else if (c === "\\") escape = true; else if (c === '"') inString = false; continue; }
-      if (c === '"') { inString = true; continue; }
-      if (!depth && c === "]") break;
-      if (c === "{") { if (!depth) objectStart = i; depth++; }
-      if (c === "}" && depth) { depth--; if (!depth) { try { records.push(JSON.parse(tail.slice(objectStart, i + 1))); } catch { /* malformed object remains unrecorded */ } } }
-    }
-    if (records.length) result[key] = records;
-  }
-  return result;
 }
 
 const norm = (text: string) => text.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
@@ -198,7 +91,7 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
   const executed: string[] = [];
   const visibleIds = new Set(context.sections.flatMap(s => s.items.map(i => i.id)));
   const instruction = context.sections.flatMap(s => s.items).find(i => i.id === ONE_PASS_MEMORY_ID)?.content ?? "";
-  const lastMessage = adventure.messages.at(-1)?.role === "assistant" ? adventure.messages.at(-2) : adventure.messages.at(-1);
+  const lastMessage = adventure.messages.at(-1);
   const playerInput = playerInputOverride ?? (lastMessage?.role === "user" ? lastMessage.content : "");
   const evidenceSources = [norm(story), norm(playerInput), ...recentEvidence.map(norm)];
   const seen = new Set<string>();
@@ -231,13 +124,11 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
     const quote = norm(evidence);
     if (quote.length < 12 || !evidenceSources.some(s => s.includes(quote))) { reject(`${target}: evidence is not in this turn`); continue; }
     if (words(content) > (kind === "essentials" ? 180 : kind === "newCard" || kind === "lore" ? 90 : kind === "card" ? 70 : 45)) { reject(`${target}: content exceeds limit`); continue; }
-    if (content.includes("<") || content.length > (adventure.worldEvolutionSettings?.enabled ? 800 : 4000) || target.length > 150 || (u.reason as string).length > (adventure.worldEvolutionSettings?.enabled ? 200 : 600)) { reject(`${target}: invalid content`); continue; }
+    if (content.includes("<") || content.length > 4000 || target.length > 150 || (u.reason as string).length > 600) { reject(`${target}: invalid content`); continue; }
     const key = `${kind}:${norm(target)}`;
     if (seen.has(key)) { reject(`${target}: repeated target`); continue; }
     const timestamp = nowIso();
     const proposal: MemoryProposal = {
-      semanticEffects: Array.isArray(u.effects) ? u.effects as WorldEffect[] : undefined,
-      motivationEvidence: typeof u.motivationEvidence === "string" ? u.motivationEvidence : undefined,
       id: createId("proposal"), sourceTurnId, sourceText: evidence, proposedType: "storyCard", title: target,
       content, suggestedTriggers: [], confidence: 0.75, rationale: `One-pass memory: ${u.reason}`,
       status: "pending", createdAt: timestamp, updatedAt: timestamp,
@@ -252,8 +143,7 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
       if (!evidenceSources.some(s => s.includes(norm(target)))) { reject(`${target}: character absent from this turn`); continue; }
       if (Object.values({ ...brain.archivedThoughts, ...brain.thoughts }).some(t => norm(t).includes(norm(content)))) continue;
       const patch = { thoughts: { [`${adventure.activeState.turn}_${sourceTurnId}`]: `${adventure.activeState.turn} → ${content}` } };
-      const boundary = applyAIMemoryUpdate(adventure, [{ type: "brainPatch", brainId: brain.id, patch, mode: "append", turn: adventure.activeState.turn, preview: content, semanticEffects: proposal.semanticEffects, motivationEvidence: proposal.motivationEvidence }]);
-      if (boundary.rejectedUpdates.length) { reject(`${target}: ${boundary.rejectedUpdates[0].reason}`); continue; }
+      const boundary = applyAIMemoryUpdate(adventure, [{ type: "brainPatch", brainId: brain.id, patch, mode: "append", turn: adventure.activeState.turn, preview: content }]);
       if (adventure.memoryAutoApprove.brainUpdate) actions.push(...boundary.actions);
       else actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal: { ...proposal, proposedType: "brainUpdate", targetId: brain.id, content: JSON.stringify(patch) } });
       seen.add(key);
@@ -273,7 +163,7 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
         if (kind === "lore" && !["lore", "location", "custom"].includes(existing.type)) { reject(`${target}: lore cannot update a character card`); continue; }
         if (existing.type === "character" && isSceneRecapForCharacter(content)) { reject(`${target}: scene recap belongs in lore or transcript`); continue; }
         if (existing.type === "character" && (!hasDurableCharacterEvidence(evidence) || !isSingleCharacterFact(content))) { reject(`${target}: character fact lacks explicit durable evidence`); continue; }
-        if (norm(existing.content).includes(norm(content))) continue;
+        if (norm(storyCardContextContent(existing)).includes(norm(content))) continue;
         proposal.title = existing.title;
         proposal.targetId = existing.id;
         proposal.appendContent = true;

@@ -783,16 +783,16 @@ export function StoryCardsPage({
                   <section className="item-focus-section">
                     <div className="item-section-heading">
                       <div>
-                        <p className="eyebrow">compact memory</p>
-                        <h4>Structured compact facts</h4>
+                        <p className="eyebrow">{card.type === "character" ? "character memory" : "compact memory"}</p>
+                        <h4>{card.type === "character" ? "Character foundations and developments" : "Structured compact facts"}</h4>
                       </div>
                       {card.compactKind && <span className="badge badge-priority">{card.compactStatus ?? "active"}</span>}
                     </div>
                     <p className="muted">
                       When this card is included by a trigger, pin, Always policy, or manual force, these facts are sent
                       in Core, Current, Recent order. Kind and Status label that text; they do not trigger the card.
-                      A one-time save migration or a Story Card memory update can sort text into these fields;
-                      editing Content directly does not.
+                      Character foundations remain in editable Core Facts while later additions use the Content budget.
+                      Editing Content directly does not change Core Facts.
                     </p>
                     <div className="grid two">
                       <Field label="Compact Kind">
@@ -876,10 +876,6 @@ export function StoryCardsPage({
                       : "With no structured facts, Content is the entire card text sent when this card is included."}
                   </p>
                   <Field label="Content">
-                    {card.type === "character" && <div>
-                      <CheckboxField label="Protect from betrayal" checked={card.evolutionProtection?.betrayal ?? false} onChange={value => dispatch({ type: "UPDATE_STORY_CARD", storyCardId: card.id, patch: { evolutionProtection: { identity: card.evolutionProtection?.identity ?? false, betrayal: value } } })} />
-                      <CheckboxField label="Protect core identity" checked={card.evolutionProtection?.identity ?? false} onChange={value => dispatch({ type: "UPDATE_STORY_CARD", storyCardId: card.id, patch: { evolutionProtection: { betrayal: card.evolutionProtection?.betrayal ?? false, identity: value } } })} />
-                    </div>}
                     <textarea
                       rows={6}
                       value={card.content}

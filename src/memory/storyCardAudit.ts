@@ -62,6 +62,9 @@ function makeRec(
   rationale: string,
   overrides: Partial<AuditRecommendation> = {},
 ): AuditRecommendation {
+  const content = card.type === "character"
+    ? [...(card.coreFacts ?? []), ...(card.currentFacts ?? []), ...(card.recentDevelopments ?? []), card.content].filter(Boolean).join("\n")
+    : card.content;
   return {
     id,
     action,
@@ -69,12 +72,12 @@ function makeRec(
     cardId: card.id,
     title: card.title,
     rationale,
-    suggestedContent: card.content,
+    suggestedContent: content,
     suggestedKeys: card.keys,
     suggestedType: card.type,
     suggestedMemoryMode: card.memoryMode ?? "static",
     decision: "pending",
-    editedContent: card.content,
+    editedContent: content,
     editedKeys: card.keys.join(", "),
     ...overrides,
   };
@@ -133,8 +136,11 @@ function detectTinyContent(cards: StoryCard[]): AuditRecommendation[] {
 
 function detectDuplicateContentLines(cards: StoryCard[]): AuditRecommendation[] {
   return cards.flatMap((card) => {
-    const cleaned = dedupeTextLines(card.content);
-    if (cleaned.removedCount === 0 || cleaned.text === card.content.trim()) return [];
+    const content = card.type === "character"
+      ? [...(card.coreFacts ?? []), ...(card.currentFacts ?? []), ...(card.recentDevelopments ?? []), card.content].filter(Boolean).join("\n")
+      : card.content;
+    const cleaned = dedupeTextLines(content);
+    if (cleaned.removedCount === 0 || cleaned.text === content.trim()) return [];
     return [makeRec(
       `det-duplicate-lines-${card.id}`,
       "edit",

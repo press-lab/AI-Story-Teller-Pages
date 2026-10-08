@@ -32,102 +32,6 @@ export type MemoryUpdateSource = "aiMemoryUpdate" | "memoryProposal";
 /** Arc Director runtime state — lives on a `currentArc` component. Deterministic; never set by an LLM. */
 export type ArcPhase = "simmer" | "escalate" | "break" | "aftermath";
 
-export interface WorldEvolutionSettings {
-  /** Old adventures keep their original memory and Arc Director behavior until opted in. */
-  enabled?: boolean;
-  plotProgression: "off" | "natural" | "active";
-  plotResolution: "openEnded" | "decisive";
-  newPlotGeneration: "off" | "occasional" | "frequent";
-  npcAutonomy: "reactive" | "independent";
-  offscreenEvents: boolean;
-  characterDevelopment: boolean;
-  relationshipEvolution: boolean;
-  betrayal: "off" | "earned" | "unrestricted";
-  redemption: "off" | "earned" | "unrestricted";
-  hiddenMotivations: boolean;
-  canonReinterpretation: "off" | "review" | "allowed";
-}
-
-export type PlotEventKind = "progress" | "setback" | "revelation" | "confrontation" | "resolved" | "failed" | "abandoned";
-export interface PlotEvent {
-  kind: PlotEventKind;
-  targetId: string;
-  evidence: string;
-  outcome: string;
-  sourceTurnId: string;
-  turn: number;
-  offscreen?: boolean;
-  expectedRevision?: number;
-  objective?: string;
-  certainty?: "confirmed" | "rumor" | "plan";
-  autonomous?: boolean;
-  resolution?: { verdict: "victory" | "failure" | "abandonment" | "partial" | "unresolved"; centralObjective: boolean; remainingObstacles: string[]; closureEvidence: string };
-}
-
-export type WorldOperation = "create" | "append" | "replace" | "remove" | "supersede" | "resolve";
-export type WorldEffect = "development" | "betrayal" | "redemption" | "hiddenMotivation" | "reinterpretation" | "identity";
-export interface WorldChange {
-  owner: "storyCard" | "brain" | "plotEssentials";
-  targetId: string;
-  operation: WorldOperation;
-  expectedRevision: string | null;
-  previous: string;
-  content: string;
-  evidence: string;
-  reason: string;
-  requiresReview: boolean;
-  certainty: "confirmed" | "rumor" | "plan";
-  effects: WorldEffect[];
-  autonomous: boolean;
-  offscreen: boolean;
-  motivationEvidence?: string;
-  knowledgeEvidence?: string;
-  field?: "currentState" | "emotionalInterpretation" | "recentDevelopments" | "notes";
-  characterId?: string;
-  title?: string;
-  cardType?: StoryCardType;
-  triggers?: string[];
-}
-export interface PlotThread {
-  autonomous?: boolean;
-  offscreen?: boolean;
-  importance?: number;
-  id: string;
-  title: string;
-  objective: string;
-  participants: string[];
-  originEvidence: string;
-  sourceTurnId: string;
-  phase: ArcPhase;
-  revision: number;
-  events: PlotEvent[];
-  outcome?: string;
-}
-export interface WorldHistoryEntry {
-  id: string;
-  proposalId: string;
-  change: WorldChange;
-  sourceTurnId: string;
-  previous: StoryCard | BrainEntry | ComponentEntry | null;
-  next: StoryCard | BrainEntry | ComponentEntry;
-  rolledBack?: boolean;
-  createdAt: string;
-}
-export interface WorldEvolutionIssue {
-  reviewStatus?: "approved" | "rejected" | "ignored";
-  id: string;
-  sourceTurnId: string;
-  reason: string;
-  status: "unrecorded" | "recovered" | "dismissed";
-  droppedRecords?: { route: string; record: Record<string, unknown> }[];
-}
-export interface WorldEvolutionState {
-  threads: PlotThread[];
-  archivedThreads?: PlotThread[];
-  history: WorldHistoryEntry[];
-  issues: WorldEvolutionIssue[];
-}
-
 export interface ArcPacingState {
   phase: ArcPhase;
   /** Display tier 0–5, derived from total engagement vs the break threshold. */
@@ -138,9 +42,6 @@ export interface ArcPacingState {
   pendingBreak: boolean;
   /** Turn the arc entered the break phase, used to time the transition to aftermath. */
   brokeAtTurn?: number;
-  outcome?: string;
-  events?: PlotEvent[];
-  revision?: number;
 }
 
 export type ArcPace = "short" | "medium" | "long" | "epic";
@@ -269,17 +170,16 @@ export interface StoryCard {
   active: boolean;
   pinned: boolean;
   protected: boolean;
-  evolutionProtection?: { betrayal: boolean; identity: boolean };
   inclusionPolicy: ContextInclusionPolicy;
   priority: number;
   state: string;
-  /** Token cap for this card's live content; overflow is moved to archivedFacts. 0/undefined = default. */
+  /** Token cap for rolling live Content; character Core Facts are retained separately. 0/undefined = default. */
   tokenBudget?: number;
   /** Structured compact memory type for pacts, promises, cover stories, debts, and similar ongoing constraints. */
   compactKind?: StoryCardCompactKind;
   /** Lifecycle for compact memory. Active/strained/broken compacts stay prominent; resolved/superseded compacts can age out. */
   compactStatus?: StoryCardCompactStatus;
-  /** Non-prunable compact terms. These are rendered before current/recent compact facts in context. */
+  /** Editable character foundations or compact terms; rendered before budgeted additions. */
   coreFacts?: string[];
   /** Current operating facts for the compact. */
   currentFacts?: string[];
@@ -333,7 +233,6 @@ export interface RelationshipTransition {
 }
 
 export interface BrainEntry {
-  evolvedFields?: WorldChange["field"][];
   relationships: DynamicRelationship[];
   id: string;
   characterName: string;
@@ -449,9 +348,6 @@ export interface TokenBudgetSettings {
 }
 
 export interface ProviderConfig {
-  /** Runtime correlation only; stripped before persistence. */
-  requestContext?: { adventureId: string; turn: number; purpose: RequestPurpose };
-  pricing?: { inputPerMillionUSD: number; outputPerMillionUSD: number };
   name: string;
   baseUrl: string;
   apiKey?: string;
@@ -494,23 +390,6 @@ export interface ProviderUsage {
   cacheReadTokens?: number;
   /** Tokens written into the prompt cache this request (cache creation cost). */
   cacheCreationTokens?: number;
-}
-
-export type RequestPurpose = "narration" | "responseCorrection" | "continuity" | "compactMemoryFallback" | "fullMemoryFallback" | "semanticEvaluation" | "arcContinuation" | "manual";
-export interface ProviderRequestRecord {
-  id: string;
-  adventureId: string;
-  turn: number;
-  purpose: RequestPurpose;
-  model: string;
-  startedAt: string;
-  success: boolean;
-  usage?: ProviderUsage;
-  inputTokensEstimate: number;
-  outputTokensEstimate: number;
-  structuredOutputTokensEstimate: number;
-  continuityCorrected?: boolean;
-  costUSD?: number;
 }
 
 export interface BackgroundProviderConfig {
@@ -599,12 +478,8 @@ export type MemoryProposalType =
 export type MemoryProposalStatus = "pending" | "approved" | "rejected" | "ignored";
 
 export interface MemoryProposal {
-  semanticEffects?: WorldEffect[];
-  motivationEvidence?: string;
-  worldChange?: WorldChange;
   /** User-requested card cleanup, always reviewed through Suggestions. */
   cardAudit?: { action: "edit" | "delete" | "create"; expectedRevision: string | null };
-  worldIssueId?: string;
   relationship?: RelationshipTransition;
   /** Consequential automatic changes require explicit review, regardless of generic auto-approval. */
   requiresReview?: boolean;
@@ -733,7 +608,6 @@ export interface StoryEditHistoryEntry {
 }
 
 export interface ActiveState {
-  providerRequests?: ProviderRequestRecord[];
   turn: number;
   forceIncludeNextTurn: ForceIncludeEntry[];
   triggerLog: TriggerLogEntry[];
@@ -783,8 +657,6 @@ export interface Adventure {
   memoryAutoApprove: MemoryAutoApproveSettings;
   memoryDetectionSettings: MemoryDetectionSettings;
   systemTriggers: SystemTriggerSettings;
-  worldEvolutionSettings?: WorldEvolutionSettings;
-  worldEvolutionState?: WorldEvolutionState;
 }
 
 export interface MemoryAutoApproveSettings {
@@ -808,7 +680,6 @@ export interface AdventureThumbnailImage {
 }
 
 export interface NewAdventureSetup {
-  worldEvolutionSettings?: WorldEvolutionSettings;
   title: string;
   openingScene: string;
   components: ComponentEntry[];
@@ -957,7 +828,7 @@ export type AdventureAction =
   | { type: "PIN_COMPONENT"; componentId: string }
   | { type: "UNPIN_COMPONENT"; componentId: string }
   | { type: "UPDATE_COMPONENT"; componentId: string; patch: Partial<ComponentEntry> }
-  | { type: "APPLY_COMPONENT_UPDATE"; componentId: string; content: string; semanticEffects?: WorldEffect[]; motivationEvidence?: string }
+  | { type: "APPLY_COMPONENT_UPDATE"; componentId: string; content: string }
   | { type: "REORDER_COMPONENT"; componentId: string; direction: "up" | "down" }
   | { type: "UPSERT_STORY_CARD"; storyCard: StoryCard }
   | { type: "DELETE_STORY_CARD"; storyCardId: string }
@@ -966,15 +837,10 @@ export type AdventureAction =
   | { type: "PIN_STORY_CARD"; storyCardId: string }
   | { type: "UNPIN_STORY_CARD"; storyCardId: string }
   | { type: "UPDATE_STORY_CARD"; storyCardId: string; patch: Partial<StoryCard> }
-  | { type: "APPLY_STORY_CARD_UPDATE"; storyCardId: string; content?: string; patch?: Partial<Pick<StoryCard, "keys" | "state">>; semanticEffects?: WorldEffect[]; motivationEvidence?: string }
+  | { type: "APPLY_STORY_CARD_UPDATE"; storyCardId: string; content?: string; patch?: Partial<Pick<StoryCard, "keys" | "state">> }
   | { type: "MARK_STORY_CARD_UPDATED"; storyCardId: string; turn: number; proposalId?: string }
   | { type: "MARK_COMPONENT_UPDATED"; componentId: string; turn: number }
   | { type: "ADVANCE_ARC_PACING"; triggeredIds: string[]; turn: number }
-  | { type: "APPLY_PLOT_EVENT"; event: PlotEvent }
-  | { type: "REGISTER_PLOT_THREAD"; thread: PlotThread }
-  | { type: "ROLLBACK_WORLD_CHANGE"; historyId: string }
-  | { type: "SET_WORLD_ISSUE"; issue: WorldEvolutionIssue }
-  | { type: "SET_WORLD_EVOLUTION_SETTINGS"; patch: Partial<WorldEvolutionSettings> }
   | { type: "SET_ARC_PHASE"; componentId: string; phase: ArcPhase; turn?: number }
   | { type: "SET_ARC_CONTINUATIONS"; componentId: string; options: ArcContinuationOption[] }
   | { type: "COMPLETE_ARC_TO_STORY_CARD"; componentId: string }
@@ -989,7 +855,7 @@ export type AdventureAction =
   | { type: "UPDATE_BRAIN"; brainId: string; patch: Partial<BrainEntry> }
   | { type: "APPEND_BRAIN_STATE"; brainId: string; field?: BrainStateField; text: string }
   | { type: "REPLACE_BRAIN_STATE"; brainId: string; field?: BrainStateField; text: string }
-  | { type: "APPLY_BRAIN_UPDATE"; brainId: string; patch: BrainPatch; mode?: "replace" | "append"; turn?: number; preview?: string; semanticEffects?: WorldEffect[]; motivationEvidence?: string }
+  | { type: "APPLY_BRAIN_UPDATE"; brainId: string; patch: BrainPatch; mode?: "replace" | "append"; turn?: number; preview?: string }
   | { type: "UPSERT_TRIGGER_RULE"; triggerRule: TriggerRule }
   | { type: "DELETE_TRIGGER_RULE"; triggerRuleId: string }
   | { type: "UPDATE_TRIGGER_RULE"; triggerRuleId: string; patch: Partial<TriggerRule> }
@@ -1020,7 +886,6 @@ export type AdventureAction =
   | { type: "SET_STATE_FLAG"; key: string; value: string | number | boolean }
   | { type: "SET_RESPONSE_LENGTH_HINT"; hint: number }
   | { type: "ACCUMULATE_BACKGROUND_TOKENS"; promptTokens: number; completionTokens: number }
-  | { type: "RECORD_PROVIDER_REQUEST"; record: ProviderRequestRecord }
   | { type: "SET_NEXT_TURN_NOTE"; note: Partial<NextTurnNote> }
   | { type: "CLEAR_NEXT_TURN_NOTE" }
   | { type: "CONSUME_NEXT_TURN_NOTE" }

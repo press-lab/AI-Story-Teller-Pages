@@ -1,6 +1,5 @@
 import { relationshipFocusCard, relationshipItemId, relationshipTargets, relationshipText } from "../memory/relationships";
 import { ONE_PASS_MEMORY_ID, onePassMemoryInstruction, relationshipMemoryInstruction } from "../memory/onePassMemory";
-import { worldEnabled, worldEvolutionInstruction, worldRuntimeActive, selectedWorldPlots, selectedWorldTargets } from "../memory/worldEvolution";
 import { selectEventMemories } from "../memory/eventMemory";
 import { PLOT_MEMORY_THRESHOLD } from "../ai/authoringBestPractices";
 import type {
@@ -377,8 +376,7 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
   const turnScopeText = buildTurnScopeContract(adventure.activeState.responseLengthHint);
   const captureEligible = options.skipThoughtCapture ? [] : eligibleBrainsForCapture(adventure, triggerText);
   const memoryText = !options.skipThoughtCapture && adventure.memoryDetectionSettings.enabled
-    ? onePassMemoryInstruction(captureEligible, enabledMemoryCategories(adventure), [], adventure.components.some(c => c.type === "activePressure" && c.active && c.autoUpdate !== false),
-      undefined, adventure.worldEvolutionSettings) : undefined;
+    ? onePassMemoryInstruction(captureEligible, enabledMemoryCategories(adventure), [], adventure.components.some(c => c.type === "activePressure" && c.active && c.autoUpdate !== false)) : undefined;
   function pushExcluded(
     sourceType: ExcludedContextItem["sourceType"],
     id: string,
@@ -470,24 +468,13 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
           ? component.arcSimmerInstruction?.trim()
           : undefined;
     if (!component.content.trim() && !component.arcPremise?.trim() && !phaseDirection) return [];
-    const resolvedOutcome = component.arcState?.outcome;
-    const premiseHeader = !resolvedOutcome && component.arcPremise?.trim() ? `[Arc Premise: ${component.arcPremise.trim()}]\n` : "";
+    const premiseHeader = component.arcPremise?.trim() ? `[Arc Premise: ${component.arcPremise.trim()}]\n` : "";
     const directionBlock = phaseDirection ? `\n\n[ARC DIRECTION — ${phase.toUpperCase()}]\n${phaseDirection}` : "";
-    const eventLog = worldRuntimeActive(adventure) ? (component.arcState?.events ?? []).slice(-2).map(e => `${e.kind}: ${e.outcome}`).join("\n") : "";
-    const arcContent = resolvedOutcome ? `[Arc concluded: ${resolvedOutcome}]` : premiseHeader + (component.content.trim() || "(no entries yet)") + (eventLog ? `\nEstablished developments:\n${eventLog}` : "") + directionBlock;
+    const arcContent = premiseHeader + (component.content.trim() || "(no entries yet)") + directionBlock;
     const next = item(component.id, "component", component.title, arcContent, component.priority, component.protected, component.pinned, component.active, component.inclusionPolicy, "user");
     pushIncluded(next, `Current Story Arc loaded; priority=${component.priority}; arcPhase=${phase}.`);
     return [next];
   });
-
-  const selectedThreads = worldRuntimeActive(adventure) ? selectedWorldPlots(adventure, (options.currentInput ?? "") + " " + (options.latestModelOutput ?? "")) : [];
-  for (const thread of selectedThreads) {
-    const content = thread.outcome ? `Concluded ${thread.title}: ${thread.outcome}. Historical outcome, not an unresolved threat.`
-      : `Objective: ${thread.objective}\nPhase: ${thread.phase}\n${thread.events.slice(-2).map(e => `${e.kind}: ${e.outcome}`).join("\n")}`;
-    const next = item(thread.id, "component", `Plot thread: ${thread.title}`, content, 60, false, false, true, "always", "ai");
-    currentArcItems.push(next);
-    pushIncluded(next, "Persistent tracked plot thread; bounded current objective and latest developments.");
-  }
 
   // D. Author's Note — all active components with type === "authorNote"
   const authorNoteItems = prioritySort(adventure.components).flatMap((component) => {
@@ -581,22 +568,16 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
       })];
     });
     const thoughtsForContext = dedupeThoughtRecord(brain.thoughts);
-    const evolved = worldRuntimeActive(adventure) ? [...new Set(["currentState" as const, ...(brain.evolvedFields ?? [])])].flatMap(field => field && brain[field]?.trim() ? [`${field}: ${brain[field].slice(0, 500)}`] : []).join("\n") : "";
-    if (Object.keys(thoughtsForContext).length === 0 && !evolved) {
+    if (Object.keys(thoughtsForContext).length === 0) {
       pushExcluded("brain", brain.id, brain.characterName, "not_triggered", "Brain triggered but has no thoughts yet — nothing to inject.");
       return relationshipItems;
     }
-    const content = [evolved, Object.entries(thoughtsForContext).map(([k, v]) => `${k}: ${v}`).join("\n")].filter(Boolean).join("\n");
+    const content = Object.entries(thoughtsForContext).map(([k, v]) => `${k}: ${v}`).join("\n");
     const next = item(brain.id, "brain", brain.characterName, content, brain.priority, brain.protected, brain.pinned, brain.active, brain.inclusionPolicy, sourceToGeneratedBy(brain.source));
     pushIncluded(next, `Brain included by ${brain.pinned ? "pin" : forced ? "manual force" : brain.inclusionPolicy === "always" ? "always policy" : `trigger ${match.pattern}`}; priority=${brain.priority}; protected=${brain.protected}.`);
     return [next, ...relationshipItems];
   });
 
-  const worldScene = [options.currentInput, options.latestModelOutput, ...adventure.messages.slice(-4).map(m => m.content)].filter(Boolean).join(" ");
-  const worldInventoryIds = new Set([
-    ...selectedWorldTargets(adventure, new Set([...storyCardItems, ...brainItems, ...plotEssentialItems].map(i => i.id)), worldScene).map(t => t.id),
-    ...currentArcItems.slice(0, 4).map(i => i.id),
-  ]);
   // J. Next Output Bias (+ response length hint)
   if (memoryItem) {
     // Single-item sections need not print their title. Explicit target names let the
@@ -607,8 +588,7 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
       cards: storyCardItems.map(entry => entry.title),
       components: editableComponents.map(entry => ({ title: entry.title, type: adventure.components.find(c => c.id === entry.id)?.type })),
     })}`;
-    if (!worldEnabled(adventure) || adventure.worldEvolutionSettings!.relationshipEvolution) memoryItem.content += relationshipMemoryInstruction(relationshipTargets(adventure, new Set(brainItems.map(i => i.id))));
-    memoryItem.content += worldEvolutionInstruction(adventure, worldInventoryIds, worldScene);
+    memoryItem.content += relationshipMemoryInstruction(relationshipTargets(adventure, new Set(brainItems.map(i => i.id))));
     memoryItem.tokenEstimate = approximateTokenCount(memoryItem.content);
   }
 
@@ -796,9 +776,8 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
   const finalMemory = sections.flatMap(s => s.items).find(i => i.id === ONE_PASS_MEMORY_ID);
   if (finalMemory) {
     const ids = new Set(sections.flatMap(s => s.items).map(i => i.id));
-    finalMemory.content = finalMemory.content.replace(/\n\[DYNAMIC RELATIONSHIPS\][\s\S]*?\[\/DYNAMIC RELATIONSHIPS\]/g, "").replace(/\n\[WORLD EVOLUTION\][\s\S]*?\[\/WORLD EVOLUTION\]/g, "")
-      + (!worldEnabled(adventure) || adventure.worldEvolutionSettings!.relationshipEvolution ? relationshipMemoryInstruction(relationshipTargets(adventure, ids)) : "")
-      + worldEvolutionInstruction(adventure, new Set([...worldInventoryIds].filter(id => ids.has(id))), worldScene);
+    finalMemory.content = finalMemory.content.replace(/\n\[DYNAMIC RELATIONSHIPS\][\s\S]*?\[\/DYNAMIC RELATIONSHIPS\]/g, "")
+      + relationshipMemoryInstruction(relationshipTargets(adventure, ids));
     finalMemory.tokenEstimate = approximateTokenCount(finalMemory.content);
     sections = recalculate(sections);
   }

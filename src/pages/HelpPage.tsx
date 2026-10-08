@@ -141,11 +141,6 @@ npm.cmd run test:live   # optional, uses .env.test.local`}</pre>
           after cleanup, run cleanup again before approving that change.
         </p>
         <p>
-          Unrecorded developments appear in the same pending suggestion list. Their source narration
-          and any dropped candidates are available for review. Approving an evidence-only suggestion
-          marks it reviewed; it does not invent or apply a missing memory update.
-        </p>
-        <p>
           Pending proposals are not active context. Approving a proposal routes it to a Story Card, Brain
           update, Plot Essentials update, or legacy Rolling Summary update through reducer-backed paths.
         </p>
@@ -288,7 +283,7 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
     title: "World Blocks",
     category: "Side Menu",
     summary: "Manage AI Instructions, Plot Essentials, Current Story Arc, Author's Note, and custom components.",
-    tags: ["world blocks", "components", "plot essentials", "current arc", "author note", "ai instructions", "world evolution", "scenario configuration", "presets"],
+    tags: ["world blocks", "components", "plot essentials", "current arc", "author note", "ai instructions"],
     body: (
       <>
         <p>
@@ -298,11 +293,6 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
           competing wording. AI Instructions, Plot Essentials, and Author's Note are protected by default.
           Custom components can be active, pinned, protected, prioritized, or manual.
         </p>
-        <h4>Scenario Configuration — World Evolution</h4>
-        <p>Configure each adventure in New Adventure setup or Edit → Memory → World Evolution. World Evolution is saved with that adventure, including exports and duplicates; it is not a global Settings control. New scenarios default to Living World. Older saves stay disabled until explicitly enabled. Off preserves history and legacy memory behavior.</p>
-        <p>World Dynamism presets write the individual permissions: Quiet Sandbox is player-driven; Natural Evolution supports organic development; Living World enables independent NPCs and consequences; Unpredictable World permits more conflicts and major twists. Permitting betrayal never requires betrayal. Advanced World Evolution exposes every option independently, and individual changes display Custom unless they match a preset. Character protections always override scenario permissions.</p>
-        <p>Relationship Evolution controls automatic changes to enrolled Brain relationships, with their existing focus, review, revisions and history. Manual editing remains available. Character Development controls durable character changes; temporary thoughts and relationship dimensions stay separate. Cards own durable facts, Brains own thoughts and state, and arcs and plot threads own progression. Confirmed central-objective closure is recorded even in Open-ended mode when progression is enabled; a partial victory cannot close the conflict.</p>
-        <p>All structured outputs share four bounded records from the existing narration response. Confirmed closure and significant canon changes receive priority without changing their owner routes. Dropped consequential candidates are reported in Memory Suggestions with the accepted story for review. Quiet Sandbox omits unavailable plot and canon inventories; World Evolution Off adds no World Evolution prompt text.</p>
         <p>
           AI-generated updates may only touch component content when the component type is Plot Essentials,
           and only through approved mutation paths.

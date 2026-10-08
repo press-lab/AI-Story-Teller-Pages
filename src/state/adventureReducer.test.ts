@@ -85,15 +85,9 @@ const testedActionTypes = [
   "SET_LAST_SCENE_STATE_TURN",
   "RESET_RUNTIME_STATE",
   "ACCUMULATE_BACKGROUND_TOKENS",
-  "RECORD_PROVIDER_REQUEST",
   "SET_AUTO_SAVE_SETTINGS",
   "MARK_COMPONENT_UPDATED",
   "ADVANCE_ARC_PACING",
-  "APPLY_PLOT_EVENT",
-  "REGISTER_PLOT_THREAD",
-  "ROLLBACK_WORLD_CHANGE",
-  "SET_WORLD_ISSUE",
-  "SET_WORLD_EVOLUTION_SETTINGS",
   "SET_ARC_PHASE",
   "SET_ARC_CONTINUATIONS",
   "COMPLETE_ARC_TO_STORY_CARD",
@@ -114,7 +108,6 @@ function baseAdventure(): Adventure {
   const triggerRule = makeTriggerRule({ name: "Rule A" });
   return {
     ...createDefaultAdventure("Reducer Test"),
-    worldEvolutionSettings: undefined,
     components: [componentA, componentB],
     storyCards: [storyA, storyB],
     brains: [brain],

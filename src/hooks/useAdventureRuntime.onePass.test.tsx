@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDefaultAdventure, defaultModelConfig, makeStoryCard, makeTriggerRule } from "../state/defaults";
 import type { Adventure, MemoryDetectionSettings } from "../types/adventure";
 import { useAdventureRuntime } from "./useAdventureRuntime";
-import { beginProviderRequest } from "../providers/requestAccounting";
 import { sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
 import { runMemoryCycle, runSemanticPostTurnEvaluation } from "../triggers/semanticEngine";
 
@@ -17,9 +16,8 @@ vi.mock("../triggers/semanticEngine", async importOriginal => ({
   runSemanticPostTurnEvaluation: vi.fn(),
 }));
 
-function setup(enabled = true, customRule = false, worldEnabled = true) {
+function setup(enabled = true, customRule = false) {
   const initial = createDefaultAdventure("Call accounting");
-  initial.worldEvolutionSettings!.enabled = worldEnabled;
   initial.memoryDetectionSettings = { ...initial.memoryDetectionSettings, enabled: !enabled }; // deliberately stale saved settings
   initial.memoryAutoApprove = { ...initial.memoryAutoApprove, storyCard: true };
   if (customRule) initial.triggerRules.push(makeTriggerRule({ name: "Explicit custom rule", condition: "When Mira learns something", evaluationMode: "semantic" }));
@@ -33,29 +31,9 @@ function setup(enabled = true, customRule = false, worldEnabled = true) {
 }
 
 const story = "Mira explains that silver burns her skin.";
-const response = `${story}\n<memory_updates>${JSON.stringify({ updates: [{ kind: "card", target: "Mira", effects: [], content: "Silver burns Mira's skin.", evidence: story, reason: "Lasting vulnerability" }] })}</memory_updates>`;
+const response = `${story}\n<memory_updates>${JSON.stringify({ updates: [{ kind: "card", target: "Mira", content: "Silver burns Mira's skin.", evidence: story, reason: "Lasting vulnerability" }] })}</memory_updates>`;
 
 describe("runtime one-pass call accounting", () => {
-  it("persists categorized actual requests without counting aggregated message usage again", async () => {
-    vi.mocked(sendOpenAICompatibleChatCompletion).mockImplementationOnce(async options => {
-      const usage = { promptTokens: 120, completionTokens: 35, totalTokens: 155 };
-      beginProviderRequest(options.config, options.messages)(true, response, usage);
-      return { content: response, raw: {}, usage };
-    });
-    const { result } = setup();
-    await act(async () => { await result.current.runtime.submitTurn("Mira explains."); });
-    expect(result.current.adventure?.activeState.providerRequests).toHaveLength(1);
-    expect(result.current.adventure?.activeState.providerRequests?.[0]).toMatchObject({ purpose: "narration", turn: 1, usage: { promptTokens: 120, completionTokens: 35 } });
-  });
-  it("makes only one compact recovery attempt in an empty world sandbox and surfaces failure", async () => {
-    vi.mocked(sendOpenAICompatibleChatCompletion).mockResolvedValueOnce({ content: story, raw: {} }).mockResolvedValueOnce({ content: "invalid JSON", raw: {} });
-    const { result } = setup();
-    await act(async () => { await result.current.runtime.submitTurn("Mira explains."); });
-    await waitFor(() => expect(result.current.adventure?.worldEvolutionState?.issues[0].reason).toContain("Compact recovery failed"));
-    expect(sendOpenAICompatibleChatCompletion).toHaveBeenCalledTimes(2);
-    expect(runMemoryCycle).not.toHaveBeenCalled();
-    expect(result.current.adventure?.activeState.lastMemoryCycleTurn).toBe(1);
-  });
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(sendOpenAICompatibleChatCompletion).mockResolvedValue({ content: response, raw: {}, usage: { promptTokens: 2000, completionTokens: 140, totalTokens: 2140 } });
@@ -126,7 +104,6 @@ describe("runtime one-pass call accounting", () => {
     await act(async () => { await result.current.runtime.submitTurn("Mira explains."); });
     await waitFor(() => expect(sendOpenAICompatibleChatCompletion).toHaveBeenCalledTimes(2));
     expect(runMemoryCycle).not.toHaveBeenCalled();
-    await waitFor(() => expect(result.current.adventure?.worldEvolutionState?.issues.at(-1)?.status).toBe("recovered"));
     expect(result.current.adventure?.messages.at(-1)?.content).toBe(story);
     expect(result.current.adventure?.activeState.evaluationLog.some(log => log.errors.some(error => error.includes("Memory envelope missing")))).toBe(true);
   });
@@ -135,7 +112,7 @@ describe("runtime one-pass call accounting", () => {
     vi.mocked(sendOpenAICompatibleChatCompletion)
       .mockResolvedValueOnce({ content: story, raw: {} })
       .mockResolvedValueOnce({ content: "invalid JSON", raw: {} });
-    const { result } = setup(true, false, false);
+    const { result } = setup();
     await act(async () => { await result.current.runtime.submitTurn("Mira explains."); });
     await waitFor(() => expect(runMemoryCycle).toHaveBeenCalledTimes(1));
     expect(sendOpenAICompatibleChatCompletion).toHaveBeenCalledTimes(2);

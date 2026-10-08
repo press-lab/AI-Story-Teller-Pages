@@ -20,7 +20,7 @@ function fixture() {
 }
 
 const story = "Mira lowers the letter. The duke has ended the tribute demand. Silver burns her skin.";
-const update = { kind: "card", effects: [], target: "Mira", content: "Silver burns Mira's skin.", evidence: "Silver burns her skin.", reason: "Lasting vulnerability" };
+const update = { kind: "card", target: "Mira", content: "Silver burns Mira's skin.", evidence: "Silver burns her skin.", reason: "Lasting vulnerability" };
 const envelope = (updates: unknown[]) => `${story}\n<memory_updates>${JSON.stringify({ updates })}</memory_updates>`;
 
 describe("one-pass memory quality boundary", () => {
