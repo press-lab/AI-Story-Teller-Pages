@@ -326,6 +326,8 @@ export function useAdventureRuntime(
   // where the story goes next without architecting it. Gated by arcContinuationOptions
   // being undefined so it runs a single time per resolution.
   async function checkArcContinuation(snapshot: Adventure) {
+    // World evolution uses only the narration response; legacy arcs retain their old chooser.
+    if (snapshot.worldEvolutionSettings?.plotProgression !== "off") return;
     const arc = snapshot.components.find(
       (c) =>
         c.type === "currentArc" &&

@@ -285,7 +285,8 @@ function setArcPhase(component: ComponentEntry, phase: ArcPhase, turn: number | 
 
 function arcArchiveCard(component: ComponentEntry): StoryCard | undefined {
   const cardTitle = component.arcPremise?.trim() || component.title;
-  const cardBody = [component.arcPremise?.trim() ? `Arc: ${component.arcPremise.trim()}` : "", component.content.trim()]
+  const cardBody = [component.arcPremise?.trim() ? `Arc: ${component.arcPremise.trim()}` : "", component.content.trim(),
+    component.arcState?.outcome ? `Outcome: ${component.arcState.outcome}` : ""]
     .filter(Boolean)
     .join("\n");
   if (!cardBody.trim()) return undefined;
@@ -1376,11 +1377,30 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
         components: updateById(state.components, action.componentId, (item) => touch({ ...item, lastAutoUpdateTurn: action.turn })),
       });
     case "ADVANCE_ARC_PACING":
+      if (state.worldEvolutionSettings?.plotProgression !== undefined && state.worldEvolutionSettings.plotProgression !== "off") return state;
       return touchAdventure(state, {
         components: state.components.map((component) =>
           component.type === "currentArc" ? advanceArcComponent(component, action.triggeredIds, action.turn) : component,
         ),
       });
+    case "SET_WORLD_EVOLUTION_SETTINGS":
+      return touchAdventure(state, { worldEvolutionSettings: { ...state.worldEvolutionSettings!, ...action.patch } });
+    case "APPLY_PLOT_EVENT": {
+      if (!state.worldEvolutionSettings || state.worldEvolutionSettings.plotProgression === "off") return state;
+      if (action.event.offscreen && (state.worldEvolutionSettings?.npcAutonomy !== "independent" || !state.worldEvolutionSettings.offscreenEvents)) return state;
+      const arc = state.components.find(component => component.id === action.event.targetId && component.type === "currentArc" && component.active);
+      if (!arc || !arc.arcState || arc.arcState.outcome || !action.event.evidence.trim() || !action.event.outcome.trim()) return state;
+      const terminal = ["resolved", "failed", "abandoned"].includes(action.event.kind);
+      return touchAdventure(state, { components: updateById(state.components, arc.id, item => touch({
+        ...item,
+        arcState: {
+          ...item.arcState!,
+          phase: terminal ? "aftermath" : item.arcState!.phase,
+          outcome: terminal ? action.event.outcome : undefined,
+          events: [...(item.arcState!.events ?? []), action.event],
+        },
+      })) });
+    }
     case "SET_ARC_PHASE":
       return touchAdventure(state, {
         components: updateById(state.components, action.componentId, (item) => setArcPhase(item, action.phase, action.turn)),

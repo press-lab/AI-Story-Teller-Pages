@@ -18,6 +18,7 @@ function reduceAll(adventure: Adventure, actions: AdventureAction[]): Adventure 
 
 function makeSmokeAdventure(): Adventure {
   let adventure = createDefaultAdventure("Smoke Adventure");
+  adventure.worldEvolutionSettings = undefined;
   adventure = dispatch(adventure, {
     type: "UPSERT_COMPONENT",
     component: makeComponent({
@@ -484,6 +485,7 @@ describe("full turn smoke path", () => {
 
   it("does not advance Arc Director pacing from pinned context unless the thread actually matched", async () => {
     let adventure = createDefaultAdventure("Pinned Arc");
+    adventure.worldEvolutionSettings = undefined; // Legacy pacing fixture.
     adventure = dispatch(adventure, {
       type: "UPSERT_STORY_CARD",
       storyCard: makeStoryCard({

@@ -32,6 +32,31 @@ export type MemoryUpdateSource = "aiMemoryUpdate" | "memoryProposal";
 /** Arc Director runtime state — lives on a `currentArc` component. Deterministic; never set by an LLM. */
 export type ArcPhase = "simmer" | "escalate" | "break" | "aftermath";
 
+export interface WorldEvolutionSettings {
+  plotProgression: "off" | "natural" | "active";
+  plotResolution: "openEnded" | "decisive";
+  newPlotGeneration: "off" | "occasional" | "frequent";
+  npcAutonomy: "reactive" | "independent";
+  offscreenEvents: boolean;
+  characterDevelopment: boolean;
+  relationshipEvolution: boolean;
+  betrayal: "off" | "earned" | "unrestricted";
+  redemption: "off" | "earned" | "unrestricted";
+  hiddenMotivations: boolean;
+  canonReinterpretation: "off" | "review" | "allowed";
+}
+
+export type PlotEventKind = "progress" | "setback" | "revelation" | "confrontation" | "resolved" | "failed" | "abandoned";
+export interface PlotEvent {
+  kind: PlotEventKind;
+  targetId: string;
+  evidence: string;
+  outcome: string;
+  sourceTurnId: string;
+  turn: number;
+  offscreen?: boolean;
+}
+
 export interface ArcPacingState {
   phase: ArcPhase;
   /** Display tier 0–5, derived from total engagement vs the break threshold. */
@@ -42,6 +67,8 @@ export interface ArcPacingState {
   pendingBreak: boolean;
   /** Turn the arc entered the break phase, used to time the transition to aftermath. */
   brokeAtTurn?: number;
+  outcome?: string;
+  events?: PlotEvent[];
 }
 
 export type ArcPace = "short" | "medium" | "long" | "epic";
@@ -655,6 +682,7 @@ export interface Adventure {
   memoryAutoApprove: MemoryAutoApproveSettings;
   memoryDetectionSettings: MemoryDetectionSettings;
   systemTriggers: SystemTriggerSettings;
+  worldEvolutionSettings?: WorldEvolutionSettings;
 }
 
 export interface MemoryAutoApproveSettings {
@@ -839,6 +867,8 @@ export type AdventureAction =
   | { type: "MARK_STORY_CARD_UPDATED"; storyCardId: string; turn: number; proposalId?: string }
   | { type: "MARK_COMPONENT_UPDATED"; componentId: string; turn: number }
   | { type: "ADVANCE_ARC_PACING"; triggeredIds: string[]; turn: number }
+  | { type: "APPLY_PLOT_EVENT"; event: PlotEvent }
+  | { type: "SET_WORLD_EVOLUTION_SETTINGS"; patch: Partial<WorldEvolutionSettings> }
   | { type: "SET_ARC_PHASE"; componentId: string; phase: ArcPhase; turn?: number }
   | { type: "SET_ARC_CONTINUATIONS"; componentId: string; options: ArcContinuationOption[] }
   | { type: "COMPLETE_ARC_TO_STORY_CARD"; componentId: string }

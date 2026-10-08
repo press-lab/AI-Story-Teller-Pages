@@ -14,10 +14,24 @@ import type {
   TokenBudgetSettings,
   TriggerRule,
   ProviderRequestThrottle,
+  WorldEvolutionSettings,
 } from "../types/adventure";
 import { dedupeBrainThoughts } from "../memory/thoughtDedupe";
 import { applyGuardedStoryCardPolicy, restoreGuardedFactsToLiveContent } from "../memory/storyCardPolicy";
 import { createId, nowIso } from "../utils/id";
+
+export const defaultWorldEvolutionSettings: WorldEvolutionSettings = {
+  plotProgression: "active", plotResolution: "decisive", newPlotGeneration: "occasional",
+  npcAutonomy: "independent", offscreenEvents: true, characterDevelopment: true,
+  relationshipEvolution: true, betrayal: "off", redemption: "earned",
+  hiddenMotivations: true, canonReinterpretation: "review",
+};
+export const legacyWorldEvolutionSettings: WorldEvolutionSettings = {
+  plotProgression: "off", plotResolution: "openEnded", newPlotGeneration: "off",
+  npcAutonomy: "reactive", offscreenEvents: false, characterDevelopment: false,
+  relationshipEvolution: false, betrayal: "off", redemption: "off",
+  hiddenMotivations: false, canonReinterpretation: "off",
+};
 
 export const defaultTokenBudgetSettings: TokenBudgetSettings = {
   maxContextTokens: 16000,
@@ -237,6 +251,7 @@ export function createDefaultAdventure(title = "Untitled Adventure"): Adventure 
     memoryAutoApprove: { ...defaultMemoryAutoApproveSettings },
     memoryDetectionSettings: defaultMemoryDetectionSettings,
     systemTriggers: defaultSystemTriggerSettings,
+    worldEvolutionSettings: { ...defaultWorldEvolutionSettings },
   };
 }
 
@@ -506,6 +521,7 @@ export function normalizeAdventure(adventure: Adventure): Adventure {
   return {
     ...baseline,
     ...adventure,
+    worldEvolutionSettings: { ...legacyWorldEvolutionSettings, ...(adventure.worldEvolutionSettings ?? {}) },
     openingScene: adventure.openingScene ?? "",
     messages,
     metadata: adventure.metadata ?? {},

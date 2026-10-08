@@ -376,7 +376,9 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
   const turnScopeText = buildTurnScopeContract(adventure.activeState.responseLengthHint);
   const captureEligible = options.skipThoughtCapture ? [] : eligibleBrainsForCapture(adventure, triggerText);
   const memoryText = !options.skipThoughtCapture && adventure.memoryDetectionSettings.enabled
-    ? onePassMemoryInstruction(captureEligible, enabledMemoryCategories(adventure), [], adventure.components.some(c => c.type === "activePressure" && c.active && c.autoUpdate !== false)) : undefined;
+    ? onePassMemoryInstruction(captureEligible, enabledMemoryCategories(adventure), [], adventure.components.some(c => c.type === "activePressure" && c.active && c.autoUpdate !== false),
+      adventure.worldEvolutionSettings?.plotProgression !== "off" ? adventure.components.find(c => c.type === "currentArc" && c.active && !c.arcState?.outcome)?.id : undefined,
+      adventure.worldEvolutionSettings) : undefined;
   function pushExcluded(
     sourceType: ExcludedContextItem["sourceType"],
     id: string,
@@ -468,9 +470,10 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
           ? component.arcSimmerInstruction?.trim()
           : undefined;
     if (!component.content.trim() && !component.arcPremise?.trim() && !phaseDirection) return [];
-    const premiseHeader = component.arcPremise?.trim() ? `[Arc Premise: ${component.arcPremise.trim()}]\n` : "";
+    const resolvedOutcome = component.arcState?.outcome;
+    const premiseHeader = !resolvedOutcome && component.arcPremise?.trim() ? `[Arc Premise: ${component.arcPremise.trim()}]\n` : "";
     const directionBlock = phaseDirection ? `\n\n[ARC DIRECTION — ${phase.toUpperCase()}]\n${phaseDirection}` : "";
-    const arcContent = premiseHeader + (component.content.trim() || "(no entries yet)") + directionBlock;
+    const arcContent = resolvedOutcome ? `[Arc concluded: ${resolvedOutcome}]` : premiseHeader + (component.content.trim() || "(no entries yet)") + directionBlock;
     const next = item(component.id, "component", component.title, arcContent, component.priority, component.protected, component.pinned, component.active, component.inclusionPolicy, "user");
     pushIncluded(next, `Current Story Arc loaded; priority=${component.priority}; arcPhase=${phase}.`);
     return [next];

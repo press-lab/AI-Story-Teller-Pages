@@ -88,6 +88,8 @@ const testedActionTypes = [
   "SET_AUTO_SAVE_SETTINGS",
   "MARK_COMPONENT_UPDATED",
   "ADVANCE_ARC_PACING",
+  "APPLY_PLOT_EVENT",
+  "SET_WORLD_EVOLUTION_SETTINGS",
   "SET_ARC_PHASE",
   "SET_ARC_CONTINUATIONS",
   "COMPLETE_ARC_TO_STORY_CARD",
@@ -108,6 +110,7 @@ function baseAdventure(): Adventure {
   const triggerRule = makeTriggerRule({ name: "Rule A" });
   return {
     ...createDefaultAdventure("Reducer Test"),
+    worldEvolutionSettings: undefined,
     components: [componentA, componentB],
     storyCards: [storyA, storyB],
     brains: [brain],

@@ -1,4 +1,4 @@
-import { ONE_PASS_MEMORY_ID, onePassMemoryActions, parseOnePassMemory } from "../memory/onePassMemory";
+import { ONE_PASS_MEMORY_ID, onePassMemoryActions, parseOnePassMemory, plotEventActions } from "../memory/onePassMemory";
 import { buildContext, extractInlineThoughts } from "../contextBuilder/contextBuilder";
 import { runContinuityCheck, scanForRiskyClaims } from "../continuityLint";
 import { evaluateTriggerRules, type TriggerEvaluationEvent } from "../triggers/triggerEngine";
@@ -120,6 +120,7 @@ export async function applyProviderResponse({
         : [memory.error, response.memoryDiscardReason].filter(Boolean).join(" ") || undefined);
     const before = next;
     next = reduceActions(next, actions);
+    if (!continuityCorrected) next = reduceActions(next, plotEventActions(next, memory.plotEvents ?? [], finalContent, messageId));
     const visibleThoughts = next.brains.filter(b => b.printThoughts).flatMap(b => {
       const old = before.brains.find(previous => previous.id === b.id);
       return Object.entries(b.thoughts).filter(([key, value]) => old?.thoughts[key] !== value)

@@ -1,5 +1,5 @@
 import { relationshipCandidate, type RelationshipTarget } from "./relationships";
-import type { Adventure, AdventureAction, BrainEntry, ContextBuildResult, MemoryProposal, StoryCardType } from "../types/adventure";
+import type { Adventure, AdventureAction, BrainEntry, ContextBuildResult, MemoryProposal, PlotEvent, StoryCardType, WorldEvolutionSettings } from "../types/adventure";
 import { createId, nowIso } from "../utils/id";
 import { cardMatchesName } from "../state/defaults";
 import { applyAIMemoryUpdate } from "./applyAIMemoryUpdate";
@@ -18,11 +18,11 @@ Eligible relationship targets: ${JSON.stringify(relationships)}
 [/DYNAMIC RELATIONSHIPS]`;
 }
 
-export function onePassMemoryInstruction(brains: BrainEntry[], categories: string[], relationships: RelationshipTarget[] = [], hasPressure = false): string {
+export function onePassMemoryInstruction(brains: BrainEntry[], categories: string[], relationships: RelationshipTarget[] = [], hasPressure = false, arcId?: string, world?: WorldEvolutionSettings): string {
   return `[ONE-PASS MEMORY]
 Write the requested narrative first, preserving its quality and visible word limit. Then append exactly one hidden JSON envelope:
 <memory_updates>{"updates":[]}</memory_updates>
-An empty updates array is normal. Never invent changes to fill it. Maximum 4 small updates and at most ONE new card per turn. No other thought/memory tags.
+${arcId ? `The same envelope may include "plotEvents": [{"kind":"progress|setback|revelation|confrontation|resolved|failed|abandoned","targetId":"${arcId}","evidence":"exact visible story quote","outcome":"brief established result","offscreen":false}]. Emit only events actually established in visible narration. Set offscreen true for actions away from the player. Resolve only with a conclusive outcome; do not invent a successor threat merely to extend the arc. Ordinary sandbox scenes need no event. ${world?.plotProgression === "active" ? "Pursue meaningful conclusions without a schedule." : "Let plot progress arise naturally."} ${world?.offscreenEvents && world?.npcAutonomy === "independent" ? "NPCs may act offscreen." : "Do not narrate autonomous offscreen plot events."}` + "\n" : ""}An empty updates array is normal. Never invent changes to fill it. Maximum 4 small updates and at most ONE new card per turn. No other thought/memory tags.
 Each update has: kind, target, content, evidence, reason. evidence is an EXACT quote from this turn's player input or your visible story, establishing the change. reason explains why it will matter beyond this scene. Do not treat a suggestion, possibility, or plan as an accomplished fact. Do not give absent characters knowledge they did not receive.
 Allowed kinds:
 - "thought": target is an eligible character name below; content is ONE new first-person internal reaction, belief, or private plan (max 45 words). Capture only if the character participated or learned something this turn. Never repeat existing thoughts or put generic world facts here.
@@ -39,7 +39,7 @@ Only output changes supported by this turn and consistent with ALL supplied cano
 }
 
 /** A broken/truncated tail must never leak JSON into the story or discard good prose. */
-export function parseOnePassMemory(text: string): { story: string; updates: unknown[]; error?: string } {
+export function parseOnePassMemory(text: string): { story: string; updates: unknown[]; plotEvents?: unknown[]; error?: string } {
   const start = text.search(/<memory_(?:updates\b|[a-z]*$)/i);
   if (start < 0) return { story: text, updates: [], error: "Memory envelope missing; story preserved." };
   const story = text.slice(0, start).trimEnd();
@@ -49,10 +49,34 @@ export function parseOnePassMemory(text: string): { story: string; updates: unkn
   try {
     const parsed: unknown = JSON.parse(match[1]);
     if (!parsed || typeof parsed !== "object" || !("updates" in parsed) || !Array.isArray(parsed.updates)) throw new Error();
-    return { story, updates: parsed.updates };
+    return { story, updates: parsed.updates, ...("plotEvents" in parsed && Array.isArray(parsed.plotEvents) ? { plotEvents: parsed.plotEvents } : {}) };
   } catch {
     return { story, updates: [], error: "Invalid memory JSON; story preserved." };
   }
+}
+
+export function plotEventActions(adventure: Adventure, rawEvents: unknown[], story: string, sourceTurnId: string): AdventureAction[] {
+  if (!adventure.worldEvolutionSettings || adventure.worldEvolutionSettings.plotProgression === "off") return [];
+  const kinds = new Set(["progress", "setback", "revelation", "confrontation", "resolved", "failed", "abandoned"]);
+  const normalizedStory = norm(story);
+  return rawEvents.slice(0, 2).flatMap(raw => {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
+    const candidate = raw as Record<string, unknown>;
+    if (typeof candidate.kind !== "string" || !kinds.has(candidate.kind)
+      || typeof candidate.targetId !== "string" || typeof candidate.evidence !== "string"
+      || typeof candidate.outcome !== "string" || candidate.outcome.length > 200
+      || norm(candidate.outcome).length < 8 || !norm(candidate.evidence).includes(norm(candidate.outcome))
+      || norm(candidate.evidence).length < 12 || !normalizedStory.includes(norm(candidate.evidence))) return [];
+    const arc = adventure.components.find(c => c.id === candidate.targetId && c.type === "currentArc" && c.active && c.arcState && !c.arcState.outcome);
+    if (!arc) return [];
+    const offscreen = candidate.offscreen === true || /\b(?:meanwhile|elsewhere|offscreen|far away|unbeknownst)\b/i.test(candidate.evidence);
+    if (offscreen && (adventure.worldEvolutionSettings?.npcAutonomy !== "independent"
+      || !adventure.worldEvolutionSettings.offscreenEvents)) return [];
+    const event: PlotEvent = { kind: candidate.kind as PlotEvent["kind"], targetId: arc.id,
+      evidence: candidate.evidence, outcome: candidate.outcome, sourceTurnId, turn: adventure.activeState.turn,
+      offscreen };
+    return [{ type: "APPLY_PLOT_EVENT" as const, event }];
+  });
 }
 
 const norm = (text: string) => text.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();

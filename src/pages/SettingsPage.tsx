@@ -10,6 +10,7 @@ import type {
   ProviderRequestThrottle,
   SemanticEvaluationSettings,
   TokenBudgetSettings,
+  WorldEvolutionSettings,
 } from "../types/adventure";
 import type { GlobalAdventureSettings, ProviderPreset, RuntimeProviderSettings, UiPreferences } from "./pageTypes";
 import { defaultUiPreferences } from "./pageTypes";
@@ -163,9 +164,34 @@ export function SettingsPage({
   const backgroundStatus = activeSettings.semanticEvaluationSettings.enabled
     ? `every ${activeSettings.semanticEvaluationSettings.semanticEvalEveryNTurns ?? 1} turns`
     : "off";
+  const world = adventure?.worldEvolutionSettings;
+  function updateWorld<K extends keyof WorldEvolutionSettings>(key: K, value: WorldEvolutionSettings[K]) {
+    dispatch({ type: "SET_WORLD_EVOLUTION_SETTINGS", patch: { [key]: value } });
+  }
 
   return (
     <section className="page editor-surface settings-page">
+      {adventure && world && <article className="panel settings-card">
+        <h3>World Evolution</h3>
+        <p className="muted">These settings are saved with this scenario. Plot progression and offscreen plot event gates are active. The other controls are saved but their runtime behavior is not implemented yet.</p>
+        {([
+          ["plotProgression", "Plot progression", ["off", "natural", "active"]],
+          ["plotResolution", "Plot resolution", ["openEnded", "decisive"]],
+          ["newPlotGeneration", "New plots", ["off", "occasional", "frequent"]],
+          ["npcAutonomy", "NPC autonomy", ["reactive", "independent"]],
+          ["betrayal", "Betrayal", ["off", "earned", "unrestricted"]],
+          ["redemption", "Redemption", ["off", "earned", "unrestricted"]],
+          ["canonReinterpretation", "Canon reinterpretation", ["off", "review", "allowed"]],
+        ] as const).map(([key, label, options]) => <Field key={key} label={label}>
+          <select value={world[key]} onChange={event => updateWorld(key, event.target.value as WorldEvolutionSettings[typeof key])}>
+            {options.map(option => <option key={option} value={option}>{option}</option>)}
+          </select>
+        </Field>)}
+        {([
+          ["offscreenEvents", "Offscreen events"], ["characterDevelopment", "Character development"],
+          ["relationshipEvolution", "Relationship evolution"], ["hiddenMotivations", "Hidden motivations"],
+        ] as const).map(([key, label]) => <CheckboxField key={key} label={label} checked={world[key]} onChange={value => updateWorld(key, value)} />)}
+      </article>}
       <div className="editor-page-summary">
         <p className="muted">
           App-wide controls for reading comfort, model routing, background cost, memory detection, and sync.
