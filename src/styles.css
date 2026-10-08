@@ -2203,6 +2203,16 @@ button.primary-action:hover:not(:disabled),
   padding: 0;
 }
 
+.play-sidebar-panel-body .memory-inbox-page {
+  grid-template-columns: minmax(0, 1fr);
+  width: 100%;
+}
+
+.play-sidebar-panel-body .memory-inbox-page > * {
+  grid-column: 1;
+  min-width: 0;
+}
+
 .play-sidebar-panel-body .editor-surface,
 .play-sidebar-panel-body .editor-surface > *,
 .play-sidebar-panel-body .split-editor-list,
