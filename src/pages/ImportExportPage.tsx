@@ -256,7 +256,7 @@ export function ImportExportPage({
           </div>
           <div className="import-file-picker">
             <Field label="Backup file">
-              <input type="file" onChange={loadAdventureFile} />
+              <input type="file" accept=".json,application/json" onChange={loadAdventureFile} />
             </Field>
             {importFilename && <span className="status-pill">Loaded {importFilename}</span>}
           </div>

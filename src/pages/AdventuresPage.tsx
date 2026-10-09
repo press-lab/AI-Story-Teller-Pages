@@ -838,7 +838,7 @@ export function AdventuresPage({
                   </button>
                 </div>
                 <Field label="Upload .json file">
-                  <input type="file" onChange={readStoryCardFile} />
+                  <input type="file" accept="application/json,.json" onChange={readStoryCardFile} />
                 </Field>
                 <Field label="Paste Story Card JSON">
                   <textarea
@@ -900,7 +900,7 @@ export function AdventuresPage({
 
           <div className="import-file-picker">
             <Field label="AIST adventure JSON">
-              <input type="file" onChange={readAistAdventureFile} />
+              <input type="file" accept=".json,application/json" onChange={readAistAdventureFile} />
             </Field>
             {aistImportFilename && <span className="status-pill">Loaded {aistImportFilename}</span>}
           </div>
