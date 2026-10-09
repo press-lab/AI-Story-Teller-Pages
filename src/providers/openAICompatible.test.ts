@@ -1,3 +1,5 @@
+import { subscribeApiCalls } from "./apiCallAccounting";
+import type { ApiCallRecord } from "../types/adventure";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   GLM_REASONING_RESERVE_TOKENS,
@@ -454,4 +456,38 @@ describe("sendOpenAICompatibleChatCompletion", () => {
     await second;
     expect(spy).toHaveBeenCalledTimes(2);
   });
+});
+
+
+it("accounts for each actual retry and its reported usage", async () => {
+  const records: ApiCallRecord[] = [];
+  const unsubscribe = subscribeApiCalls(record => records.push(record));
+  try {
+    const fetchMock = mockFetch(200, { choices: [{ finish_reason: "length", message: { content: null } }], usage: { prompt_tokens: 50, completion_tokens: 80, total_tokens: 130 } });
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ message: { content: "A final answer." } }], usage: { prompt_tokens: 55, completion_tokens: 20, total_tokens: 75 } })));
+    await sendOpenAICompatibleChatCompletion({ config: { ...config, model: "z-ai/glm-5.3-flash", sessionId: "test-adventure" }, messages: [], purpose: "narration" });
+    const finished = records.filter(record => record.status !== "started");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(new Set(finished.map(record => record.id)).size).toBe(2);
+    expect(finished.map(record => record.usage?.promptTokens)).toEqual([50, 55]);
+    expect(finished.every(record => record.purpose === "narration" && record.sessionId === "test-adventure")).toBe(true);
+  } finally { unsubscribe(); }
+});
+
+it("does not retry recovery even when a reasoning model runs out of output tokens", async () => {
+  const fetchMock = mockFetch(200, { choices: [{ finish_reason: "length", message: { content: null } }] });
+  await expect(sendOpenAICompatibleChatCompletion({ config: { ...config, model: "z-ai/glm-5.3-flash" }, messages: [], purpose: "memoryRecovery", retry: false })).rejects.toThrow("no content");
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+});
+
+
+it("records default background usage without requiring a provider total_tokens field", async () => {
+  const records: ApiCallRecord[] = [];
+  const unsubscribe = subscribeApiCalls(record => records.push(record));
+  try {
+    mockFetch(200, { choices: [{ message: { content: "Done." } }], usage: { prompt_tokens: 70, completion_tokens: 15 } });
+    await sendOpenAICompatibleChatCompletion({ config, messages: [] });
+    expect(records.at(-1)).toMatchObject({ purpose: "otherBackground", status: "succeeded",
+      usage: { promptTokens: 70, completionTokens: 15, totalTokens: 85 } });
+  } finally { unsubscribe(); }
 });

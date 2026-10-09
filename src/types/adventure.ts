@@ -12,6 +12,8 @@ export interface Message {
   content: string;
   inputMode?: InputMode;
   usage?: ProviderUsage;
+  /** Persisted on the final narrative; old saves need no migration. */
+  memoryRecovery?: { turn: number; status: "pending" | "complete" };
   createdAt: ISODateString;
 }
 
@@ -564,6 +566,24 @@ export interface StoryEditHistoryEntry {
   redo: StoryEditPatch;
 }
 
+export type ApiCallPurpose = "narration" | "correction" | "memoryRecovery" | "otherBackground";
+export interface ApiCallRecord {
+  id: string;
+  sessionId?: string;
+  purpose: ApiCallPurpose;
+  model: string;
+  startedAt: string;
+  status: "started" | "succeeded" | "failed";
+  usage?: ProviderUsage;
+}
+export interface ApiCallTotals {
+  requests: number;
+  failedRequests: number;
+  unreportedUsage: number;
+  promptTokens: number;
+  completionTokens: number;
+}
+
 export interface ActiveState {
   turn: number;
   forceIncludeNextTurn: ForceIncludeEntry[];
@@ -584,6 +604,12 @@ export interface ActiveState {
   challengeMode: boolean;
   /** Turn number when the memory cycle last ran for this adventure. */
   lastMemoryCycleTurn?: number;
+  /** Persist before sending recovery; failures/reloads wait for the next batch interval. */
+  lastMemoryRecoveryAttemptTurn?: number;
+  /** Successful story turns only: OOC messages and regeneration do not advance recovery. */
+  memoryRecoveryStoryTurn?: number;
+  apiCalls?: ApiCallRecord[];
+  apiCallTotals?: Partial<Record<ApiCallPurpose, ApiCallTotals>>;
   /** Turn number when semantic evaluation last ran. */
   lastSemanticEvalTurn?: number;
   /** Turn number when scene state last ran. */
@@ -837,6 +863,11 @@ export type AdventureAction =
   | { type: "SET_MEMORY_DETECTION_SETTINGS"; settings: MemoryDetectionSettings }
   | { type: "SET_STATE_FLAG"; key: string; value: string | number | boolean }
   | { type: "SET_RESPONSE_LENGTH_HINT"; hint: number }
+  | { type: "RECORD_API_CALL"; record: ApiCallRecord }
+  | { type: "ADVANCE_MEMORY_RECOVERY_TURN" }
+  | { type: "QUEUE_MEMORY_RECOVERY"; messageId: string; turn: number }
+  | { type: "CLAIM_MEMORY_RECOVERY"; turn: number }
+  | { type: "COMPLETE_MEMORY_RECOVERY"; sources: Array<{ id: string; content: string }>; actions: AdventureAction[] }
   | { type: "ACCUMULATE_BACKGROUND_TOKENS"; promptTokens: number; completionTokens: number }
   | { type: "SET_NEXT_TURN_NOTE"; note: Partial<NextTurnNote> }
   | { type: "CLEAR_NEXT_TURN_NOTE" }

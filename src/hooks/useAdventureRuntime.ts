@@ -1,9 +1,11 @@
+import { subscribeApiCalls } from "../providers/apiCallAccounting";
 import { ONE_PASS_MEMORY_ID, MEMORY_OUTPUT_RESERVE } from "../memory/onePassMemory";
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { buildContext } from "../contextBuilder/contextBuilder";
 import { saveAdventure } from "../db/adventureDb";
 import { scanEventMemories } from "../memory/eventMemoryScan";
 import { regenerateProposalContent } from "../memory/memoryDetection";
+import { memoryRecoveryBatch } from "../memory/memoryRecoveryBatch";
 import { runCompactMemoryFallback } from "../memory/compactMemoryFallback";
 import { generateArcContinuations, generateArcDirector, generateArcFromHistory, generateBrainFromName as generateBrainEntry, generateComponentContent, pickConvergentContinuation } from "../ai/generators";
 import { PLOT_ESSENTIALS_BEST_PRACTICES } from "../ai/authoringBestPractices";
@@ -29,7 +31,6 @@ import {
   runManualPEComponentUpdate,
   runManualPlotEssentialsUpdate,
   runManualStoryCardsUpdate,
-  runMemoryCycle,
   runMemoryReconcile,
   runPlotAIBuilder,
   runRememberThis,
@@ -118,7 +119,7 @@ async function sendStoryCompletionWithGuard({
   responseLengthHint: number;
   playerInput: string;
 }): Promise<{ content: string; usage?: ProviderUsage }> {
-  const response = await sendOpenAICompatibleChatCompletion({ messages, config });
+  const response = await sendOpenAICompatibleChatCompletion({ messages, config, purpose: "narration" });
   const guard = evaluateStoryResponseGuard(response.content, responseLengthHint, playerInput);
   if (!guard.needsCorrection) return response;
 
@@ -134,6 +135,7 @@ async function sendStoryCompletionWithGuard({
     // This tightly constrained rewrite does not benefit from hidden reasoning. DeepSeek's
     // default thinking mode can otherwise consume the entire small correction budget.
     thinking: "disabled",
+    purpose: "correction",
   });
   return { content: corrected.content, usage: combineProviderUsage(response.usage, corrected.usage) };
 }
@@ -176,6 +178,7 @@ export function useAdventureRuntime(
   const semanticInFlight = useRef(new Set<string>());
   const memoryFallbackInFlight = useRef(new Set<string>());
   const arcInFlight = useRef(new Set<string>());
+  const apiActionsRef = useRef<AdventureAction[]>([]);
   const queuedUpdatesRef = useRef<PendingAdventureUpdate[]>([]);
   const wasHiddenRef = useRef(false);
   const pendingRetryRef = useRef(false);
@@ -218,6 +221,13 @@ export function useAdventureRuntime(
     });
   }, [setAdventure, setSaveStatus, refreshAdventures]);
 
+  useEffect(() => subscribeApiCalls(record => {
+    if (!adventureRef.current || record.sessionId !== `ai-story-teller:${adventureRef.current.id}`.slice(0, 256)) return;
+    const action: AdventureAction = { type: "RECORD_API_CALL", record };
+    if (isSubmittingRef.current) apiActionsRef.current.push(action);
+    else applyActionsAndPersist([action]);
+  }), [applyActionsAndPersist]);
+
   function queuePendingUpdate(actions: AdventureAction[], source: PendingAdventureUpdate["source"]) {
     const update: PendingAdventureUpdate = {
       id: createId("pending"),
@@ -230,6 +240,8 @@ export function useAdventureRuntime(
   }
 
   function mergeQueuedUpdates(adventureState: Adventure): Adventure {
+    adventureState = reduceActions(adventureState, apiActionsRef.current);
+    apiActionsRef.current = [];
     if (queuedUpdatesRef.current.length === 0) return adventureState;
     let next = adventureState;
     for (const update of queuedUpdatesRef.current) {
@@ -246,32 +258,36 @@ export function useAdventureRuntime(
 
   async function startMemoryFallback(snapshot: Adventure) {
     if (!snapshot.memoryDetectionSettings.enabled || memoryFallbackInFlight.current.has(snapshot.id)) return;
-    const latest = snapshot.activeState.evaluationLog[0];
-    const onePassFailed = latest?.actionsExecuted.includes("One-pass memory: no additional API call")
-      && latest.errors.some(message => /Memory envelope missing|Incomplete or oversized memory envelope|Invalid memory JSON/.test(message));
-    if (!onePassFailed) return;
-    const everyN = Math.max(1, snapshot.memoryDetectionSettings.everyNTurns ?? 1);
-    const last = snapshot.activeState.lastMemoryCycleTurn;
-    if (last !== undefined && snapshot.activeState.turn - last < everyN) return;
+    const batch = memoryRecoveryBatch(snapshot);
+    if (!batch.length) return;
 
     memoryFallbackInFlight.current.add(snapshot.id);
     try {
+      // Persist the attempt before sending. A crash cannot immediately replay a billable call.
+      snapshot = adventureReducer(snapshot, { type: "CLAIM_MEMORY_RECOVERY", turn: snapshot.activeState.memoryRecoveryStoryTurn ?? 0 });
+      setAdventure(snapshot);
+      adventureRef.current = snapshot;
+      await saveAdventure(snapshot);
       const config = buildBackgroundConfig(snapshot, providerSettingsRef.current);
-      const compact = await runCompactMemoryFallback(snapshot, config);
+      const compact = await runCompactMemoryFallback(snapshot, config, batch);
       const compactUsage: AdventureAction = {
         type: "ACCUMULATE_BACKGROUND_TOKENS",
         promptTokens: compact.tokenUsage.promptTokens,
         completionTokens: compact.tokenUsage.completionTokens,
       };
-      const actions = compact.valid
-        ? [...compact.actions, { type: "SET_LAST_MEMORY_CYCLE_TURN" as const, turn: snapshot.activeState.turn }, compactUsage]
-        : [...(await runMemoryCycle(snapshot, config)).actions, compactUsage];
+      const actions: AdventureAction[] = [compactUsage];
+      if (compact.valid) actions.push({ type: "COMPLETE_MEMORY_RECOVERY", sources: batch.map(({ id, content }) => ({ id, content })), actions: compact.actions });
+      else actions.push({ type: "LOG_EVALUATION_RESULT", entry: {
+        id: createId("eval"), turn: snapshot.activeState.turn, createdAt: nowIso(),
+        conditionsEvaluated: [], conditionsFired: [], generatedContent: [],
+        actionsExecuted: ["Memory recovery: one attempt; batch retained"],
+        errors: ["Recovery failed or returned invalid JSON. Pending final narratives will retry after five story turns."],
+      } });
       if (adventureRef.current?.id !== snapshot.id) return;
-      if (isSubmittingRef.current) {
-        queuePendingUpdate(actions, "memoryCycle");
-        return;
-      }
-      applyActionsAndPersist(actions);
+      const next = reduceActions(mergeQueuedUpdates(adventureRef.current), actions);
+      adventureRef.current = next;
+      setAdventure(next);
+      await saveAdventure(next);
     } catch (fallbackError) {
       if (adventureRef.current?.id === snapshot.id) {
         setError(fallbackError instanceof Error ? fallbackError.message : "Automatic memory fallback failed.");
@@ -280,6 +296,21 @@ export function useAdventureRuntime(
       memoryFallbackInFlight.current.delete(snapshot.id);
     }
   }
+
+  // Resume an already-due batch on load. A persisted claim suppresses replay after a
+  // crash during a request; the retained sources retry after the next five story turns.
+  useEffect(() => {
+    const current = adventureRef.current;
+    if (!current || isSubmittingRef.current) return;
+    const snapshot = { ...current, memoryDetectionSettings: { ...globalMemorySettingsRef.current } };
+    if (!memoryRecoveryBatch(snapshot).length) return;
+    isSubmittingRef.current = true;
+    setLoading(true);
+    void startMemoryFallback(snapshot).finally(() => {
+      isSubmittingRef.current = false;
+      setLoading(false);
+    });
+  }, [adventure?.id]);
 
   async function startSemanticEvaluation(snapshot: Adventure) {
     if (!snapshot.semanticEvaluationSettings.enabled || semanticInFlight.current.has(snapshot.id)) return;
@@ -378,7 +409,7 @@ export function useAdventureRuntime(
             hiddenOutputReserveTokens(context),
           );
           if (mode === "comms") {
-            return sendOpenAICompatibleChatCompletion({ messages, config: storyConfig });
+            return sendOpenAICompatibleChatCompletion({ messages, config: storyConfig, purpose: "narration" });
           }
           return sendStoryCompletionWithGuard({
             messages,
@@ -394,9 +425,8 @@ export function useAdventureRuntime(
       setContextResult(result.postTurnContext);
       await saveAdventure(next);
       setSaveStatus("saved");
-      isSubmittingRef.current = false;
       if (mode !== "comms") {
-        void startMemoryFallback(next);
+        await startMemoryFallback(next);
         void startSemanticEvaluation(next);
         void checkArcContinuation(next);
       }
@@ -417,12 +447,17 @@ export function useAdventureRuntime(
         wasHiddenRef.current = false;
         setError(errMsg);
       }
-      const errorState = snapshotWithUserMsg ?? base;
+      const errorState = mergeQueuedUpdates(snapshotWithUserMsg ?? base);
       setAdventure(errorState);
       await saveAdventure(errorState);
     } finally {
       setLoading(false);
       isSubmittingRef.current = false;
+      if (apiActionsRef.current.length) {
+        const actions = apiActionsRef.current;
+        apiActionsRef.current = [];
+        applyActionsAndPersist(actions);
+      }
       void refreshAdventures();
     }
   }
@@ -464,17 +499,22 @@ export function useAdventureRuntime(
       setContextResult(result.postTurnContext);
       await saveAdventure(next);
       setSaveStatus("saved");
-      isSubmittingRef.current = false;
-      void startMemoryFallback(next);
+      await startMemoryFallback(next);
       void startSemanticEvaluation(next);
       void checkArcContinuation(next);
     } catch (providerError) {
       setError(providerError instanceof Error ? providerError.message : "Continue failed.");
-      setAdventure(adventure);
-      await saveAdventure(adventure);
+      const failed = mergeQueuedUpdates(adventure);
+      setAdventure(failed);
+      await saveAdventure(failed);
     } finally {
       setLoading(false);
       isSubmittingRef.current = false;
+      if (apiActionsRef.current.length) {
+        const actions = apiActionsRef.current;
+        apiActionsRef.current = [];
+        applyActionsAndPersist(actions);
+      }
       void refreshAdventures();
     }
   }
@@ -518,15 +558,21 @@ export function useAdventureRuntime(
       setContextResult(buildContext(next, { latestModelOutput: applied.responseContent }));
       await saveAdventure(next);
       setSaveStatus("saved");
-      isSubmittingRef.current = false;
-      void startMemoryFallback(next);
+      await startMemoryFallback(next);
       void startSemanticEvaluation(next);
     } catch (providerError) {
       setError(providerError instanceof Error ? providerError.message : "Regeneration failed.");
-      setAdventure(next);
+      const failed = mergeQueuedUpdates(adventure);
+      setAdventure(failed);
+      await saveAdventure(failed);
     } finally {
       setLoading(false);
       isSubmittingRef.current = false;
+      if (apiActionsRef.current.length) {
+        const actions = apiActionsRef.current;
+        apiActionsRef.current = [];
+        applyActionsAndPersist(actions);
+      }
     }
   }
 

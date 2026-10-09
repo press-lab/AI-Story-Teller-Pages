@@ -1,4 +1,5 @@
-import type { ChatMessage, ProviderConfig, ProviderRequestThrottle, ProviderUsage } from "../types/adventure";
+import { fetchWithAccounting } from "./apiCallAccounting";
+import type { ApiCallPurpose, ChatMessage, ProviderConfig, ProviderRequestThrottle, ProviderUsage } from "../types/adventure";
 
 type CacheBlock = { type: "text"; text: string; cache_control?: { type: "ephemeral" } };
 type CacheableContent = string | CacheBlock[];
@@ -38,6 +39,9 @@ export interface SendChatCompletionOptions {
   signal?: AbortSignal;
   responseFormat?: "json_object";
   thinking?: "enabled" | "disabled";
+  purpose?: ApiCallPurpose;
+  /** Recovery must be exactly one HTTP attempt even on reasoning-model exhaustion. */
+  retry?: boolean;
 }
 
 export interface ProviderResponse {
@@ -194,22 +198,24 @@ async function sendOpenAIRequest(
   signal?: AbortSignal,
   responseFormat?: SendChatCompletionOptions["responseFormat"],
   thinking?: SendChatCompletionOptions["thinking"],
+  purpose: ApiCallPurpose = "otherBackground",
+  allowRetry = true,
 ): Promise<ProviderResponse> {
-  if (!isGlmReasoningModel(config) || isNativeDeepSeekProvider(config)) {
-    const result = await sendOpenAIRequestOnce(endpoint, messages, config, 0, signal, responseFormat, thinking);
+  if (!isGlmReasoningModel(config) || isNativeDeepSeekProvider(config) || !allowRetry) {
+    const result = await sendOpenAIRequestOnce(endpoint, messages, config, 0, signal, responseFormat, thinking, purpose);
     if (result.content == null) throw new Error(`Provider returned no content. Body: ${result.rawText.slice(0, 300)}`);
     return { content: result.content, raw: result.raw, usage: result.usage };
   }
 
   // GLM: reserve room for hidden reasoning, and retry once with more room if the reply
   // still ran out of tokens before any visible text was written.
-  const first = await sendOpenAIRequestOnce(endpoint, messages, config, GLM_REASONING_RESERVE_TOKENS, signal, responseFormat, thinking);
+  const first = await sendOpenAIRequestOnce(endpoint, messages, config, GLM_REASONING_RESERVE_TOKENS, signal, responseFormat, thinking, purpose);
   if (first.content?.trim()) return { content: first.content, raw: first.raw, usage: first.usage };
   if (first.finishReason !== "length") {
     throw new Error(`Provider returned no content. Body: ${first.rawText.slice(0, 300)}`);
   }
 
-  const retry = await sendOpenAIRequestOnce(endpoint, messages, config, GLM_RETRY_REASONING_RESERVE_TOKENS, signal, responseFormat, thinking);
+  const retry = await sendOpenAIRequestOnce(endpoint, messages, config, GLM_RETRY_REASONING_RESERVE_TOKENS, signal, responseFormat, thinking, purpose);
   const usage = addUsage(first.usage, retry.usage);
   if (retry.content?.trim()) return { content: retry.content, raw: retry.raw, usage };
   throw new Error(
@@ -227,13 +233,14 @@ async function sendOpenAIRequestOnce(
   signal?: AbortSignal,
   responseFormat?: SendChatCompletionOptions["responseFormat"],
   thinking?: SendChatCompletionOptions["thinking"],
+  purpose: ApiCallPurpose = "otherBackground",
 ): Promise<{ content: string | null | undefined; finishReason?: string; raw: unknown; rawText: string; usage?: ProviderUsage }> {
   const outMessages = shouldApplyOpenAIMessageCacheControl(config) ? applyPromptCaching(messages) : messages;
   const sessionId = openRouterSessionId(config);
   const provider = openRouterProviderPreferences(config);
-  let response: Response;
+  let response: Awaited<ReturnType<typeof fetchWithAccounting>>;
   try {
-    response = await fetch(endpoint, {
+    response = await fetchWithAccounting(endpoint, {
       method: "POST",
       signal,
       headers: {
@@ -254,7 +261,7 @@ async function sendOpenAIRequestOnce(
         ...(sessionId ? { session_id: sessionId } : {}),
         ...(provider ? { provider } : {}),
       }),
-    });
+    }, config, purpose);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     throw new Error(`Network error (${endpoint}): ${msg}. If using a local server, check CORS headers and that the server is reachable.`);
@@ -295,6 +302,7 @@ async function sendAnthropicRequest(
   config: ProviderConfig,
   signal?: AbortSignal,
   thinking?: SendChatCompletionOptions["thinking"],
+  purpose: ApiCallPurpose = "otherBackground",
 ): Promise<ProviderResponse> {
   const systemParts = messages.filter((m) => m.role === "system").map((m) => m.content);
   const chatMessages = messages.filter((m) => m.role !== "system");
@@ -305,9 +313,9 @@ async function sendAnthropicRequest(
       ? [{ type: "text", text: systemText, cache_control: { type: "ephemeral" } }]
       : systemText;
 
-  let response: Response;
+  let response: Awaited<ReturnType<typeof fetchWithAccounting>>;
   try {
-    response = await fetch(endpoint, {
+    response = await fetchWithAccounting(endpoint, {
       method: "POST",
       signal,
       headers: {
@@ -330,7 +338,7 @@ async function sendAnthropicRequest(
           ? { thinking: { type: thinking ?? "disabled" } }
           : {}),
       }),
-    });
+    }, config, purpose);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     throw new Error(`Network error (${endpoint}): ${msg}.`);
@@ -371,6 +379,8 @@ export async function sendOpenAICompatibleChatCompletion({
   signal,
   responseFormat,
   thinking,
+  purpose = "otherBackground",
+  retry = true,
 }: SendChatCompletionOptions): Promise<ProviderResponse> {
   if (!config.apiKey?.trim()) {
     throw new Error("Missing API key. Add one in Settings before generating.");
@@ -380,9 +390,9 @@ export async function sendOpenAICompatibleChatCompletion({
 
   const endpoint = completionEndpoint(config.baseUrl);
   if (isAnthropicFormat(config.baseUrl)) {
-    return sendAnthropicRequest(endpoint, messages, config, signal, thinking);
+    return sendAnthropicRequest(endpoint, messages, config, signal, thinking, purpose);
   }
-  return sendOpenAIRequest(endpoint, messages, config, signal, responseFormat, thinking);
+  return sendOpenAIRequest(endpoint, messages, config, signal, responseFormat, thinking, purpose, retry);
 }
 
 export function isNativeDeepSeekProvider(config: Pick<ProviderConfig, "baseUrl">): boolean {

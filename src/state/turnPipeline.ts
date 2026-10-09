@@ -135,6 +135,14 @@ export async function applyProviderResponse({
     createdAt,
     usage: response.usage,
   });
+  if (mode !== "comms" && incrementTurn) {
+    next = adventureReducer(next, { type: "ADVANCE_MEMORY_RECOVERY_TURN" });
+  }
+  if (mode !== "comms" && next.memoryDetectionSettings.enabled
+    && (!memoryEnabled || memory.error || continuityCorrected)) {
+    next = adventureReducer(next, { type: "QUEUE_MEMORY_RECOVERY", messageId,
+      turn: next.activeState.memoryRecoveryStoryTurn ?? 0 });
+  }
   next = adventureReducer(next, { type: "CONSUME_NEXT_TURN_NOTE" });
 
   next = applyRuntimeEngines(next, { source: "output", text: finalContent });

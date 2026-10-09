@@ -47,9 +47,9 @@ function transaction<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) =
         const tx = db.transaction(STORE_NAME, mode);
         const store = tx.objectStore(STORE_NAME);
         const request = run(store);
-        request.onsuccess = () => resolve(request.result);
         request.onerror = () => reject(request.error);
-        tx.oncomplete = () => db.close();
+        tx.oncomplete = () => { db.close(); resolve(request.result); };
+        tx.onabort = () => { db.close(); reject(tx.error ?? new Error("Adventure transaction aborted.")); };
         tx.onerror = () => {
           db.close();
           reject(tx.error);

@@ -318,6 +318,22 @@ export function ContextPreviewPage({ adventure, dispatch, contextResult, onBuild
         )}
       </div>
 
+      <details className="panel">
+        <summary>API call accounting</summary>
+        <p className="muted">Recorded since this accounting feature was enabled. Requests include retries and failed HTTP attempts. Tokens are provider-reported; unknown usage is not counted as zero consumption.</p>
+        <table>
+          <thead><tr><th>Operation</th><th>Requests</th><th>Failed</th><th>Prompt tokens</th><th>Completion tokens</th><th>Unknown usage</th></tr></thead>
+          <tbody>{Object.entries(adventure.activeState.apiCallTotals ?? {}).map(([purpose, totals]) => (
+            <tr key={purpose}><td>{{ narration: "Narration", correction: "Corrections / continuity", memoryRecovery: "Memory recovery", otherBackground: "Other background operations" }[purpose] ?? purpose}</td>
+              <td>{totals.requests}</td><td>{totals.failedRequests}</td><td>{totals.promptTokens.toLocaleString()}</td><td>{totals.completionTokens.toLocaleString()}</td><td>{totals.unreportedUsage}</td></tr>
+          ))}</tbody>
+        </table>
+        <p className="muted">Pending memory turns: {adventure.messages.filter(message => message.memoryRecovery?.status === "pending").length}. Recovery runs approximately every five story turns; failed batches remain pending.</p>
+        <details><summary>Recent HTTP attempts (up to 500)</summary>
+          <ul>{(adventure.activeState.apiCalls ?? []).map(call => <li key={call.id}>{call.startedAt} · {call.purpose} · {call.model} · {call.status} · {call.usage ? `${call.usage.promptTokens} prompt / ${call.usage.completionTokens} completion tokens` : "usage unknown"}</li>)}</ul>
+        </details>
+      </details>
+
       {/* AI dedup proposals */}
       {dedupProposals.length > 0 && (
         <div className="dedup-proposals">

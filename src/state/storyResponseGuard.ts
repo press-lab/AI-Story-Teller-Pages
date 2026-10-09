@@ -98,6 +98,9 @@ export function evaluateStoryResponseGuard(text: string, hint: number, playerInp
   };
 }
 
+// The rewrite intentionally excludes the draft's memory envelope: its claims may no
+// longer hold after correction. turnPipeline queues the final narrative for batched
+// recovery when the corrected response has no envelope; do not reattach draft memory.
 export function buildStoryResponseCorrectionMessages({
   playerInput,
   draft,

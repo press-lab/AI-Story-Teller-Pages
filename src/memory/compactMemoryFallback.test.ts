@@ -72,17 +72,73 @@ describe("compact memory fallback", () => {
     });
   });
 
-  it("rejects an invalid recovery response so the caller can use the legacy cycle", async () => {
+  it("rejects invalid recovery without a second call", async () => {
     provider.mockResolvedValue({ content: "not JSON", raw: {}, usage: { promptTokens: 90, completionTokens: 10, totalTokens: 100 } });
     const result = await runCompactMemoryFallback(adventureWithMissingEnvelope(), config);
     expect(result).toEqual({ actions: [], tokenUsage: { promptTokens: 90, completionTokens: 10 }, valid: false });
     expect(provider).toHaveBeenCalledTimes(1);
   });
 
-  it("falls through when the provider cannot use JSON response mode", async () => {
+  it("retains failure when the provider cannot use JSON response mode", async () => {
     provider.mockRejectedValue(new Error("response_format unsupported"));
     const result = await runCompactMemoryFallback(adventureWithMissingEnvelope(), config);
     expect(result.valid).toBe(false);
     expect(result.actions).toEqual([]);
   });
+});
+
+
+it("recovers character, relationship, Brain and historical memories across a batch, with per-turn limits", async () => {
+  provider.mockReset();
+  let adventure = adventureWithMissingEnvelope();
+  adventure.components.push(makeComponent({ type: "aiInstructions", title: "Scenario instructions", content: "UNRELATED_SCENARIO_RULES ".repeat(1000), pinned: true }));
+  adventure.storyCards.push(makeStoryCard({ title: "Distant Island", content: "UNRELATED_ISLAND_CANON", pinned: true }));
+  const lines = [
+    "Lucian knows the silver-cup mark.",
+    "Lucian promised to protect Edythe for the rest of his life.",
+    "Edythe realizes Lucian kept his promise and trusts him with her secret.",
+    "Lucian and Edythe defeated the Glass King at the silver gate in their first battle together.",
+    "Lucian can read the ancient language carved into silver.",
+  ];
+  for (let i = 0; i < lines.length; i++) adventure = adventureReducer(adventure, { type: "ADD_MESSAGE", id: `batch-${i}`, role: "assistant", content: lines[i] });
+  const updates = [
+    { kind: "card", target: "Lucian", content: "Lucian knows the silver-cup mark.", evidence: lines[0], reason: "Enduring knowledge" },
+    { kind: "card", target: "Lucian", content: "Lucian promised lifelong protection to Edythe.", evidence: lines[1], reason: "Durable relationship obligation" },
+    { kind: "thought", target: "Edythe", content: "I trust Lucian with my secret because he kept his promise.", evidence: lines[2], reason: "Changed private trust" },
+    { kind: "lore", target: "The First Battle at the Silver Gate", content: lines[3], evidence: lines[3], reason: "Distinct completed shared history", category: "plot_beat", triggers: ["Glass King", "first silver gate battle"] },
+    { kind: "card", target: "Lucian", content: "Lucian can read the ancient silver language.", evidence: lines[4], reason: "Enduring ability" },
+  ];
+  provider.mockResolvedValue({ content: JSON.stringify({ turns: updates.map((update, i) => ({ sourceTurnId: `batch-${i}`, updates: [update] })) }), raw: {} });
+  const result = await runCompactMemoryFallback(adventure, config, adventure.messages.slice(-5));
+  expect(result.valid).toBe(true);
+  expect(provider).toHaveBeenCalledTimes(1);
+  const prompt = provider.mock.calls[0][0].messages.map(m => m.content).join("\n");
+  expect(prompt).not.toContain("UNRELATED_SCENARIO_RULES");
+  expect(prompt).not.toContain("UNRELATED_ISLAND_CANON");
+  expect(prompt).toContain("Lucian runs a private club.");
+  expect(provider.mock.calls[0][0].config.maxOutputTokens).toBe(config.maxOutputTokens * 5);
+  const next = result.actions.reduce(adventureReducer, adventure);
+  expect(next.storyCards[0].content).toContain("lifelong protection");
+  expect(next.storyCards[0].content).toContain("ancient silver language");
+  expect(Object.values(next.brains[0].thoughts).join(" ")).toContain("trust Lucian");
+  expect(next.activeState.memoryProposals).toContainEqual(expect.objectContaining({
+    title: "The First Battle at the Silver Gate", sourceTurnId: "batch-3", memoryMode: "historical", requiresReview: true,
+  }));
+});
+
+it("retains a batch when the response omits a source, and rejects evidence from another source", async () => {
+  provider.mockReset();
+  let adventure = adventureWithMissingEnvelope();
+  adventure = adventureReducer(adventure, { type: "ADD_MESSAGE", id: "later", role: "assistant", content: "The room falls silent." });
+  const batch = adventure.messages.filter(m => m.role === "assistant");
+  provider.mockResolvedValueOnce({ content: '{"turns":[{"sourceTurnId":"later","updates":[]}]}', raw: {} });
+  expect((await runCompactMemoryFallback(adventure, config, batch)).valid).toBe(false);
+  provider.mockResolvedValueOnce({ content: JSON.stringify({ turns: [
+    { sourceTurnId: "story", updates: [] },
+    { sourceTurnId: "later", updates: [{ kind: "card", target: "Lucian", content: "Lucian knows the secret mark.", evidence: "Lucian says he knows the intruder's mark: a silver cup.", reason: "Durable knowledge" }] },
+  ] }), raw: {} });
+  const recovered = await runCompactMemoryFallback(adventure, config, batch);
+  const next = recovered.actions.reduce(adventureReducer, adventure);
+  expect(next.storyCards[0].content).toBe(adventure.storyCards[0].content);
+  expect(next.activeState.evaluationLog[0].errors.join(" ")).toContain("evidence is not in this turn");
 });

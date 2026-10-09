@@ -1715,6 +1715,40 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
       return touchAdventure(state, {
         activeState: { ...state.activeState, responseLengthHint: action.hint },
       });
+    case "RECORD_API_CALL": {
+      const calls = state.activeState.apiCalls ?? [];
+      const previous = calls.find(call => call.id === action.record.id);
+      // Ignore duplicate/out-of-order start notifications.
+      if (previous && (action.record.status === "started" || previous.status !== "started")) return state;
+      const record = action.record;
+      const old = state.activeState.apiCallTotals?.[record.purpose]
+        ?? { requests: 0, failedRequests: 0, unreportedUsage: 0, promptTokens: 0, completionTokens: 0 };
+      const totals = { requests: old.requests + (previous ? 0 : 1),
+        failedRequests: old.failedRequests + (record.status === "failed" ? 1 : 0),
+        unreportedUsage: old.unreportedUsage + (record.status !== "started" && !record.usage ? 1 : 0),
+        promptTokens: old.promptTokens + (record.usage?.promptTokens ?? 0),
+        completionTokens: old.completionTokens + (record.usage?.completionTokens ?? 0) };
+      return touchAdventure(state, { activeState: { ...state.activeState,
+        apiCalls: [record, ...calls.filter(call => call.id !== record.id)].slice(0, 500),
+        apiCallTotals: { ...state.activeState.apiCallTotals, [record.purpose]: totals } } });
+    }
+    case "ADVANCE_MEMORY_RECOVERY_TURN":
+      return touchAdventure(state, { activeState: { ...state.activeState,
+        memoryRecoveryStoryTurn: (state.activeState.memoryRecoveryStoryTurn ?? 0) + 1 } });
+    case "QUEUE_MEMORY_RECOVERY":
+      return touchAdventure(state, { messages: state.messages.map(message => message.id === action.messageId
+        ? { ...message, memoryRecovery: { turn: action.turn, status: "pending" as const } } : message) });
+    case "CLAIM_MEMORY_RECOVERY":
+      return touchAdventure(state, { activeState: { ...state.activeState, lastMemoryRecoveryAttemptTurn: action.turn } });
+    case "COMPLETE_MEMORY_RECOVERY": {
+      // A deleted, edited or regenerated source invalidates this result, including queued results.
+      if (!action.sources.every(source => state.messages.some(message => message.id === source.id
+        && message.content === source.content && message.memoryRecovery?.status === "pending"))) return state;
+      const next = action.actions.reduce(adventureReducer, state);
+      const ids = new Set(action.sources.map(source => source.id));
+      return touchAdventure(next, { messages: next.messages.map(message => ids.has(message.id) && message.memoryRecovery
+        ? { ...message, memoryRecovery: { ...message.memoryRecovery, status: "complete" as const } } : message) });
+    }
     case "ACCUMULATE_BACKGROUND_TOKENS":
       return touchAdventure(state, {
         activeState: {
