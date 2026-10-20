@@ -29,3 +29,13 @@ User-reported pain points: Brain updates are useful but could reflect the wider 
 Preferred direction: improve AI prompting and the context supplied to update passes within the existing architecture. The user suspects much of this can be achieved through better prompting; validate that hypothesis and identify any supporting application changes needed.
 
 This extends the dynamic plot-component idea above. Status: future design and investigation note, not an implementation change. Automatic component creation and changes to AI write permissions need explicit design within the existing mutation and approval boundaries.
+
+## Strict separation of character facts and lore in Story Cards
+
+Recorded: 2026-10-19
+
+Keep character facts strictly separate from world lore in Story Cards. Character cards should contain facts specific to that character, while lore cards should hold shared world information such as setting history, magic rules, locations, and factions. A character's connection to a lore topic can be recorded without copying the broader lore into their character card.
+
+Future design should enforce this separation in card creation, editing, imports, AI updates, and context assembly. Updates should preserve established character facts and route new lore to the appropriate lore card instead of mixing the two. Plan a reviewable way to split existing mixed cards without losing information.
+
+Status: future feature note; card structure, routing rules, and handling of existing cards still need design.
