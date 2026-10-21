@@ -359,6 +359,8 @@ describe("buildContext", () => {
       tokenBudgetSettings: budget({ maxContextTokens: 920, maxRecentMessages: 0, recentMessageWindow: 0, sectionBudgets: {} }),
     } satisfies Adventure;
 
+    const baseline = buildContext({ ...adventure, storyCards: [] }, { skipThoughtCapture: true });
+    adventure.tokenBudgetSettings.maxContextTokens = baseline.totalEstimatedTokens + approximateTokenCount(high.content);
     const result = buildContext(adventure, { currentInput: "signal", skipThoughtCapture: true });
     const remainingTitles = result.sections.find((section) => section.id === "storyCards")?.items.map((item) => item.title);
     expect(remainingTitles).toEqual(["High Priority"]);
@@ -469,7 +471,7 @@ describe("buildContext", () => {
       brains: [],
       rollingSummary: { content: "", updatedAt: "2026-01-01T00:00:00.000Z" },
       messages: [{ id: "m1", role: "user", content: "signal", createdAt: "2026-01-01T00:00:00.000Z" }],
-      tokenBudgetSettings: budget({ maxContextTokens: 1000, maxRecentMessages: 1, recentMessageWindow: 1 }),
+      tokenBudgetSettings: budget({ maxContextTokens: 10000, maxRecentMessages: 1, recentMessageWindow: 1 }),
     } satisfies Adventure;
 
     const result = buildContext(adventure, { currentInput: "signal", skipThoughtCapture: true });

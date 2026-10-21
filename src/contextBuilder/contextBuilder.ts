@@ -38,7 +38,13 @@ CANON GROUNDING:
   Story Cards are binding identity records for named characters, locations, factions, relationships, and lore. If a Story Card is present, follow it over any outside knowledge.
   If a famous or familiar name appears but no matching Story Card, Plot Essential, Brain, or Recent Message establishes the detail, treat the detail as unknown. Do not import biography, relationships, motives, powers, locations, or events from model training data.
 
-Honour every section. Continue the scene in prose. Keep the player able to act.`;
+OUT-OF-CHARACTER BOUNDARY:
+  Author / Out of Character messages are addressed to the AI, never spoken or acted by the player character. Answer Author input ONLY out of character as the AI. Do not continue the scene, narrate actions, speak as a character, or append character thoughts or memory updates.
+  In any player entry, the marker "ai -" (case-insensitive, also "AI -") introduces an out-of-character instruction or question. In a mixed entry, keep the surrounding story action/dialogue in character and apply the marked author direction silently. The marked part runs to the end of its line or enclosing bracket; subsequent unmarked lines may resume story input. If the entire entry is author direction, reply only out of character.
+  Characters cannot hear, read, answer, react to, or gain knowledge from author directions or OOC discussion. Do not turn them into dialogue, actions, thoughts, or accomplished story events. If a mixed entry needs an explicit answer to an author question, label that answer OOC and keep it separate from the scene.
+  These boundaries override scene-continuation, roleplay, style, thought-capture, and memory-tagging instructions elsewhere in the context.
+
+Honour every section within these boundaries. For in-character input, continue the scene in prose. Keep the player able to act.`;
 
 interface BuildOptions {
   currentInput?: string;
@@ -152,7 +158,10 @@ function selectedRecentMessages(adventure: Adventure, seedMessage?: Message): Me
   // Walk newest-first; token cap is the primary constraint, count cap is a safety ceiling
   for (let i = messages.length - 1; i >= 0; i--) {
     if (result.length >= countCap) break;
-    const msg = messages[i];
+    const original = messages[i];
+    const msg = original.inputMode === "comms"
+      ? { ...original, content: "[Out of Character " + (original.role === "assistant" ? "reply" : "author input") + "]\n" + original.content }
+      : original;
     const cost = approximateTokenCount(msg.content);
     if (tokenCap && tokens + cost > tokenCap) break;
     tokens += cost;
@@ -372,9 +381,13 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
   const triggerText = recentText(adventure, options);
   const triggeredThreadIds = new Set<string>();
   const budgetSettings = adventure.tokenBudgetSettings;
-  const turnScopeText = buildTurnScopeContract(adventure.activeState.responseLengthHint);
-  const captureEligible = options.skipThoughtCapture ? [] : eligibleBrainsForCapture(adventure, triggerText);
-  const memoryText = !options.skipThoughtCapture && adventure.memoryDetectionSettings.enabled
+  const latestMessage = adventure.messages.at(-1);
+  const authorTurn = latestMessage?.role === "user" && latestMessage.inputMode === "comms";
+  const turnScopeText = authorTurn
+    ? "AUTHOR RESPONSE CONTRACT: Reply ONLY out of character, directly to the author as the AI. Answer the question or acknowledge the instruction. Do not continue or advance the scene, include character dialogue/actions/reactions, or emit thought or memory tags. Story context is reference material for your answer. This contract overrides all narrative style and scene-continuation instructions."
+    : buildTurnScopeContract(adventure.activeState.responseLengthHint);
+  const captureEligible = options.skipThoughtCapture || authorTurn ? [] : eligibleBrainsForCapture(adventure, triggerText);
+  const memoryText = !options.skipThoughtCapture && !authorTurn && adventure.memoryDetectionSettings.enabled
     ? onePassMemoryInstruction(captureEligible, enabledMemoryCategories(adventure)) : undefined;
   function pushExcluded(
     sourceType: ExcludedContextItem["sourceType"],
