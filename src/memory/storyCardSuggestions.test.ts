@@ -24,11 +24,11 @@ const lore = (state: Adventure) => cards(state).filter(proposal => proposal.stor
 const finding = (content: string, evidence = content, extra = {}) => ({ kind: "lore", target: "Seth and Draconia: first kiss", content, evidence, reason: "Meaningful development", triggers: ["first kiss"], ...extra });
 
 describe("merged Story Card suggestions", () => {
-  it("merges first-kiss model and local detection into one pending dated Lore suggestion", async () => {
+  it("routes a model first-kiss finding into one pending dated Lore suggestion", async () => {
     const text = "Draconia grabs Seth's shirt and kisses him for the first time.";
     const state = await play(text, [finding("Seth and Draconia shared their first kiss.", text)]);
     expect(lore(state)).toHaveLength(1);
-    expect(lore(state)[0]).toMatchObject({ status: "pending", requiresReview: false, storyCardReview: { origin: "both" }, lore: { occurredAt: { date: "2019-02-01" }, sourceMessageIds: expect.arrayContaining(["final-source"]) } });
+    expect(lore(state)[0]).toMatchObject({ status: "pending", requiresReview: false, storyCardReview: { origin: "model" }, lore: { occurredAt: { date: "2019-02-01" }, sourceMessageIds: expect.arrayContaining(["final-source"]) } });
     expect(state.storyCards).toHaveLength(3);
   });
   it("suppresses an almost-kiss rather than nominating an uncertain milestone", async () => {
@@ -37,7 +37,7 @@ describe("merged Story Card suggestions", () => {
     expect(state.storyCards).toHaveLength(3);
   });
   it("proposes Lore for a marriage proposal without claiming a marriage occurred", async () => {
-    const state = await play("Seth proposes marriage to Draconia.");
+    const state = await play("Seth proposes marriage to Draconia.", [finding("Seth proposes marriage to Draconia.", undefined, { target: "Marriage proposal" })]);
     expect(lore(state)).toHaveLength(1);
     expect(lore(state)[0].storyCardReview?.eventKind).toBe("proposal");
     expect(lore(state)[0].content).not.toContain("They married");
@@ -45,7 +45,7 @@ describe("merged Story Card suggestions", () => {
   it("updates an appropriate ongoing relationship subject when a proposal is accepted", async () => {
     const initial = seed();
     initial.storyCards.push(makeStoryCard({ id: "relationship", title: "Seth and Draconia Relationship History", type: "lore", memoryMode: "living", content: "Seth and Draconia shared their first kiss.", lore: { status: "ongoing", sourceMessageIds: ["kiss"] } }));
-    let state = await play("Draconia accepts Seth's proposal.", [], initial);
+    let state = await play("Draconia accepts Seth's proposal.", [finding("Draconia accepts Seth's proposal.", undefined, { target: "Engagement" })], initial);
     expect(lore(state)).toHaveLength(1);
     expect(lore(state)[0]).toMatchObject({ targetId: "relationship", appendContent: true, status: "pending" });
     state = reduce(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: lore(state)[0].id });
@@ -66,7 +66,7 @@ describe("merged Story Card suggestions", () => {
     expect(cards(state)).toContainEqual(expect.objectContaining({ title, storyCardType: type, status: "pending", storyCardReview: expect.objectContaining({ candidateOnly: true }) }));
   });
   it("proposes dated Lore and an exceptional Character status change for a death, never the killer's death", async () => {
-    const state = await play("Seth killed Voldemort.");
+    const state = await play("Seth killed Voldemort.", [finding("Voldemort died in battle against Seth.", "Seth killed Voldemort.", { kind: "card", target: "Voldemort", targetId: "voldemort" })]);
     expect(lore(state)).toHaveLength(1);
     expect(cards(state).filter(proposal => proposal.storyCardType === "character")).toHaveLength(1);
     expect(cards(state).find(proposal => proposal.storyCardType === "character")?.targetId).toBe("voldemort");
@@ -78,18 +78,18 @@ describe("merged Story Card suggestions", () => {
     expect(lore(state).every(proposal => proposal.storyCardReview?.candidateOnly)).toBe(true);
   });
   it("suppresses repeat facts and reevaluation duplicates, including rejected suggestions", async () => {
-    let state = await play("Seth and Draconia shared their first kiss.");
+    let state = await play("Seth and Draconia shared their first kiss.", [finding("Seth and Draconia shared their first kiss.")]);
     const proposal = lore(state)[0];
     state = reduce(state, { type: "REJECT_MEMORY_PROPOSAL", proposalId: proposal.id });
     state = reduce(state, { type: "SCAN_STORY_CARD_EXCHANGE", sourceMessageId: "final-source", manual: true });
     expect(lore(state)).toHaveLength(1);
     expect(lore(state)[0].status).toBe("rejected");
   });
-  it("retains a deterministic event omitted by the model", async () => {
-    expect(lore(await play("Seth and Draconia shared their first kiss."))).toHaveLength(1);
+  it("does not nominate an event omitted by the model", async () => {
+    expect(lore(await play("Seth and Draconia shared their first kiss."))).toHaveLength(0);
   });
   it("keeps distinct meaningful events separate even when they share participants", async () => {
-    const state = await play("Seth and Draconia shared their first kiss. Draconia later betrayed Seth's confidence.");
+    const state = await play("Seth and Draconia shared their first kiss. Draconia later betrayed Seth's confidence.", [finding("Seth and Draconia shared their first kiss."), finding("Draconia betrayed Seth's confidence.", "Draconia later betrayed Seth's confidence.", { target: "Betrayed confidence" })]);
     expect(lore(state)).toHaveLength(2);
     expect(new Set(lore(state).map(proposal => proposal.storyCardReview?.eventKind))).toEqual(new Set(["kiss", "betrayal"]));
   });
@@ -103,13 +103,13 @@ describe("merged Story Card suggestions", () => {
   it("nominates a destroyed location and preserves its identity until review", async () => {
     const initial = seed();
     initial.storyCards.push(makeStoryCard({ id: "castle", title: "Blackrock Castle", type: "location", content: "An inhabited fortress.", keys: ["Blackrock Castle"] }));
-    const state = await play("Blackrock Castle was destroyed permanently.", [], initial);
+    const state = await play("Blackrock Castle was destroyed permanently.", [finding("Blackrock Castle was destroyed permanently.", undefined, { kind: "card", target: "Blackrock Castle", targetId: "castle" })], initial);
     expect(cards(state)).toContainEqual(expect.objectContaining({ storyCardType: "location", targetId: "castle", requiresReview: true }));
     expect(lore(state)).toHaveLength(1);
     expect(state.storyCards.at(-1)?.content).toBe("An inhabited fortress.");
   });
   it("does not rebind an old proof when an edited source merely starts with its original text", async () => {
-    let state = await play("Seth and Draconia shared their first kiss.");
+    let state = await play("Seth and Draconia shared their first kiss.", [finding("Seth and Draconia shared their first kiss.")]);
     const old = lore(state)[0];
     state = reduce(state, { type: "UPDATE_MESSAGE", messageId: "final-source", content: old.storyCardReview!.sourceContent + " This was only a dream." });
     state = reduce(state, { type: "SCAN_STORY_CARD_EXCHANGE", sourceMessageId: "final-source", manual: true });
@@ -128,23 +128,23 @@ describe("merged Story Card suggestions", () => {
   it("does not merge a kiss into a government conflict merely because participants match", async () => {
     const initial = seed();
     initial.storyCards.push(makeStoryCard({ id: "conflict", title: "Seth and Draconia Government Conflict", type: "lore", memoryMode: "living", content: "Seth and Draconia oppose the government." }));
-    expect(lore(await play("Seth and Draconia shared their first kiss.", [], initial))[0].targetId).toBeUndefined();
+    expect(lore(await play("Seth and Draconia shared their first kiss.", [finding("Seth and Draconia shared their first kiss.")], initial))[0].targetId).toBeUndefined();
   });
   it("presents ambiguous continuing subjects instead of choosing arbitrarily", async () => {
     const initial = seed();
     for (const id of ["history", "bond"]) initial.storyCards.push(makeStoryCard({ id, title: `Seth and Draconia Relationship ${id}`, type: "lore", memoryMode: "living", content: "Seth and Draconia are close." }));
-    const proposal = lore(await play("Draconia accepts Seth's proposal.", [], initial))[0];
+    const proposal = lore(await play("Draconia accepts Seth's proposal.", [finding("Draconia accepts Seth's proposal.", undefined, { target: "Engagement" })], initial))[0];
     expect(proposal.targetId).toBeUndefined();
     expect(proposal.storyCardReview?.targetCandidates).toHaveLength(2);
   });
   it("rejects stale regenerated evidence but allows a fresh interpretation of revised text", async () => {
-    let state = await play("Seth and Draconia shared their first kiss.");
+    let state = await play("Seth and Draconia shared their first kiss.", [finding("Seth and Draconia shared their first kiss.")]);
     const stale = lore(state)[0];
     state = reduce(state, { type: "DELETE_MESSAGE", messageId: "final-source" });
     state = reduce(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: stale.id });
     expect(state.storyCards).toHaveLength(3);
     state = reduce(state, { type: "ADD_MESSAGE", id: "revised-source", role: "assistant", content: "Draconia kisses Seth for the first time." });
-    state = reduce(state, { type: "SCAN_STORY_CARD_EXCHANGE", sourceMessageId: "revised-source", manual: true });
+    state = reduce(state, { type: "ADD_MEMORY_PROPOSAL", proposal: makeStoryCardSuggestion(state, "revised-source", state.messages.at(-1)!.content, { title: "Their first kiss", content: state.messages.at(-1)!.content, evidence: state.messages.at(-1)!.content, reason: "Fresh model finding" }) });
     expect(lore(state).some(proposal => proposal.sourceTurnId === "revised-source")).toBe(true);
   });
   it("does not automatically route any component operation, while preserving manual edits", async () => {
@@ -176,7 +176,8 @@ describe("deterministic story clock", () => {
     const once = normalizeAdventure(raw), twice = normalizeAdventure(once);
     expect(once.storyClock).toEqual(twice.storyClock);
     expect(once.storyClock).toMatchObject({ origin: "assumed", current: { date: "2000-01-01" } });
-    expect(scanStoryCardExchange(once, once.messages[0])[0].lore?.occurredAt).toBeUndefined();
+    expect(scanStoryCardExchange(once, once.messages[0])).toEqual([]);
+    expect(makeStoryCardSuggestion(once, "old", raw.messages[0].content, { title: "Their first kiss", content: raw.messages[0].content, evidence: raw.messages[0].content, reason: "Model finding" }).lore?.occurredAt).toBeUndefined();
   });
   it.each([ ["The next morning, they return.", "2019-02-02"], ["Three days later, they return.", "2019-02-04"], ["Two weeks later, they return.", "2019-02-15"] ])("advances %s once across a player/narrator exchange", (text, expected) => {
     let state = seed();

@@ -40,6 +40,7 @@ it("evaluates selected history once with memory disabled, without narration, Bra
 
 it("retains local review candidates when the requested model evaluation fails", async () => {
   const state = fixture();
+  state.messages[0].content = "Captain Livia introduces herself.";
   provider.mockImplementation(async () => { throw new Error("offline"); });
   const result = await evaluateStoryCardEntries(state, defaultModelConfig, ["old-source"]);
   expect(result.valid).toBe(false);

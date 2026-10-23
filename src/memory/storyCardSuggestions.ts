@@ -1,8 +1,8 @@
-import type { Adventure, MemoryProposal, Message, StoryCard, StoryCardType } from "../types/adventure";
+import type { Adventure, MemoryProposal, Message, StoryCardType } from "../types/adventure";
 import { createId, nowIso } from "../utils/id";
 import { isExceptionalIdentityChange, isHistoricalLore } from "./storyCardArchitecture";
 import { readStoryTime, transitionKey } from "./storyTime";
-import { storyCardEntityCandidates } from "./storyCardEntities";
+import { storyCardEntityCandidates, characterParticipants } from "./storyCardEntities";
 
 export const STORY_CARD_MEMORY_CHECK = `STORY CARD MEMORY CHECK
 Did anything NEW and MEANINGFUL happen in this exchange? Remember first meetings/kisses, proposals, relationships, commitments, betrayals, discoveries, major decisions, deaths, permanent changes, or significant new people/places. Ignore routine activity, conversation, movement, temporary reactions and repeats.
@@ -17,12 +17,6 @@ const stop = new Set("the a an and but then now later today tomorrow yesterday i
 const titleWords = (text: string) => new Set((normalizeMemoryText(text).split(" ")).filter(word => word.length > 3 && !stop.has(word)));
 const mentions = (text: string, phrase: string) => Boolean(phrase.trim()) && (` ${normalizeMemoryText(text)} `).includes(` ${normalizeMemoryText(phrase)} `);
 
-export function namedSubjects(text: string): string[] {
-  return [...new Set([...text.matchAll(/\b\p{Lu}[\p{L}'’]*(?:[ -](?:(?:of the|of|the) )?\p{Lu}[\p{L}'’]*){0,3}/gu)]
-    .map(match => match[0].replace(/^(?:The|A|An)\s+/, "").trim())
-    .filter(name => name.length >= 3 && name.length < 80 && !stop.has(normalizeMemoryText(name)) && !/^(i|you|we|they|he|she|it)\b/i.test(name)))];
-}
-
 export function relevantStoryCardInventory(adventure: Adventure, text: string) {
   const words = titleWords(text);
   return adventure.storyCards.filter(card => card.active).map(card => ({ card,
@@ -31,23 +25,6 @@ export function relevantStoryCardInventory(adventure: Adventure, text: string) {
   })).filter(entry => entry.score >= 2).sort((a, b) => b.score - a.score || b.card.priority - a.card.priority).slice(0, 8)
     .map(({ card }) => ({ id: card.id, title: card.title.slice(0, 100), type: card.type, keys: card.keys.slice(0, 3) }));
 }
-
-const patterns = [
-  { kind: "firstMeeting", label: "First meeting", topic: "relationship", pattern: /\b(first met|(?:meet|meets|met) .{0,60}for the first time|introduc(?:es|ed) (?:herself|himself|themselves))\b/i },
-  { kind: "firstDate", label: "First date", topic: "relationship", pattern: /\b(?:have|had|share|shared|go on|went on) (?:their |a )?first date\b/i },
-  { kind: "kiss", label: "First kiss", topic: "relationship", pattern: /\b(?:(?:share|shared|have|had) (?:their |a )?first kiss|kiss(?:es|ed)? .{0,60}for the first time)\b/i },
-  { kind: "proposal", label: "Proposal", topic: "relationship", pattern: /\b(?:[Ww]ill you marry me|[Pp]ropos(?:es|ed) (?:marriage|to \p{Lu}[\p{L}]+)|[Aa]sk(?:s|ed)? .{0,45}to marry (?:him|her|them|me))\b/u },
-  { kind: "engagement", label: "Engagement", topic: "relationship", pattern: /\b((?:got|became|become|becomes) engaged|accepts? .{0,30}proposal|accepted .{0,30}proposal|says? yes to .{0,30}proposal)\b/i },
-  { kind: "marriage", label: "Marriage", topic: "relationship", pattern: /\b(?:(?:got|get|gets) married|marries \p{Lu}[\p{L}]+|married \p{Lu}[\p{L}]+|exchang(?:es|ed) (?:their )?wedding vows)\b/u },
-  { kind: "breakup", label: "Breakup", topic: "relationship", pattern: /\b(broke up|breaks? up|ended their relationship|divorc(?:ed|es))\b/i },
-  { kind: "reconciliation", label: "Reconciliation", topic: "relationship", pattern: /\b(reconcil(?:ed|es|iation)|got back together)\b/i },
-  { kind: "agreement", label: "Agreement", topic: "commitment", pattern: /\b(?:agrees? to|agreed to|(?:form(?:s|ed)?|establish(?:es|ed)?) .{0,35}alliance|alliance is established)\b/i },
-  { kind: "decision", label: "Major decision", topic: "commitment", pattern: /\b(?:decid(?:es|ed) to|(?:considers?|considered|intends? to|plans? to) .{0,35}(?:overthrow\w*|coup|rebel\w*))\b/i },
-  { kind: "betrayal", label: "Betrayal", topic: "conflict", pattern: /\b(betray(?:s|ed|al))\b/i },
-  { kind: "death", label: "Death", topic: "identity", pattern: /\b(dies|died|is killed|was killed|kills|killed)\b/i },
-  { kind: "transformation", label: "Permanent change", topic: "identity", pattern: /\b(permanent(?:ly)? (?:transform|los|gain)|destroyed|relocated)\w*\b/i },
-  { kind: "victory", label: "Major outcome", topic: "conflict", pattern: /\b(major victory|major defeat|defeat(?:s|ed) .{0,30}(?:army|lord|government)|overthrow(?:s|n)? .{0,30}government)\b/i },
-];
 const uncertainty = /\b(almost|nearly|might|may|could|would|if|not|never|no|pretend(?:s|ed)?|imagin(?:es|ed|ing)|dream(?:s|ed)?|threaten(?:s|ed)? to|considers?|hopes? to|intends? to|plans? to|wants? to|will|tomorrow|rumou?rs?|claims?|reportedly|going to)\b/i;
 
 // Broad subject cues remain useful for routing/merging findings supplied by the model.
@@ -59,25 +36,18 @@ const subjectPatterns = [
   { kind: "proposal", topic: "relationship", pattern: /\b(propos(?:es|ed|al)|asks? .{0,45}to marry|will you marry)\b/i },
   { kind: "engagement", topic: "relationship", pattern: /\bengaged\b/i },
   { kind: "marriage", topic: "relationship", pattern: /\b(marr(?:ies|ied)|wedding|wed)\b/i },
-  ...patterns.filter(rule => ["breakup", "reconciliation", "agreement", "decision"].includes(rule.kind)),
+  { kind: "breakup", topic: "relationship", pattern: /\b(broke up|breaks? up|ended their relationship|divorc(?:ed|es))\b/i },
+  { kind: "reconciliation", topic: "relationship", pattern: /\b(reconcil(?:ed|es|iation)|got back together)\b/i },
+  { kind: "agreement", topic: "commitment", pattern: /\b(?:agrees? to|agreed to|(?:form(?:s|ed)?|establish(?:es|ed)?) .{0,35}alliance|alliance is established)\b/i },
+  { kind: "decision", topic: "commitment", pattern: /\b(?:decid(?:es|ed) to|(?:considers?|considered|intends? to|plans? to) .{0,35}(?:overthrow\w*|coup|rebel\w*))\b/i },
   { kind: "promise", topic: "commitment", pattern: /\b(promis(?:e|es|ed)|sw(?:ears?|ore) .{0,40}(?:oath|loyalty)|vow(?:ed|s)?|oath|commits? to)\b/i },
-  ...patterns.filter(rule => rule.kind === "betrayal"),
+  { kind: "betrayal", topic: "conflict", pattern: /\b(betray(?:s|ed|al))\b/i },
   { kind: "death", topic: "identity", pattern: /\b(dies|died|is dead|was killed|kills?|killed)\b/i },
   { kind: "discovery", topic: "discovery", pattern: /\b(discover(?:s|ed|y)|reveal(?:s|ed))\b/i },
-  ...patterns.filter(rule => ["transformation", "victory"].includes(rule.kind)),
+  { kind: "transformation", topic: "identity", pattern: /\b(permanent(?:ly)? (?:transform|los|gain)|destroyed|relocated)\w*\b/i },
+  { kind: "victory", topic: "conflict", pattern: /\b(major victory|major defeat|defeat(?:s|ed) .{0,30}(?:army|lord|government)|overthrow(?:s|n)? .{0,30}government)\b/i },
 ];
 
-/** Scope uncertainty to the action being nominated, not a later consequence in the sentence.
- * A direct "Will you marry me?" performs a proposal; future marriage is not asserted.
- * Political intentions are recorded as intentions, never as completed coups.
- */
-function uncertainMilestone(sentence: string, match: RegExpExecArray, kind: string): boolean {
-  if (kind === "decision" && /\b(?:considers?|considered|intends? to|plans? to) .{0,35}(?:overthrow\w*|coup|rebel\w*)\b/i.test(match[0])) return false;
-  const prefix = sentence.slice(0, match.index).split(/[,;!?]|\bbut\b/i).at(-1) ?? "";
-  return /\b(?:almost|nearly|not|never)\s+(?:\w+\s+){0,3}$/i.test(prefix)
-    || /\b(?:might|may|could|would|will|won't|cannot|can't|didn't|doesn't|did not|does not|plans? to|intends? to|hopes? to|threaten(?:s|ed)? to|going to|imagin(?:es|ed|ing)|dream(?:s|ed)?|pretend(?:s|ed)?|wonder(?:s|ed)? if)\s+(?:\w+\s+){0,5}$/i.test(prefix)
-    || /\b(?:if|rumou?rs?|reportedly)\b/i.test(prefix);
-}
 export function findingKind(text: string): string | undefined {
   if (/\baccept(?:s|ed)? .{0,30}proposal\b/i.test(text)) return "engagement";
   if (/\b(?:propos(?:es|ed)|plans?|considers?|intends? to) .{0,45}(?:overthrow|government|coup)\b/i.test(text)) return "politicalPlan";
@@ -88,11 +58,6 @@ function sourcePlayer(adventure: Adventure, sourceId: string): Message | undefin
   const index = adventure.messages.findIndex(message => message.id === sourceId);
   const prior = index < 0 ? adventure.messages.at(-1) : adventure.messages[index - 1];
   return prior?.role === "user" && prior.inputMode !== "comms" ? prior : undefined;
-}
-
-function participantsIn(adventure: Adventure, text: string): string[] {
-  const known = adventure.storyCards.filter(card => card.type === "character" && [card.title, ...card.keys].some(name => mentions(text, name))).map(card => card.title);
-  return [...new Set([...known, ...namedSubjects(text).filter(name => !/\b(Tower|Castle|Citadel|Academy|Forest|Harbor|Ministry)\b/.test(name))])].slice(0, 8);
 }
 
 export function suggestionSourceValid(adventure: Adventure, proposal: MemoryProposal): boolean {
@@ -109,7 +74,7 @@ export function storyCardTargets(adventure: Adventure, finding: { title: string;
   const text = finding.title + " " + finding.content;
   const rule = subjectPatterns.find(rule => rule.pattern.test(text));
   const topic = findingKind(text) === "politicalPlan" ? "conflict" : rule?.topic;
-  const participants = finding.participants ?? participantsIn(adventure, text);
+  const participants = characterParticipants(adventure.storyCards, text, finding.participants);
   const identityTerms = new Set(participants.flatMap(name => normalizeMemoryText(name).split(" ")));
   const terms = new Set([...titleWords(text)].filter(word => !identityTerms.has(word)));
   const ranked = adventure.storyCards.filter(card => card.active).map(card => {
@@ -141,12 +106,11 @@ export function makeStoryCardSuggestion(adventure: Adventure, sourceId: string, 
   const echoedTransition = !source && player?.id === adventure.storyClock?.sourceMessageId && Boolean(transitionKey(story)) && transitionKey(story) === transitionKey(player?.content ?? "");
   const time = source?.storyTime ?? (echoedTransition ? adventure.storyClock?.current : observed.time) ?? (!source && !observed.flashback ? adventure.storyClock?.current : undefined);
   const type = finding.type ?? "lore";
-  const participants = finding.participants ?? participantsIn(adventure, finding.evidence);
+  const participants = characterParticipants(adventure.storyCards, finding.evidence, finding.participants);
   const choices = storyCardTargets(adventure, { ...finding, participants, type });
   const target = choices.length === 1 ? adventure.storyCards.find(card => card.id === choices[0]) : undefined;
   const now = nowIso();
-  // Local milestones have already passed their action-specific uncertainty check.
-  // Keep the independent model interpretation/review policy unchanged.
+  // Entity nominations always await review; model interpretations retain their uncertainty policy.
   const uncertain = finding.origin === "deterministic" ? false : uncertainty.test(finding.evidence);
   const candidateOnly = Boolean(finding.candidateOnly || uncertain || finding.origin === "deterministic");
   const eventKind = finding.eventKind ?? findingKind(finding.content + " " + finding.evidence);
@@ -179,48 +143,15 @@ export function companionLoreSuggestion(adventure: Adventure, identity: MemoryPr
   });
 }
 
-function sentenceEvidence(text: string): string[] {
-  // Preserve exact text, including punctuation, for source validation.
-  return text.match(/[^\n.!?]+(?:[.!?]+|$)/gu)?.map(sentence => sentence.trim()).filter(Boolean) ?? [];
-}
-
-/** Local nomination, never automatic canon. Significant single events do not need recurrence. */
+/** Local entity nominations only. Narrative developments come from model findings. */
 export function scanStoryCardExchange(adventure: Adventure, source: Message): MemoryProposal[] {
-  const player = sourcePlayer(adventure, source.id);
   const text = source.content.replace(/^\*\[[^\]]+\]:[^\n]*\*$/gm, "");
   const proposals: MemoryProposal[] = [];
-  for (const sentence of sentenceEvidence(text)) {
-    for (const rule of patterns) {
-      const match = rule.pattern.exec(sentence);
-      if (!match || uncertainMilestone(sentence, match, rule.kind)) continue;
-      if (rule.kind === "proposal" && /\baccept(?:s|ed)? .{0,30}proposal\b/i.test(sentence)) continue;
-
-      const participants = participantsIn(adventure, sentence + " " + (player?.content ?? ""));
-      const title = `${participants.slice(0, 2).join(" and ") || "Story"}: ${rule.label}`;
-      proposals.push(makeStoryCardSuggestion(adventure, source.id, source.content, {
-        title, content: sentence, evidence: sentence,
-        reason: "Local milestone pattern; review the exact source before accepting.", type: "lore", participants,
-        triggers: [rule.label + " " + participants.slice(0, 2).join(" ")], eventKind: rule.kind, origin: "deterministic",
-      }));
-      if (rule.kind === "death" || rule.kind === "transformation") {
-        for (const identity of adventure.storyCards.filter(card => (card.type === "character" || card.type === "location") && [card.title, ...card.keys].some(name => mentions(sentence, name)))) {
-          // A killer is not necessarily the victim; nominate status only with subject-specific evidence.
-          const names = [identity.title, ...identity.keys].filter(name => mentions(sentence, name));
-          const name = names.map(name => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
-          const identityStatus = new RegExp(`\\b(?:(?:${name})\\s+(?:is dead|dies|died|is killed|was killed|was destroyed|is destroyed|permanently)|(?:kills?|killed)\\s+(?:${name}))\\b`, "i");
-          if (!identityStatus.test(sentence)) continue;
-          proposals.push(makeStoryCardSuggestion(adventure, source.id, source.content, { title: identity.title, content: sentence, evidence: sentence,
-            reason: "Possible permanent identity change; review alongside the historical Lore.", type: identity.type, targetId: identity.id, eventKind: rule.kind, origin: "deterministic" }));
-        }
-      }
-    }
-    if (proposals.length >= 6) break;
-  }
   // Identity evidence qualifies candidates first; frequency/recency only ranks them.
   const recent = adventure.messages.filter(message => message.role === "assistant").slice(-80);
   const candidates = storyCardEntityCandidates(text, recent, adventure.storyCards)
     // Suppress pending identities and recently dismissed nominations for four exchanges.
-    // Milestones above are independent: a unique important event never waits for recurrence.
+    // Model findings arrive separately and are unaffected by entity cooldowns.
     .filter(candidate => !adventure.activeState.memoryProposals.some(proposal => proposal.proposedType === "storyCard" && proposal.storyCardType !== "lore"
       && normalizeMemoryText(proposal.title) === normalizeMemoryText(candidate.name)
       && (proposal.status === "pending" || recent.slice(-4).some(message => message.id === proposal.sourceTurnId))))

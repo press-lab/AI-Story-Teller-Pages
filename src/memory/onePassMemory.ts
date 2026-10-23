@@ -113,6 +113,12 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
       const exact = adventure.storyCards.filter(card => u.targetId ? card.id === u.targetId : card.title === target);
       const existing = exact.length === 1 ? exact[0] : undefined;
       if (existing && norm(existing.content).includes(norm(content))) continue;
+      // Evidence can be dialogue; a biography update must be a factual summary.
+      // Do not append a copied first/second-person scene quote as an identity change.
+      if (existing?.type === "character" && (story.includes(content) || playerInput.includes(content))
+        && /["“”]/.test(content) && /\b(?:I|you|we|my|your|our)\b/i.test(content)) {
+        reject(`${target}: Character content copies scene dialogue instead of an identity fact`); continue;
+      }
       if (kind === "card" && exact.length === 0) { reject(`${target}: unknown target ID`); continue; }
       if (existing && !existing.active) { reject(`${target}: target is inactive`); continue; }
       const inferredHabit = existing?.type === "character" && /\b(always|never|usually|regularly|habitually|tends? to|habit|coping|stable trait|usual|treats|uses? .{0,20}as a|uses? .{0,20}to manage)\b/i.test(content) && !hasDurableCharacterEvidence(evidence);

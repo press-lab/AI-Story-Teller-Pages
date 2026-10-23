@@ -45,17 +45,11 @@ describe("Story Card skill policy", () => {
     ["They almost shared their first kiss.", undefined],
     ["Seth discovered a spoon and revealed its color.", undefined],
     ["Seth proposes marriage to Draconia; she might accept tomorrow.", "proposal"],
-  ])("deterministic milestone precision: %s", (content, kind) => {
+  ].map(([content]) => content))("delegates narrative development to the model: %s", content => {
     const state = seed();
     const nominations = scanStoryCardExchange(state, { id: "source", role: "assistant", content: content!, createdAt: "2026-01-01" });
     const milestones = nominations.filter(p => p.storyCardType === "lore");
-    expect(milestones).toHaveLength(kind ? 1 : 0);
-    if (kind) {
-      expect(milestones[0].storyCardReview).toMatchObject({ origin: "deterministic", eventKind: kind });
-      expect(milestones[0].content).toBe(content);
-      expect(milestones[0].lore?.status).toBe("completed");
-    }
-    if (kind === "death") expect(nominations.filter(p => p.storyCardType === "character").map(p => p.targetId)).toEqual(["voldemort"]);
+    expect(milestones).toEqual([]);
   });
   it("keeps an ordinary kiss available to independent LLM judgment and merged review", async () => {
     const text = "Draconia kissed Seth.";
@@ -77,9 +71,9 @@ describe("Story Card skill policy", () => {
     "Draconia kisses Seth for the first time.",
     "Draconia considers overthrowing Voldemort.",
     "Seth and Draconia establish a secret alliance.",
-  ])("retains a local review candidate for %s", async text => {
-    const state = await play(text);
-    expect(proposals(state)).toContainEqual(expect.objectContaining({ storyCardType: "lore", status: "pending", requiresReview: true, storyCardReview: expect.objectContaining({ candidateOnly: true }) }));
+  ])("retains a model review suggestion for %s", async text => {
+    const state = await play(text, [finding(text)]);
+    expect(proposals(state)).toContainEqual(expect.objectContaining({ storyCardType: "lore", status: "pending", storyCardReview: expect.objectContaining({ origin: "model" }) }));
     expect(state.storyCards).toHaveLength(3);
   });
   it.each([
@@ -110,11 +104,11 @@ describe("Story Card skill policy", () => {
     expect(proposals(state)[0].status).toBe("pending");
     expect(state.storyCards).toHaveLength(3);
   });
-  it("honors explicit opt-in after binding the completed exchange, merging both detectors once", async () => {
+  it("honors explicit opt-in for model findings after binding the completed exchange", async () => {
     const text = "Seth and Draconia shared their first kiss.";
     const state = await play(text, [finding(text, "Their first kiss")], seed(true));
     expect(proposals(state)).toHaveLength(1);
-    expect(proposals(state)[0]).toMatchObject({ status: "approved", storyCardReview: { origin: "both", candidateOnly: false } });
+    expect(proposals(state)[0]).toMatchObject({ status: "approved", storyCardReview: { origin: "model", candidateOnly: false } });
     expect(state.storyCards.filter(card => card.type === "lore")).toHaveLength(1);
     expect(state.messages.at(-1)?.storyCardScan?.fingerprint).toBeDefined();
   });
@@ -153,13 +147,13 @@ describe("Story Card skill policy", () => {
   it("uses aliases for exceptional identity changes without assigning the victim's death to others", async () => {
     const state = seed();
     state.storyCards[2].keys.push("Tom Riddle");
-    const next = await play("Seth killed Tom Riddle.", [], state);
+    const next = await play("Seth killed Tom Riddle.", [{ kind: "card", target: "Voldemort", targetId: "voldemort", content: "Voldemort died in battle against Seth.", evidence: "Seth killed Tom Riddle.", reason: "A permanent status change" }], state);
     expect(proposals(next).filter(p => p.storyCardType === "character").map(p => p.targetId)).toEqual(["voldemort"]);
   });
   it("keeps local discovery independent of the model's empty result and keeps the instruction compact", () => {
     const state = seed();
-    const source = { id: "source", role: "assistant" as const, content: "Draconia kisses Seth for the first time.", createdAt: "2026-01-01" };
-    expect(scanStoryCardExchange(state, source).some(p => p.storyCardType === "lore")).toBe(true);
+    const source = { id: "source", role: "assistant" as const, content: "Captain Livia introduces herself.", createdAt: "2026-01-01" };
+    expect(scanStoryCardExchange(state, source).some(p => p.storyCardType === "character")).toBe(true);
     expect(STORY_CARD_MEMORY_CHECK.split(/\s+/).length).toBeLessThan(180);
     expect(STORY_CARD_OUTPUT_SCHEMA).toContain("CREATE");
   });
@@ -179,7 +173,7 @@ describe("Story Card skill policy", () => {
     expect(proposals(next).some(p => p.title.startsWith("Their first kiss:") && !p.targetId)).toBe(true);
     expect(next.storyCards.find(card => card.id === "closed")?.content).toBe("They kissed privately.");
   });
-  it("keeps a short nomination cooldown for entities without delaying unique milestones", async () => {
+  it("keeps the entity nomination cooldown while leaving events to the model", async () => {
     let state = await play("Captain Livia enters and introduces herself.");
     const identity = proposals(state).find(p => p.title === "Captain Livia")!;
     expect(identity).toBeDefined();
@@ -187,7 +181,7 @@ describe("Story Card skill policy", () => {
     state = reduce(state, { type: "ADD_MESSAGE", id: "next", role: "assistant", content: "Captain Livia reads the map. Seth and Draconia shared their first kiss." });
     const next = scanStoryCardExchange(state, state.messages.at(-1)!);
     expect(next.some(p => p.title === "Captain Livia")).toBe(false);
-    expect(next.some(p => p.storyCardReview?.eventKind === "kiss")).toBe(true);
+    expect(next.some(p => p.storyCardType === "lore")).toBe(false);
   });
 });
 

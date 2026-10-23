@@ -27,7 +27,9 @@ function setup() {
 }
 
 it("completes an explicit evaluation with one background call and no narrative or Brain change", async () => {
-  vi.mocked(sendOpenAICompatibleChatCompletion).mockResolvedValue({ raw: {}, content: JSON.stringify({ turns: [{ sourceTurnId: "source", updates: [] }] }) });
+  vi.mocked(sendOpenAICompatibleChatCompletion).mockResolvedValue({ raw: {}, content: JSON.stringify({ turns: [{ sourceTurnId: "source", updates: [
+    { kind: "lore", target: "First kiss", content: "They shared their first kiss.", evidence: "Seth and Draconia shared their first kiss.", reason: "A milestone" },
+  ] }] }) });
   const hook = setup();
   const before = hook.result.current.adventure!;
   await act(async () => { await hook.result.current.runtime.evaluateStoryCards(["source"]); });
@@ -38,7 +40,7 @@ it("completes an explicit evaluation with one background call and no narrative o
   expect(next.messages.map(({ storyCardScan, ...message }) => message)).toEqual(before.messages);
   expect(next.messages[0].storyCardScan?.fingerprint).toBeDefined();
   expect(next.brains).toEqual(before.brains);
-  expect(next.activeState.memoryProposals).toContainEqual(expect.objectContaining({ proposedType: "storyCard", requiresReview: true, status: "pending" }));
+  expect(next.activeState.memoryProposals).toContainEqual(expect.objectContaining({ proposedType: "storyCard", status: "pending", storyCardReview: expect.objectContaining({ origin: "model" }) }));
 });
 
 it("cannot apply a model finding after the source changes during evaluation", async () => {
