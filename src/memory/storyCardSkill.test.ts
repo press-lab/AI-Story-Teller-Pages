@@ -22,8 +22,59 @@ const finding = (text: string, title = "A meaningful commitment") => ({ kind: "l
 
 describe("Story Card skill policy", () => {
   it.each([
+    ["Draconia kisses Seth.", undefined],
+    ["Draconia kissed Seth.", undefined],
+    ["Draconia almost kissed Seth.", undefined],
+    ["They share their first kiss.", "kiss"],
+    ["Draconia kisses Seth for the first time.", "kiss"],
+    ["Will you marry me?", "proposal"],
+    ["I wonder if Seth will propose.", undefined],
+    ["Seth imagined proposing.", undefined],
+    ["Seth proposes overthrowing the government.", undefined],
+    ["They discuss their upcoming wedding.", undefined],
+    ["They got married that afternoon.", "marriage"],
+    ["They are married.", undefined],
+    ["I promise I'll be back.", undefined],
+    ["Seth promised to help Draconia.", undefined],
+    ["Voldemort died.", "death"],
+    ["Seth killed Voldemort.", "death"],
+    ["Seth intends to kill Voldemort.", undefined],
+    ["Voldemort was not killed.", undefined],
+    ["Voldemort threatened to kill Seth.", undefined],
+    ["I will propose marriage tomorrow.", undefined],
+    ["They almost shared their first kiss.", undefined],
+    ["Seth discovered a spoon and revealed its color.", undefined],
+    ["Seth proposes marriage to Draconia; she might accept tomorrow.", "proposal"],
+  ])("deterministic milestone precision: %s", (content, kind) => {
+    const state = seed();
+    const nominations = scanStoryCardExchange(state, { id: "source", role: "assistant", content: content!, createdAt: "2026-01-01" });
+    const milestones = nominations.filter(p => p.storyCardType === "lore");
+    expect(milestones).toHaveLength(kind ? 1 : 0);
+    if (kind) {
+      expect(milestones[0].storyCardReview).toMatchObject({ origin: "deterministic", eventKind: kind });
+      expect(milestones[0].content).toBe(content);
+      expect(milestones[0].lore?.status).toBe("completed");
+    }
+    if (kind === "death") expect(nominations.filter(p => p.storyCardType === "character").map(p => p.targetId)).toEqual(["voldemort"]);
+  });
+  it("keeps an ordinary kiss available to independent LLM judgment and merged review", async () => {
+    const text = "Draconia kissed Seth.";
+    expect(scanStoryCardExchange(seed(), { id: "source", role: "assistant", content: text, createdAt: "2026-01-01" }).filter(p => p.storyCardType === "lore")).toEqual([]);
+    const state = await play(text, [finding(text, "Their public reconciliation")]);
+    expect(proposals(state)).toHaveLength(1);
+    expect(proposals(state)[0]).toMatchObject({ status: "pending", storyCardReview: { origin: "model", candidateOnly: false } });
+  });
+  it("still routes an LLM-only kiss to a suitable relationship history", async () => {
+    const initial = seed();
+    initial.storyCards.push(makeStoryCard({ id: "history", title: "Seth and Draconia Relationship History", type: "lore", memoryMode: "living", content: "Seth and Draconia are close." }));
+    const text = "Draconia kissed Seth.";
+    const state = await play(text, [finding(text, "A public kiss")], initial);
+    expect(proposals(state)).toHaveLength(1);
+    expect(proposals(state)[0]).toMatchObject({ targetId: "history", status: "pending", storyCardReview: { origin: "model", eventKind: "kiss" } });
+  });
+  it.each([
     "Seth meets Draconia for the first time.",
-    "Draconia kissed Seth.",
+    "Draconia kisses Seth for the first time.",
     "Draconia considers overthrowing Voldemort.",
     "Seth and Draconia establish a secret alliance.",
   ])("retains a local review candidate for %s", async text => {
@@ -107,7 +158,7 @@ describe("Story Card skill policy", () => {
   });
   it("keeps local discovery independent of the model's empty result and keeps the instruction compact", () => {
     const state = seed();
-    const source = { id: "source", role: "assistant" as const, content: "Draconia kissed Seth.", createdAt: "2026-01-01" };
+    const source = { id: "source", role: "assistant" as const, content: "Draconia kisses Seth for the first time.", createdAt: "2026-01-01" };
     expect(scanStoryCardExchange(state, source).some(p => p.storyCardType === "lore")).toBe(true);
     expect(STORY_CARD_MEMORY_CHECK.split(/\s+/).length).toBeLessThan(180);
     expect(STORY_CARD_OUTPUT_SCHEMA).toContain("CREATE");

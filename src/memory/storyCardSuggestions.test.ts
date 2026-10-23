@@ -31,11 +31,9 @@ describe("merged Story Card suggestions", () => {
     expect(lore(state)[0]).toMatchObject({ status: "pending", requiresReview: false, storyCardReview: { origin: "both" }, lore: { occurredAt: { date: "2019-02-01" }, sourceMessageIds: expect.arrayContaining(["final-source"]) } });
     expect(state.storyCards).toHaveLength(3);
   });
-  it("keeps an almost-kiss unconfirmed", async () => {
+  it("suppresses an almost-kiss rather than nominating an uncertain milestone", async () => {
     const state = await play("Draconia almost kissed Seth for the first time.");
-    expect(lore(state)).toHaveLength(1);
-    expect(lore(state)[0]).toMatchObject({ status: "pending", storyCardReview: { candidateOnly: true } });
-    expect(lore(state)[0].content).toMatch(/^Candidate interpretation/);
+    expect(lore(state)).toEqual([]);
     expect(state.storyCards).toHaveLength(3);
   });
   it("proposes Lore for a marriage proposal without claiming a marriage occurred", async () => {
@@ -145,7 +143,7 @@ describe("merged Story Card suggestions", () => {
     state = reduce(state, { type: "DELETE_MESSAGE", messageId: "final-source" });
     state = reduce(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: stale.id });
     expect(state.storyCards).toHaveLength(3);
-    state = reduce(state, { type: "ADD_MESSAGE", id: "revised-source", role: "assistant", content: "Draconia almost kissed Seth for the first time." });
+    state = reduce(state, { type: "ADD_MESSAGE", id: "revised-source", role: "assistant", content: "Draconia kisses Seth for the first time." });
     state = reduce(state, { type: "SCAN_STORY_CARD_EXCHANGE", sourceMessageId: "revised-source", manual: true });
     expect(lore(state).some(proposal => proposal.sourceTurnId === "revised-source")).toBe(true);
   });

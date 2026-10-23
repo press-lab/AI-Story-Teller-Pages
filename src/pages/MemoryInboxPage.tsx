@@ -1,6 +1,7 @@
-import { isHistoricalLore } from "../memory/storyCardArchitecture";
+import { isHistoricalLore, proposalLore } from "../memory/storyCardArchitecture";
 import { suggestionSourceValid } from "../memory/storyCardSuggestions";
 import { formatStoryTime } from "../memory/storyTime";
+import { ProposalEventDate } from "./ProposalEventDate";
 import { useState } from "react";
 import { classifyMemory } from "../memory/classificationPolicy";
 import { resolveMemoryTarget } from "../memory/resolveMemoryTarget";
@@ -242,6 +243,9 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
   const isPending = proposal.status === "pending";
   const sourceValid = suggestionSourceValid(adventure, proposal);
   const [regenerating, setRegenerating] = useState(false);
+  const [eventDateValid, setEventDateValid] = useState(true);
+  const isLore = proposal.proposedType === "storyCard" && (proposal.storyCardType === "lore" || adventure.storyCards.some(card => card.id === proposal.targetId && card.type === "lore"));
+  const lore = isLore ? proposalLore(adventure, proposal) : undefined;
 
   async function handleRegenerate() {
     if (!onRegenerate || regenerating) return;
@@ -283,7 +287,7 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
         <div className="row">
           <button
             type="button"
-            disabled={proposal.status === "approved" || !sourceValid}
+            disabled={proposal.status === "approved" || !sourceValid || (isLore && !eventDateValid)}
             onClick={() => dispatch({ type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id })}
           >
             Approve
@@ -332,6 +336,9 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
         </select></Field>
         {proposal.storyCardReview.targetCandidates.length > 1 && !proposal.targetId && <p>Several continuing subjects may fit. Choose an update target or keep this as a separate card.</p>}
       </div>}
+      {isPending && lore && <ProposalEventDate value={proposal.targetId ? lore.lastChangedAt ?? lore.occurredAt : lore.occurredAt}
+        onValidityChange={setEventDateValid}
+        onChange={time => onUpdate(proposal, { lore: { ...lore, occurredAt: time, lastChangedAt: time } })} />}
       <textarea
         rows={5}
         value={proposal.content}
