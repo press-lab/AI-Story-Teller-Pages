@@ -224,3 +224,106 @@ describe("calendar progression", () => {
     expect(buildContext(state).messages.map(m => m.content).join(" ")).toContain("Unresolved time passage");
   });
 });
+
+describe("deterministic entity discovery precision", () => {
+  function identities(text: string, history: string[] = []) {
+    const state = seed();
+    state.storyCards = state.storyCards.filter(card => card.title !== "Voldemort");
+    state.storyCards.push(...["Eliot", "Draco Malfoy"].map(title => makeStoryCard({ id: title, title, type: "character", content: "An established character.", keys: [title] })));
+    state.messages = [...history, text].map((content, index) => ({ id: `entity-${index}`, role: "assistant" as const, content, createdAt: "2026-01-01" }));
+    return scanStoryCardExchange(state, state.messages.at(-1)!).filter(p => p.storyCardType !== "lore" && !p.targetId);
+  }
+  const gameplay = [
+    "Some would come back for this.",
+    "Draconia's eyes flick to you, sharp.",
+    "The Department would very much like to understand what happened here today.",
+    '"And I feel fine," Eliot finishes.',
+  ];
+  it.each(gameplay)("produces zero identity nominations for the gameplay failure: %s", text => {
+    expect(identities(text)).toEqual([]);
+    expect(identities(text, Array(23).fill(text))).toEqual([]);
+  });
+  it.each([
+    "Draconia’s eyes flick to you, sharp.", "Seth's coat is wet.", "Eliot’s eyes close.", "Malfoy's wand drops.",
+    "Perhaps tomorrow.", "Meanwhile, Draconia waits.", "The Ministry issued a statement.",
+    "The Professor entered.", "The Minister refused.", "The Castle stands nearby.",
+    "The Minister of Magic introduces himself.", "Captain of the Guard enters.",
+    "The sword called Dawn gleams.",
+    "Some would return as Captain Livia introduces herself.",
+    '"And I feel fine," Captain Livia says.',
+  ])("does not promote possessives, grammar, or detached introduction cues: %s", text => {
+    const found = identities(text, Array(24).fill(text));
+    expect(found.filter(p => p.title !== "Captain Livia")).toEqual([]);
+  });
+  it.each([
+    ["Captain Livia enters and introduces herself.", "Captain Livia", "character"],
+    ["Professor Elara Voss introduces herself to Seth.", "Professor Elara Voss", "character"],
+    ['"Stay here," Dobby says.', "Dobby", "character"],
+    ["Kreacher introduces himself to Seth.", "Kreacher", "character"],
+    ["A wizard called Voldemort joins Seth.", "Voldemort", "character"],
+    ["Professor O’Neill introduces herself.", "Professor O’Neill", "character"],
+    ["Captain Jean-Luc introduces himself.", "Captain Jean-Luc", "character"],
+    ["‘Captain Livia’ introduces herself.", "Captain Livia", "character"],
+    ["They arrive at Silverpeak Citadel, the new magical academy.", "Silverpeak Citadel", "location"],
+    ["The Order of the Phoenix establishes a secret alliance.", "Order of the Phoenix", "custom"],
+    ["The Department of Mysteries issued a statement.", "Department of Mysteries", "custom"],
+  ])("recognizes a distinct entity without requiring repetition: %s", (text, title, type) => {
+    expect(identities(text)).toContainEqual(expect.objectContaining({ title, storyCardType: type, storyCardReview: expect.objectContaining({ origin: "deterministic" }) }));
+  });
+  it("uses character evidence for a single-word name before frequency ranks it", () => {
+    const text = "Fenchurch arrives, landing on Seth's shoulder.";
+    expect(identities(text, Array(24).fill(text))).toEqual([]);
+    expect(identities(text, ["Seth introduces Fenchurch, his tiny dragon companion."])).toContainEqual(expect.objectContaining({ title: "Fenchurch", storyCardType: "character" }));
+  });
+  it("recognizes recurring character-specific context rather than mere name repetition", () => {
+    const text = "Dobby rubs his eyes.";
+    expect(identities(text)).toEqual([]);
+    expect(identities(text, ["Dobby folds his arms."])).toContainEqual(expect.objectContaining({ title: "Dobby", storyCardType: "character" }));
+  });
+  it.each(["Draconia", "Seth", "Eliot", "Malfoy"])("resolves %s possessives even with otherwise qualifying character evidence", name => {
+    for (const apostrophe of ["'", "’"]) {
+      expect(identities(`${name}${apostrophe}s eyes flick to you.`, [`${name} introduces himself.`])).toEqual([]);
+    }
+  });
+  it("covers possessive aliases and punctuation without losing apostrophes or hyphens in names", () => {
+    const state = seed();
+    state.storyCards.push(...[
+      { title: "Narcissa Malfoy", keys: ["Cissy"] }, { title: "O'Neill" }, { title: "Jean-Luc" },
+    ].map(card => makeStoryCard({ ...card, type: "character", content: "An established character." })));
+    for (const content of ["Cissy’s eyes narrow.", "O’Neill's eyes narrow.", "Jean-Luc's eyes narrow.", '"Wait," Cissy says.', "Professor O’Neill introduces herself.", "Captain Jean-Luc introduces himself.", "‘Professor O’Neill’ introduces herself."]) {
+      const source = { id: "aliases", role: "assistant" as const, content, createdAt: "2026-01-01" };
+      state.messages = [source];
+      expect(scanStoryCardExchange(state, source).filter(p => p.storyCardType !== "lore" && !p.targetId)).toEqual([]);
+    }
+  });
+  it("allows a meaningful LLM-only entity into the Inbox when local evidence is insufficient", async () => {
+    const text = "Fenchurch lands on Seth's shoulder.";
+    expect(identities(text)).toEqual([]);
+    const state = await play(text, [{ kind: "newCard", cardType: "character", operation: "CREATE", target: "Fenchurch", content: "Fenchurch is Seth's dragon companion.", evidence: text, reason: "Established scene context identifies a significant companion.", triggers: ["Fenchurch"] }]);
+    expect(proposals(state)).toContainEqual(expect.objectContaining({ title: "Fenchurch", storyCardType: "character", status: "pending", storyCardReview: expect.objectContaining({ origin: "model" }) }));
+  });
+  it("keeps one reviewed identity when both detectors identify the same person", async () => {
+    const text = "Captain Livia introduces herself.";
+    expect(identities(text)).toContainEqual(expect.objectContaining({ title: "Captain Livia", storyCardReview: expect.objectContaining({ origin: "deterministic" }) }));
+    let state = await play(text, [{ kind: "newCard", cardType: "character", target: "Captain Livia", content: "Captain Livia commands the northern guard.", evidence: text, reason: "A significant new person", triggers: ["Livia"] }]);
+    const nominated = proposals(state).filter(p => p.storyCardType === "character");
+    expect(nominated).toHaveLength(1);
+    // The existing identity cooldown suppresses local duplication once the model proposal is pending.
+    expect(nominated[0]).toMatchObject({ status: "pending", storyCardReview: { origin: "model" } });
+    expect(state.storyCards.some(card => card.title === "Captain Livia")).toBe(false);
+    state = reduce(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: nominated[0].id });
+    expect(state.storyCards.some(card => card.title === "Captain Livia")).toBe(true);
+  });
+  it("retains the introduction proof when qualification depends on earlier context", () => {
+    const state = seed();
+    state.messages = [
+      { id: "intro", role: "assistant", content: "Seth introduces Fenchurch, his tiny dragon companion.", createdAt: "2026-01-01" },
+      { id: "current", role: "assistant", content: "Fenchurch arrives, landing on Seth's shoulder.", createdAt: "2026-01-01" },
+    ];
+    const proposal = scanStoryCardExchange(state, state.messages[1]).find(p => p.title === "Fenchurch")!;
+    expect(proposal.storyCardReview?.additionalSources).toEqual([{ id: "intro", content: state.messages[0].content }]);
+    state.activeState.memoryProposals = [proposal];
+    state.messages[0].content = "No companion was introduced.";
+    expect(reduce(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id }).storyCards).toEqual(state.storyCards);
+  });
+});

@@ -2,6 +2,7 @@ import type { Adventure, MemoryProposal, Message, StoryCard, StoryCardType } fro
 import { createId, nowIso } from "../utils/id";
 import { isExceptionalIdentityChange, isHistoricalLore } from "./storyCardArchitecture";
 import { readStoryTime, transitionKey } from "./storyTime";
+import { storyCardEntityCandidates } from "./storyCardEntities";
 
 export const STORY_CARD_MEMORY_CHECK = `STORY CARD MEMORY CHECK
 Did anything NEW and MEANINGFUL happen in this exchange? Remember first meetings/kisses, proposals, relationships, commitments, betrayals, discoveries, major decisions, deaths, permanent changes, or significant new people/places. Ignore routine activity, conversation, movement, temporary reactions and repeats.
@@ -215,11 +216,9 @@ export function scanStoryCardExchange(adventure: Adventure, source: Message): Me
     }
     if (proposals.length >= 6) break;
   }
-  // Bounded frequency/recency ranking, unique exchanges, known-title/alias filtering, no stored duplicate index.
+  // Identity evidence qualifies candidates first; frequency/recency only ranks them.
   const recent = adventure.messages.filter(message => message.role === "assistant").slice(-80);
-  const candidates = namedSubjects(text).filter(name => !adventure.storyCards.some(card => [card.title, ...card.keys].some(alias => normalizeMemoryText(alias) === normalizeMemoryText(name))))
-    .map(name => ({ name, evidence: sentenceEvidence(text).find(sentence => mentions(sentence, name)), occurrences: recent.filter(message => mentions(message.content, name)), rank: recent.reduce((score, message, index) => score + (mentions(message.content, name) ? 1 + (index + 1) / Math.max(1, recent.length) : 0), 0) }))
-    .filter(candidate => candidate.occurrences.length >= 2 || /\b(meets?|introduc(?:es|ed)|captain|professor|minister|commander|wizard|witch|citadel|castle|tower|academy|order|guild|council|alliance|syndicate)\b/i.test(candidate.evidence ?? ""))
+  const candidates = storyCardEntityCandidates(text, recent, adventure.storyCards)
     // Suppress pending identities and recently dismissed nominations for four exchanges.
     // Milestones above are independent: a unique important event never waits for recurrence.
     .filter(candidate => !adventure.activeState.memoryProposals.some(proposal => proposal.proposedType === "storyCard" && proposal.storyCardType !== "lore"
@@ -227,13 +226,11 @@ export function scanStoryCardExchange(adventure: Adventure, source: Message): Me
       && (proposal.status === "pending" || recent.slice(-4).some(message => message.id === proposal.sourceTurnId))))
     .sort((a, b) => b.rank - a.rank || a.name.localeCompare(b.name)).slice(0, 2);
   for (const candidate of candidates) {
-    const evidence = sentenceEvidence(text).find(sentence => mentions(sentence, candidate.name));
-    if (!evidence) continue;
-    const organization = /\b(Order|Guild|Council|Alliance|Syndicate|Company|Ministry)\b/.test(candidate.name);
-    const location = !organization && /\b(Tower|Castle|Citadel|Academy|Forest|Harbor|Manor)\b/.test(candidate.name);
-    proposals.push(makeStoryCardSuggestion(adventure, source.id, source.content, { title: candidate.name, content: `Candidate identity from observed evidence: ${evidence}`,
-      evidence, reason: `${candidate.occurrences.length} recent exchanges mention this uncovered subject. No identity traits have been inferred.`,
-      type: organization ? "custom" : location ? "location" : "character", triggers: [candidate.name], candidateOnly: true, origin: "deterministic" }));
+    const proposal = makeStoryCardSuggestion(adventure, source.id, source.content, { title: candidate.name, content: `Candidate identity from observed evidence: ${candidate.evidence}`,
+      evidence: candidate.evidence, reason: `${candidate.reason} ${candidate.occurrences} recent exchanges mention it; recurrence ranks qualified names only. No identity traits have been inferred.`,
+      type: candidate.type, triggers: [candidate.name], candidateOnly: true, origin: "deterministic" });
+    proposal.storyCardReview!.additionalSources = candidate.support.filter(message => message.id !== source.id).map(message => ({ id: message.id, content: message.content }));
+    proposals.push(proposal);
   }
   return proposals.slice(0, 8);
 }
