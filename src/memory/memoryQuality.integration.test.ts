@@ -2,7 +2,7 @@ import type { MemoryProposal } from "../types/adventure";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createDefaultAdventure, makeBrain, makeComponent, makeStoryCard } from "../state/defaults";
 import { adventureReducer } from "../state/adventureReducer";
-import { runMemoryCycle } from "../triggers/semanticEngine";
+import { runMemoryCycle, runManualPEComponentUpdate } from "../triggers/semanticEngine";
 import { validateMemoryUpdate, memoryUpdateShapeError } from "./validateMemoryUpdate";
 import { resolveMemoryTarget } from "./resolveMemoryTarget";
 import { detectStoryCardProposals } from "./memoryDetection";
@@ -64,66 +64,48 @@ describe("Seattle memory quality", () => {
     expect(provider.mock.calls[0][0].messages[0].content).not.toContain("Permit authority");
   });
 
-  it("updates Plot Essentials and pressure independently with validated evidence", async () => {
+  it("keeps manual Plot Essentials and pressure tools grounded in validated evidence", async () => {
     const a = seattle();
     const replacement = "Seth has heard Edythe's explanation of vampires but remains unconvinced. He has arrived at the Cullen house to meet her family.";
     provider.mockImplementation(async request => {
-      const system = request.messages.map(m => m.content).join("\n");
-      if (system.includes("MEMORY UPDATE VALIDATION")) return { content: accepted, raw: {}, usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 } };
-      if (system.includes("evaluation engine")) return { content: '["plotEssentialsPressure:pressure","plotEssentialsDrift:pe"]', raw: {} };
-      if (system.includes("maintaining Plot Essentials")) return { content: replacement, raw: {} };
-      if (system.includes("updating the Active Pressure")) return { content: "The Cullen family requires Seth to answer their questions before leaving.", raw: {} };
+      const text = request.messages.map(m => m.content).join("\n");
+      if (text.includes("MEMORY UPDATE VALIDATION")) return { content: accepted, raw: {} };
+      if (text.includes("maintaining Plot Essentials")) return { content: replacement, raw: {} };
+      if (text.includes("updating the Active Pressure")) return { content: "The Cullen family requires Seth to answer their questions before leaving.", raw: {} };
       throw new Error("Unexpected request");
     });
-    const result = await runMemoryCycle(a, config);
-    expect(result.logEntry.errors).toEqual([]);
-    expect(result.actions.filter(a => a.type === "ADD_MEMORY_PROPOSAL")).toHaveLength(2);
-    expect(result.tokenUsage).toEqual({ promptTokens: 20, completionTokens: 10 });
-    let state = result.actions.reduce(adventureReducer, a);
-    const pe = state.activeState.memoryProposals.find(p => p.proposedType === "plotEssentialsUpdate")!;
-    state = adventureReducer(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: pe.id });
+    const pe = await runManualPEComponentUpdate(a, config, "pe");
+    const pressure = await runManualPEComponentUpdate(a, config, "pressure");
+    expect(pe.logEntry.errors).toEqual([]);
+    expect(pressure.logEntry.errors).toEqual([]);
+    let state = [...pe.actions, ...pressure.actions].reduce(adventureReducer, a);
+    for (const p of state.activeState.memoryProposals) if (p.status === "pending") state = adventureReducer(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: p.id });
     expect(state.components.find(c => c.id === "pe")?.content).toBe(replacement);
     expect(state.components.find(c => c.id === "pressure")?.content).toContain("requires Seth");
-    expect(state.storyCards).toHaveLength(0);
     const reviews = provider.mock.calls.filter(([r]) => r.messages.some(m => m.content.includes("MEMORY UPDATE VALIDATION")));
     expect(reviews).toHaveLength(2);
-    const prompt = reviews[0][0].messages.map(m => m.content).join("\n");
-    expect(prompt).toContain("skepticism is not ignorance");
-    expect(prompt).toContain("my actual text was witty");
-    expect(prompt).toContain("I get out of the car");
+    expect(reviews[0][0].messages.map(m => m.content).join("\n")).toContain("skepticism is not ignorance");
     const generations = provider.mock.calls.filter(([r]) => r.messages.some(m => m.content.includes("maintaining Plot Essentials") || m.content.includes("updating the Active Pressure")));
-    for (const [request] of [...generations, ...reviews]) {
-      // Shared reference prefix precedes variable target instructions in both paths.
-      expect(request.messages[0].content).toMatch(/^Memory accuracy:/);
-      expect(request.messages[1].content).toMatch(/^Canon component:/);
-    }
     expect(generations).toHaveLength(2);
-    // The Anthropic adapter hoists system messages; no dynamic target may be there.
-    const systemPrompts = generations.map(([r]) => r.messages.filter(m => m.role === "system").map(m => m.content));
-    expect(systemPrompts[0]).toEqual(systemPrompts[1]);
-    for (const [request] of generations) {
-      expect(request.messages.find(m => m.content.includes("maintaining Plot Essentials") || m.content.includes("updating the Active Pressure"))?.role).toBe("user");
-    }
+    expect(generations[0][0].messages.filter(m => m.role === "system")).toEqual(generations[1][0].messages.filter(m => m.role === "system"));
   });
 
-  it("blocks narrated pressure before auto-approval and leaves existing pressure intact", async () => {
+  it("blocks narrated pressure in the manual tool and leaves existing pressure intact", async () => {
     const a = seattle(); a.components = a.components.filter(c => c.type === "activePressure");
-    provider.mockResolvedValueOnce({ content: '["plotEssentialsPressure:pressure"]', raw: {} })
-      .mockResolvedValueOnce({ content: 'Rain beads on her coat. Edythe turns and says, "Seth. Out of the car."', raw: {} });
-    const result = await runMemoryCycle(a, config);
+    provider.mockResolvedValueOnce({ content: 'Rain beads on her coat. Edythe turns and says, "Seth. Out of the car."', raw: {} });
+    const result = await runManualPEComponentUpdate(a, config, "pressure");
     const state = result.actions.reduce(adventureReducer, a);
     expect(state.components[0].content).toBe(a.components[0].content);
     expect(result.actions.some(a => a.type === "MARK_COMPONENT_UPDATED")).toBe(false);
     expect(result.logEntry.errors.join(" ")).toContain("not dialogue or scene narration");
-    expect(provider).toHaveBeenCalledTimes(2);
+    expect(provider).toHaveBeenCalledTimes(1);
   });
 
   it("blocks plausible-looking but unsupported replacements using the evidence verdict", async () => {
     const a = seattle(); a.components = a.components.filter(c => c.type === "plotEssentials");
-    provider.mockResolvedValueOnce({ content: '["plotEssentialsDrift:pe"]', raw: {} })
-      .mockResolvedValueOnce({ content: "Seth believes Edythe's explanation and remains in the car.", raw: {} })
+    provider.mockResolvedValueOnce({ content: "Seth believes Edythe's explanation and remains in the car.", raw: {} })
       .mockResolvedValueOnce({ content: JSON.stringify({ accepted: false, meaningfulChange: true, reason: "Contradicts skepticism and completed exit from the car." }), raw: {} });
-    const result = await runMemoryCycle(a, config);
+    const result = await runManualPEComponentUpdate(a, config, "pe");
     expect(result.actions.some(a => a.type === "ADD_MEMORY_PROPOSAL")).toBe(false);
     expect(result.logEntry.errors.join(" ")).toContain("Contradicts skepticism");
   });
@@ -197,16 +179,14 @@ describe("Seattle memory quality", () => {
 
 
 describe("Seattle pressure and identity regressions", () => {
-  it.each(["same route", "shower", "typing indicator"])("rejects %s churn even when the evaluator fires", async detail => {
-    const a = seattle(); a.components = a.components.filter(c => c.type === "activePressure");
-    provider.mockResolvedValueOnce({ content: '["plotEssentialsPressure:pressure"]', raw: {} })
-      .mockResolvedValueOnce({ content: `Watchers remain while Seth continues the ${detail}.`, raw: {} })
+  it.each(["same route", "shower", "typing indicator"])("rejects %s churn in the manual pressure tool", async detail => {
+    const a = seattle();
+    provider.mockResolvedValueOnce({ content: `Watchers remain while Seth continues the ${detail}.`, raw: {} })
       .mockResolvedValueOnce({ content: JSON.stringify({ accepted: true, meaningfulChange: true, evidenceMessageIds: ["arrival"], pressureChange: "none" }), raw: {} });
-    const result = await runMemoryCycle(a, config);
-    expect(result.actions.some(a => a.type === "ADD_MEMORY_PROPOSAL" || a.type === "MARK_COMPONENT_UPDATED")).toBe(false);
-    expect(result.actions.reduce(adventureReducer, a).components[0].content).toBe(a.components[0].content);
-    const input = JSON.parse(provider.mock.calls[0][0].messages.at(-1)!.content);
-    expect(input.latestTurn.map((m: { id: string }) => m.id)).toEqual(["arrival"]);
+    const result = await runManualPEComponentUpdate(a, config, "pressure");
+    expect(result.actions.some(action => action.type === "ADD_MEMORY_PROPOSAL" || action.type === "MARK_COMPONENT_UPDATED")).toBe(false);
+    expect(result.actions.reduce(adventureReducer, a).components).toEqual(a.components);
+    expect(provider).toHaveBeenCalledTimes(2);
   });
 
   it("cannot recycle an old threat as a latest-turn pressure change", async () => {

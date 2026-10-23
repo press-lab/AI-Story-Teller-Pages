@@ -729,6 +729,10 @@ export async function runSemanticPostTurnEvaluation(
         : undefined;
     const triggerActions = condition.actionFactory(adventure);
     for (const triggerAction of triggerActions) {
+      if (["updateComponent", "updateComponentPressure", "updateComponentArc", "updateSummary"].includes(triggerAction.type)) {
+        actionsExecuted.push(`${condition.label}: automatic Plot Component memory updates are disabled`);
+        continue;
+      }
       if (isGeneratedAction(triggerAction)) {
         generationTasks.push(() => generatedActionsFor(adventure, providerConfig, triggerAction, condition.id, sourceRule, accum));
         actionsExecuted.push(`${condition.label}: ${triggerAction.type} (generated)`);
@@ -1913,7 +1917,7 @@ export async function runMemoryCycle(
     semanticEvaluationSettings: { ...adventure.semanticEvaluationSettings, requireApprovalForAutoUpdates: true },
   };
 
-  const plotConditions = buildPlotMemoryConditions(adventure);
+  const plotConditions: SemanticCondition[] = []; // automatic memory targets only Story Cards and Brains
   const storyCardConditions = buildStoryCardMemoryConditions(adventure);
   const characterConditions = buildCharacterMemoryConditions(adventure);
   const allConditions = [...plotConditions, ...storyCardConditions, ...characterConditions];

@@ -347,7 +347,7 @@ export default function App() {
     const common = { adventure, dispatch };
     switch (tabId) {
       case "chronicle":
-        return <ChroniclePage {...common} />;
+        return <ChroniclePage {...common} loading={runtime.loading} onEvaluateStoryCards={runtime.evaluateStoryCards} />;
       case "context":
         return <ContextPreviewPage {...common} contextResult={contextResult} onBuildContext={runtime.buildPreview} providerConfig={runtime.activeProviderConfig} />;
       case "components":
@@ -575,7 +575,7 @@ export default function App() {
           </section>
         );
       case "chronicle":
-        return <ChroniclePage {...common} />;
+        return <ChroniclePage {...common} loading={runtime.loading} onEvaluateStoryCards={runtime.evaluateStoryCards} />;
       case "context":
       case "components":
       case "storyCards":

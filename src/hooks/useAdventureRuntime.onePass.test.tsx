@@ -1,3 +1,4 @@
+import { suggestionSourceValid } from "../memory/storyCardSuggestions";
 /** @vitest-environment jsdom */
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { useState } from "react";
@@ -46,7 +47,8 @@ describe("runtime one-pass call accounting", () => {
     const { result } = setup();
     await act(async () => { await result.current.runtime.submitTurn("Mira explains."); });
     expect(sendOpenAICompatibleChatCompletion).toHaveBeenCalledTimes(1);
-    expect(result.current.adventure?.storyCards[0].content).toContain("Silver");
+    expect(result.current.adventure?.storyCards[0].content).toBe("Mira is a scout.");
+    expect(result.current.adventure?.activeState.memoryProposals).toContainEqual(expect.objectContaining({ content: expect.stringContaining("Silver"), requiresReview: true }));
     expect(result.current.adventure?.memoryDetectionSettings.enabled).toBe(true);
     expect(result.current.adventure?.messages.at(-1)?.content).toBe(story);
     await act(async () => { await result.current.runtime.continueTurn(); });
@@ -54,7 +56,7 @@ describe("runtime one-pass call accounting", () => {
     await act(async () => { await result.current.runtime.regenerateLastResponse(); });
     expect(sendOpenAICompatibleChatCompletion).toHaveBeenCalledTimes(3);
     expect(runMemoryCycle).not.toHaveBeenCalled();
-    expect(result.current.adventure?.activeState.memoryProposals).toHaveLength(1);
+    expect(result.current.adventure?.activeState.memoryProposals.filter(p => suggestionSourceValid(result.current.adventure!, p))).toHaveLength(1);
     expect(result.current.adventure?.activeState.turn).toBe(2);
   });
 

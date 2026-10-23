@@ -42,7 +42,7 @@ describe("primary Story Card architecture", () => {
     let repeated = reduce(second, { type: "UPSERT_STORY_CARD", storyCard: first.storyCards[0] });
     repeated = reduce(repeated, { type: "UPSERT_STORY_CARD", storyCard: first.storyCards[0] });
     expect(repeated.storyCards).toHaveLength(1);
-    expect(repeated.storyClock).toBeUndefined();
+    expect(repeated.storyClock).toMatchObject({ origin: "assumed", current: { date: "2000-01-01" } });
   });
 
   it.each(["character", "location"] as const)("routes ordinary %s developments to Lore and leaves the biography unchanged", type => {
@@ -55,7 +55,7 @@ describe("primary Story Card architecture", () => {
     state = reduce(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: pending.id });
     expect(state.storyCards.find(c => c.id === identity.id)?.content).toBe(identity.content);
     expect(state.storyCards.find(c => c.type === "lore")?.content).toBe(content);
-    expect(applyAIMemoryUpdate(state, [{ type: "storyCardUpdate", storyCardId: identity.id, content }]).actions).toEqual([]);
+    expect(applyAIMemoryUpdate(state, [{ type: "storyCardUpdate", storyCardId: identity.id, content }]).actions).toContainEqual(expect.objectContaining({ type: "ADD_MEMORY_PROPOSAL", proposal: expect.objectContaining({ storyCardType: "lore", requiresReview: true }) }));
   });
 
   it("requires review for character death and records dated supporting Lore on approval", () => {

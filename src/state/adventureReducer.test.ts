@@ -5,6 +5,7 @@ import { adventureReducer } from "./adventureReducer";
 import { makeMemoryProposal } from "../test/goldenAdventure";
 
 const testedActionTypes = [
+  "SCAN_STORY_CARD_EXCHANGE",
   "SET_STORY_CLOCK",
   "SET_TITLE",
   "SET_OPENING_SCENE",

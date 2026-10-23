@@ -1,3 +1,5 @@
+import { suggestionSourceValid } from "../memory/storyCardSuggestions";
+import { formatStoryTime } from "../memory/storyTime";
 import { useState } from "react";
 import { classifyMemory } from "../memory/classificationPolicy";
 import { resolveMemoryTarget } from "../memory/resolveMemoryTarget";
@@ -108,7 +110,7 @@ export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onR
     <section className="page editor-surface memory-inbox-page">
       <div className="editor-page-summary">
         <p className="muted">
-          Review proposed memory writes before they become active story context. Event Memories always wait for your approval.
+          Review proposed memory writes before they become active story context. All Story Card suggestions wait for your approval.
         </p>
         <div className="editor-stat-row" aria-label="Memory suggestion counts">
           <span>{totalPending} pending</span>
@@ -157,7 +159,7 @@ export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onR
           <CheckboxField label="Active Pressure" checked={autoApprove.plotPressureUpdate} onChange={(v) => setAutoApprove({ plotPressureUpdate: v })} />
           <CheckboxField label="Current Arc" checked={autoApprove.currentArcUpdate} onChange={(v) => setAutoApprove({ currentArcUpdate: v })} />
           <CheckboxField label="Arc Proposals" checked={autoApprove.arcProposal} onChange={(v) => setAutoApprove({ arcProposal: v })} />
-          <CheckboxField label="Story Cards" checked={autoApprove.storyCard} onChange={(v) => setAutoApprove({ storyCard: v })} />
+          <span className="muted">Story Card suggestions always require review.</span>
           <CheckboxField label="Characters" checked={autoApprove.brainUpdate} onChange={(v) => setAutoApprove({ brainUpdate: v })} />
         </div>
       </details>
@@ -209,7 +211,7 @@ export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onR
       <div className="list">
         {pending.length === 0 && <p className="muted">No pending memory suggestions.</p>}
         {pending.map((proposal) => (
-          <ProposalCard key={proposal.id} proposal={proposal} dispatch={dispatch} onUpdate={updateProposal} onRegenerate={onRegenerateProposal} />
+          <ProposalCard key={proposal.id} adventure={adventure} proposal={proposal} dispatch={dispatch} onUpdate={updateProposal} onRegenerate={onRegenerateProposal} />
         ))}
       </div>
 
@@ -218,7 +220,7 @@ export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onR
           <summary>History ({resolved.length})</summary>
           <div className="list" style={{ marginTop: "0.75rem" }}>
             {resolved.map((proposal) => (
-              <ProposalCard key={proposal.id} proposal={proposal} dispatch={dispatch} onUpdate={updateProposal} onRegenerate={onRegenerateProposal} />
+              <ProposalCard key={proposal.id} adventure={adventure} proposal={proposal} dispatch={dispatch} onUpdate={updateProposal} onRegenerate={onRegenerateProposal} />
             ))}
           </div>
         </details>
@@ -228,14 +230,16 @@ export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onR
 }
 
 interface ProposalCardProps {
+  adventure: AdventurePageProps["adventure"];
   proposal: MemoryProposal;
   dispatch: AdventurePageProps["dispatch"];
   onUpdate: (proposal: MemoryProposal, patch: Partial<MemoryProposal>) => void;
   onRegenerate?: (proposalId: string) => Promise<void>;
 }
 
-function ProposalCard({ proposal, dispatch, onUpdate, onRegenerate }: ProposalCardProps) {
+function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }: ProposalCardProps) {
   const isPending = proposal.status === "pending";
+  const sourceValid = suggestionSourceValid(adventure, proposal);
   const [regenerating, setRegenerating] = useState(false);
 
   async function handleRegenerate() {
@@ -278,6 +282,7 @@ function ProposalCard({ proposal, dispatch, onUpdate, onRegenerate }: ProposalCa
         <div className="row">
           <button
             type="button"
+            disabled={proposal.status === "approved" || !sourceValid}
             onClick={() => dispatch({ type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id })}
           >
             Approve
@@ -307,6 +312,21 @@ function ProposalCard({ proposal, dispatch, onUpdate, onRegenerate }: ProposalCa
         </div>
       </div>
 
+      {proposal.storyCardReview && <div className="panel">
+        <p>{proposal.storyCardReview.candidateOnly ? "Unconfirmed candidate — verify the interpretation against the source." : "Evidence-based suggestion — review before applying."} Detection: {proposal.storyCardReview.origin}.</p>
+        {!sourceValid && <p role="alert">The source entry changed or was regenerated. This suggestion cannot be approved; reevaluate the revised entry.</p>}
+        {proposal.lore && <p>Occurred: {formatStoryTime(proposal.lore.occurredAt)} · {proposal.lore.status} · Sources: {proposal.lore.sourceMessageIds.join(", ")}</p>}
+        <Field label="Story Card destination"><select value={proposal.targetId ?? ""} disabled={!isPending}
+          onChange={event => {
+            const card = adventure.storyCards.find(card => card.id === event.target.value);
+            onUpdate(proposal, { targetId: card?.id, title: card?.title ?? proposal.storyCardReview!.suggestedTitle,
+              appendContent: card ? true : undefined, memoryMode: card?.memoryMode ?? proposal.memoryMode });
+          }}>
+          <option value="">CREATE — new Story Card</option>
+          {proposal.storyCardReview.targetCandidates.map(id => adventure.storyCards.find(card => card.id === id)).filter(card => Boolean(card)).map(card => <option key={card!.id} value={card!.id}>UPDATE — {card!.title}</option>)}
+        </select></Field>
+        {proposal.storyCardReview.targetCandidates.length > 1 && !proposal.targetId && <p>Several continuing subjects may fit. Choose an update target or keep this as a separate card.</p>}
+      </div>}
       <textarea
         rows={5}
         value={proposal.content}
@@ -366,7 +386,7 @@ function ProposalCard({ proposal, dispatch, onUpdate, onRegenerate }: ProposalCa
                   disabled={!isPending}
                 >
                   <option value="static">static</option>
-                  <option value="living">living</option>
+                  <option value="living">ongoing</option>
                   <option value="historical">historical</option>
                 </select>
               </Field>
@@ -389,7 +409,7 @@ function ProposalCard({ proposal, dispatch, onUpdate, onRegenerate }: ProposalCa
         {proposal.proposedType === "storyCard" && (
           <div className="grid two">
             <CheckboxField
-              label="Let AI auto-update this card after relevant scenes"
+              label="Suggest updates after relevant scenes"
               checked={proposal.autoUpdate === true}
               disabled={!isPending}
               onChange={(autoUpdate) => onUpdate(proposal, { autoUpdate })}

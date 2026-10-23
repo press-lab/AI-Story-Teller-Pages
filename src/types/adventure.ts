@@ -149,6 +149,7 @@ export interface StoryTime {
   date?: string;
 }
 export interface StoryClock {
+  origin?: "established" | "assumed";
   current?: StoryTime;
   /** Explicit user clock anchor, retained when replaying edited date evidence. */
   anchor?: StoryTime;
@@ -474,7 +475,21 @@ export type MemoryProposalType =
 
 export type MemoryProposalStatus = "pending" | "approved" | "rejected" | "ignored";
 
+export interface StoryCardSuggestionReview {
+  origin: "model" | "deterministic" | "both";
+  candidateOnly: boolean;
+  eventKind?: string;
+  participants: string[];
+  targetCandidates: string[];
+  suggestedTitle: string;
+  sourceMessageId: string;
+  sourceContent: string;
+  playerMessageId?: string;
+  playerContent?: string;
+}
+
 export interface MemoryProposal {
+  storyCardReview?: StoryCardSuggestionReview;
   /** Consequential automatic changes require explicit review, regardless of generic auto-approval. */
   requiresReview?: boolean;
   /** Set by explicit authoring controls, never parsed from model updates. */
@@ -825,6 +840,7 @@ export type BrainPatch = {
 };
 
 export type AdventureAction =
+  | { type: "SCAN_STORY_CARD_EXCHANGE"; sourceMessageId: string; manual?: boolean }
   | { type: "SET_STORY_CLOCK"; clock: StoryClock }
   | { type: "SET_TITLE"; title: string }
   | { type: "SET_OPENING_SCENE"; content: string }

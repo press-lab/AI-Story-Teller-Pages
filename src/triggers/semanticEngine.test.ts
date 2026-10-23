@@ -159,7 +159,7 @@ describe("runSemanticPostTurnEvaluation", () => {
     expect(evaluatedIds).not.toContain("trigger:rule-rx");
   });
 
-  it("applies story-card auto-updates and records a per-card cooldown turn", async () => {
+  it("reviews Story Card updates even with auto-approval enabled and records cooldown", async () => {
     const card = makeStoryCard({
       id: "card-margo",
       title: "Margo",
@@ -178,7 +178,6 @@ describe("runSemanticPostTurnEvaluation", () => {
     };
 
     mockProvider
-      .mockResolvedValueOnce({ content: "[]", raw: {} })
       .mockResolvedValueOnce({ content: '["storyCard:card-margo"]', raw: {} })
       .mockResolvedValueOnce({ content: "Margo is protective and now worried about Seth.", raw: {} });
 
@@ -259,7 +258,6 @@ describe("runSemanticPostTurnEvaluation", () => {
     };
 
     mockProvider
-      .mockResolvedValueOnce({ content: "[]", raw: {} })
       .mockResolvedValueOnce({ content: '["storyCard:card-joke"]', raw: {} })
       .mockResolvedValueOnce({ content: "Margo calls Seth hedge prince only when scared.", raw: {} });
 
@@ -288,73 +286,15 @@ describe("runSemanticPostTurnEvaluation", () => {
     expect(reduced.storyCards[0].content).toBe("Margo calls Seth hedge prince only when scared.");
   });
 
-  it("routes Plot Essentials pressure updates to Memory Inbox", async () => {
-    const component = makeComponent({
-      id: "component-plot",
-      title: "Active Pressure",
-      type: "activePressure",
-      content: "Old premise.",
-      active: true,
-    });
-    const adventure = {
-      ...baseAdventure(),
-      components: [component],
-
-    };
-
-    mockProvider
-      .mockResolvedValueOnce({ content: '["plotEssentialsPressure:component-plot"]', raw: {} })
-      .mockResolvedValueOnce({ content: "The Fire Nation court now expects a public duel.", raw: {} });
-
+  it.each(["activePressure", "plotEssentials", "currentArc"] as const)("does not automatically evaluate or mutate %s", async type => {
+    const adventure = { ...baseAdventure(), components: [makeComponent({ id: "plot", title: type, type, content: "Authored content.", active: true, autoUpdate: true })], storyCards: [], brains: [] };
     const result = await runMemoryCycle(adventure, providerConfig);
-
-    expect(result.actions.some((action) => action.type === "ADD_MEMORY_PROPOSAL")).toBe(true);
-    expect(mockProvider.mock.calls[1][0].messages.map(m => m.content).join("\n")).toContain("Write exactly one short sentence");
-    expect(result.actions.some((action) => action.type === "APPLY_COMPONENT_UPDATE")).toBe(false);
-
-    // pressure auto-approves by default, so content is applied immediately
-    const reduced = result.actions.reduce((next, action) => adventureReducer(next, action), adventure);
-    const pressureComp = reduced.components.find((c) => c.type === "activePressure");
-    expect(pressureComp?.content).toContain("The Fire Nation court now expects a public duel.");
+    expect(mockProvider).not.toHaveBeenCalled();
+    expect(result.logEntry.conditionsEvaluated).toEqual([]);
+    expect(result.actions.reduce(adventureReducer, adventure).components).toEqual(adventure.components);
   });
 
-  it("updates Plot Essentials on drift instead of waiting for the component cooldown", async () => {
-    const component = makeComponent({
-      id: "component-pe",
-      title: "Plot Essentials",
-      type: "plotEssentials",
-      content: "The old PE says Seth is trapped in the Pumpworks.",
-      active: true,
-      autoUpdate: true,
-      autoUpdateCooldownTurns: 60,
-      lastAutoUpdateTurn: 4,
-    });
-    const adventure = {
-      ...baseAdventure(),
-      components: [component],
-      storyCards: [],
-    };
-
-    mockProvider
-      .mockResolvedValueOnce({ content: '["plotEssentialsDrift:component-pe"]', raw: {} })
-      .mockResolvedValueOnce({ content: "- Seth has escaped the Pumpworks and is being hunted along the canal exits.", raw: {} });
-
-    const result = await runMemoryCycle(adventure, providerConfig);
-
-    expect(result.logEntry.conditionsEvaluated.map((condition) => condition.id)).toContain("plotEssentialsDrift:component-pe");
-    expect(result.actions).toContainEqual({ type: "MARK_COMPONENT_UPDATED", componentId: "component-pe", turn: 5 });
-    const proposalAction = result.actions.find((action) => action.type === "ADD_MEMORY_PROPOSAL");
-    expect(proposalAction).toMatchObject({
-      type: "ADD_MEMORY_PROPOSAL",
-      proposal: {
-        proposedType: "plotEssentialsUpdate",
-        targetId: "component-pe",
-        appendContent: false,
-      },
-    });
-  });
-
-  it("allows one plot, one Story Card, and one character update in the same memory cycle", async () => {
+  it("allows Story Card and Brain updates while excluding components from the same cycle", async () => {
     const pressure = makeComponent({
       id: "component-pressure",
       title: "Active Pressure",
@@ -418,11 +358,10 @@ describe("runSemanticPostTurnEvaluation", () => {
     const result = await runMemoryCycle(adventure, providerConfig);
 
     expect(result.logEntry.conditionsFired).toEqual([
-      "plotEssentialsPressure:component-pressure",
       "storyCard:card-margo",
       "brain:brain-margo",
     ]);
-    expect(result.actions.filter((action) => action.type === "ADD_MEMORY_PROPOSAL")).toHaveLength(2);
+    expect(result.actions.filter((action) => action.type === "ADD_MEMORY_PROPOSAL")).toHaveLength(1);
     expect(result.actions).toContainEqual(expect.objectContaining({ type: "APPLY_BRAIN_UPDATE", brainId: "brain-margo" }));
     expect(result.actions).toContainEqual(expect.objectContaining({
       type: "MARK_STORY_CARD_UPDATED",
@@ -432,7 +371,7 @@ describe("runSemanticPostTurnEvaluation", () => {
     }));
 
     const reduced = result.actions.reduce((next, action) => adventureReducer(next, action), adventure);
-    expect(reduced.components.find((component) => component.id === "component-pressure")?.content).toBe("The breach is sealed, but the gate is still failing.");
+    expect(reduced.components.find((component) => component.id === "component-pressure")?.content).toBe("Old pressure.");
     expect(reduced.activeState.memoryProposals.some((proposal) => proposal.proposedType === "storyCard" && proposal.targetId === "card-margo")).toBe(true);
     expect(reduced.brains[0].thoughts.gate_failure).toContain("second plan");
     expect(reduced.activeState.memoryProposals.some((proposal) => proposal.proposedType === "brainUpdate" && proposal.targetId === "brain-margo")).toBe(false);
@@ -643,7 +582,9 @@ describe("AI memory builders", () => {
       compactStatus: "resolved",
     });
 
-    const reduced = result.actions.reduce((next, action) => adventureReducer(next, action), adventure);
+    let reduced = result.actions.reduce((next, action) => adventureReducer(next, action), adventure);
+    expect(reduced.storyCards).toEqual(adventure.storyCards);
+    reduced = adventureReducer(reduced, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: ambessaProposal!.id });
     const updatedCard = reduced.storyCards.find((card) => card.id === "card-ambessa");
     expect(updatedCard).toMatchObject({
       pinned: false,
@@ -880,22 +821,12 @@ describe("grounded arc updates", () => {
     a.messages = [{ id: "deal", role: "assistant", content: "Edythe offers you revised terms, subject to board approval.", createdAt: "2026-01-01T00:00:00Z" }];
     return a;
   }
-  it("grounds the request and keeps an arc claim pending with evidence", async () => {
+  it("keeps authored arc content and never asks for an automatic arc update", async () => {
     const a = scenario();
-    mockProvider.mockResolvedValueOnce({ content: '["currentArc:cross-arc"]', raw: {} });
-    mockProvider.mockResolvedValueOnce({ content: "Seth received revised terms; board approval remained outstanding.", raw: {} });
     const result = await runMemoryCycle(a, providerConfig);
-    const text = mockProvider.mock.calls[1][0].messages.map(m => m.content).join("\n");
-    expect(text).toContain("You are Seth Press");
-    expect(text).toContain("Edythe cannot read him");
-    expect(text).not.toContain("HIDDEN CLIMAX");
-    const state = result.actions.reduce(adventureReducer, a);
-    expect(state.components.find(c => c.id === "cross-arc")?.content).toBe("The bid is open.");
-    const proposal = state.activeState.memoryProposals.find(p => p.proposedType === "currentArcUpdate");
-    expect(proposal?.status).toBe("pending");
-    expect(proposal?.sourceText).toContain("subject to board approval");
-    const approved = adventureReducer(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal!.id });
-    expect(approved.components.find(c => c.id === "cross-arc")?.content).toContain("board approval remained outstanding");
+    expect(mockProvider).not.toHaveBeenCalled();
+    expect(result.actions.reduce(adventureReducer, a).components).toEqual(a.components);
+    expect(result.actions.some(action => action.type === "ADD_MEMORY_PROPOSAL")).toBe(false);
   });
   it("does not turn a no-development response into an arc entry", async () => {
     mockProvider.mockResolvedValueOnce({ content: '["currentArc:cross-arc"]', raw: {} });
@@ -970,19 +901,16 @@ describe("memory discovery and component suggestions", () => {
     expect(result.tokenUsage).toEqual({ promptTokens: 9, completionTokens: 2 });
   });
 
-  it("reviews legacy Plot Essentials with current content, but respects explicit opt-out", async () => {
+  it("excludes legacy Plot Essentials while preserving Story Card discovery", async () => {
     const a = discoveryAdventure();
     a.components = [makeComponent({ id: "pe", title: "Plot Essentials", type: "plotEssentials", content: "You have not met Priya." })];
-    mockProvider.mockResolvedValueOnce({ content: '["plotEssentialsDrift:pe"]', raw: {} })
-      .mockResolvedValueOnce({ content: "You are due to meet Priya at 9:30.", raw: {} })
-      .mockResolvedValueOnce({ content: "[]", raw: {} });
+    mockProvider.mockResolvedValueOnce({ content: JSON.stringify([priya]), raw: {} });
     const result = await runMemoryCycle(a, providerConfig);
-    expect(mockProvider.mock.calls[0][0].messages.at(-1)?.content).toContain("You have not met Priya.");
-    expect(result.actions).toContainEqual(expect.objectContaining({ type: "ADD_MEMORY_PROPOSAL", proposal: expect.objectContaining({ proposedType: "plotEssentialsUpdate", targetId: "pe" }) }));
-    a.components[0].autoUpdate = false;
-    mockProvider.mockResolvedValueOnce({ content: "[]", raw: {} });
-    const optedOut = await runMemoryCycle(a, providerConfig);
-    expect(optedOut.logEntry.conditionsEvaluated.some(c => c.id === "plotEssentialsDrift:pe")).toBe(false);
+    expect(mockProvider).toHaveBeenCalledTimes(1);
+    expect(result.logEntry.conditionsEvaluated.some(c => c.id.includes("plotEssentials"))).toBe(false);
+    const next = result.actions.reduce(adventureReducer, a);
+    expect(next.components).toEqual(a.components);
+    expect(next.activeState.memoryProposals).toContainEqual(expect.objectContaining({ proposedType: "storyCard", title: "Priya", requiresReview: true }));
   });
 
   it("lets a later eligible card win instead of starving behind the first card", async () => {

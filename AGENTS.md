@@ -47,7 +47,7 @@ Do not directly mutate adventure objects in components, trigger engines, importe
 - Context Preview must match the provider payload returned by `buildContext`. Empty sections are excluded from the payload but always present in `result.sections`.
 - `ContextBuildResult.pendingProposals` exposes pending Memory Proposals for the UI. These are never included in the model payload.
 - AI-generated memory updates must go through `src/memory/applyAIMemoryUpdate.ts` and then through reducer actions.
-- AI may update BrainEntry fields only when the BrainEntry already exists, StoryCard content/triggers/state, Plot Essentials component content, and the one-sentence Active Pressure component through the `plotPressureUpdate` path only.
+- Automatic memory destinations are existing Brains and reviewed Story Card suggestions only. All Story Card changes await Memory Inbox approval regardless of legacy auto-approve settings. Automatic memory must never update Plot Essentials, Current Arc, Active Pressure, or other components. Explicit manual component tools remain available.
 - AI must not mutate AI Instructions, Author's Note, provider config, trigger definitions, quest definitions, raw imports, or the system shell.
 - Memory Inbox proposals live in `activeState.memoryProposals`; approving/rejecting/ignoring proposals must go through reducer actions.
 - Do not add silent stubs. If a feature is incomplete, label it clearly in both code and UI.
@@ -59,8 +59,8 @@ Do not directly mutate adventure objects in components, trigger engines, importe
 - **Next Output Bias**: `activeState.nextTurnNote`, a user-written short-term steering note for the next generation. Appears in section J, is visible in Context Preview, token-counted, reducer-driven, and expires after one successful generation by default.
 - **Story Cards**: four primary types — Character, Location, Lore, Custom. Character/Location hold durable identity; ordinary developments, relationships and events belong in Lore. Exceptional identity changes require review and supporting Lore. Content is the single body; Lore metadata carries in-world dates/precision/status/source IDs/knowledge boundaries. Legacy plot/event normalize to Lore, faction to Custom. Preserve authored controls and existing Brain instructions. Trigger-matched or pinned, section F, with existing budgets/cooldowns. See `docs/story-card-architecture.md`.
 - **Brains**: opt-in evolving character-internal state for major characters only. Do not create BrainEntries for random NPCs, locations, factions, objects, or one-scene characters. Brain updates only apply when a BrainEntry already exists. If no BrainEntry exists, route durable character memory to an existing Story Card or a Story Card proposal in Memory Inbox.
-- **Plot Essentials**: compact overarching premise, central long-term conflict, and persistent story-wide constraints. Change only when those foundations change; immediate stakes belong in Active Pressure and ongoing storyline progress belongs in Current Arc. Section C. AI may update these through the approved `plotEssentialsUpdate` proposal path only.
-- **Active Pressure**: one sentence naming the current external threat, obligation, or force pressing on the player character. Section C. Auto-generated through `plotPressureUpdate`, auto-approved by default, and replaced when stakes change.
+- **Plot Essentials**: compact overarching premise, central long-term conflict, and persistent story-wide constraints. Change only when those foundations change; immediate stakes belong in Active Pressure and ongoing storyline progress belongs in Current Arc. Section C. Editing and explicit user-requested tools remain available; automatic memory never targets it.
+- **Active Pressure**: one sentence naming the current external threat, obligation, or force pressing on the player character. Section C. Manual editing and explicit user-requested tools remain available; automatic memory never targets it.
 - **Immediate Momentum**: disabled legacy component type. Keep the type for old-save compatibility, but do not generate it, auto-update it, import it, or assemble it into context.
 - **AI Instructions**: persistent generation rules. Section B. AI must not modify.
 - **Author's Note**: tonal / mood layer. Section D. AI must not modify.
@@ -72,15 +72,11 @@ Do not add an opaque Memory Bank retrieval layer. A future Inspectable Memory Ba
 
 ## Known Architecture Decision: Semantic Engine vs Memory Proposals
 
-The semantic post-turn evaluator (`src/triggers/semanticEngine.ts`) can apply brain, story card, and Plot Essentials updates **directly** — via `applyAIMemoryUpdate` → reducer actions — when `semanticEvaluationSettings.requireApprovalForAutoUpdates` is `false`. When that setting is `true`, generated updates become Memory Inbox proposals and do not mutate active memory until approved.
+Automatic memory uses the completed exchange's existing one-pass envelope plus a bounded local Story Card scanner. It makes no additional normal-play request. Missing envelopes use the existing recovery batching. Story Card candidates from either detector merge in the same review queue; none become active context before approval. Source snapshots prevent approval after editing or regeneration. Brain thought format, cadence, archival, approval settings and imported instructions are unchanged.
 
-Auto-Cards are a removed legacy surface. Do not reintroduce an Auto-Card review queue without adding explicit UI, reducer actions, and context-builder tests.
+Automatic semantic component conditions/actions are excluded. Manual component editing, explicit AI authoring/reconciliation tools, and deterministic Arc Director pacing remain available. Do not remove these independent features.
 
-The reason direct brain/story-card/plotEssentials updates are allowed as an option: every semantic trigger that fires a memory-update action was **explicitly configured by the user** (condition string + action type + target ID). The user opted into this behavior. These are not surprise AI suggestions — they are user-defined rules executing.
-
-Memory Inbox / Memory Proposals is the path for **unstructured AI-suggested new memory** — the `classifyMemory` flow, or future summary-extraction passes — where the source text is arbitrary and the AI is making a freeform durable-memory suggestion that the user has not pre-authorized.
-
-If you want to require user review for all semantic memory writes, set `requireApprovalForAutoUpdates` to `true` in Settings. Keep tests for both modes.
+The story clock uses an established scenario date or the persisted assumed default `2000-01-01`; never use save timestamps. Old undated imported entries stay undated. Chronicle's **Evaluate Story Card Updates** shares the scanner, model instructions, targeting and deduplication for one to ten selected narrator entries, using at most one explicitly requested background call. See `docs/memory-suggestion-engine.md` for detection, matching, costs and validation.
 
 ## Arc Director (deterministic story pacing)
 

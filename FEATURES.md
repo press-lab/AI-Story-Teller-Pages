@@ -506,3 +506,14 @@ Loading Brain JSON now preserves authored, empty or missing update conditions/pr
 Recall uses phrase matches and participant-assisted cue word overlap, with up to three automatically recalled Event Memories per context build, subject to existing context budgets. A participant name alone does not trigger their history. Pinned, always-on, and manually forced cards retain their explicit inclusion controls. Context Preview shows each included card and its recall reason. This is bounded cue retrieval, not embedding-based semantic search.
 
 Memory Suggestions offers “Find event memories in earlier play”: an explicit background-model scan of the Chronicle in overlapping 24-message excerpts, stepping by 20 messages. It displays progress, preserves completed suggestions on failure/cancellation, and stops after the current request when cancelled. Each excerpt uses one provider request. No scan runs automatically on import. Source evidence can be inspected on approved Event Memory cards; unavailable source messages are identified rather than fabricated.
+
+
+## Story Card suggestion engine (October 2026)
+
+Automatic memory targets Story Cards and existing Brains only. All Story Card changes await approval in Memory Inbox, including when an old save enables Story Card auto-approval. Plot Essentials, Current Arc, Active Pressure and other components retain manual editing and explicit generation tools, but receive no automatic memory suggestions. Arc Director pacing remains deterministic.
+
+Completed exchanges combine a bounded local milestone/name detector with the existing one-pass model findings. Equivalent findings merge with evidence; distinct developments remain separate. Durable identity stays in Character/Location; ordinary events and changing circumstances become Lore. Target matching verifies IDs, subjects and aliases, offers ambiguous alternatives for review, and appends dated developments without removing earlier facts. Edited or regenerated sources invalidate approval.
+
+The persisted fictional clock uses established scenario time or the labeled assumed default **2000-01-01**. Explicit skips advance locally, player/narrator echoes count once, and flashbacks do not rewind the present. Historical undated imports remain undated. The clock can be corrected in Story Cards.
+
+Chronicle offers **Evaluate Story Card Updates** for a completed entry or a range of up to ten narrator entries. This explicitly requested background evaluation shares the normal scanner/merge/review pipeline, never continues narration, and leaves Brains unchanged. Normal play adds no model requests; Brain cadence, thoughts, archival and imported instructions remain intact. Implementation, exact runtime instructions and benchmark results: [Memory suggestion engine](docs/memory-suggestion-engine.md).

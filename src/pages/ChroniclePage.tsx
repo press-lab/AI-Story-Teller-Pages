@@ -3,7 +3,21 @@ import type { AdventurePageProps } from "./pageTypes";
 
 const PAGE_SIZE = 100;
 
-export function ChroniclePage({ adventure, dispatch }: AdventurePageProps) {
+interface ChroniclePageProps extends AdventurePageProps {
+  loading?: boolean;
+  onEvaluateStoryCards?: (sourceIds: string[]) => Promise<void>;
+}
+
+export function ChroniclePage({ adventure, dispatch, loading = false, onEvaluateStoryCards }: ChroniclePageProps) {
+  const [rangeStart, setRangeStart] = useState(1);
+  const [rangeEnd, setRangeEnd] = useState(adventure.messages.length || 1);
+  const [evaluationStatus, setEvaluationStatus] = useState("");
+  async function evaluate(ids: string[]) {
+    if (!onEvaluateStoryCards) return;
+    setEvaluationStatus("Evaluating completed entries…");
+    try { await onEvaluateStoryCards(ids); setEvaluationStatus("Evaluation complete. Review suggestions in Memory Inbox."); }
+    catch (error) { setEvaluationStatus(error instanceof Error ? error.message : "Evaluation failed."); }
+  }
   const [editingId, setEditingId] = useState<string | undefined>();
   const [limit, setLimit] = useState(PAGE_SIZE);
   const [search, setSearch] = useState("");
@@ -30,6 +44,13 @@ export function ChroniclePage({ adventure, dispatch }: AdventurePageProps) {
         </div>
       </div>
 
+      {onEvaluateStoryCards && <details className="panel"><summary>Evaluate Story Card Updates</summary>
+        <p className="muted">One requested background-model evaluation of up to ten narrator entries. This does not continue or rewrite the story. Candidates appear in Memory Inbox for review.</p>
+        <label>From entry <input type="number" min={1} max={messages.length || 1} value={rangeStart} onChange={event => setRangeStart(Number(event.target.value))} /></label>
+        <label>Through entry <input type="number" min={rangeStart} max={messages.length || 1} value={rangeEnd} onChange={event => setRangeEnd(Number(event.target.value))} /></label>
+        <button type="button" disabled={loading} onClick={() => void evaluate(messages.slice(Math.max(0, rangeStart - 1), rangeEnd).filter(message => message.role === "assistant").map(message => message.id))}>Evaluate range</button>
+        {evaluationStatus && <p role="status">{evaluationStatus}</p>}
+      </details>}
       <div className="editor-command-bar">
         <input
           type="search"
@@ -81,6 +102,8 @@ export function ChroniclePage({ adventure, dispatch }: AdventurePageProps) {
             >
               <span className="chronicle-role">{message.role}</span>
               <p className="chronicle-text">{message.content}</p>
+              {message.role === "assistant" && onEvaluateStoryCards && <button type="button" disabled={loading}
+                onClick={event => { event.stopPropagation(); void evaluate([message.id]); }}>Evaluate Story Card Updates</button>}
             </article>
           ),
         )}

@@ -23,7 +23,7 @@ function ListField({ label, values, onChange, placeholder }: { label: string; va
 }
 
 export function StoryClockEditor({ adventure, dispatch }: { adventure: Adventure; dispatch: (action: AdventureAction) => void }) {
-  return <details className="panel"><summary>Current story clock: {adventure.storyClock?.current?.text || "unknown"}</summary>
+  return <details className="panel"><summary>Current story clock: {adventure.storyClock?.current?.text || "unknown"}{adventure.storyClock?.origin === "assumed" ? " (assumed)" : ""}</summary>
     <p className="muted">In-world time, independent of your computer clock. Explicit story-date headings and day skips can advance it; flashbacks do not. Ambiguous dates remain textual.</p>
     <TimeFields label="Current story time" value={adventure.storyClock?.current}
       onChange={current => dispatch({ type: "SET_STORY_CLOCK", clock: { current } })} />

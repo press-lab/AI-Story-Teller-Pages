@@ -39,13 +39,14 @@ describe("compact memory fallback", () => {
     expect(provider.mock.calls[0][0].messages.map(message => message.content).join("\n")).toContain("Lucian runs a private club");
     expect(provider.mock.calls[0][0].messages.map(message => message.content).join("\n")).not.toContain("Write the requested narrative first");
     const next = result.actions.reduce(adventureReducer, adventure);
-    expect(next.storyCards[0].content).toContain("silver-cup mark");
+    expect(next.storyCards).toEqual(adventure.storyCards);
+    expect(next.activeState.memoryProposals).toContainEqual(expect.objectContaining({ content: expect.stringContaining("silver-cup mark"), requiresReview: true }));
     expect(Object.values(next.brains[0].thoughts).join(" ")).toContain("holding back");
-    expect(next.components[0].content).toContain("silver-cup mark");
+    expect(next.components).toEqual(adventure.components);
     expect(next.activeState.evaluationLog[0].actionsExecuted).toContain("Compact memory fallback: one API call");
   });
 
-  it("grounds a historical lore proposal in an earlier exchange from the recent scene", async () => {
+  it("rejects a Story Card quote attributed to the wrong completed exchange", async () => {
     let adventure = adventureWithMissingEnvelope();
     adventure = adventureReducer(adventure, { type: "ADD_MESSAGE", id: "player-2", role: "user", content: "I wait for the mechanism to finish." });
     adventure = adventureReducer(adventure, { type: "ADD_MESSAGE", id: "story-2", role: "assistant", content: "The tower settles safely back onto its foundation." });
@@ -63,13 +64,8 @@ describe("compact memory fallback", () => {
     });
     const result = await runCompactMemoryFallback(adventure, config);
     const next = result.actions.reduce(adventureReducer, adventure);
-    expect(next.activeState.memoryProposals[0]).toMatchObject({
-      title: "The Returning Tower Working",
-      storyCardType: "lore",
-      memoryMode: "historical",
-      requiresReview: true,
-      status: "pending",
-    });
+    expect(next.activeState.memoryProposals.some(p => p.title === "The Returning Tower Working")).toBe(false);
+    expect(next.activeState.evaluationLog[0].errors.join(" ")).toContain("quote must come from this completed exchange");
   });
 
   it("rejects invalid recovery without a second call", async () => {
@@ -118,8 +114,9 @@ it("recovers character, relationship, Brain and historical memories across a bat
   expect(prompt).toContain("Lucian runs a private club.");
   expect(provider.mock.calls[0][0].config.maxOutputTokens).toBe(config.maxOutputTokens * 5);
   const next = result.actions.reduce(adventureReducer, adventure);
-  expect(next.storyCards[0].content).toContain("lifelong protection");
-  expect(next.storyCards[0].content).toContain("ancient silver language");
+  expect(next.storyCards).toEqual(adventure.storyCards);
+  expect(next.activeState.memoryProposals).toContainEqual(expect.objectContaining({ content: expect.stringContaining("lifelong protection"), requiresReview: true }));
+  expect(next.activeState.memoryProposals).toContainEqual(expect.objectContaining({ content: expect.stringContaining("ancient silver language"), requiresReview: true }));
   expect(Object.values(next.brains[0].thoughts).join(" ")).toContain("trust Lucian");
   expect(next.activeState.memoryProposals).toContainEqual(expect.objectContaining({
     title: "The First Battle at the Silver Gate", sourceTurnId: "batch-3", memoryMode: "historical", requiresReview: true,

@@ -306,7 +306,7 @@ describe("side menu page smoke coverage", () => {
     render(<StoryCardsPage adventure={adventure} dispatch={() => undefined} />);
 
     await user.click(screen.getByRole("button", { name: "Active" }));
-    await user.click(screen.getByRole("button", { name: "Auto-updated" }));
+    await user.click(screen.getByRole("button", { name: "Ongoing" }));
 
     const visibleCards = document.querySelectorAll(".story-card-editor-item");
     expect(visibleCards).toHaveLength(1);

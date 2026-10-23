@@ -20,7 +20,8 @@ function Editor() {
 it("offers four types and edits the independent story clock and Lore chronology", async () => {
   const user = userEvent.setup();
   render(<Editor />);
-  await user.click(screen.getByText(/Current story clock: unknown/));
+  await user.click(screen.getByText(/Current story clock: 2000-01-01/));
+  await user.clear(screen.getByLabelText("Current story time", { exact: true }));
   await user.type(screen.getByLabelText("Current story time", { exact: true }), "February 1, 2019");
   await user.click(document.querySelector(".story-card-editor-item > summary")!);
   const type = screen.getByLabelText("Type", { exact: true });

@@ -1,3 +1,4 @@
+import { appendFileSync } from "node:fs";
 import { approximateTokenCount } from "../tokenizer/approximateTokenCount";
 /** @vitest-environment jsdom */
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
@@ -53,6 +54,7 @@ it.each(["inline", "missing"])("architecture cost baseline: twenty %s turns", as
     outputBudget: calls.reduce((sum, o) => sum + (o.config.maxOutputTokens ?? 0), 0),
   };
   console.log("ARCHITECTURE_COST", kind, JSON.stringify(metrics));
+  if (process.env.AIST_COST_REPORT) appendFileSync(process.env.AIST_COST_REPORT, JSON.stringify({ kind, ...metrics }) + "\n");
   const baseline = kind === "inline" ? { promptTokens: 74053, outputBudget: 24000 } : { promptTokens: 82238, outputBudget: 48000 };
   expect(metrics.promptTokens).toBeLessThanOrEqual(baseline.promptTokens);
   expect(metrics.outputBudget).toBe(baseline.outputBudget);
@@ -86,6 +88,7 @@ it("preserves Brain cadence across twenty turns with a large Lore collection", a
   expect(calls.every(o => !o.responseFormat && o.config.maxOutputTokens === defaultModelConfig.maxOutputTokens)).toBe(true);
   expect(calls.every(o => !o.messages.some(m => m.content.includes("Archived scene details")))).toBe(true);
   expect(calls.reduce((sum, o) => sum + o.messages.reduce((n, m) => n + approximateTokenCount(m.content) + 8, 0), 0)).toBeLessThanOrEqual(74580);
+  if (process.env.AIST_COST_REPORT) appendFileSync(process.env.AIST_COST_REPORT, JSON.stringify({ kind: "heavy", narration: calls.length, recovery: 0, brainUpdates: 7, promptTokens: calls.reduce((sum, o) => sum + o.messages.reduce((n, m) => n + approximateTokenCount(m.content) + 8, 0), 0), outputBudget: calls.reduce((sum, o) => sum + o.config.maxOutputTokens, 0) }) + "\n");
   console.log("ARCHITECTURE_COST heavy", JSON.stringify({ requests: calls.length,
     promptTokens: calls.reduce((sum, o) => sum + o.messages.reduce((n, m) => n + approximateTokenCount(m.content) + 8, 0), 0),
     outputBudget: calls.reduce((sum, o) => sum + o.config.maxOutputTokens, 0), brainUpdates: 7 }));

@@ -1,3 +1,5 @@
+import { sanitizeStoryCardTriggers } from "./resolveMemoryTarget";
+import { makeStoryCardSuggestion, companionLoreSuggestion } from "./storyCardSuggestions";
 import { createId, nowIso } from "../utils/id";
 import { isHistoricalLore, isExceptionalIdentityChange } from "./storyCardArchitecture";
 import type {
@@ -111,39 +113,25 @@ export function applyAIMemoryUpdate(adventure: Adventure, updates: AIMemoryUpdat
         rejectedUpdates.push(reject(update, "Story card not found."));
         continue;
       }
-      if (isHistoricalLore(card)) {
-        rejectedUpdates.push(reject(update, "Event memories are historical records; edit them explicitly instead of auto-updating them."));
-        continue;
-      }
-      if ((card.type === "character" || card.type === "location") && update.content !== undefined) {
-        if (!isExceptionalIdentityChange(card.type, update.content)) {
-          rejectedUpdates.push(reject(update, "Identity profiles are durable; ordinary developments belong in Lore."));
-          continue;
-        }
-        actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal: {
-          id: createId("proposal"), title: card.title, content: update.content, proposedType: "storyCard",
-          targetId: card.id, appendContent: true, storyCardType: card.type, memoryMode: card.memoryMode,
-          suggestedTriggers: [], sourceTurnId: "", sourceText: update.content, requiresReview: true, confidence: 0.8,
-          rationale: "Exceptional identity change; review with supporting Lore.", status: "pending",
-          createdAt: nowIso(), updatedAt: nowIso(),
-        } });
-        continue;
-      }
       const patch = storyCardPatch(update);
-      if (Object.keys(patch).length === 0) {
-        rejectedUpdates.push(reject(update, "Story card update had no content, triggers, or state change."));
-        continue;
-      }
-      const metadataPatch = storyCardPatch({ ...update, content: undefined });
-      const storyActions: AdventureAction[] = [{
-        type: "APPLY_STORY_CARD_UPDATE",
-        storyCardId: update.storyCardId,
-        ...(update.content !== undefined ? { content: update.content } : {}),
-        ...(Object.keys(metadataPatch).length > 0 ? { patch: metadataPatch } : {}),
-      }];
-      actions.push(...storyActions);
-      appliedUpdates.push({ targetType: "storyCard", targetId: update.storyCardId, actionTypes: storyActions.map((action) => action.type) });
-      changedItemIds.push(update.storyCardId);
+      if (Object.keys(patch).length === 0) { rejectedUpdates.push(reject(update, "Empty Story Card suggestion.")); continue; }
+      const source = [...adventure.messages].reverse().find(message => message.role === "assistant");
+      const content = update.content ?? card.content;
+      const type = (card.type === "character" || card.type === "location") && !isExceptionalIdentityChange(card.type, content) ? "lore" : card.type;
+      const proposal = makeStoryCardSuggestion(adventure, source?.id ?? "manual", source?.content ?? content, {
+        title: type === "lore" && card.type !== "lore" ? `${card.title}: Development` : card.title,
+        content, evidence: source?.content ?? content, reason: "Generated Story Card change; review before applying.",
+        type, targetId: type === card.type ? card.id : undefined, triggers: update.keys,
+      });
+      if (!source) proposal.storyCardReview = undefined;
+      proposal.storyCardPatch = {
+        ...(update.state !== undefined ? { state: update.state } : {}),
+        ...(update.keys !== undefined ? { keys: [...new Set([...card.keys, ...sanitizeStoryCardTriggers(adventure, card.title, update.keys, card.id, card.memoryMode)])] } : {}),
+      };
+      actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal });
+      const companion = companionLoreSuggestion(adventure, proposal);
+      if (companion) actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal: companion });
+      appliedUpdates.push({ targetType: "storyCard", targetId: card.id, actionTypes: ["ADD_MEMORY_PROPOSAL"] });
       continue;
     }
 

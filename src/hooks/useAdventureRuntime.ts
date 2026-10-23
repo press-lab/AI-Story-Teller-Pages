@@ -1,3 +1,4 @@
+import { evaluateStoryCardEntries } from "../memory/evaluateStoryCardEntries";
 import { subscribeApiCalls } from "../providers/apiCallAccounting";
 import { ONE_PASS_MEMORY_ID, MEMORY_OUTPUT_RESERVE } from "../memory/onePassMemory";
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
@@ -718,6 +719,23 @@ export function useAdventureRuntime(
     return runBrainAudit(adventure, activeProviderConfig, nTurns, { includeAI });
   }
 
+  async function evaluateStoryCards(sourceIds: string[]): Promise<void> {
+    const snapshot = adventureRef.current;
+    if (!snapshot || loading) return;
+    setLoading(true);
+    setError(undefined);
+    try {
+      const result = await evaluateStoryCardEntries(snapshot, buildBackgroundConfig(snapshot, providerSettingsRef.current), sourceIds);
+      if (adventureRef.current?.id !== snapshot.id) return;
+      applyActionsAndPersist([...result.actions, { type: "ACCUMULATE_BACKGROUND_TOKENS", ...result.tokenUsage }]);
+      if (!result.valid) throw new Error(result.error ?? "Model evaluation failed; local candidates were retained for review.");
+      if ((result.processedSources?.length ?? 0) < sourceIds.length) throw new Error("The request budget allowed only part of the range. Evaluated sources were retained; select the remaining entries to continue.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Story Card evaluation failed.");
+      throw err;
+    } finally { setLoading(false); }
+  }
+
   async function findEventMemories(onProgress: (message: string) => void, signal: AbortSignal): Promise<void> {
     if (!adventure || loading) return;
     setLoading(true);
@@ -875,6 +893,7 @@ Respond with ONLY the new content — no preamble, no labels, no explanation.`;
     auditBrains,
     regenerateMemoryProposal,
     findEventMemories,
+    evaluateStoryCards,
     regeneratePlotEssentials,
     generateComponent,
     generateArc,

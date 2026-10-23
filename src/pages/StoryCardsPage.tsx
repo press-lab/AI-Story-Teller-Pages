@@ -318,12 +318,12 @@ export function StoryCardsPage({
       <div className="editor-page-summary">
         <p className="muted">
           Triggered memory for characters, places, relationships, secrets, rules, and recurring facts.
-          Character and Location hold durable identity; Lore holds developments and history.
+          Character and Location hold durable identity; Lore holds developments and history. Generated changes always wait for your review.
         </p>
         <div className="editor-stat-row" aria-label="Story card counts">
           <span>{totalCards} total</span>
           <span>{activeCount} active</span>
-          <span>{livingCount} auto-updated</span>
+          <span>{livingCount} ongoing</span>
           {(searchLower || filtersActive) && <span>{visibleCount} shown</span>}
         </div>
       </div>
@@ -370,7 +370,7 @@ export function StoryCardsPage({
                   if (next === "historical") setAiAutoUpdate(false);
                 }}
               >
-                <option value="living">Auto-updated tracker</option>
+                <option value="living">Ongoing tracker</option>
                 <option value="static">static - always-true reference</option>
                 <option value="historical">historical - completed past event</option>
                 <option value="auto">let AI choose</option>
@@ -392,7 +392,7 @@ export function StoryCardsPage({
               disabled={aiMemoryMode === "historical"}
               onChange={setAiAutoUpdate}
             />
-            <Field label="Auto-update cooldown">
+            <Field label="Suggestion cooldown">
               <NumberInput
                 value={aiAutoUpdateCooldown}
                 min={0}
@@ -472,7 +472,7 @@ export function StoryCardsPage({
               aria-pressed={memoryFilter === "living"}
               onClick={() => setMemoryFilter("living")}
             >
-              Auto-updated
+              Ongoing
             </button>
           </div>
           <div className="sort-toggle" role="group" aria-label="Card flag filter">
@@ -548,7 +548,7 @@ export function StoryCardsPage({
                 <div className="story-card-tool-copy">
                   <h3>Clean up existing cards</h3>
                   <p className="muted">
-                    Find broad triggers, stale current facts, misplaced history, duplicate cards, and profile details that should be split into auto-updated or historical cards.
+                    Find broad triggers, stale current facts, misplaced history, duplicate cards, and profile details that should be split into ongoing or historical cards.
                   </p>
                 </div>
                 <div className="story-card-tool-controls">
@@ -609,7 +609,7 @@ export function StoryCardsPage({
       <details className="panel editor-tools-panel story-card-automation-panel">
         <summary>Automatic Card Updates</summary>
         <div className="story-card-settings-grid">
-          <Field label="System-wide auto-update cooldown">
+          <Field label="System-wide suggestion cooldown">
             <span className="turn-window-field">
               <span>Update at most once every</span>
               <input
@@ -626,7 +626,7 @@ export function StoryCardsPage({
             </span>
           </Field>
           <CheckboxField
-            label="Auto-update one card per semantic eval"
+            label="Suggest updates for one card per semantic eval"
             checked={!!autoCard}
             onChange={(checked) => {
               if (!checked && autoCard) {
@@ -636,7 +636,7 @@ export function StoryCardsPage({
               }
             }}
           />
-          <Field label="Card to auto-update">
+          <Field label="Card to evaluate">
             <select
               value={autoCard?.id ?? ""}
               disabled={!autoCard}
@@ -758,7 +758,7 @@ export function StoryCardsPage({
                           onChange={(e) => updateRec(rec.id, { suggestedMemoryMode: e.target.value as StoryCardMemoryMode })}
                         >
                           {MEMORY_MODE_OPTIONS.map((mode) => (
-                            <option key={mode} value={mode}>{mode === "living" ? "Auto-updated" : mode}</option>
+                            <option key={mode} value={mode}>{mode === "living" ? "Ongoing" : mode}</option>
                           ))}
                         </select>
                       </label>
@@ -858,7 +858,7 @@ export function StoryCardsPage({
                       }
                     >
                       <option value="static">static — always-true reference facts</option>
-                      <option value="living">Auto-updated tracker</option>
+                      <option value="living">Ongoing tracker</option>
                       <option value="historical">historical — past event or completed arc record</option>
                     </select>
                   </Field>

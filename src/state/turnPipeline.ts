@@ -135,6 +135,7 @@ export async function applyProviderResponse({
     createdAt,
     usage: response.usage,
   });
+  if (mode !== "comms") next = adventureReducer(next, { type: "SCAN_STORY_CARD_EXCHANGE", sourceMessageId: messageId });
   if (mode !== "comms" && incrementTurn) {
     next = adventureReducer(next, { type: "ADVANCE_MEMORY_RECOVERY_TURN" });
   }

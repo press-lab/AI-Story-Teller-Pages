@@ -121,12 +121,12 @@ export function classifyMemory(text: string, options: MemoryClassificationOption
 
   if (options.immediateAlwaysOn || containsAny(lower, [/\btonight\b/, /\bcurrently\b/, /\bright now\b/, /\bactively hunting\b/])) {
     return {
-      proposedType: "plotEssentialsUpdate",
+      proposedType: "storyCard",
       title,
       content: clean,
       suggestedTriggers,
       confidence: 0.78,
-      rationale: "Immediate current-state constraint should be visible as Plot Essentials while it is active.",
+      rationale: "Current developments belong in reviewable Lore, not automatic Plot Component changes.",
     };
   }
 

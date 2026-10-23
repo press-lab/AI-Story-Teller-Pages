@@ -1,3 +1,4 @@
+import { initialStoryClock } from "../memory/storyTime";
 import { migrateStoryCard, primaryStoryCardType } from "../memory/storyCardArchitecture";
 import type {
   Adventure,
@@ -193,6 +194,7 @@ export function createDefaultAdventure(title = "Untitled Adventure"): Adventure 
     id: createId("adv"),
     title,
     openingScene: "",
+    storyClock: initialStoryClock(),
     createdAt: timestamp,
     updatedAt: timestamp,
     metadata: {},
@@ -510,6 +512,7 @@ export function normalizeAdventure(adventure: Adventure): Adventure {
     ...baseline,
     ...adventure,
     openingScene: adventure.openingScene ?? "",
+    storyClock: !adventure.storyClock || (adventure.storyClock.origin === "assumed" && !messages.length) ? initialStoryClock({ openingScene: adventure.openingScene ?? "", messages }) : adventure.storyClock,
     messages,
     metadata: adventure.metadata ?? {},
     autoSaveEnabled: adventure.autoSaveEnabled ?? true,

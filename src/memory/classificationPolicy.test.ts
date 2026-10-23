@@ -44,8 +44,8 @@ describe("classifyMemory", () => {
     expect(classifyMemory("The group walked to the elevator").proposedType).toBe("ignore");
   });
 
-  it("classifies immediate current threats as Plot Essentials updates", () => {
-    expect(classifyMemory("The Beast is actively hunting Seth tonight").proposedType).toBe("plotEssentialsUpdate");
+  it("classifies immediate current threats as reviewable Story Card suggestions", () => {
+    expect(classifyMemory("The Beast is actively hunting Seth tonight").proposedType).toBe("storyCard");
   });
 
   it("does not create Brain entries for random one-scene NPCs by default", () => {

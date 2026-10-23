@@ -407,7 +407,7 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
   }
 
   // A. System Shell
-  const systemItem = item("system-shell", "system", "System Shell", SYSTEM_SHELL + (adventure.storyClock?.current ? "\nCurrent story time: " + formatStoryTime(adventure.storyClock.current) + ". In-world time; interpret recalled dates relative to this clock. Past dates do not imply resolution." : ""), 1000, true, false, true, "always", "system");
+  const systemItem = item("system-shell", "system", "System Shell", SYSTEM_SHELL + (adventure.storyClock?.current ? "\nCurrent story time: " + formatStoryTime(adventure.storyClock.current) + (adventure.storyClock.origin === "assumed" ? " (assumed deterministic default; user-correctable)" : "") + ". In-world time; interpret recalled dates relative to this clock. Past dates do not imply resolution." : ""), 1000, true, false, true, "always", "system");
   pushIncluded(systemItem, "System shell is always included and protected.");
   const turnScopeItem = item("turn-scope-contract", "system", "Turn Scope Contract", turnScopeText, 1000, true, false, true, "always", "system");
   pushIncluded(turnScopeItem, "Turn scope contract is always included and protected.");

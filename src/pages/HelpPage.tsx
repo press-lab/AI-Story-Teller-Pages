@@ -219,7 +219,7 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
     id: "current-story-arc",
     title: "Current Story Arc",
     category: "Side Menu",
-    summary: "Auto-updating arc log that tracks what's happening in the active story arc.",
+    summary: "Authored arc log and deterministic pacing for the active story arc.",
     tags: ["current arc", "story arc", "arc log", "plot", "auto-update", "graduate"],
     body: (
       <>
@@ -229,26 +229,18 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
           constants — Current Story Arc grows as the story unfolds and gets retired when the arc resolves.
         </p>
         <p>
-          <strong>Arc Premise (required for auto-update):</strong> Seed the component with a one-line premise
-          describing what this arc is about. Example: <em>"Kira is building toward deserting the Fire Nation,
-          but hasn't decided yet."</em> The semantic engine uses this premise as a filter — it only fires when
-          a story event meaningfully advances or complicates that specific premise. Without a premise, no
-          auto-updates fire.
+          <strong>Arc Premise:</strong> Seed the component with a one-line premise describing this arc. Its authored pacing and Arc Director remain available.
         </p>
         <p>
-          <strong>Arc Log:</strong> Each auto-update appends 1–3 sentences capturing a specific arc
-          development. The log grows freely — no size limit — because it's designed to be completed and
-          moved out, not trimmed.
+          <strong>Arc Log:</strong> Edit the log manually or use an explicitly requested authoring tool. Automatic memory suggestions go to Story Cards and Brains; they do not append to this component.
         </p>
         <h4>Best Practices</h4>
         <ul>
           <li>
-            <strong>Keep the premise tight.</strong> "Kira is building toward desertion" fires on relevant
-            arc beats. "The adventure continues" fires on everything — useless.
+            <strong>Keep the premise tight.</strong> "Kira is building toward desertion" describes a concrete conflict for authored pacing.
           </li>
           <li>
-            <strong>Leave it alone during play.</strong> Don't direct it. The point is that arc events
-            accumulate without your involvement. If the log fills with noise, tighten the premise.
+            <strong>Review arc progress.</strong> Record relevant developments manually; the separate Arc Director advances its configured pacing deterministically.
           </li>
           <li>
             <strong>Plot Essentials ≠ Current Arc.</strong> PE holds the overarching premise and persistent story-wide constraints. Active Pressure holds immediate external threats and obligations. The arc holds the active conflict's running log and pacing gate.
@@ -260,9 +252,7 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
             by relevant keywords — keeping the resolved arc as referenced backstory.
           </li>
           <li>
-            <strong>Auto-approval is on by default.</strong> Arc updates go through Memory Inbox but are
-            auto-approved, so they apply without you touching them. If you want to review each entry,
-            turn off "currentArcUpdate" in Memory Auto-Approve settings.
+            <strong>Automatic memory stays separate.</strong> Meaningful developments become reviewed Story Card suggestions; no automatic memory operation changes the arc log.
           </li>
         </ul>
       </>
@@ -497,7 +487,7 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
           <dt>Next Turn Note</dt>
           <dd>Short-term user-written steering for the next generation. It is visible, token-counted, and expires after use by default.</dd>
           <dt>Story Cards</dt>
-          <dd>Approved durable facts triggered by keywords, phrases, or regex configuration.</dd>
+          <dd>Durable content triggered by keywords, phrases, or regex configuration. Every generated Story Card change waits for your review. Chronicle can evaluate one entry or up to ten narrator entries on demand.</dd>
           <dt>Brains</dt>
           <dd>Opt-in state for major characters only. AI may update a Brain only if it already exists.</dd>
           <dt>Plot Essentials</dt>
@@ -755,7 +745,7 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
           <li>"There is tension between Margo and Seth." (relationship state, not a story-level threat)</li>
           <li>"Setu is uncertain about what to do next." (internal state, not external force)</li>
         </ul>
-        <p>Active Pressure is auto-updated by the semantic engine. You can also edit it directly if the model's version misses the real threat.</p>
+        <p>Edit Active Pressure directly or use its explicit generation tool. Automatic memory never updates Plot Components.</p>
       </>
     ),
   },

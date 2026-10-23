@@ -1,3 +1,4 @@
+import { relevantStoryCardInventory } from "./storyCardSuggestions";
 import { adventureReducer } from "../state/adventureReducer";
 import { buildContext, eligibleBrainsForCapture, enabledMemoryCategories } from "../contextBuilder/contextBuilder";
 import { resolveBackgroundProviderConfig } from "../providers/backgroundProvider";
@@ -6,6 +7,7 @@ import type { Adventure, AdventureAction, ChatMessage, Message, ProviderConfig }
 import { MEMORY_OUTPUT_RESERVE, ONE_PASS_MEMORY_ID, onePassMemoryActions, onePassMemoryInstruction } from "./onePassMemory";
 
 export interface CompactMemoryFallbackResult {
+  processedSources?: Array<{ id: string; content: string }>;
   actions: AdventureAction[];
   tokenUsage: { promptTokens: number; completionTokens: number };
   valid: boolean;
@@ -16,6 +18,7 @@ export async function runCompactMemoryFallback(
   adventure: Adventure,
   providerConfig: ProviderConfig,
   batch?: Message[],
+  options: { storyCardsOnly?: boolean } = {},
 ): Promise<CompactMemoryFallbackResult> {
   const empty = { actions: [] as AdventureAction[], tokenUsage: { promptTokens: 0, completionTokens: 0 }, valid: false };
   const latestStory = [...adventure.messages].reverse().find(message => message.role === "assistant");
@@ -35,14 +38,15 @@ export async function runCompactMemoryFallback(
   const evidenceMessages = batch ? adventure.messages.filter((_, index) => evidenceIndexes.has(index)) : adventure.messages.slice(-8);
   const recent = evidenceMessages.map(message => `${message.role} [${message.id}]: ${message.content}`).join("\n\n");
   const relevant = (names: string[]) => names.some(name => name.trim().length > 1 && recent.toLowerCase().includes(name.toLowerCase()));
+  const relevantIds = new Set(relevantStoryCardInventory(adventure, recent).map(card => card.id));
   const targeted = {
     ...adventure,
     components: adventure.components.filter(component => ["plotEssentials", "activePressure", "currentArc"].includes(component.type)),
-    storyCards: adventure.storyCards.filter(card => relevant([card.title, ...card.keys])),
+    storyCards: adventure.storyCards.filter(card => relevantIds.has(card.id)),
     brains: adventure.brains.filter(brain => relevant([brain.characterName, ...brain.triggers])),
   };
   const context = buildContext(targeted, { currentInput: recent, latestModelOutput: recent });
-  const instruction = onePassMemoryInstruction(eligibleBrainsForCapture(targeted, recent), enabledMemoryCategories(adventure));
+  const instruction = onePassMemoryInstruction(options.storyCardsOnly ? [] : eligibleBrainsForCapture(targeted, recent), enabledMemoryCategories(adventure));
   // No scenario instructions, narration rules, or unrelated pinned cards. Whole canon items
   // only: never allow a replacement based on a truncated foundation or character profile.
   const referenceSections = new Set(["plotEssentials", "currentArc", "storyCards", "brains"]);
@@ -58,17 +62,15 @@ export async function runCompactMemoryFallback(
       priority: 0, tokenEstimate: 0, protected: false, pinned: false, active: true, inclusionPolicy: "always", generatedBy: "system" });
   }
   const references = context.sections.flatMap(section => section.items.filter(item => item.id !== ONE_PASS_MEMORY_ID)
-    .map(item => `${section.label} — ${item.title}:\n${item.content}`));
+    .map(item => `${section.label} â€” ${item.title}:\n${item.content}`));
   const memoryRules = instruction.replace(
     'Write the requested narrative first, preserving its quality and visible word limit. Then append exactly one hidden JSON envelope:\n<memory_updates>{"updates":[]}</memory_updates>',
     'The narrative is already complete. Return ONLY JSON. Do not write story prose or XML tags.',
   ) + (batch ? '\nReturn {"turns":[{"sourceTurnId":"id","updates":[]}]}, with exactly one entry for EVERY source ID: '
-    + JSON.stringify(sources.map(source => source.id)) + '. Up to four updates and one new card PER source turn. Evaluate all turns in order, including durable relationships, private Brain changes, and historical events. An empty array explicitly means no new durable memory for that source.'
+    + JSON.stringify(sources.map(source => source.id)) + '. Up to four updates PER source turn. Evaluate all turns in order, including durable relationships, private Brain changes, and historical events. An empty array explicitly means no new durable memory for that source.'
     : '\nReturn {"updates":[]}.');
   const playerInput = adventure.messages.at(-2)?.role === "user" ? adventure.messages.at(-2)!.content : "";
-  const reusableTargets = adventure.storyCards
-    .filter(card => card.active && card.inclusionPolicy !== "manual" && ["lore", "location", "custom"].includes(card.type))
-    .map(card => ({ title: card.title, type: card.type, keys: card.keys }));
+  const reusableTargets = relevantStoryCardInventory(adventure, recent);
   const characterTitles = adventure.storyCards
     .filter(card => card.active && card.type === "character" && relevant([card.title, ...card.keys]))
     .map(card => card.title);
@@ -80,7 +82,7 @@ export async function runCompactMemoryFallback(
     { role: "user", content: memoryRules },
     { role: "user", content: "Relevant current canon:\n" + references.join("\n\n") },
     { role: "user", content: "Existing lore, location, and shared-history targets (prefer the appropriate subject; these titles may be used even if the card was not triggered into context): " + JSON.stringify(reusableTargets) + "\nCharacter titles (update only for an explicitly evidenced enduring profile fact): " + JSON.stringify(characterTitles) + "\nPending Story Card titles (do not duplicate): " + JSON.stringify(pendingTitles) },
-    { role: "user", content: "Recent story context; quoted evidence may come from any supplied exchange:\n" + recent },
+    { role: "user", content: "Recent story context; quote evidence only from each requested source exchange:\n" + recent },
   ];
   let response;
   try {
@@ -89,7 +91,7 @@ export async function runCompactMemoryFallback(
     response = await sendOpenAICompatibleChatCompletion({
       config: { ...backgroundConfig, maxOutputTokens: Math.min(backgroundConfig.maxOutputTokens, MEMORY_OUTPUT_RESERVE) * sources.length }, messages,
       responseFormat: "json_object",
-      purpose: "memoryRecovery",
+      purpose: options.storyCardsOnly ? "otherBackground" : "memoryRecovery",
       retry: false,
     });
   } catch {
@@ -114,7 +116,8 @@ export async function runCompactMemoryFallback(
     const actions: AdventureAction[] = [];
     let current = adventure;
     for (const source of sources) {
-      const updates = turns.find(turn => turn.sourceTurnId === source.id)!.updates;
+      const sourceUpdates = turns.find(turn => turn.sourceTurnId === source.id)!.updates;
+      const updates = options.storyCardsOnly ? sourceUpdates.filter(update => update && typeof update === "object" && ["card", "lore", "newCard"].includes(String((update as { kind?: string }).kind))) : sourceUpdates;
       const index = adventure.messages.findIndex(message => message.id === source.id);
       const input = adventure.messages[index - 1]?.role === "user" ? adventure.messages[index - 1].content : "";
       // Ground each result in its final source exchange, not another turn's discarded draft.
@@ -123,8 +126,11 @@ export async function runCompactMemoryFallback(
         batch ? [] : evidenceMessages.map(message => message.content));
       actions.push(...turnActions);
       current = turnActions.reduce(adventureReducer, current);
+      const scan: AdventureAction = { type: "SCAN_STORY_CARD_EXCHANGE", sourceMessageId: source.id, manual: options.storyCardsOnly };
+      actions.push(scan);
+      current = adventureReducer(current, scan);
     }
-    return { actions, tokenUsage, valid: true };
+    return { actions, tokenUsage, valid: true, processedSources: sources.map(({ id, content }) => ({ id, content })) };
   } catch {
     return { ...empty, tokenUsage };
   }

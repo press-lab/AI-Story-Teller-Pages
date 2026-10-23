@@ -51,41 +51,40 @@ describe("applyAIMemoryUpdate", () => {
 
     const result = applyAIMemoryUpdate(adventure, [
       { type: "brainPatch", brainId: "brain-margo", patch: { currentState: "new" }, mode: "replace", turn: 2 },
-      { type: "storyCardUpdate", storyCardId: "card-joke", content: "new card", keys: ["new"], state: "ai-updated" },
+      { type: "storyCardUpdate", storyCardId: "card-joke", content: "new card", keys: ["silver cup"], state: "ai-updated" },
     ]);
-    const next = result.actions.reduce((state, action) => adventureReducer(state, action), adventure);
+    let next = result.actions.reduce((state, action) => adventureReducer(state, action), adventure);
+    expect(next.storyCards).toEqual(adventure.storyCards);
+    next = adventureReducer(next, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: next.activeState.memoryProposals[0].id });
 
     expect(result.rejectedUpdates).toEqual([]);
-    expect(result.changedItemIds).toEqual(["brain-margo", "card-joke"]);
-    expect(result.appliedUpdates.find((entry) => entry.targetId === "card-joke")?.actionTypes).toEqual(["APPLY_STORY_CARD_UPDATE"]);
+    expect(result.changedItemIds).toEqual(["brain-margo"]);
+    expect(result.appliedUpdates.find((entry) => entry.targetId === "card-joke")?.actionTypes).toEqual(["ADD_MEMORY_PROPOSAL"]);
     expect(next.brains[0].currentState).toBe("new");
-    expect(next.storyCards[0]).toMatchObject({ content: "new card", keys: ["new"], state: "ai-updated" });
+    expect(next.storyCards[0].content).toContain("new card");
+    expect(next.storyCards[0]).toMatchObject({ keys: expect.arrayContaining(["silver cup"]), state: expect.stringContaining("ai-updated") });
     expect(next.storyCards[0].lastMemoryUpdatedAt).toEqual(expect.any(String));
     expect(next.storyCards[0].memoryUpdateHistory?.[0]).toMatchObject({
-      source: "aiMemoryUpdate",
-      operation: "replace",
-      previous: { content: "old", keys: ["old"], state: "" },
-      next: { content: "new card", keys: ["new"], state: "ai-updated" },
+      source: "memoryProposal", operation: "append", previous: { content: "old", keys: ["old"] },
     });
   });
 
-  it("stamps story cards when AI memory updates only card metadata", () => {
+  it("reviews metadata changes before recording Story Card history", () => {
     const storyCard = makeStoryCard({ id: "card-joke", title: "Joke", content: "old", keys: ["old"] });
     const adventure = { ...createDefaultAdventure("AI Bounds"), storyCards: [storyCard] };
 
     const result = applyAIMemoryUpdate(adventure, [
-      { type: "storyCardUpdate", storyCardId: "card-joke", keys: ["new"] },
+      { type: "storyCardUpdate", storyCardId: "card-joke", keys: ["silver cup"] },
     ]);
-    const next = result.actions.reduce((state, action) => adventureReducer(state, action), adventure);
+    let next = result.actions.reduce((state, action) => adventureReducer(state, action), adventure);
+    expect(next.storyCards).toEqual(adventure.storyCards);
+    next = adventureReducer(next, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: next.activeState.memoryProposals[0].id });
 
     expect(result.rejectedUpdates).toEqual([]);
-    expect(next.storyCards[0]).toMatchObject({ content: "old", keys: ["new"] });
+    expect(next.storyCards[0]).toMatchObject({ content: "old", keys: expect.arrayContaining(["silver cup"]) });
     expect(next.storyCards[0].lastMemoryUpdatedAt).toEqual(expect.any(String));
     expect(next.storyCards[0].memoryUpdateHistory?.[0]).toMatchObject({
-      source: "aiMemoryUpdate",
-      operation: "patch",
-      previous: { content: "old", keys: ["old"] },
-      next: { content: "old", keys: ["new"] },
+      source: "memoryProposal", previous: { content: "old", keys: ["old"] },
     });
   });
 
