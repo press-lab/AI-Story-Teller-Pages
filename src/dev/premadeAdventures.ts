@@ -140,7 +140,6 @@ PROSE
 };
 
 function premadeMemoryMode(card: Adventure["storyCards"][number]): Adventure["storyCards"][number]["memoryMode"] {
-  if (card.type === "plot") return card.memoryMode === "living" ? "living" : "historical";
   if (card.memoryMode) return card.memoryMode;
   return "static";
 }

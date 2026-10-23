@@ -13,6 +13,7 @@ export interface Message {
   inputMode?: InputMode;
   usage?: ProviderUsage;
   /** Persisted on the final narrative; old saves need no migration. */
+  storyTime?: StoryTime;
   memoryRecovery?: { turn: number; status: "pending" | "complete" };
   createdAt: ISODateString;
 }
@@ -66,8 +67,9 @@ export interface MemoryUpdateSnapshot {
   content: string;
   state: string;
   keys?: string[];
-  type?: ComponentType | StoryCardType;
+  type?: ComponentType | StoryCardType | LegacyStoryCardType;
   eventMemory?: EventMemory;
+  lore?: LoreMetadata;
   memoryMode?: StoryCardMemoryMode;
   compactKind?: StoryCardCompactKind;
   compactStatus?: StoryCardCompactStatus;
@@ -134,7 +136,33 @@ export interface ComponentEntry {
   updatedAt: ISODateString;
 }
 
-export type StoryCardType = "character" | "location" | "lore" | "plot" | "event" | "custom";
+export type PrimaryStoryCardType = "character" | "location" | "lore" | "custom";
+/** Read compatibility only; normalized cards always use a primary type. */
+export type LegacyStoryCardType = "plot" | "event" | "faction";
+export type StoryCardType = PrimaryStoryCardType;
+
+export interface StoryTime {
+  /** In-world text, including fantasy calendars and uncertain/relative dates. Never a wall-clock timestamp. */
+  text: string;
+  precision: "unknown" | "relative" | "approximate" | "year" | "month" | "day" | "time";
+  /** Gregorian date only when explicitly supported by the text. */
+  date?: string;
+}
+export interface StoryClock {
+  current?: StoryTime;
+  /** Explicit user clock anchor, retained when replaying edited date evidence. */
+  anchor?: StoryTime;
+  sourceMessageId?: string;
+}
+export interface LoreMetadata {
+  occurredAt?: StoryTime;
+  lastChangedAt?: StoryTime;
+  status: "completed" | "ongoing" | "unresolved" | "superseded";
+  sourceMessageIds: string[];
+  /** Omitted means unspecified knowledge, never automatic public knowledge. */
+  knownTo?: string[];
+}
+
 export type StoryCardMemoryMode = "static" | "living" | "historical";
 export type StoryCardCompactKind =
   | "pact"
@@ -164,6 +192,7 @@ export interface StoryCard {
   content: string;
   type: StoryCardType;
   eventMemory?: EventMemory;
+  lore?: LoreMetadata;
   /**
    * static: always-true reference facts; living: current evolving subject whose
    * updates merge/archive; historical: past event or completed arc record.
@@ -448,6 +477,8 @@ export type MemoryProposalStatus = "pending" | "approved" | "rejected" | "ignore
 export interface MemoryProposal {
   /** Consequential automatic changes require explicit review, regardless of generic auto-approval. */
   requiresReview?: boolean;
+  /** Set by explicit authoring controls, never parsed from model updates. */
+  userInitiated?: boolean;
   id: string;
   sourceTurnId: string;
   sourceText: string;
@@ -461,8 +492,9 @@ export interface MemoryProposal {
   targetId?: string;
   appendContent?: boolean;
   memoryMode?: StoryCardMemoryMode;
-  storyCardType?: StoryCardType;
+  storyCardType?: StoryCardType | LegacyStoryCardType;
   eventMemory?: EventMemory;
+  lore?: LoreMetadata;
   autoUpdate?: boolean;
   autoUpdateCooldownTurns?: number;
   storyCardPatch?: Partial<Pick<StoryCard, "active" | "pinned" | "protected" | "inclusionPolicy" | "priority" | "state" | "compactKind" | "compactStatus">>;
@@ -620,6 +652,7 @@ export interface Adventure {
   id: string;
   title: string;
   openingScene: string;
+  storyClock?: StoryClock;
   createdAt: ISODateString;
   updatedAt: ISODateString;
   metadata: JsonObject;
@@ -792,6 +825,7 @@ export type BrainPatch = {
 };
 
 export type AdventureAction =
+  | { type: "SET_STORY_CLOCK"; clock: StoryClock }
   | { type: "SET_TITLE"; title: string }
   | { type: "SET_OPENING_SCENE"; content: string }
   | { type: "UPDATE_METADATA"; metadata: JsonObject }

@@ -96,7 +96,7 @@ When total exceeds `maxContextTokens`, items are dropped in priority order:
 ### Current Story Arc — interaction notes:
 - Requires `arcPremise` text — this is the LLM filter condition. No premise = no auto-updates fire.
 - Auto-approval: `memoryAutoApprove.currentArcUpdate` (default `true`)
-- "Complete Arc → Story Card" button: creates a `plot` type Story Card from the log, clears content and arcPremise
+- "Complete Arc → Story Card" button: creates a `lore` type Story Card from the log, clears content and arcPremise
 - Cooldown: 4 turns default (coarser than Active Pressure's 3)
 - Difference from Plot Essentials: PE = overarching premise, long-term conflict, and persistent story-wide constraints. Arc = the active conflict's running log (accumulates as story unfolds, then gets retired)
 - Difference from Quests: Arc tracks narrative shape, not task completion. No objective states. Graduated arc becomes referenced backstory via Story Card, not a "quest completed" flag.
@@ -120,7 +120,7 @@ Optional pacing layer on a `currentArc` component that makes an antagonist's arc
 
 **Files:** `pages/StoryCardsPage.tsx`, `contextBuilder/contextBuilder.ts`, `triggers/semanticEngine.ts`, `memory/storyCardAudit.ts`
 
-Types: `character`, `location`, `lore`, `plot`, `custom`
+Types: `character`, `location`, `lore`, `custom`. Character/Location are durable identity; Lore is evolving narrative history. Legacy plot/event cards migrate to Lore; legacy faction cards migrate to Custom. See [Story Card architecture](docs/story-card-architecture.md) for chronology, compatibility and cost evidence.
 
 ### Triggering:
 - Card title is always added to its own key list
@@ -497,9 +497,11 @@ currentArc component (arcLog + arcPremise)
 *Last updated: 2026-06-04*
 
 
-## Event Memory Story Cards
+## Historical Lore (legacy Event Memory)
 
-Event Memory (`type: event`) is a historical Story Card category for notable completed experiences: first meetings, commitments, revelations, consequential choices, and distinctive shared experiences. Background discovery proposes them even when the participants already have cards or Brains. Suggestions retain exact Chronicle message IDs, participant names, recall cues, and a reason for keeping the event. Event suggestions always await approval; historical records are not rewritten by automated updates. Users can edit, deactivate, pin, or delete them in Story Cards. Existing historical cards keep their original categories.
+Historical Lore records notable completed experiences: first meetings, commitments, revelations, consequential choices and distinctive shared experiences. Legacy `event` cards become `lore`, retaining participant references, recall cues and source messages. Historical suggestions require review; automatic writes do not rewrite completed historical records. Lore chronology includes occurrence/change times, precision and status. Ongoing Lore retains earlier developments in Content and uses bounded relevant excerpts in context. The in-world story clock is separate from real timestamps. Character/Location profiles resist ordinary automatic updates; exceptional identity changes require review and supporting Lore. Existing manual card editing and authoring remain available.
+
+Loading Brain JSON now preserves authored, empty or missing update conditions/prompts. The existing runtime default applies without rewriting the Brain. Thought capture, targeting, append/archive, deduplication and cadence are unchanged.
 
 Recall uses phrase matches and participant-assisted cue word overlap, with up to three automatically recalled Event Memories per context build, subject to existing context budgets. A participant name alone does not trigger their history. Pinned, always-on, and manually forced cards retain their explicit inclusion controls. Context Preview shows each included card and its recall reason. This is bounded cue retrieval, not embedding-based semantic search.
 

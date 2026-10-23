@@ -1,3 +1,5 @@
+import { readStoryTime } from "./storyTime";
+import { isHistoricalLore, primaryStoryCardType, isExceptionalIdentityChange, proposalLore } from "./storyCardArchitecture";
 import type { Adventure, AdventureAction, BrainEntry, ContextBuildResult, MemoryProposal, StoryCardType } from "../types/adventure";
 import { createId, nowIso } from "../utils/id";
 import { cardMatchesName } from "../state/defaults";
@@ -14,14 +16,14 @@ An empty updates array is normal. Never invent changes to fill it. Maximum 4 sma
 Each update has: kind, target, content, evidence, reason. evidence is an EXACT quote from this turn's player input or your visible story, establishing the change. reason explains why it will matter beyond this scene. Do not treat a suggestion, possibility, or plan as an accomplished fact. Do not give absent characters knowledge they did not receive.
 Allowed kinds:
 - "thought": target is an eligible character name below; content is ONE new first-person internal reaction, belief, or private plan (max 45 words). Capture only if the character participated or learned something this turn. Never repeat existing thoughts or put generic world facts here.
-- "card": target is the EXACT title of an existing Story Card visible in context; content is only a NEW durable fact (max 70 words) to append. Character cards are profiles: add ONE lasting ability, trait, relationship, or obligation only when the quoted evidence EXPLICITLY establishes it as an enduring fact. A single action or reaction does not prove a habit or personality trait. Never generalize one fight, meal, joke, or exchange into what someone usually does. Put consequential shared history on lore/location cards; otherwise leave it in the transcript. Preserve identity and existing facts. Never overwrite or contradict canon; corrections need explicit review outside this automatic path. Omit already-known facts and rephrasings.
+- card: EXACT existing visible card title; append a new durable fact, max 70 words. Character/location cards hold durable identity. Only death, correction or permanent transformation/capability changes may update them; require review and supporting Lore. Other developments belong in Lore.
 - "lore": target is the EXACT title of an existing lore/location/custom Story Card, or a narrow NEW subject title. An existing lore/location card may be named in the supplied target inventory even when it was not triggered into model context this turn; such an update requires review. Create an INDEPENDENT historical lore card for a distinctive completed shared event worth recalling later, such as a first fight, first meeting, major battle, revelation, or consequential choice. It need not establish a new rule or ongoing obligation. Give the new card a specific event title, concise past-tense facts naming participants, place, and outcome, 1-3 narrow recall triggers, and category "plot_beat". It becomes a reviewable lore card with historical memory mode. Use category "world_fact" for a reusable rule, place, or subject instead. Do not create lore for routine movement, a passing reaction, or generic scene filler. Never append the event to a participant's character card.
-- "newCard": target is a genuinely new recurring subject's name, content max 90 words. Also provide cardType (character, location, lore, custom, plot), memoryMode (static or living), triggers (1-3 narrow phrases), and category from: ${categories.join(", ") || "NONE (no new cards allowed)"}. Reuse existing subjects; never create sibling cards for a conversation, invitation, repeated affection, room movement, routine choice, or temporary mood. A plot card requires a consequential lasting obligation, alliance, betrayal, secret, or irreversible change; it will require review. Use "lore" above, not "newCard", for a distinctive completed event.
+- newCard: genuinely new recurring subject; max 90 words, cardType=character|location|lore|custom, memoryMode=static|living, 1-3 narrow triggers, category from ${categories.join(", ") || "NONE"}. Reuse existing subjects. Use Lore for developments, relationships and completed events. No sibling cards for routine invitations, affection, movement, conversations or temporary moods.
 - "pressure": target is the EXACT title of an active Active Pressure component; content is its full replacement, ONE sentence (max 45 words) identifying the external threat or obligation pressing on the player. Only when it materially changes or resolves; no cosmetic rewrites.
 - "arc": target is the EXACT title of the active Current Arc; content is one concise, completed development (max 45 words) directly relevant to its premise, to append to its log. Skip scene filler, repeated beats, possibilities, and future events. Never change the premise, phase, or pacing.
 - "essentials": target is the EXACT title of a Plot Essentials component; content is its full replacement (max 180 words), preserving still-valid foundations. Only when the overarching premise, central long-term conflict, or persistent story-wide constraint fundamentally changes. This always requires review. NOT scene summaries, temporary whereabouts, immediate threats, or current-arc progress.
 Current Arc holds the ongoing storyline and its authored pacing. Do not alter arc phases, break instructions, or create a new arc here. Record arc progress there; a distinct completed event may also earn its own historical lore card when users will want to recall the occurrence itself. Plot Essentials is the overarching story; Active Pressure is what presses NOW. Character Story Cards hold profiles, lore cards hold reusable setting and shared history, and Brains hold private internal state. Routine scene beats stay in the transcript.
-For example: {"kind":"card","target":"Mira","content":"Mira is allergic to silver.","evidence":"Silver gives me a rash, Mira says.","reason":"Persistent vulnerability"}.
+For example: {"kind":"card","target":"Mira","content":"Mira is dead.","evidence":"Mira died.","reason":"Exceptional identity change requiring review"}.
 Historical lore example: {"kind":"lore","target":"Seth and Buu's First Fight","content":"Seth and Buu fought for the first time on Hercule's estate. Seth blasted Buu into orbit; Buu returned unharmed and asked to continue.","evidence":"Buu returned unharmed and asked to continue.","reason":"Distinct first fight worth recalling","category":"plot_beat","triggers":["Seth and Buu first fight","Buu sent into orbit"]}.
 Eligible thought targets: ${brains.map(b => JSON.stringify(b.characterName)).join(", ") || "none"}.
 Only output changes supported by this turn and consistent with ALL supplied canon. These hidden updates are not narrative and must never steer the scene merely to create memory.`;
@@ -120,36 +122,41 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
       continue;
     }
     if (kind === "card" || kind === "newCard" || kind === "lore") {
+      const observed = readStoryTime(story, adventure.storyClock);
+      const time = observed.time ?? (!observed.flashback && !adventure.messages.some(m => m.id === sourceTurnId) ? adventure.storyClock?.current : undefined);
+      proposal.lore = { ...proposalLore(adventure, proposal), ...(time ? { occurredAt: time, lastChangedAt: time } : {}), sourceMessageIds: [sourceTurnId] };
       const exact = adventure.storyCards.filter(c => c.title === target);
       const matches = exact.length ? exact : adventure.storyCards.filter(c => cardMatchesName(c, target));
       if (matches.length > 1) { reject(`${target}: ambiguous card target`); continue; }
       const existing = matches[0];
+      proposal.lore = { ...proposal.lore!, status: existing?.lore?.status ?? "unresolved" };
       if (existing) {
         const outOfContextLore = kind === "lore" && ["lore", "location", "custom"].includes(existing.type)
           && existing.inclusionPolicy === "triggered" && !visibleIds.has(existing.id);
-        if (!existing.active || (!visibleIds.has(existing.id) && !outOfContextLore) || existing.type === "event" || existing.memoryMode === "historical") { reject(`${target}: target not editable in this context`); continue; }
+        if (!existing.active || (!visibleIds.has(existing.id) && !outOfContextLore) || isHistoricalLore(existing)) { reject(`${target}: target not editable in this context`); continue; }
         if (kind === "lore" && !["lore", "location", "custom"].includes(existing.type)) { reject(`${target}: lore cannot update a character card`); continue; }
-        if (existing.type === "character" && isSceneRecapForCharacter(content)) { reject(`${target}: scene recap belongs in lore or transcript`); continue; }
-        if (existing.type === "character" && (!hasDurableCharacterEvidence(evidence) || !isSingleCharacterFact(content))) { reject(`${target}: character fact lacks explicit durable evidence`); continue; }
+        if (existing.type === "character" && !isExceptionalIdentityChange(existing.type, content) && isSceneRecapForCharacter(content)) { reject(`${target}: scene recap belongs in lore or transcript`); continue; }
+        if (existing.type === "character" && !isExceptionalIdentityChange(existing.type, content) && (!hasDurableCharacterEvidence(evidence) || !isSingleCharacterFact(content))) { reject(`${target}: character fact lacks explicit durable evidence`); continue; }
         if (norm(existing.content).includes(norm(content))) continue;
         proposal.title = existing.title;
         proposal.targetId = existing.id;
         proposal.appendContent = true;
         proposal.memoryMode = existing.memoryMode;
         // Sensitive identity records and evolving plot state need review, even with generic auto-approval.
-        proposal.requiresReview = existing.type === "plot" || existing.protected || outOfContextLore;
+        proposal.requiresReview = existing.type === "character" || existing.type === "location" || existing.protected || outOfContextLore;
       } else {
-        const allowedTypes: StoryCardType[] = ["character", "location", "lore", "custom", "plot"];
+        const allowedTypes: StoryCardType[] = ["character", "location", "lore", "custom"];
         const category = typeof u.category === "string" ? u.category : "";
         const allowedCategory = kind === "lore"
           ? (category === "world_fact" || category === "plot_beat") && adventure.systemTriggers?.categories[category as "world_fact" | "plot_beat"]
-          : allowedTypes.includes(u.cardType as StoryCardType) && adventure.systemTriggers?.categories[category as keyof typeof adventure.systemTriggers.categories];
+          : (allowedTypes.includes(u.cardType as StoryCardType) || u.cardType === "plot") && adventure.systemTriggers?.categories[category as keyof typeof adventure.systemTriggers.categories];
         if ((kind !== "newCard" && kind !== "lore") || ++newCards > 1 || !adventure.systemTriggers?.enabled || !allowedCategory) { reject(`${target}: new card not allowed`); continue; }
         if (!Array.isArray(u.triggers) || !u.triggers.length || u.triggers.length > 3 || u.triggers.some(t => typeof t !== "string" || t.trim().length < 3 || t.length > 80)) { reject(`${target}: invalid triggers`); continue; }
-        proposal.storyCardType = kind === "lore" ? "lore" : u.cardType as StoryCardType;
+        proposal.storyCardType = kind === "lore" ? "lore" : primaryStoryCardType(u.cardType as string);
         proposal.memoryMode = category === "plot_beat" ? "historical" : u.memoryMode === "living" ? "living" : "static";
+        proposal.lore = { ...proposal.lore!, status: proposal.memoryMode === "historical" ? "completed" : "unresolved" };
         proposal.suggestedTriggers = u.triggers as string[];
-        proposal.requiresReview = kind === "lore" || u.cardType === "plot";
+        proposal.requiresReview = kind === "lore" || proposal.storyCardType === "lore";
       }
     } else if (kind === "essentials" || kind === "pressure" || kind === "arc") {
       const type = kind === "essentials" ? "plotEssentials" : kind === "arc" ? "currentArc" : "activePressure";

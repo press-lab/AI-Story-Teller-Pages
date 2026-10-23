@@ -83,7 +83,7 @@ function mapStoryCardType(typeText: string): StoryCardType {
   const lower = typeText.toLowerCase();
   if (lower === "character") return "character";
   if (lower === "location" || lower === "place") return "location";
-  if (lower === "plot") return "plot";
+  if (lower === "plot" || lower === "event") return "lore";
   if (lower === "lore" || lower === "concept" || lower === "class") return "lore";
   return "custom";
 }
@@ -173,7 +173,9 @@ function parseCard(raw: unknown, sourceIndex: number): AidParsedCard | AidSkippe
     title,
     keys,
     content,
-    type: mapStoryCardType(originalType),
+    type: originalType.toLowerCase() === "event" ? "event" : mapStoryCardType(originalType),
+    eventMemory: isRecord(raw.eventMemory) ? raw.eventMemory as unknown as StoryCard["eventMemory"] : undefined,
+    lore: isRecord(raw.lore) ? raw.lore as unknown as StoryCard["lore"] : undefined,
     active: true,
     pinned: false,
     priority: 0,
@@ -191,6 +193,8 @@ function parseCard(raw: unknown, sourceIndex: number): AidParsedCard | AidSkippe
         characterName: brainKeyData?.agent || title,
         triggers: keys,
         source: "imported",
+        updateCondition: typeof raw.updateCondition === "string" ? raw.updateCondition : "",
+        updatePrompt: typeof raw.updatePrompt === "string" ? raw.updatePrompt : "",
         currentState: brainState,
         recentDevelopments: content !== brainState ? content : "",
         active: true,

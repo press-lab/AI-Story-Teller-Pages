@@ -1,3 +1,4 @@
+import { isHistoricalLore } from "./storyCardArchitecture";
 import type { EventMemory, StoryCard } from "../types/adventure";
 
 const normalize = (text: string) => text.toLocaleLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
@@ -20,7 +21,7 @@ export function sameEventMemory(a: { content: string; eventMemory?: EventMemory 
 /** Deterministic, inspectable recall; no extra model request. Global context budgets still apply. */
 export function selectEventMemories(cards: StoryCard[], text: string): Map<string, string> {
   const textWords = words(text);
-  return new Map(cards.filter(c => c.type === "event" && c.active && !c.pinned && c.inclusionPolicy !== "manual" && c.inclusionPolicy !== "always")
+  return new Map(cards.filter(c => isHistoricalLore(c) && c.active && !c.pinned && c.inclusionPolicy !== "manual" && c.inclusionPolicy !== "always")
     .map(card => {
       const participants = card.eventMemory?.participants ?? [];
       const participant = participants.find(name => {
@@ -30,6 +31,7 @@ export function selectEventMemories(cards: StoryCard[], text: string): Map<strin
       });
       const cue = [...(card.eventMemory?.recallCues ?? []), ...card.keys, card.title].find(phrase => {
         if (participants.some(p => normalize(p) === normalize(phrase))) return false;
+        if (cards.some(identity => identity.type === "character" && [identity.title, ...identity.keys].some(name => normalize(name) === normalize(phrase)))) return false;
         if (GENERIC_RECALL_CUES.has(normalize(phrase)) && !participant) return false;
         if (mentions(text, phrase)) return true;
         const cueWords = words(phrase);

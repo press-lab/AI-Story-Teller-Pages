@@ -35,7 +35,7 @@ describe("Event Memories", () => {
     a.storyCards[0].content = content;
     provider.mockResolvedValue({ content: JSON.stringify([candidate]), raw: {} });
     const result = await detectStoryCardProposals(a, config);
-    expect(result.actions).toContainEqual(expect.objectContaining({ type: "ADD_MEMORY_PROPOSAL", proposal: expect.objectContaining({ storyCardType: "event", eventMemory: expect.objectContaining({ sourceMessageIds: ["door"] }) }) }));
+    expect(result.actions).toContainEqual(expect.objectContaining({ type: "ADD_MEMORY_PROPOSAL", proposal: expect.objectContaining({ storyCardType: "lore", eventMemory: expect.objectContaining({ sourceMessageIds: ["door"] }) }) }));
   });
 
   it("discovers an event independently of an existing character, requires approval, and preserves evidence", async () => {
@@ -52,9 +52,9 @@ describe("Event Memories", () => {
     expect(buildContext(state).messages.map(m => m.content).join("\n")).not.toContain("Historical reference;");
     state = adventureReducer(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: p.id });
     expect(state.storyCards).toHaveLength(2);
-    const card = state.storyCards.find(c => c.type === "event")!;
+    const card = state.storyCards.find(c => c.type === "lore")!;
     expect(card).toMatchObject({ content, memoryMode: "historical", autoUpdate: false, eventMemory });
-    expect(normalizeAdventure(JSON.parse(JSON.stringify(state))).storyCards.find(c => c.type === "event")).toMatchObject({ eventMemory });
+    expect(normalizeAdventure(JSON.parse(JSON.stringify(state))).storyCards.find(c => c.type === "lore")).toMatchObject({ eventMemory });
     const repeat = await detectStoryCardProposals(state, config);
     expect(repeat.actions).toEqual([]);
   });
@@ -115,9 +115,9 @@ describe("Event Memories", () => {
     expect(edited.storyCards.at(-1)).toMatchObject({ content: "Corrected event.", autoUpdate: false, memoryMode: "historical" });
   });
 
-  it("leaves old historical cards in their existing category", () => {
+  it("migrates old historical plot cards to Lore", () => {
     const a = seed(); a.storyCards.push(makeStoryCard({ title: "Old history", content: "A completed arc.", type: "plot", memoryMode: "historical" }));
-    expect(normalizeAdventure(a).storyCards.at(-1)?.type).toBe("plot");
+    expect(normalizeAdventure(a).storyCards.at(-1)?.type).toBe("lore");
   });
 
   it("scans earlier Chronicle excerpts even with automatic discovery disabled and suppresses overlap duplicates", async () => {

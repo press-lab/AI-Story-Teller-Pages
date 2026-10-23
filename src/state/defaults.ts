@@ -1,3 +1,4 @@
+import { migrateStoryCard, primaryStoryCardType } from "../memory/storyCardArchitecture";
 import type {
   Adventure,
   ArcPacingState,
@@ -281,10 +282,10 @@ export function defaultArcState(): ArcPacingState {
   return { phase: "simmer", tier: 0, threadEngagement: {}, pendingBreak: false };
 }
 
-export function makeStoryCard(overrides: Partial<StoryCard> & Pick<StoryCard, "title" | "content">): StoryCard {
+export function makeStoryCard(overrides: Omit<Partial<StoryCard>, "type"> & { type?: StoryCard["type"] | import("../types/adventure").LegacyStoryCardType } & Pick<StoryCard, "title" | "content">): StoryCard {
   const timestamp = nowIso();
   const memoryMode = overrides.type === "event" ? "historical" : overrides.memoryMode ?? "static";
-  return {
+  return migrateStoryCard({
     id: overrides.id ?? createId("story"),
     title: overrides.title,
     keys: overrides.keys ?? [],
@@ -292,6 +293,7 @@ export function makeStoryCard(overrides: Partial<StoryCard> & Pick<StoryCard, "t
     content: overrides.content,
     type: overrides.type ?? "custom",
     eventMemory: overrides.eventMemory,
+    lore: overrides.lore,
     memoryMode,
     compactKind: overrides.compactKind,
     compactStatus: overrides.compactStatus,
@@ -304,7 +306,7 @@ export function makeStoryCard(overrides: Partial<StoryCard> & Pick<StoryCard, "t
     protected: overrides.protected ?? false,
     inclusionPolicy: overrides.inclusionPolicy ?? "triggered",
     priority: overrides.priority ?? 0,
-    autoUpdate: overrides.type === "event" ? false : overrides.autoUpdate ?? false,
+    autoUpdate: overrides.autoUpdate ?? false,
     autoUpdateCooldownTurns: overrides.autoUpdateCooldownTurns ?? 3,
     lastAutoUpdateTurn: overrides.lastAutoUpdateTurn,
     lastMemoryUpdatedAt: overrides.lastMemoryUpdatedAt,
@@ -314,7 +316,7 @@ export function makeStoryCard(overrides: Partial<StoryCard> & Pick<StoryCard, "t
     archivedFacts: overrides.archivedFacts,
     createdAt: overrides.createdAt ?? timestamp,
     updatedAt: overrides.updatedAt ?? timestamp,
-  };
+  });
 }
 
 /**
@@ -436,9 +438,9 @@ function normalizeComponentEntry(component: ComponentEntry): ComponentEntry {
 
 function normalizeStoryCardEntry(card: StoryCard, migrateGuardedFacts: boolean): StoryCard {
   const normalized: StoryCard = {
-    ...card,
+    ...migrateStoryCard(card),
     matchType: card.matchType ?? "phrase",
-    memoryMode: card.type === "event" ? "historical" : card.memoryMode ?? (
+    memoryMode: migrateStoryCard(card).memoryMode ?? (
       (card.state ?? "").split(/\s+/).includes("living")
         ? "living"
         : (card.state ?? "").split(/\s+/).includes("archivedArc")
@@ -447,16 +449,18 @@ function normalizeStoryCardEntry(card: StoryCard, migrateGuardedFacts: boolean):
     ),
     protected: card.protected ?? false,
     inclusionPolicy: card.inclusionPolicy ?? "triggered",
-    autoUpdate: card.type === "event" ? false : card.autoUpdate ?? false,
+    autoUpdate: card.autoUpdate ?? false,
     autoUpdateCooldownTurns: card.autoUpdateCooldownTurns ?? 3,
     coreFacts: card.coreFacts ?? [],
     currentFacts: card.currentFacts ?? [],
     recentDevelopments: card.recentDevelopments ?? [],
     sourceTurnIds: card.sourceTurnIds ?? [],
   };
-  return migrateGuardedFacts
+  const migrated = migrateGuardedFacts && normalized.type !== "character" && normalized.type !== "location"
     ? applyGuardedStoryCardPolicy(restoreGuardedFactsToLiveContent(normalized))
     : consolidateStoryCardContent(normalized);
+  // Loading legacy memory must not rewrite authored ordering, budget or state controls.
+  return { ...migrated, priority: normalized.priority, tokenBudget: normalized.tokenBudget, state: normalized.state };
 }
 
 function persistedProviderConfig(config: ProviderConfig | undefined): Partial<ProviderConfig> {
@@ -514,7 +518,8 @@ export function normalizeAdventure(adventure: Adventure): Adventure {
       ...baseline.activeState,
       ...adventure.activeState,
       evaluationLog: adventure.activeState?.evaluationLog ?? [],
-      memoryProposals: adventure.activeState?.memoryProposals ?? [],
+      memoryProposals: (adventure.activeState?.memoryProposals ?? []).map(proposal => proposal.proposedType === "storyCard" && proposal.storyCardType
+        ? { ...proposal, storyCardType: primaryStoryCardType(proposal.storyCardType), ...(proposal.storyCardType === "event" ? { memoryMode: "historical" as const } : {}) } : proposal),
       pendingUpdates: adventure.activeState?.pendingUpdates ?? [],
       storyUndoStack: adventure.activeState?.storyUndoStack ?? [],
       storyRedoStack: adventure.activeState?.storyRedoStack ?? [],
@@ -557,14 +562,8 @@ export function normalizeAdventure(adventure: Adventure): Adventure {
       source: brain.source ?? "manual",
       protected: brain.protected ?? false,
       inclusionPolicy: brain.inclusionPolicy ?? "triggered",
-      updateCondition: (() => {
-        const old = brain.updateCondition?.trim();
-        if (!old || /^when \S.* appears in the scene or is meaningfully referenced$/.test(old)) {
-          return `when something in this scene causes a genuine shift for ${brain.characterName}: a new realization, emotional pivot, changed read on another character, or meaningful reaction to events — do NOT fire just because they appear or speak`;
-        }
-        return old;
-      })(),
-      updatePrompt: brain.updatePrompt ?? "",
+      updateCondition: brain.updateCondition,
+      updatePrompt: brain.updatePrompt,
       // One-time migration: brains created under the old "replace" default never
       // accumulated thoughts. Flip them to "append" once (gated by the stateFlag
       // below) so existing adventures heal; users can still opt back to replace.

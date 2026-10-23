@@ -1,3 +1,4 @@
+import { primaryStoryCardType } from "./storyCardArchitecture";
 import type { Adventure, Message, ProviderConfig, StoryCard, StoryCardMemoryMode, StoryCardType } from "../types/adventure";
 import { sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
 import { backgroundProviderConfigIssue, resolveBackgroundProviderConfig } from "../providers/backgroundProvider";
@@ -235,9 +236,9 @@ RECENT STORY:
 ${recentStory || "(none)"}
 
 Return ONLY a JSON array — no markdown, no prose. Each item must be one of:
-- {"action":"edit","cardId":"...","title":"...","rationale":"...","suggestedContent":"...","suggestedKeys":["..."],"suggestedType":"character"|"location"|"lore"|"plot"|"custom","suggestedMemoryMode":"static"|"living"|"historical"}
+- {"action":"edit","cardId":"...","title":"...","rationale":"...","suggestedContent":"...","suggestedKeys":["..."],"suggestedType":"character"|"location"|"lore"|"custom","suggestedMemoryMode":"static"|"living"|"historical"}
 - {"action":"delete","cardId":"...","title":"...","rationale":"..."}
-- {"action":"create","title":"...","rationale":"...","suggestedContent":"...","suggestedKeys":["..."],"suggestedType":"character"|"location"|"lore"|"plot"|"custom","suggestedMemoryMode":"static"|"living"|"historical"}
+- {"action":"create","title":"...","rationale":"...","suggestedContent":"...","suggestedKeys":["..."],"suggestedType":"character"|"location"|"lore"|"custom","suggestedMemoryMode":"static"|"living"|"historical"}
 
 Rules:
 - Edit: card content is outdated or factually wrong based on recent events
@@ -257,7 +258,7 @@ Rules:
 - Return [] if no changes are needed`;
 }
 
-const VALID_TYPES = new Set(["character", "location", "lore", "plot", "event", "custom"]);
+const VALID_TYPES = new Set(["character", "location", "lore", "custom"]);
 const VALID_MEMORY_MODES = new Set(["static", "living", "historical"]);
 
 function parseLLMResponse(raw: string): AuditRecommendation[] {
@@ -295,7 +296,7 @@ function parseLLMResponse(raw: string): AuditRecommendation[] {
           ? (item.keys as unknown[]).filter((k): k is string => typeof k === "string")
         : [];
       const suggestedTypeRaw = typeof item.suggestedType === "string" ? item.suggestedType : typeof item.type === "string" ? item.type : "";
-      const suggestedType = VALID_TYPES.has(suggestedTypeRaw) ? suggestedTypeRaw as StoryCardType : "custom";
+      const suggestedType = primaryStoryCardType(suggestedTypeRaw);
       const modeRaw = typeof item.suggestedMemoryMode === "string" ? item.suggestedMemoryMode : typeof item.memoryMode === "string" ? item.memoryMode : "";
       const suggestedMemoryMode = VALID_MEMORY_MODES.has(modeRaw) ? modeRaw as StoryCardMemoryMode : "static";
       return {

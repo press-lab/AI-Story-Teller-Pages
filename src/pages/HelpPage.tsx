@@ -255,7 +255,7 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
           </li>
           <li>
             <strong>Graduate when the arc resolves.</strong> When the arc has run its course, click
-            "Complete Arc → Story Card." This creates a permanent Story Card (type: plot) from the arc log
+            "Complete Arc → Story Card." This creates a permanent Story Card (type: Lore) from the arc log
             and clears the component for the next arc. The graduated card stays in context when triggered
             by relevant keywords — keeping the resolved arc as referenced backstory.
           </li>
@@ -661,6 +661,7 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
           <li>One-off scenery or room details that won't recur.</li>
         </ul>
         <p><strong>Format:</strong> Bullet points, one per line, using •. Each bullet is one self-contained fact. Lead with what is always true, then add specific constraints or rules.</p>
+        <p><strong>Story Card types:</strong> Character and Location preserve durable identity. Lore holds developments, relationships and history, with dates, status and source references. Custom holds explicit reference material. The current story clock is edited in Story Cards.</p>
         <p><strong>Memory mode:</strong> Static cards are always-true facts in present tense. Living cards are current evolving subjects that updates merge/archive. Historical cards are completed events or retired PE facts in past tense.</p>
         <p><strong>Trigger keys:</strong> Use specific names, places, nicknames, objects, factions, and consequences. Character aliases belong on character identity cards; avoid putting broad character names on event, relationship, or subplot cards.</p>
         <p><strong>Good card:</strong></p>

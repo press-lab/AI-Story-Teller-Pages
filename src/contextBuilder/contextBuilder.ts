@@ -1,3 +1,5 @@
+import { isHistoricalLore, loreExcerpt } from "../memory/storyCardArchitecture";
+import { formatStoryTime } from "../memory/storyTime";
 import { ONE_PASS_MEMORY_ID, onePassMemoryInstruction } from "../memory/onePassMemory";
 import { selectEventMemories } from "../memory/eventMemory";
 import { PLOT_MEMORY_THRESHOLD } from "../ai/authoringBestPractices";
@@ -405,7 +407,7 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
   }
 
   // A. System Shell
-  const systemItem = item("system-shell", "system", "System Shell", SYSTEM_SHELL, 1000, true, false, true, "always", "system");
+  const systemItem = item("system-shell", "system", "System Shell", SYSTEM_SHELL + (adventure.storyClock?.current ? "\nCurrent story time: " + formatStoryTime(adventure.storyClock.current) + ". In-world time; interpret recalled dates relative to this clock. Past dates do not imply resolution." : ""), 1000, true, false, true, "always", "system");
   pushIncluded(systemItem, "System shell is always included and protected.");
   const turnScopeItem = item("turn-scope-contract", "system", "Turn Scope Contract", turnScopeText, 1000, true, false, true, "always", "system");
   pushIncluded(turnScopeItem, "Turn scope contract is always included and protected.");
@@ -523,15 +525,17 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
       continue;
     }
     const keysWithTitle = card.keys.includes(card.title) ? card.keys : [card.title, ...card.keys];
-    const match = card.type === "event"
+    const match = isHistoricalLore(card)
       ? { matched: recalledEvents.has(card.id), pattern: recalledEvents.get(card.id) }
       : matchPatterns(triggerText, keysWithTitle, card.matchType ?? "phrase");
     if (match.matched) triggeredThreadIds.add(card.id);
     const matched = card.inclusionPolicy === "always" || card.pinned || forced || (card.inclusionPolicy !== "manual" && match.matched);
     if (matched) {
-      const historical = card.type === "event" || card.memoryMode === "historical";
-      const next = item(card.id, "storyCard", card.title, (historical ? "Historical reference; use only when relevant, do not force a callback.\n" : "") + storyCardContextContent(card), card.priority, card.protected, card.pinned, card.active, card.inclusionPolicy, "user");
+      const historical = isHistoricalLore(card) || card.memoryMode === "historical";
+      const excerpt = loreExcerpt(card, storyCardContextContent(card), triggerText);
+      const next = item(card.id, "storyCard", card.title, (historical ? "Historical reference; use only when relevant, do not force a callback.\n" : "") + excerpt.content, card.priority, card.protected, card.pinned, card.active, card.inclusionPolicy, "user");
       pushIncluded(next, `Story card included by ${card.pinned ? "pin" : forced ? "manual force" : card.inclusionPolicy === "always" ? "always policy" : `trigger ${match.pattern}`}; priority=${card.priority}; protected=${card.protected}.`);
+      if (excerpt.truncated) decisions.push(decision(next, "truncated", "budget_exceeded", "Lore excerpt bounded by card token budget; full history remains in Content."));
       storyCardItems.push(next);
     } else {
       pushExcluded("storyCard", card.id, card.title, "not_triggered", "No story card trigger matched current input, output, or recent history.");

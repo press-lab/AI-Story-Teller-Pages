@@ -1,3 +1,5 @@
+import { createId, nowIso } from "../utils/id";
+import { isHistoricalLore, isExceptionalIdentityChange } from "./storyCardArchitecture";
 import type {
   Adventure,
   AdventureAction,
@@ -109,8 +111,22 @@ export function applyAIMemoryUpdate(adventure: Adventure, updates: AIMemoryUpdat
         rejectedUpdates.push(reject(update, "Story card not found."));
         continue;
       }
-      if (card.type === "event") {
+      if (isHistoricalLore(card)) {
         rejectedUpdates.push(reject(update, "Event memories are historical records; edit them explicitly instead of auto-updating them."));
+        continue;
+      }
+      if ((card.type === "character" || card.type === "location") && update.content !== undefined) {
+        if (!isExceptionalIdentityChange(card.type, update.content)) {
+          rejectedUpdates.push(reject(update, "Identity profiles are durable; ordinary developments belong in Lore."));
+          continue;
+        }
+        actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal: {
+          id: createId("proposal"), title: card.title, content: update.content, proposedType: "storyCard",
+          targetId: card.id, appendContent: true, storyCardType: card.type, memoryMode: card.memoryMode,
+          suggestedTriggers: [], sourceTurnId: "", sourceText: update.content, requiresReview: true, confidence: 0.8,
+          rationale: "Exceptional identity change; review with supporting Lore.", status: "pending",
+          createdAt: nowIso(), updatedAt: nowIso(),
+        } });
         continue;
       }
       const patch = storyCardPatch(update);

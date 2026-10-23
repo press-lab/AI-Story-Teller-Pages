@@ -17,7 +17,7 @@ const proposalTypes: MemoryProposalType[] = [
   "summaryUpdate",
   "ignore",
 ];
-const storyCardTypes: StoryCardType[] = ["character", "location", "lore", "plot", "event", "custom"];
+const storyCardTypes: StoryCardType[] = ["character", "location", "lore", "custom"];
 
 interface MemoryInboxPageProps extends AdventurePageProps {
   onFindEventMemories?: (onProgress: (message: string) => void, signal: AbortSignal) => Promise<void>;
@@ -317,7 +317,7 @@ function ProposalCard({ proposal, dispatch, onUpdate, onRegenerate }: ProposalCa
 
       <details className="editor-tools-panel">
         <summary>Source &amp; details</summary>
-        {proposal.eventMemory && <p>Event Memory · {proposal.eventMemory.kind} · Participants: {proposal.eventMemory.participants.join(", ")} · Recall cues: {proposal.eventMemory.recallCues.join(", ")} · Source messages: {proposal.eventMemory.sourceMessageIds.join(", ")}</p>}
+        {proposal.eventMemory && <p>Historical Lore · {proposal.eventMemory.kind} · Participants: {proposal.eventMemory.participants.join(", ")} · Recall cues: {proposal.eventMemory.recallCues.join(", ")} · Source messages: {proposal.eventMemory.sourceMessageIds.join(", ")}</p>}
         <div className="grid two">
           <Field label="Source">
             <textarea
@@ -356,7 +356,7 @@ function ProposalCard({ proposal, dispatch, onUpdate, onRegenerate }: ProposalCa
                   onChange={(event) => onUpdate(proposal, { storyCardType: event.target.value as StoryCardType })}
                   disabled={!isPending}
                 >
-                  {storyCardTypes.map((type) => <option key={type} value={type}>{type === "event" ? "Event Memory" : type}</option>)}
+                  {storyCardTypes.map((type) => <option key={type} value={type}>{type}</option>)}
                 </select>
               </Field>
               <Field label="Memory Mode">

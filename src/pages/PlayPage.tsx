@@ -1,3 +1,4 @@
+import { formatStoryTime } from "../memory/storyTime";
 import { useEffect, useRef, useState } from "react";
 import type { InputMode, Message } from "../types/adventure";
 import type { PlayRuntimeProps } from "./pageTypes";
@@ -625,6 +626,7 @@ export function PlayPage({
       >
         <div className="play-status">
           <span className="muted">Turn {adventure.activeState.turn} · {saveStatus}</span>
+          {adventure.storyClock?.current && <span className="muted">Story time: {formatStoryTime(adventure.storyClock.current)}</span>}
           {providerPresets && providerPresets.length > 1 && onSelectPreset && (
             <select
               className="preset-select"

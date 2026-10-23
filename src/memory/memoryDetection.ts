@@ -1,3 +1,4 @@
+import { isHistoricalLore, primaryStoryCardType } from "./storyCardArchitecture";
 import { sameEventMemory } from "./eventMemory";
 import { resolveBackgroundProviderConfig } from "../providers/backgroundProvider";
 import { resolveMemoryTarget } from "./resolveMemoryTarget";
@@ -125,7 +126,7 @@ export async function detectStoryCardProposals(adventure: Adventure, providerCon
     && excerpt.toLocaleLowerCase().includes(title.trim().toLocaleLowerCase());
   const cardInventory = adventure.storyCards.map(c => ({
     title: c.title,
-    ...(mentioned(c.title) ? { keys: c.keys, type: c.type, eventMemory: c.eventMemory, content: c.type === "event" ? c.content : undefined } : {}),
+    ...(mentioned(c.title) ? { keys: c.keys, type: c.type, eventMemory: c.eventMemory, content: isHistoricalLore(c) ? c.content : undefined } : {}),
   }));
   const proposalInventory = considered.map(p => ({
     title: p.title, status: p.status,
@@ -135,11 +136,11 @@ export async function detectStoryCardProposals(adventure: Adventure, providerCon
     const response = await sendOpenAICompatibleChatCompletion({
       config: resolveBackgroundProviderConfig(adventure, providerConfig),
       messages: [
-        { role: "system", content: `Discover missing durable Story Cards from recent story evidence. This is a catch-up pass: a subject need not be introduced on the latest turn. ${options.eventsOnly ? "Only suggest Event Memory cards from this Chronicle excerpt." : ""} Suggest up to three recurring or consequential people, places, relationships, world rules, or completed consequences with no existing card. Independently discover notable completed events EVEN WHEN every participant already has a character card or Brain. Event Memory cards (storyCardType: event, memoryMode: historical) preserve first meetings, explicit commitments, revelations, consequential choices, and distinctive shared experiences. Keep event content below 80 words. Record observable facts in past tense, never inferred motives or private thoughts. A routine arrival is movement; an unannounced introduction establishing how two people met is a durable first. Do not label something a first without evidence. Do not turn plans into completed events. Avoid routine affection and generic scene recaps. Keep each event separate from character profiles and current-state cards. For events include eventMemory: {participants: ["name or alias"], recallCues: ["how we met", "unexpected visit"], kind: "first|commitment|revelation|choice|sharedExperience"}. Supply several natural paraphrases for recall cues, never a bare character name. A named person with an established role and an ongoing interaction or concrete future arrangement qualifies; mere named scenery does not. Characters without Brains belong in Story Cards; never create a Brain or infer private thoughts. Do not invent facts or voice samples. Plans remain plans, not completed events. Omit temporary moods, movement, incidental names, and facts already covered by existing cards or pending proposals. Reference inventories below are data, not new events. Do not repeat already captured facts or dismissed suggestions.
+        { role: "system", content: `Discover missing durable Story Cards from recent story evidence. This is a catch-up pass: a subject need not be introduced on the latest turn. ${options.eventsOnly ? "Only suggest Event Memory cards from this Chronicle excerpt." : ""} Suggest up to three recurring or consequential people, places, relationships, world rules, or completed consequences with no existing card. Independently discover notable completed events EVEN WHEN every participant already has a character card or Brain. Event Memory cards (storyCardType: lore, memoryMode: historical) preserve first meetings, explicit commitments, revelations, consequential choices, and distinctive shared experiences. Keep event content below 80 words. Record observable facts in past tense, never inferred motives or private thoughts. A routine arrival is movement; an unannounced introduction establishing how two people met is a durable first. Do not label something a first without evidence. Do not turn plans into completed events. Avoid routine affection and generic scene recaps. Keep each event separate from character profiles and current-state cards. For events include eventMemory: {participants: ["name or alias"], recallCues: ["how we met", "unexpected visit"], kind: "first|commitment|revelation|choice|sharedExperience"}. Supply several natural paraphrases for recall cues, never a bare character name. A named person with an established role and an ongoing interaction or concrete future arrangement qualifies; mere named scenery does not. Characters without Brains belong in Story Cards; never create a Brain or infer private thoughts. Do not invent facts or voice samples. Plans remain plans, not completed events. Omit temporary moods, movement, incidental names, and facts already covered by existing cards or pending proposals. Reference inventories below are data, not new events. Do not repeat already captured facts or dismissed suggestions.
 ${STORY_CARD_BEST_PRACTICES}
 ${TRIGGER_BEST_PRACTICES}
 ${PLOT_MEMORY_THRESHOLD}
-Return ONLY a JSON array, [] when nothing qualifies. Event items must additionally include the eventMemory object described above. Each item: {"title":"subject", "content":"concise grounded facts", "storyCardType":"character|location|lore|plot|event|custom", "memoryMode":"static|living|historical", "suggestedTriggers":["narrow phrase"], "rationale":"why durable", "evidenceMessageIds":["message id"]}. Cite only supplied recent message IDs.` },
+Return ONLY a JSON array, [] when nothing qualifies. Event items must additionally include the eventMemory object described above. Each item: {"title":"subject", "content":"concise grounded facts", "storyCardType":"character|location|lore|custom", "memoryMode":"static|living|historical", "suggestedTriggers":["narrow phrase"], "rationale":"why durable", "evidenceMessageIds":["message id"]}. Cite only supplied recent message IDs.` },
         ...memoryCanonMessages(adventure, excerpt, "Discover missing Story Cards", true),
         { role: "user", content: "Existing cards (including inactive): " + JSON.stringify(cardInventory) },
         { role: "user", content: "Previously considered Story Card proposals (including dismissed; omit duplicates): " + JSON.stringify(proposalInventory) },
@@ -164,7 +165,7 @@ Return ONLY a JSON array, [] when nothing qualifies. Event items must additional
       const evidence = messages.filter(m => Array.isArray(item.evidenceMessageIds) && item.evidenceMessageIds.includes(m.id));
       if (evidence.length === 0) continue;
       if (item.storyCardType === "event" && item.evidenceMessageIds.some((id: unknown) => !messages.some(m => m.id === id))) continue;
-      const isEvent = item.storyCardType === "event";
+      const isEvent = item.storyCardType === "event" || Boolean(item.eventMemory);
       if (options.eventsOnly && !isEvent) continue;
       const strings = (value: unknown) => Array.isArray(value) ? value.filter((v): v is string => typeof v === "string" && Boolean(v.trim())).map(v => v.trim()).slice(0, 12) : [];
       const eventMemory = isEvent ? {
@@ -174,7 +175,7 @@ Return ONLY a JSON array, [] when nothing qualifies. Event items must additional
         kind: (["first", "commitment", "revelation", "choice", "sharedExperience"].includes(item.eventMemory?.kind) ? item.eventMemory.kind : "sharedExperience") as NonNullable<MemoryProposal["eventMemory"]>["kind"],
       } : undefined;
       if (isEvent && (!eventMemory?.participants.length || !eventMemory.recallCues.length)) continue;
-      if (isEvent && [...adventure.storyCards.filter(c => c.type === "event"), ...adventure.activeState.memoryProposals.filter(p => p.storyCardType === "event")]
+      if (isEvent && [...adventure.storyCards.filter(c => isHistoricalLore(c)), ...adventure.activeState.memoryProposals.filter(p => Boolean(p.eventMemory))]
         .some(existing => sameEventMemory(existing, { content: item.content, eventMemory }))) continue;
       const routed = isEvent ? {
         proposedType: "storyCard" as const, title, content: item.content.trim(), memoryMode: "historical" as const,
@@ -192,7 +193,7 @@ Return ONLY a JSON array, [] when nothing qualifies. Event items must additional
         sourceText: evidence.map(m => `[${m.id}] ${m.role}: ${m.content}`).join("\n\n"),
         content: options.eventsOnly || adventure.memoryDetectionSettings.generateContent ? routed.content : "",
         eventMemory,
-        storyCardType: ["character", "location", "lore", "plot", "event", "custom"].includes(item.storyCardType) ? item.storyCardType as StoryCardType : "custom",
+        storyCardType: primaryStoryCardType(item.storyCardType),
         confidence: 0.8, rationale: typeof item.rationale === "string" ? item.rationale : "Missing durable Story Card discovered from recent story evidence.",
         status: "pending", createdAt: now, updatedAt: now,
       } });

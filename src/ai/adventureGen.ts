@@ -63,7 +63,7 @@ const generatedComponentTypes = new Set<ComponentType>([
   "authorNote",
   "custom",
 ]);
-const storyCardTypes = new Set<StoryCardType>(["character", "location", "lore", "plot", "event", "custom"]);
+const storyCardTypes = new Set<StoryCardType>(["character", "location", "lore", "custom"]);
 const storyCardMemoryModes = new Set<StoryCardMemoryMode>(["static", "living", "historical"]);
 
 const defaultPreferences: AdventureGenPreferences = {
@@ -183,7 +183,7 @@ Output ONLY valid JSON — no explanation, no preamble, no markdown prose outsid
   "storyCards": [
     {
       "title": "string",
-      "type": "character | location | lore | plot | custom",
+      "type": "character | location | lore | custom",
       "memoryMode": "static | living | historical",
       "keys": ["trigger1", "trigger2"],
       "content": "string — concise durable reference facts; bullet format preferred",

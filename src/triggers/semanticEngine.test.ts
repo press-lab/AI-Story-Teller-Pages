@@ -8,7 +8,7 @@ import {
   runRememberThis,
   runStoryCardAIBuilder,
 } from "./semanticEngine";
-import { createDefaultAdventure, makeBrain, makeComponent, makeStoryCard, makeTriggerRule } from "../state/defaults";
+import { createDefaultAdventure, makeBrain, makeComponent, makeStoryCard, makeTriggerRule, normalizeAdventure } from "../state/defaults";
 import { adventureReducer } from "../state/adventureReducer";
 import { storyCardContextContent } from "../memory/storyCardPolicy";
 import type { Adventure } from "../types/adventure";
@@ -608,7 +608,7 @@ describe("AI memory builders", () => {
             targetId: "card-ambessa",
             title: "Ambessa's Political Defeat",
             memoryMode: "historical",
-            storyCardType: "plot",
+            storyCardType: "lore",
             content: "Ambessa was politically and militarily defeated and is being sent home.",
             storyCardPatch: { pinned: true, protected: true, compactStatus: "active" },
             rationale: "Ambessa should remain history, not active pressure.",
@@ -726,7 +726,7 @@ describe("AI memory builders", () => {
         proposals: [{
           action: "create",
           title: "Seth and Margo Trust",
-          storyCardType: "plot",
+          storyCardType: "lore",
           memoryMode: "living",
           content: "• Seth and Margo use ward-room jokes as a private trust signal.",
           keys: ["ward-room jokes", "private trust signal"],
@@ -754,7 +754,7 @@ describe("AI memory builders", () => {
       proposal: {
         proposedType: "storyCard",
         title: "Seth and Margo Trust",
-        storyCardType: "plot",
+        storyCardType: "lore",
         memoryMode: "living",
         autoUpdate: true,
         autoUpdateCooldownTurns: 2,
@@ -995,4 +995,21 @@ describe("memory discovery and component suggestions", () => {
     expect(result.logEntry.conditionsEvaluated.map(c => c.id)).toEqual(["storyCard:first", "storyCard:second"]);
     expect(result.actions).toContainEqual(expect.objectContaining({ type: "ADD_MEMORY_PROPOSAL", proposal: expect.objectContaining({ targetId: "second" }) }));
   });
+});
+
+
+it.each(["", undefined])("uses a nonpersistent runtime Brain condition fallback for %s", async condition => {
+  const adventure = baseAdventure();
+  adventure.components = [];
+  adventure.storyCards = [];
+  adventure.brains = [makeBrain({ id: "mira-import", characterName: "Mira", updateCondition: condition })];
+  if (condition === undefined) delete (adventure.brains[0] as Partial<typeof adventure.brains[0]>).updateCondition;
+  adventure.messages.push({ id: "mira-scene", role: "assistant", content: "Mira reads the letter.", createdAt: "2026-01-01" });
+  const imported = normalizeAdventure(adventure);
+  imported.components = []; // isolate the existing Brain condition request
+  mockProvider.mockResolvedValue({ content: "[]", raw: {} });
+  await runMemoryCycle(imported, providerConfig);
+  expect(mockProvider).toHaveBeenCalledTimes(1);
+  expect(mockProvider.mock.calls[0][0].messages.map(m => m.content).join("\n")).toContain("genuine shift for Mira");
+  expect(imported.brains[0].updateCondition).toBe(condition);
 });

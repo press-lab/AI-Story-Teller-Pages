@@ -1,3 +1,5 @@
+import { StoryClockEditor, LoreChronologyEditor } from "./StoryCardChronology";
+import { PRIMARY_STORY_CARD_TYPES, primaryStoryCardType, isHistoricalLore } from "../memory/storyCardArchitecture";
 import { useEffect, useRef, useState } from "react";
 import type { ContextInclusionPolicy, StoryCard, StoryCardAIBuilderIntent, StoryCardMemoryMode, StoryCardType, TriggerMatchType, StoryCardAIBuilderRequest } from "../types/adventure";
 import type { AuditRecommendation } from "../memory/storyCardAudit";
@@ -7,7 +9,7 @@ import { approximateTokenCount } from "../tokenizer/approximateTokenCount";
 import type { AdventurePageProps } from "./pageTypes";
 import { CheckboxField, Field, Highlight, MemoryUpdateHistory, NumberInput, TokenCountBadge, UpdatedAtBadge, commaList, contentSnippet, formatCompactTimestamp, fromCommaList } from "./shared";
 
-const TYPE_ORDER: StoryCardType[] = ["character", "location", "lore", "plot", "event", "custom"];
+const TYPE_ORDER: StoryCardType[] = [...PRIMARY_STORY_CARD_TYPES];
 const MEMORY_MODE_OPTIONS: StoryCardMemoryMode[] = ["static", "living", "historical"];
 const matchTypes: TriggerMatchType[] = ["keyword", "phrase", "regex"];
 const inclusionPolicies: ContextInclusionPolicy[] = ["always", "triggered", "manual", "systemSuggested"];
@@ -16,8 +18,6 @@ const TYPE_LABELS: Record<StoryCardType, string> = {
   character: "Character",
   location: "Location",
   lore: "Lore",
-  plot: "Plot",
-  event: "Event Memory",
   custom: "Custom",
 };
 
@@ -209,7 +209,7 @@ export function StoryCardsPage({
         },
       });
     } else if (rec.action === "create") {
-      const validTypes = new Set<StoryCardType>(["character", "location", "lore", "plot", "event", "custom"]);
+      const validTypes = new Set<StoryCardType>(PRIMARY_STORY_CARD_TYPES);
       const type: StoryCardType = validTypes.has(rec.suggestedType as StoryCardType)
         ? (rec.suggestedType as StoryCardType)
         : "custom";
@@ -318,7 +318,7 @@ export function StoryCardsPage({
       <div className="editor-page-summary">
         <p className="muted">
           Triggered memory for characters, places, relationships, secrets, rules, and recurring facts.
-          Keep triggers specific; always-on lore belongs in Plot.
+          Character and Location hold durable identity; Lore holds developments and history.
         </p>
         <div className="editor-stat-row" aria-label="Story card counts">
           <span>{totalCards} total</span>
@@ -334,6 +334,7 @@ export function StoryCardsPage({
         For always-on world lore that should load every turn regardless, use a <strong>World Block</strong>.
       </p>
 
+      <StoryClockEditor adventure={adventure} dispatch={dispatch} />
       {onBuildStoryCardMemory && (
         <details className="panel">
           <summary>Draft a Story Card with AI</summary>
@@ -838,7 +839,7 @@ export function StoryCardsPage({
                       <select
                         value={card.type}
                         onChange={(event) =>
-                          dispatch({ type: "UPDATE_STORY_CARD", storyCardId: card.id, patch: { type: event.target.value as StoryCardType, ...(event.target.value === "event" ? { memoryMode: "historical", autoUpdate: false } : {}) } })
+                          dispatch({ type: "UPDATE_STORY_CARD", storyCardId: card.id, patch: { type: event.target.value as StoryCardType, ...(event.target.value === "character" || event.target.value === "location" ? { memoryMode: "static" } : {}) } })
                         }
                       >
                         {Object.entries(TYPE_LABELS).map(([value, label]) => (
@@ -852,7 +853,6 @@ export function StoryCardsPage({
                   <Field label="Memory Mode">
                     <select
                       value={card.memoryMode ?? "static"}
-                      disabled={card.type === "event"}
                       onChange={(event) =>
                         dispatch({ type: "UPDATE_STORY_CARD", storyCardId: card.id, patch: { memoryMode: event.target.value as StoryCard["memoryMode"] } })
                       }
@@ -884,6 +884,7 @@ export function StoryCardsPage({
                       </div>
                       <span className="muted">{cardFactLines(card.content).length} line{cardFactLines(card.content).length === 1 ? "" : "s"}</span>
                     </div>
+                  <LoreChronologyEditor card={card} dispatch={dispatch} messages={adventure.messages} />
                   <Field label="Content">
                     <textarea
                       rows={6}
@@ -969,9 +970,9 @@ export function StoryCardsPage({
                     />
                   </Field>
                   <div className="row">
-                    {card.type === "event" && (
+                    {isHistoricalLore(card) && (
                       <fieldset>
-                        <legend>Event Memory recall and evidence</legend>
+                        <legend>Lore recall and evidence</legend>
                         <Field label="Participants">
                           <input
                             value={commaList(card.eventMemory?.participants ?? [])}

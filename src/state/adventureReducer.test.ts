@@ -5,6 +5,7 @@ import { adventureReducer } from "./adventureReducer";
 import { makeMemoryProposal } from "../test/goldenAdventure";
 
 const testedActionTypes = [
+  "SET_STORY_CLOCK",
   "SET_TITLE",
   "SET_OPENING_SCENE",
   "UPDATE_METADATA",
@@ -749,7 +750,8 @@ describe("adventureReducer", () => {
 
     const routed = state.activeState.memoryProposals.find((entry) => entry.id === "proposal-seth-current");
     expect(routed).toMatchObject({
-      title: "Seth Valis: Current Status",
+      title: expect.stringContaining("Seth Valis:"),
+      storyCardType: "lore",
       targetId: undefined,
       appendContent: undefined,
       memoryMode: "living",
@@ -759,7 +761,7 @@ describe("adventureReducer", () => {
     state = reduce(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: "proposal-seth-current" });
 
     const profile = state.storyCards.find((card) => card.id === "card-seth");
-    const child = state.storyCards.find((card) => card.title === "Seth Valis: Current Status");
+    const child = state.storyCards.find((card) => card.type === "lore" && card.title.startsWith("Seth Valis:"));
     expect(profile?.content).toBe("- Player character and Council mage.");
     expect(child).toMatchObject({
       memoryMode: "living",
@@ -1061,9 +1063,9 @@ describe("adventureReducer", () => {
     ).toBe(false);
   });
 
-  it("auto-approves new Event Memory Story Cards when Story Card auto-approval is enabled", () => {
+  it("requires review of historical Lore when Story Card auto-approval is enabled", () => {
     const base = baseAdventure();
-    const state = reduce(
+    let state = reduce(
       {
         ...base,
         memoryAutoApprove: { ...base.memoryAutoApprove, storyCard: true },
@@ -1088,9 +1090,12 @@ describe("adventureReducer", () => {
       },
     );
 
+    const pending = state.activeState.memoryProposals.find(p => p.id === "event-auto-approved");
+    expect(pending?.status).toBe("pending");
+    state = reduce(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: pending!.id });
     expect(state.storyCards).toContainEqual(expect.objectContaining({
       title: "The Silver Warrant Revelation",
-      type: "event",
+      type: "lore",
       memoryMode: "historical",
     }));
     expect(state.activeState.memoryProposals).toContainEqual(expect.objectContaining({
@@ -1340,7 +1345,7 @@ describe("adventureReducer", () => {
 
     const card = state.storyCards.find((entry) => entry.title === "Seth and Margo Trust");
     expect(card).toMatchObject({
-      type: "plot",
+      type: "lore",
       memoryMode: "living",
       autoUpdate: true,
       autoUpdateCooldownTurns: 2,
@@ -1619,7 +1624,7 @@ describe("adventureReducer", () => {
     const archived = state.storyCards.at(-1);
     expect(archived).toMatchObject({
       title: "Take down Lord Renzan.",
-      type: "plot",
+      type: "lore",
       memoryMode: "historical",
       active: true,
       state: "archivedArc",

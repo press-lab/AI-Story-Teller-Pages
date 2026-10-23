@@ -22,6 +22,7 @@ export const PLOT_ESSENTIALS_BEST_PRACTICES = `Plot Essentials best practices:
 - Put situational lore, character identity, relationships, secrets, recurring objects, locations, factions, and completed past events in Story Cards instead.`;
 
 export const STORY_CARD_BEST_PRACTICES = `Story Card best practices:
+- Use only Character, Location, Lore, or Custom. Character and Location hold stable identity; developments, relationships, events and discoveries belong in Lore. Identity changes require exceptional evidence (death, permanent transformation/capability change or correction), with supporting Lore.
 - A Story Card is durable triggered memory for one subject: a character, location, faction, object, relationship, secret, rule, or completed event.
 - The entry must be self-contained. Repeat the subject name in the body; do not rely on the title alone.
 - Keep entries concise, concrete, and unambiguous. Avoid temporary scene state and excessive appearance details unless they matter.
@@ -38,7 +39,7 @@ export const TRIGGER_BEST_PRACTICES = `Trigger best practices:
 - Avoid generic triggers such as "the team", "the agency", "current", "relationship", "status", "mission", or "event".`;
 
 export const PLOT_MEMORY_THRESHOLD = `Plot and relationship memory threshold:
-- Create a new plot card only for a lasting change in an obligation, alliance, relationship, secret, or consequential unresolved situation. Routine hospitality, casual invitations, flirting, repeated affection, and ordinary conversation do not by themselves qualify.
+- Create a new Lore card only for a lasting change in an obligation, alliance, relationship, secret, or consequential unresolved situation. Routine hospitality, casual invitations, flirting, repeated affection, and ordinary conversation do not by themselves qualify.
 - Prefer updating the existing subject over a sibling card. If the fact is already captured in canon or a proposal, omit it even when a different title would describe it.
 - A casual offer is not a binding pact. Preserve an explicitly accepted consequential commitment, but never promote a tentative plan into a completed event or obligation.`;
 

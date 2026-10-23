@@ -69,7 +69,7 @@ describe("runStoryCardAudit", () => {
           rationale: "The protocol is an ongoing arrangement rather than a permanent identity fact.",
           suggestedContent: "• Seth is currently managing Viktor's notification protocol while Mel handles the Council.",
           suggestedKeys: ["Viktor protocol", "notification protocol"],
-          suggestedType: "plot",
+          suggestedType: "lore",
           suggestedMemoryMode: "living",
         },
       ]),
@@ -90,7 +90,7 @@ describe("runStoryCardAudit", () => {
         expect.objectContaining({
           action: "create",
           title: "Seth and Viktor Protocol",
-          suggestedType: "plot",
+          suggestedType: "lore",
           suggestedMemoryMode: "living",
           editedKeys: "Viktor protocol, notification protocol",
         }),

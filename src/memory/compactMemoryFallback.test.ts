@@ -13,7 +13,7 @@ function adventureWithMissingEnvelope() {
   let adventure = createDefaultAdventure("Fallback memory");
   adventure.memoryDetectionSettings = { ...adventure.memoryDetectionSettings, enabled: true };
   adventure.memoryAutoApprove = { ...adventure.memoryAutoApprove, brainUpdate: true, storyCard: true };
-  adventure.storyCards = [makeStoryCard({ id: "lucian", title: "Lucian", type: "character", content: "Lucian runs a private club.", pinned: true })];
+  adventure.storyCards = [makeStoryCard({ id: "lucian", title: "Lucian", type: "lore", content: "Lucian runs a private club.", pinned: true })];
   adventure.brains = [makeBrain({ id: "edythe", characterName: "Edythe", active: true, thoughts: { old: "I distrust Lucian." } })];
   adventure.components = [makeComponent({ id: "pressure", title: "Active Pressure", type: "activePressure", content: "The hangar intruder is unidentified." })];
   adventure = adventureReducer(adventure, { type: "ADD_MESSAGE", id: "player", role: "user", content: "I ask Lucian what he knows about the cup." });
