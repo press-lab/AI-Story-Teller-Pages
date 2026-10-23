@@ -1,4 +1,4 @@
-import { scanStoryCardExchange, equivalentStoryCardSuggestions, mergeStoryCardSuggestions, suggestionSourceValid } from "../memory/storyCardSuggestions";
+import { scanStoryCardExchange, equivalentStoryCardSuggestions, mergeStoryCardSuggestions, suggestionSourceValid, storyCardScanFingerprint, storyCardMustBeReviewed } from "../memory/storyCardSuggestions";
 import { mergeLoreMetadata, migrateStoryCard, primaryStoryCardType, isHistoricalLore, isExceptionalIdentityChange, proposalLore } from "../memory/storyCardArchitecture";
 import { readStoryTime, formatStoryTime, reconcileStoryClock, transitionKey, initialStoryClock } from "../memory/storyTime";
 import { sameEventMemory } from "../memory/eventMemory";
@@ -630,7 +630,7 @@ function stripThink(text: string): string {
 function stripLeadingCardTitle(title: string, content: string): string {
   if (!title || !content) return content;
   const escaped = title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return content.replace(new RegExp(`^(?:#{1,3}\\s*|\\*{1,2})?${escaped}\\*{0,2}\\s*\\n?`, "i"), "").trimStart();
+  return content.replace(new RegExp(`^(?:#{1,3}[ \t]+|\\*{1,2})?${escaped}\\*{0,2}[ \t]*(?::[ \t]*|\\r?\\n|$)`, "i"), "").trimStart();
 }
 
 /**
@@ -873,7 +873,7 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal)
     const safeContent = stripLeadingCardTitle(cardTitle, proposal.content);
     if (!safeContent.trim()) return {};
     const existing = state.storyCards.find(
-      (card) => proposal.targetId ? card.id === proposal.targetId : normalizeProposalTitle(card.title) === normalizeProposalTitle(proposal.title),
+      (card) => proposal.targetId ? card.id === proposal.targetId : !proposal.storyCardReview && normalizeProposalTitle(card.title) === normalizeProposalTitle(proposal.title),
     );
     if (proposal.eventMemory && existing) return {};
     if (existing && isHistoricalLore(existing)) return {};
@@ -1249,7 +1249,17 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
         return review?.sourceMessageId === source.id && (source.content === review.sourceContent || source.content.startsWith(review.sourceContent + "\n\n*["))
           ? { ...proposal, storyCardReview: { ...review, sourceContent: source.content } } : proposal;
       }) } };
-      for (const proposal of scanStoryCardExchange(next, source)) next = adventureReducer(next, { type: "ADD_MEMORY_PROPOSAL", proposal });
+      const fingerprint = storyCardScanFingerprint(next, source);
+      if (source.storyCardScan?.fingerprint !== fingerprint) {
+        for (const proposal of scanStoryCardExchange(next, source)) next = adventureReducer(next, { type: "ADD_MEMORY_PROPOSAL", proposal });
+        next = { ...next, messages: next.messages.map(message => message.id === source.id ? { ...message, storyCardScan: { fingerprint } } : message) };
+      }
+      // The one-pass model runs before its source is persisted. Opt-in approval waits
+      // for the final saved source; local-only and ambiguous candidates still need review.
+      if (next.memoryAutoApprove.storyCard) for (const proposal of next.activeState.memoryProposals) {
+        if (proposal.status === "pending" && proposal.proposedType === "storyCard" && proposal.storyCardReview?.sourceMessageId === source.id && !storyCardMustBeReviewed(next, proposal)
+          && suggestionSourceValid(next, proposal)) next = adventureReducer(next, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id });
+      }
       return next;
     }
     case "SET_STORY_CLOCK":
@@ -1268,7 +1278,8 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
         && Boolean(transitionKey(message.content)) && transitionKey(message.content) === transitionKey(prior.content);
       const messageTime = (duplicateTransition ? state.storyClock?.current : observed?.time) ?? (observed && !observed.flashback ? state.storyClock?.current : undefined);
       if (messageTime) message.storyTime = messageTime;
-      const storyClock = observed?.advances && observed.time && !duplicateTransition ? { ...state.storyClock, current: observed.time, sourceMessageId: message.id, origin: transitionKey(message.content) ? state.storyClock?.origin : "established" as const } : state.storyClock;
+      const storyClock = observed?.advances && observed.time && !duplicateTransition ? { ...state.storyClock, current: observed.time, sourceMessageId: message.id, origin: transitionKey(message.content) ? state.storyClock?.origin : "established" as const, pendingReference: undefined }
+        : observed?.time?.precision === "relative" && !observed.advances && !observed.flashback ? { ...state.storyClock, pendingReference: observed.time.text } : state.storyClock;
       const index = state.messages.length;
       return withStoryHistory(
         state,
@@ -1626,10 +1637,16 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
         || (!state.messages.some(message => message.id === proposal.storyCardReview!.sourceMessageId)
           && proposal.storyCardReview.sourceMessageId === clean.storyCardReview?.sourceMessageId && proposal.storyCardReview.sourceContent === clean.storyCardReview.sourceContent));
       if (clean.proposedType === "storyCard") {
-        clean.requiresReview = true;
+        clean.requiresReview = storyCardMustBeReviewed(state, clean);
         const duplicate = comparableProposals.find(proposal => equivalentStoryCardSuggestions(proposal, clean));
-        if (duplicate) return duplicate.status === "pending" ? touchAdventure(state, { activeState: { ...state.activeState,
-          memoryProposals: state.activeState.memoryProposals.map(proposal => proposal.id === duplicate.id ? mergeStoryCardSuggestions(proposal, clean) : proposal) } }) : state;
+        if (duplicate) {
+          if (duplicate.status !== "pending") return state;
+          const merged = mergeStoryCardSuggestions(duplicate, clean);
+          const next = touchAdventure(state, { activeState: { ...state.activeState,
+            memoryProposals: state.activeState.memoryProposals.map(proposal => proposal.id === duplicate.id ? merged : proposal) } });
+          return state.memoryAutoApprove.storyCard && !storyCardMustBeReviewed(next, merged) && suggestionSourceValid(next, merged)
+            ? adventureReducer(next, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: merged.id }) : next;
+        }
       }
       if (Boolean(clean.eventMemory) && [...state.storyCards.filter(isHistoricalLore), ...state.activeState.memoryProposals.filter(p => Boolean(p.eventMemory))].some(c => sameEventMemory(c, clean))) return state;
       // Dedup: drop a proposal that duplicates one already pending, one the user already
@@ -1694,7 +1711,7 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
             normalizedReplacementContent(component.content) === normalizedReplacementContent(clean.content),
         );
       if (duplicatesPending || duplicatesDismissed || duplicatesCard || duplicatesStoryCardContent || duplicatesExistingCardContent || duplicatesExistingTargetContent || duplicatesCurrentPressure) return state;
-      const autoApprove = state.memoryAutoApprove?.[clean.proposedType as keyof typeof state.memoryAutoApprove] ?? false;
+      const autoApprove = (clean.proposedType !== "storyCard" || suggestionSourceValid(state, clean)) && (state.memoryAutoApprove?.[clean.proposedType as keyof typeof state.memoryAutoApprove] ?? false);
       if (autoApprove && !clean.requiresReview) {
         const approved = updateMemoryProposal(clean, { status: "approved" });
         const applied = applyApprovedMemoryProposal(state, approved);
@@ -1732,7 +1749,7 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
       if (!proposal) return state;
       if (proposal.storyCardReview && proposal.targetId) {
         const target = state.storyCards.find(card => card.id === proposal.targetId && card.active);
-        if (!target || isHistoricalLore(target)) return state;
+        if (!target || isHistoricalLore(target) || (proposal.storyCardType && target.type !== primaryStoryCardType(proposal.storyCardType))) return state;
         if ((target.type === "character" || target.type === "location") && !isExceptionalIdentityChange(target.type, proposal.content)) return state;
       }
       const approved = updateMemoryProposal(proposal, { status: "approved" });

@@ -1,4 +1,4 @@
-import { STORY_CARD_MEMORY_CHECK, makeStoryCardSuggestion, companionLoreSuggestion } from "./storyCardSuggestions";
+import { STORY_CARD_MEMORY_CHECK, STORY_CARD_OUTPUT_SCHEMA, makeStoryCardSuggestion, companionLoreSuggestion } from "./storyCardSuggestions";
 import { isExceptionalIdentityChange } from "./storyCardArchitecture";
 import type { Adventure, AdventureAction, BrainEntry, ContextBuildResult, MemoryProposal, StoryCardType } from "../types/adventure";
 import { createId, nowIso } from "../utils/id";
@@ -16,6 +16,7 @@ Each update has: kind, target, content, evidence, reason. evidence is an EXACT q
 Allowed kinds:
 - "thought": target is an eligible character name below; content is ONE new first-person internal reaction, belief, or private plan (max 45 words). Capture only if the character participated or learned something this turn. Never repeat existing thoughts or put generic world facts here.
 ${STORY_CARD_MEMORY_CHECK}
+${STORY_CARD_OUTPUT_SCHEMA}
 Eligible thought targets: ${brains.map(b => JSON.stringify(b.characterName)).join(", ") || "none"}.
 Only output changes supported by this turn and consistent with ALL supplied canon. These hidden updates are not narrative and must never steer the scene merely to create memory.`;
 }
@@ -78,7 +79,7 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
     if (![u.kind, u.target, u.content, u.evidence, u.reason].every(v => typeof v === "string" && v.trim())) { reject("missing fields"); continue; }
     const kind = u.kind as string, target = (u.target as string).trim(), content = (u.content as string).trim(), evidence = (u.evidence as string).trim();
     const quote = norm(evidence);
-    if (quote.length < 12 || !evidenceSources.some(s => s.includes(quote))) { reject(`${target}: evidence is not in this turn`); continue; }
+    if (!quote || (quote.length < 12 && !["card", "lore", "newCard"].includes(kind)) || !evidenceSources.some(s => s.includes(quote))) { reject(`${target}: evidence is not in this turn`); continue; }
     if (words(content) > (kind === "essentials" ? 180 : kind === "newCard" || kind === "lore" ? 90 : kind === "card" ? 70 : 45)) { reject(`${target}: content exceeds limit`); continue; }
     if (content.includes("<") || content.length > 4000 || target.length > 150 || (u.reason as string).length > 600) { reject(`${target}: invalid content`); continue; }
     const key = `${kind}:${norm(target)}${["card", "lore", "newCard"].includes(kind) ? ":" + norm(content) : ""}`;
@@ -114,14 +115,16 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
       if (existing && norm(existing.content).includes(norm(content))) continue;
       if (kind === "card" && exact.length === 0) { reject(`${target}: unknown target ID`); continue; }
       if (existing && !existing.active) { reject(`${target}: target is inactive`); continue; }
-      if (existing?.type === "character" && /\b(always|never|usually|regularly|habitually|tends? to|habit|coping|stable trait|usual|treats|uses? .{0,20}as a|uses? .{0,20}to manage)\b/i.test(content) && !hasDurableCharacterEvidence(evidence)) { reject(`${target}: scene does not establish a durable habit`); continue; }
+      const inferredHabit = existing?.type === "character" && /\b(always|never|usually|regularly|habitually|tends? to|habit|coping|stable trait|usual|treats|uses? .{0,20}as a|uses? .{0,20}to manage)\b/i.test(content) && !hasDurableCharacterEvidence(evidence);
+      if (u.cardType !== undefined && !["lore", "character", "location", "custom"].includes(String(u.cardType))) { reject(`${target}: invalid Story Card type`); continue; }
+      if (u.operation !== undefined && !["create", "update"].includes(String(u.operation).toLowerCase())) { reject(`${target}: invalid operation`); continue; }
       const requested = ["character", "location", "custom"].includes(String(u.cardType)) ? u.cardType as StoryCardType : "lore";
       const type: StoryCardType = existing && (existing.type === "lore" || existing.type === "custom") ? existing.type
         : existing && (existing.type === "character" || existing.type === "location") && isExceptionalIdentityChange(existing.type, content)
         ? existing.type : kind === "newCard" && !existing ? requested : "lore";
       if (!existing && !adventure.systemTriggers?.enabled) { reject(`${target}: new card suggestions disabled`); continue; }
       const suggestion = makeStoryCardSuggestion(adventure, sourceTurnId, story, { title: target, content, evidence, reason: `One-pass memory: ${u.reason}`,
-        type, targetId: typeof u.targetId === "string" ? u.targetId : existing?.id,
+        type, targetId: typeof u.targetId === "string" ? u.targetId : existing?.id, candidateOnly: Boolean(inferredHabit || quote.length < 12),
         triggers: Array.isArray(u.triggers) ? u.triggers.filter((value): value is string => typeof value === "string").slice(0, 3) : [],
         participants: Array.isArray(u.participants) ? u.participants.filter((value): value is string => typeof value === "string").slice(0, 8) : undefined,
       });

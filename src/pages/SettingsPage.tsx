@@ -603,12 +603,12 @@ export function SettingsPage({
                   <CheckboxField label="Active Pressure" checked={activeSettings.memoryAutoApprove.plotPressureUpdate} onChange={(plotPressureUpdate) => updateMemoryAutoApprove({ plotPressureUpdate })} />
                   <CheckboxField label="Current Arc (off: review generated events before they become canon)" checked={activeSettings.memoryAutoApprove.currentArcUpdate} onChange={(currentArcUpdate) => updateMemoryAutoApprove({ currentArcUpdate })} />
                   <CheckboxField label="Arc Proposals" checked={activeSettings.memoryAutoApprove.arcProposal} onChange={(arcProposal) => updateMemoryAutoApprove({ arcProposal })} />
-                  <span className="muted">Story Card suggestions always require review.</span>
+                  <CheckboxField label="Story Cards" checked={activeSettings.memoryAutoApprove.storyCard} onChange={(storyCard) => updateMemoryAutoApprove({ storyCard })} />
                   <CheckboxField label="Characters" checked={activeSettings.memoryAutoApprove.brainUpdate} onChange={(brainUpdate) => updateMemoryAutoApprove({ brainUpdate })} />
                 </div>
                 <p className="muted">
                   These toggles apply to Memory Suggestions created by automatic detection, manual builders,
-                  and one-pass memory. One-pass Plot Essentials, plot cards, and protected-card changes always require review. Plot Essentials holds the overarching story; Active Pressure holds immediate external stakes; Current Arc holds the ongoing storyline and pacing.
+                  and one-pass memory. Story Card auto-approval is off by default. Unconfirmed candidates, ambiguous destinations, protected cards and exceptional identity changes always require review. Automatic memory targets Story Cards and Brains; manual Plot Component tools remain available.
                 </p>
               </>
             )}

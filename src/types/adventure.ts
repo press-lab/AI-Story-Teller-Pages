@@ -14,6 +14,8 @@ export interface Message {
   usage?: ProviderUsage;
   /** Persisted on the final narrative; old saves need no migration. */
   storyTime?: StoryTime;
+  /** Local scanner version and source fingerprint; never a fictional timestamp. */
+  storyCardScan?: { fingerprint: string };
   memoryRecovery?: { turn: number; status: "pending" | "complete" };
   createdAt: ISODateString;
 }
@@ -149,6 +151,8 @@ export interface StoryTime {
   date?: string;
 }
 export interface StoryClock {
+  /** Ambiguous progression awaits a user correction; current date is retained. */
+  pendingReference?: string;
   origin?: "established" | "assumed";
   current?: StoryTime;
   /** Explicit user clock anchor, retained when replaying edited date evidence. */
@@ -476,6 +480,9 @@ export type MemoryProposalType =
 export type MemoryProposalStatus = "pending" | "approved" | "rejected" | "ignored";
 
 export interface StoryCardSuggestionReview {
+  /** Compatibility catch-up findings can cite several completed exchanges. */
+  additionalSources?: Array<{ id: string; content: string }>;
+  operation?: "create" | "update";
   origin: "model" | "deterministic" | "both";
   candidateOnly: boolean;
   eventKind?: string;

@@ -874,11 +874,11 @@ describe("memory discovery and component suggestions", () => {
     a.storyCards = [makeStoryCard({ title: "Rosa", content: "Rosa is a bartender.", autoUpdate: false })];
     mockProvider.mockResolvedValue({ content: JSON.stringify([priya, priya, { ...priya, title: "Rosa" }, { ...priya, title: "Invented", evidenceMessageIds: ["missing"] }]), raw: {} });
     const first = await runMemoryCycle(a, providerConfig);
-    expect(first.actions.filter(a => a.type === "ADD_MEMORY_PROPOSAL")).toHaveLength(1);
+    expect(first.actions.reduce(adventureReducer, a).activeState.memoryProposals.filter(p => p.status === "pending")).toHaveLength(1);
     a.memoryAutoApprove.storyCard = false;
     const state = first.actions.reduce(adventureReducer, a);
     const second = await runMemoryCycle(state, providerConfig);
-    expect(second.actions.filter(a => a.type === "ADD_MEMORY_PROPOSAL")).toHaveLength(0);
+    expect(second.actions.reduce(adventureReducer, state).activeState.memoryProposals).toEqual(state.activeState.memoryProposals);
   });
 
   it("honors disabled detection and optional blank proposal bodies", async () => {
@@ -910,7 +910,7 @@ describe("memory discovery and component suggestions", () => {
     expect(result.logEntry.conditionsEvaluated.some(c => c.id.includes("plotEssentials"))).toBe(false);
     const next = result.actions.reduce(adventureReducer, a);
     expect(next.components).toEqual(a.components);
-    expect(next.activeState.memoryProposals).toContainEqual(expect.objectContaining({ proposedType: "storyCard", title: "Priya", requiresReview: true }));
+    expect(next.activeState.memoryProposals).toContainEqual(expect.objectContaining({ proposedType: "storyCard", title: "Priya", status: "pending" }));
   });
 
   it("lets a later eligible card win instead of starving behind the first card", async () => {

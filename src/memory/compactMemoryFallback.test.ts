@@ -12,7 +12,7 @@ const config = { ...defaultModelConfig, baseUrl: "https://example.com/v1", model
 function adventureWithMissingEnvelope() {
   let adventure = createDefaultAdventure("Fallback memory");
   adventure.memoryDetectionSettings = { ...adventure.memoryDetectionSettings, enabled: true };
-  adventure.memoryAutoApprove = { ...adventure.memoryAutoApprove, brainUpdate: true, storyCard: true };
+  adventure.memoryAutoApprove = { ...adventure.memoryAutoApprove, brainUpdate: true, storyCard: false };
   adventure.storyCards = [makeStoryCard({ id: "lucian", title: "Lucian", type: "lore", content: "Lucian runs a private club.", pinned: true })];
   adventure.brains = [makeBrain({ id: "edythe", characterName: "Edythe", active: true, thoughts: { old: "I distrust Lucian." } })];
   adventure.components = [makeComponent({ id: "pressure", title: "Active Pressure", type: "activePressure", content: "The hangar intruder is unidentified." })];
@@ -40,7 +40,7 @@ describe("compact memory fallback", () => {
     expect(provider.mock.calls[0][0].messages.map(message => message.content).join("\n")).not.toContain("Write the requested narrative first");
     const next = result.actions.reduce(adventureReducer, adventure);
     expect(next.storyCards).toEqual(adventure.storyCards);
-    expect(next.activeState.memoryProposals).toContainEqual(expect.objectContaining({ content: expect.stringContaining("silver-cup mark"), requiresReview: true }));
+    expect(next.activeState.memoryProposals).toContainEqual(expect.objectContaining({ content: expect.stringContaining("silver-cup mark"), requiresReview: false }));
     expect(Object.values(next.brains[0].thoughts).join(" ")).toContain("holding back");
     expect(next.components).toEqual(adventure.components);
     expect(next.activeState.evaluationLog[0].actionsExecuted).toContain("Compact memory fallback: one API call");
@@ -115,11 +115,11 @@ it("recovers character, relationship, Brain and historical memories across a bat
   expect(provider.mock.calls[0][0].config.maxOutputTokens).toBe(config.maxOutputTokens * 5);
   const next = result.actions.reduce(adventureReducer, adventure);
   expect(next.storyCards).toEqual(adventure.storyCards);
-  expect(next.activeState.memoryProposals).toContainEqual(expect.objectContaining({ content: expect.stringContaining("lifelong protection"), requiresReview: true }));
-  expect(next.activeState.memoryProposals).toContainEqual(expect.objectContaining({ content: expect.stringContaining("ancient silver language"), requiresReview: true }));
+  expect(next.activeState.memoryProposals).toContainEqual(expect.objectContaining({ content: expect.stringContaining("lifelong protection"), requiresReview: false }));
+  expect(next.activeState.memoryProposals).toContainEqual(expect.objectContaining({ content: expect.stringContaining("ancient silver language"), requiresReview: false }));
   expect(Object.values(next.brains[0].thoughts).join(" ")).toContain("trust Lucian");
   expect(next.activeState.memoryProposals).toContainEqual(expect.objectContaining({
-    title: "The First Battle at the Silver Gate", sourceTurnId: "batch-3", memoryMode: "historical", requiresReview: true,
+    title: "The First Battle at the Silver Gate", sourceTurnId: "batch-3", memoryMode: "historical", requiresReview: false,
   }));
 });
 

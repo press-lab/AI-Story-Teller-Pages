@@ -27,7 +27,8 @@ it("evaluates selected history once with memory disabled, without narration, Bra
   expect(provider).toHaveBeenCalledTimes(1);
   expect(provider.mock.calls[0][0]).toMatchObject({ responseFormat: "json_object", purpose: "otherBackground" });
   state = result.actions.reduce(adventureReducer, state);
-  expect(state.messages).toEqual(original.messages);
+  expect(state.messages.map(({ storyCardScan, ...message }) => message)).toEqual(original.messages);
+  expect(state.messages[0].storyCardScan?.fingerprint).toBeDefined();
   expect(state.brains).toEqual(original.brains);
   expect(state.activeState.memoryProposals).toHaveLength(1);
   expect(state.activeState.memoryProposals[0]).toMatchObject({ status: "pending", storyCardType: "lore" });

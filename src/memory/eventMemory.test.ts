@@ -56,12 +56,13 @@ describe("Event Memories", () => {
     expect(card).toMatchObject({ content, memoryMode: "historical", autoUpdate: false, eventMemory });
     expect(normalizeAdventure(JSON.parse(JSON.stringify(state))).storyCards.find(c => c.type === "lore")).toMatchObject({ eventMemory });
     const repeat = await detectStoryCardProposals(state, config);
-    expect(repeat.actions).toEqual([]);
+    expect(repeat.actions.reduce(adventureReducer, state).activeState.memoryProposals).toEqual(state.activeState.memoryProposals);
   });
 
   it("rejects invented source IDs, including partially valid evidence", async () => {
     provider.mockResolvedValue({ content: JSON.stringify([{ ...candidate, evidenceMessageIds: ["door", "invented"] }]), raw: {} });
-    expect((await detectStoryCardProposals(seed(), config)).actions).toEqual([]);
+    const result = await detectStoryCardProposals(seed(), config);
+    expect(result.actions.every(action => action.type !== "ADD_MEMORY_PROPOSAL" || action.proposal.storyCardReview?.origin === "deterministic")).toBe(true);
   });
 
   it("deduplicates renamed retellings after rejection without merging different events from one scene", () => {

@@ -23,7 +23,7 @@ afterEach(cleanup);
 function setup(enabled = true, customRule = false, saved?: Adventure) {
   const initial = createDefaultAdventure("Call accounting");
   initial.memoryDetectionSettings = { ...initial.memoryDetectionSettings, enabled: !enabled }; // deliberately stale saved settings
-  initial.memoryAutoApprove = { ...initial.memoryAutoApprove, storyCard: true };
+  initial.memoryAutoApprove = { ...initial.memoryAutoApprove, storyCard: false };
   if (customRule) initial.triggerRules.push(makeTriggerRule({ name: "Explicit custom rule", condition: "When Mira learns something", evaluationMode: "semantic" }));
   initial.storyCards = [makeStoryCard({ id: "mira", title: "Mira", content: "Mira is a scout.", active: true, pinned: true, protected: false })];
   const globalMemory: MemoryDetectionSettings = { enabled, everyNTurns: 1, generateContent: true };

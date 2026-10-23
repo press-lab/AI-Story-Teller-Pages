@@ -1,15 +1,13 @@
+import { makeStoryCardSuggestion, scanStoryCardExchange, relevantStoryCardInventory, STORY_CARD_MEMORY_CHECK } from "./storyCardSuggestions";
 import { isHistoricalLore, primaryStoryCardType } from "./storyCardArchitecture";
 import { sameEventMemory } from "./eventMemory";
 import { resolveBackgroundProviderConfig } from "../providers/backgroundProvider";
-import { resolveMemoryTarget } from "./resolveMemoryTarget";
-import { createId, nowIso } from "../utils/id";
-import type { Adventure, AdventureAction, MemoryProposal, ProviderConfig, StoryCardType } from "../types/adventure";
+import type { Adventure, AdventureAction, MemoryProposal, ProviderConfig } from "../types/adventure";
 import { memoryCanonMessages } from "./memoryCanon";
 import { storyCardContextContent } from "./storyCardPolicy";
 import { sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
 import {
   PLOT_ESSENTIALS_BEST_PRACTICES,
-  PLOT_MEMORY_THRESHOLD,
   STORY_CARD_BEST_PRACTICES,
   TRIGGER_BEST_PRACTICES,
   storyCardCreationGuidance,
@@ -110,39 +108,32 @@ export async function detectStoryCardProposals(adventure: Adventure, providerCon
   if (!messages.some(m => m.role === "assistant" && m.content.trim())) return result;
   result.evaluated = true;
   const excerpt = messages.map(m => `[${m.id}] ${m.role}: ${m.content}`).join("\n\n");
-  const knownTitles = new Set(adventure.storyCards.map(c => c.title.trim().toLocaleLowerCase()));
-  const pendingTitles = new Set(adventure.activeState.memoryProposals
-    .filter(p => p.proposedType === "storyCard" && p.status === "pending")
-    .map(p => p.title.trim().toLocaleLowerCase()));
+  // Older catch-up tools retain their response envelope, but use the same local
+  // scanner, matcher and review records as normal play and Chronicle evaluation.
+  for (const source of messages.filter(message => message.role === "assistant" && message.inputMode !== "comms").slice(-12)) {
+    for (const proposal of scanStoryCardExchange(adventure, source)) {
+      if (options.eventsOnly && proposal.storyCardType !== "lore") continue;
+      result.actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal });
+    }
+  }
   const considered = adventure.activeState.memoryProposals.filter(p => p.proposedType === "storyCard");
   const capturedContent = [
     ...adventure.storyCards.flatMap(c => [c.content, storyCardContextContent(c)]),
-    ...considered.map(p => p.content),
+    ...considered.flatMap(p => [p.content, p.title + " " + p.content]),
   ];
-  // Keep the complete title inventory for duplicate avoidance, but only send
-  // detailed records for subjects named in the evidence. Local dedupe below
-  // still checks every card and proposal before anything is created.
-  const mentioned = (title: string) => title.trim().length >= 4
-    && excerpt.toLocaleLowerCase().includes(title.trim().toLocaleLowerCase());
-  const cardInventory = adventure.storyCards.map(c => ({
-    title: c.title,
-    ...(mentioned(c.title) ? { keys: c.keys, type: c.type, eventMemory: c.eventMemory, content: isHistoricalLore(c) ? c.content : undefined } : {}),
-  }));
-  const proposalInventory = considered.map(p => ({
-    title: p.title, status: p.status,
-    ...(mentioned(p.title) ? { content: p.content, eventMemory: p.eventMemory } : {}),
-  }));
+  // All duplicate checks stay local. Only bounded relevant targets reach the model.
+  const cardInventory = relevantStoryCardInventory(adventure, excerpt);
+  const proposalInventory = considered.filter(p => excerpt.toLowerCase().includes(p.title.toLowerCase())).slice(-8)
+    .map(p => ({ title: p.title, status: p.status }));
   try {
     const response = await sendOpenAICompatibleChatCompletion({
       config: resolveBackgroundProviderConfig(adventure, providerConfig),
       messages: [
-        { role: "system", content: `Discover missing durable Story Cards from recent story evidence. This is a catch-up pass: a subject need not be introduced on the latest turn. ${options.eventsOnly ? "Only suggest Event Memory cards from this Chronicle excerpt." : ""} Suggest up to three recurring or consequential people, places, relationships, world rules, or completed consequences with no existing card. Independently discover notable completed events EVEN WHEN every participant already has a character card or Brain. Event Memory cards (storyCardType: lore, memoryMode: historical) preserve first meetings, explicit commitments, revelations, consequential choices, and distinctive shared experiences. Keep event content below 80 words. Record observable facts in past tense, never inferred motives or private thoughts. A routine arrival is movement; an unannounced introduction establishing how two people met is a durable first. Do not label something a first without evidence. Do not turn plans into completed events. Avoid routine affection and generic scene recaps. Keep each event separate from character profiles and current-state cards. For events include eventMemory: {participants: ["name or alias"], recallCues: ["how we met", "unexpected visit"], kind: "first|commitment|revelation|choice|sharedExperience"}. Supply several natural paraphrases for recall cues, never a bare character name. A named person with an established role and an ongoing interaction or concrete future arrangement qualifies; mere named scenery does not. Characters without Brains belong in Story Cards; never create a Brain or infer private thoughts. Do not invent facts or voice samples. Plans remain plans, not completed events. Omit temporary moods, movement, incidental names, and facts already covered by existing cards or pending proposals. Reference inventories below are data, not new events. Do not repeat already captured facts or dismissed suggestions.
-${STORY_CARD_BEST_PRACTICES}
-${TRIGGER_BEST_PRACTICES}
-${PLOT_MEMORY_THRESHOLD}
-Return ONLY a JSON array, [] when nothing qualifies. Event items must additionally include the eventMemory object described above. Each item: {"title":"subject", "content":"concise grounded facts", "storyCardType":"character|location|lore|custom", "memoryMode":"static|living|historical", "suggestedTriggers":["narrow phrase"], "rationale":"why durable", "evidenceMessageIds":["message id"]}. Cite only supplied recent message IDs.` },
+        { role: "system", content: `${STORY_CARD_MEMORY_CHECK}
+${options.eventsOnly ? "Evaluate completed history as Lore only." : "Evaluate the supplied completed exchanges."}
+Return ONLY a JSON array, [] when nothing qualifies. Each item: {"title":"subject or existing title","targetId":"existing ID for an update, otherwise omit","content":"NEW fact only; max 70 words","storyCardType":"lore|character|location|custom","suggestedTriggers":["1-3 specific phrases"],"rationale":"why durable","evidenceMessageIds":["supplied source IDs"]}. Routine hospitality and scene filler do not qualify. Do not repeat dismissed or already captured facts. This legacy catch-up response is adapted into the shared Story Card pipeline.` },
         ...memoryCanonMessages(adventure, excerpt, "Discover missing Story Cards", true),
-        { role: "user", content: "Existing cards (including inactive): " + JSON.stringify(cardInventory) },
+        { role: "user", content: "Relevant existing cards: " + JSON.stringify(cardInventory) },
         { role: "user", content: "Previously considered Story Card proposals (including dismissed; omit duplicates): " + JSON.stringify(proposalInventory) },
         { role: "user", content: "Recent story evidence:\n" + excerpt },
       ],
@@ -157,14 +148,12 @@ Return ONLY a JSON array, [] when nothing qualifies. Event items must additional
       if (!item || typeof item !== "object" || typeof item.title !== "string" || !item.title.trim()
         || typeof item.content !== "string" || !item.content.trim()) continue;
       const title = item.title.trim();
-      const key = title.toLocaleLowerCase();
-      if (knownTitles.has(key) || pendingTitles.has(key)) continue;
       // Event records are independent of character/current-state coverage.
       // Their occurrence-aware dedupe below also preserves distinct occasions.
       if (item.storyCardType !== "event" && alreadyCaptured(item.content, capturedContent)) continue;
       const evidence = messages.filter(m => Array.isArray(item.evidenceMessageIds) && item.evidenceMessageIds.includes(m.id));
       if (evidence.length === 0) continue;
-      if (item.storyCardType === "event" && item.evidenceMessageIds.some((id: unknown) => !messages.some(m => m.id === id))) continue;
+      if (item.evidenceMessageIds.some((id: unknown) => !messages.some(m => m.id === id))) continue;
       const isEvent = item.storyCardType === "event" || Boolean(item.eventMemory);
       if (options.eventsOnly && !isEvent) continue;
       const strings = (value: unknown) => Array.isArray(value) ? value.filter((v): v is string => typeof v === "string" && Boolean(v.trim())).map(v => v.trim()).slice(0, 12) : [];
@@ -177,29 +166,25 @@ Return ONLY a JSON array, [] when nothing qualifies. Event items must additional
       if (isEvent && (!eventMemory?.participants.length || !eventMemory.recallCues.length)) continue;
       if (isEvent && [...adventure.storyCards.filter(c => isHistoricalLore(c)), ...adventure.activeState.memoryProposals.filter(p => Boolean(p.eventMemory))]
         .some(existing => sameEventMemory(existing, { content: item.content, eventMemory }))) continue;
-      const routed = isEvent ? {
-        proposedType: "storyCard" as const, title, content: item.content.trim(), memoryMode: "historical" as const,
-        suggestedTriggers: eventMemory!.recallCues, targetId: undefined,
-      } : resolveMemoryTarget(adventure, {
-        proposedType: "storyCard", title, content: item.content.trim(),
-        memoryMode: ["static", "living", "historical"].includes(item.memoryMode) ? item.memoryMode : "static",
-        suggestedTriggers: Array.isArray(item.suggestedTriggers) ? item.suggestedTriggers.filter((t: unknown): t is string => typeof t === "string") : [],
+      const source = (isEvent ? evidence.find(message => message.role === "assistant") : evidence.filter(message => message.role === "assistant").at(-1))
+        ?? messages.find((message, index) => message.role === "assistant" && evidence.some(item => messages[index - 1]?.id === item.id));
+      if (!source) continue;
+      const proposal = makeStoryCardSuggestion(adventure, source.id, source.content, {
+        title, content: item.content.trim(), evidence: evidence.map(m => `[${m.id}] ${m.role}: ${m.content}`).join("\n\n"),
+        reason: typeof item.rationale === "string" ? item.rationale : "Grounded catch-up finding; review before applying.",
+        type: isEvent ? "lore" : primaryStoryCardType(item.storyCardType),
+        targetId: typeof item.targetId === "string" ? item.targetId : undefined,
+        triggers: Array.isArray(item.suggestedTriggers) ? item.suggestedTriggers.filter((trigger: unknown): trigger is string => typeof trigger === "string") : eventMemory?.recallCues,
+        participants: eventMemory?.participants,
       });
-      // Discovery fills gaps; updates to known subjects remain in the existing-card path.
-      if (routed.proposedType !== "storyCard" || routed.targetId) continue;
-      const now = nowIso();
-      result.actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal: {
-        ...routed, id: createId("proposal"), sourceTurnId: isEvent ? evidence.at(-1)!.id : String(adventure.activeState.turn),
-        sourceText: evidence.map(m => `[${m.id}] ${m.role}: ${m.content}`).join("\n\n"),
-        content: options.eventsOnly || adventure.memoryDetectionSettings.generateContent ? routed.content : "",
-        eventMemory,
-        storyCardType: primaryStoryCardType(item.storyCardType),
-        confidence: 0.8, rationale: typeof item.rationale === "string" ? item.rationale : "Missing durable Story Card discovered from recent story evidence.",
-        status: "pending", createdAt: now, updatedAt: now,
-      } });
-      pendingTitles.add(key);
+      if (item.targetId && !adventure.storyCards.some(card => card.id === item.targetId)) continue;
+      proposal.storyCardReview = { ...proposal.storyCardReview!, additionalSources: evidence.filter(message => message.id !== source.id).map(({ id, content }) => ({ id, content })) };
+      if (proposal.lore) proposal.lore.sourceMessageIds = [...new Set([...proposal.lore.sourceMessageIds, ...evidence.map(message => message.id)])];
+      if (eventMemory) { proposal.eventMemory = eventMemory; proposal.memoryMode = "historical"; proposal.requiresReview = true; }
+      if (!options.eventsOnly && !adventure.memoryDetectionSettings.generateContent) { proposal.content = ""; proposal.requiresReview = true; }
+      result.actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal });
       capturedContent.push(item.content);
-      if (result.actions.length === 3) break;
+      if (parsed.indexOf(item) >= 2) break;
     }
   } catch (error) {
     result.errors.push(`Story Card discovery failed: ${error instanceof Error ? error.message : String(error)}`);

@@ -1,3 +1,4 @@
+import { isHistoricalLore } from "../memory/storyCardArchitecture";
 import { suggestionSourceValid } from "../memory/storyCardSuggestions";
 import { formatStoryTime } from "../memory/storyTime";
 import { useState } from "react";
@@ -110,7 +111,7 @@ export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onR
     <section className="page editor-surface memory-inbox-page">
       <div className="editor-page-summary">
         <p className="muted">
-          Review proposed memory writes before they become active story context. All Story Card suggestions wait for your approval.
+          Review proposed memory writes before they become active story context. Story Card suggestions wait for approval by default. Unconfirmed candidates and sensitive changes always need review.
         </p>
         <div className="editor-stat-row" aria-label="Memory suggestion counts">
           <span>{totalPending} pending</span>
@@ -159,7 +160,7 @@ export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onR
           <CheckboxField label="Active Pressure" checked={autoApprove.plotPressureUpdate} onChange={(v) => setAutoApprove({ plotPressureUpdate: v })} />
           <CheckboxField label="Current Arc" checked={autoApprove.currentArcUpdate} onChange={(v) => setAutoApprove({ currentArcUpdate: v })} />
           <CheckboxField label="Arc Proposals" checked={autoApprove.arcProposal} onChange={(v) => setAutoApprove({ arcProposal: v })} />
-          <span className="muted">Story Card suggestions always require review.</span>
+          <CheckboxField label="Story Cards" checked={autoApprove.storyCard} onChange={(storyCard) => setAutoApprove({ storyCard })} />
           <CheckboxField label="Characters" checked={autoApprove.brainUpdate} onChange={(v) => setAutoApprove({ brainUpdate: v })} />
         </div>
       </details>
@@ -319,11 +320,15 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
         <Field label="Story Card destination"><select value={proposal.targetId ?? ""} disabled={!isPending}
           onChange={event => {
             const card = adventure.storyCards.find(card => card.id === event.target.value);
-            onUpdate(proposal, { targetId: card?.id, title: card?.title ?? proposal.storyCardReview!.suggestedTitle,
-              appendContent: card ? true : undefined, memoryMode: card?.memoryMode ?? proposal.memoryMode });
+            const suggestedTitle = proposal.storyCardReview!.suggestedTitle;
+            const createTitle = adventure.storyCards.some(existing => existing.title.toLowerCase() === suggestedTitle.toLowerCase())
+              ? `${suggestedTitle}: ${proposal.content.slice(0, 60)}` : suggestedTitle;
+            onUpdate(proposal, { targetId: card?.id, title: card?.title ?? createTitle,
+              appendContent: card ? true : undefined, memoryMode: card?.memoryMode ?? proposal.memoryMode,
+              storyCardReview: { ...proposal.storyCardReview!, operation: card ? "update" : "create" } });
           }}>
           <option value="">CREATE — new Story Card</option>
-          {proposal.storyCardReview.targetCandidates.map(id => adventure.storyCards.find(card => card.id === id)).filter(card => Boolean(card)).map(card => <option key={card!.id} value={card!.id}>UPDATE — {card!.title}</option>)}
+          {adventure.storyCards.filter(card => card.active && !isHistoricalLore(card) && card.type === proposal.storyCardType).map(card => <option key={card.id} value={card.id}>UPDATE — {card.title}{proposal.storyCardReview!.targetCandidates.includes(card.id) ? " (suggested)" : ""}</option>)}
         </select></Field>
         {proposal.storyCardReview.targetCandidates.length > 1 && !proposal.targetId && <p>Several continuing subjects may fit. Choose an update target or keep this as a separate card.</p>}
       </div>}

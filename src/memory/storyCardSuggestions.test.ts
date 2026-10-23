@@ -9,7 +9,7 @@ import type { Adventure } from "../types/adventure";
 function seed() {
   const state = createDefaultAdventure();
   state.storyClock = { origin: "established", current: { text: "2019-02-01", date: "2019-02-01", precision: "day" } };
-  state.memoryAutoApprove = { ...state.memoryAutoApprove, storyCard: true, brainUpdate: true, currentArcUpdate: true, plotPressureUpdate: true, plotEssentialsUpdate: true };
+  state.memoryAutoApprove = { ...state.memoryAutoApprove, storyCard: false, brainUpdate: true, currentArcUpdate: true, plotPressureUpdate: true, plotEssentialsUpdate: true };
   state.storyCards = ["Seth", "Draconia", "Voldemort"].map(title => makeStoryCard({ id: title.toLowerCase(), title, type: "character", keys: [title], content: `${title} is an established character.` }));
   return state;
 }
@@ -28,7 +28,7 @@ describe("merged Story Card suggestions", () => {
     const text = "Draconia grabs Seth's shirt and kisses him for the first time.";
     const state = await play(text, [finding("Seth and Draconia shared their first kiss.", text)]);
     expect(lore(state)).toHaveLength(1);
-    expect(lore(state)[0]).toMatchObject({ status: "pending", requiresReview: true, storyCardReview: { origin: "both" }, lore: { occurredAt: { date: "2019-02-01" }, sourceMessageIds: expect.arrayContaining(["final-source"]) } });
+    expect(lore(state)[0]).toMatchObject({ status: "pending", requiresReview: false, storyCardReview: { origin: "both" }, lore: { occurredAt: { date: "2019-02-01" }, sourceMessageIds: expect.arrayContaining(["final-source"]) } });
     expect(state.storyCards).toHaveLength(3);
   });
   it("keeps an almost-kiss unconfirmed", async () => {
@@ -158,7 +158,7 @@ describe("merged Story Card suggestions", () => {
     expect(state.activeState.memoryProposals.every(proposal => proposal.proposedType === "storyCard" || proposal.proposedType === "brainUpdate")).toBe(true);
     state = reduce(state, { type: "UPDATE_COMPONENT", componentId: "pressure", patch: { content: "User-authored replacement." } });
     expect(state.components[0].content).toBe("User-authored replacement.");
-    expect(STORY_CARD_MEMORY_CHECK).toContain("Never suggest Plot Essentials");
+    expect(STORY_CARD_MEMORY_CHECK).toContain("suggest Plot Component updates");
   });
   it("keeps the existing thought contract and auto-approval behavior", async () => {
     const initial = seed();

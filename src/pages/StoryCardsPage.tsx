@@ -318,7 +318,7 @@ export function StoryCardsPage({
       <div className="editor-page-summary">
         <p className="muted">
           Triggered memory for characters, places, relationships, secrets, rules, and recurring facts.
-          Character and Location hold durable identity; Lore holds developments and history. Generated changes always wait for your review.
+          Character and Location hold durable identity; Lore holds developments and history. Generated changes wait for review by default.
         </p>
         <div className="editor-stat-row" aria-label="Story card counts">
           <span>{totalCards} total</span>

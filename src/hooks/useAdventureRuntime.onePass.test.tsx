@@ -22,7 +22,7 @@ afterEach(cleanup);
 function setup(enabled = true, customRule = false, saved?: Adventure) {
   const initial = createDefaultAdventure("Call accounting");
   initial.memoryDetectionSettings = { ...initial.memoryDetectionSettings, enabled: !enabled }; // deliberately stale saved settings
-  initial.memoryAutoApprove = { ...initial.memoryAutoApprove, storyCard: true };
+  initial.memoryAutoApprove = { ...initial.memoryAutoApprove, storyCard: false };
   if (customRule) initial.triggerRules.push(makeTriggerRule({ name: "Explicit custom rule", condition: "When Mira learns something", evaluationMode: "semantic" }));
   initial.storyCards = [makeStoryCard({ id: "mira", title: "Mira", content: "Mira is a scout.", active: true, pinned: true, protected: false })];
   const globalMemory: MemoryDetectionSettings = { enabled, everyNTurns: 1, generateContent: true };
@@ -48,7 +48,7 @@ describe("runtime one-pass call accounting", () => {
     await act(async () => { await result.current.runtime.submitTurn("Mira explains."); });
     expect(sendOpenAICompatibleChatCompletion).toHaveBeenCalledTimes(1);
     expect(result.current.adventure?.storyCards[0].content).toBe("Mira is a scout.");
-    expect(result.current.adventure?.activeState.memoryProposals).toContainEqual(expect.objectContaining({ content: expect.stringContaining("Silver"), requiresReview: true }));
+    expect(result.current.adventure?.activeState.memoryProposals).toContainEqual(expect.objectContaining({ content: expect.stringContaining("Silver"), requiresReview: false }));
     expect(result.current.adventure?.memoryDetectionSettings.enabled).toBe(true);
     expect(result.current.adventure?.messages.at(-1)?.content).toBe(story);
     await act(async () => { await result.current.runtime.continueTurn(); });

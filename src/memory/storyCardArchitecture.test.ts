@@ -55,7 +55,7 @@ describe("primary Story Card architecture", () => {
     state = reduce(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: pending.id });
     expect(state.storyCards.find(c => c.id === identity.id)?.content).toBe(identity.content);
     expect(state.storyCards.find(c => c.type === "lore")?.content).toBe(content);
-    expect(applyAIMemoryUpdate(state, [{ type: "storyCardUpdate", storyCardId: identity.id, content }]).actions).toContainEqual(expect.objectContaining({ type: "ADD_MEMORY_PROPOSAL", proposal: expect.objectContaining({ storyCardType: "lore", requiresReview: true }) }));
+    expect(applyAIMemoryUpdate(state, [{ type: "storyCardUpdate", storyCardId: identity.id, content }]).actions).toContainEqual(expect.objectContaining({ type: "ADD_MEMORY_PROPOSAL", proposal: expect.objectContaining({ storyCardType: "lore", requiresReview: false }) }));
   });
 
   it("requires review for character death and records dated supporting Lore on approval", () => {

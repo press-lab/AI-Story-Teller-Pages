@@ -1,63 +1,73 @@
-# Story Card suggestion engine
+# Story Card suggestion skill
 
-Automatic destinations are reviewed Story Cards and existing Brains. This extends the established four-type card architecture: Character, Location, Lore, Custom. Legacy plot/event inputs already normalize to Lore; no new type migration is introduced here.
+Completed exchange → local detection + existing one-pass LLM assessment → shared matching and merge → Memory Inbox → approval. No new agent, embedding service, scheduled job or normal-play provider request is added. Character, Location, Lore and Custom remain the only primary card types.
 
-## Runtime instruction
+## Runtime contract
 
-The following is embedded in the existing narration response contract. The surrounding envelope remains `<memory_updates>{"updates":[]}</memory_updates>` with a shared four-update limit. Brain thought instructions and response fields retain their existing contract.
+Brain thought instructions and the shared four-update envelope remain unchanged. The Story Card semantic policy is separate from its structured fields:
 
 ```text
 STORY CARD MEMORY CHECK
-Review the completed entry and player input. Did anything NEW and MEANINGFUL happen worth remembering? Ignore routine activity, movement, temporary feelings and repeated facts.
-Use kind=lore for events/changes (first meetings, dates, kisses, proposals, commitments, betrayals, discoveries, decisions, deaths, permanent changes). Prefer an existing relevant Lore title; otherwise use a specific new title. Use kind=newCard and cardType=character|location for an important missing identity, or kind=card for an exceptional permanent identity change. Custom is explicit reference material.
-Each needs target (existing exact title or specific new subject), content (the NEW fact only, max 70 words), evidence (exact source quote), reason, and 1-3 specific triggers for new cards. Optional targetId, participants and subject help matching. Multiple meaningful suggestions are allowed within the shared four-update limit. All Story Card changes await review. Do not regenerate cards or erase earlier events.
-Plans are not completed actions; almost/conditional events are unconfirmed. Preserve private knowledge. Use established story time; never invent a precise historical date. Code attaches source IDs and dates.
-Never suggest Plot Essentials, Current Arc, Active Pressure or any Plot Component update. Return suggestions or an empty updates array.
+Did anything NEW and MEANINGFUL happen in this exchange? Remember first meetings/kisses, proposals, relationships, commitments, betrayals, discoveries, major decisions, deaths, permanent changes, or significant new people/places. Ignore routine activity, conversation, movement, temporary reactions and repeats.
+For each: TYPE (Lore, Character, Location, Custom; prefer Lore); CREATE or UPDATE a relevant existing card; FACT (specific new development); WHEN (current story date unless historical); EVIDENCE (exact supporting quote).
+Character/Location hold durable identity or exceptional permanent changes. Plans, threats, dreams and almost-events are not completed actions. Preserve private knowledge and past history. Never invent facts, rewrite whole cards, duplicate memories or suggest Plot Component updates. Return suggestions or an empty updates array.
 END STORY CARD MEMORY CHECK
 ```
 
-## Local discovery and association
+```text
+Story Card fields: kind=lore (events/changes), newCard (missing identity/reference), card (permanent identity); cardType=lore|character|location|custom; operation=CREATE|UPDATE; target=title; targetId=existing ID for UPDATE; content=new fact, max70 words; evidence=exact quote; reason; triggers=1-3 narrow phrases; optional participants. Shared maximum: four updates.
+```
 
-`storyCardSuggestions.ts` nominates candidates locally after the final assistant entry is saved. Maintainable milestone patterns cover first meetings/dates/kisses, proposals/acceptance, marriage, breakup, reconciliation, promises, betrayal, death, discovery, transformation and major outcomes. Ordinary dinner/movement does not qualify. Almost, intended, rumored, conditional and planned outcomes are marked unconfirmed. No nomination silently establishes canon. Death/destruction checks identify the affected subject rather than treating a killer as a victim.
+Normal narration receives at most eight relevant targets as `[id,title,type]`. Local matching still checks all cards and aliases. Recovery/catch-up inventories are bounded; irrelevant archived content is not sent.
 
-Proper-name candidates use titles and aliases to filter known subjects, count unique mentions in the latest 80 narrator entries, and rank by frequency weighted toward recent exchanges. Repetition helps uncover recurring entities; a significant introduction or named location can qualify immediately. At most two missing identities and a bounded set of milestones are nominated per exchange. Nomination never invents traits from one reaction. Equivalent pending/rejected/approved findings suppress repeat nominations, while distinct new developments remain eligible. Existing semantic-card cooldowns and Brain cooldowns retain their behavior.
+## Discovery, merging and routing
 
-The design studied [Inner Self's integrated Auto-Cards implementation](https://github.com/LewdLeah/Inner-Self/blob/main/src/library.js), particularly turn-based title candidates, recency-weighted frequency ranking, bounded association searches and duplicate filtering. The AIST implementation is original and uses the existing reducer/proposal pipeline; it does not import that framework, add a background agent or store a separate opaque memory index.
+The local scanner recognizes common milestones, decisions, agreements, commitments, discoveries, death and permanent changes. All deterministic findings are unconfirmed review candidates. Almost-events, threats, negation, dreams and imagined actions never establish completed outcomes. Ordinary activity is ignored. Brief exact replies and inferred behavioral claims can remain review candidates instead of being rejected as semantic judgments. Quote matching establishes attribution, not truth; humans can edit or reject interpretations.
 
-## Merge and Create versus Update
+Proper-name discovery filters known titles/aliases, scores unique appearances in the latest 80 narrator entries with a recency weight, and applies a four-exchange entity nomination cooldown. Significant introductions qualify immediately. Unique milestones never wait for recurrence. Organizations use Custom references rather than a Faction type. Victim/status matching checks aliases and does not assign the victim's death to the killer.
 
-Both detectors create the same typed proposal. Equivalent findings from an exchange merge by event kind, exact supporting evidence and meaningful content overlap. Participants alone never prove equivalence. A confirmed model interpretation is preferred when its source supports it; an uncertain source remains unconfirmed. Both sources' evidence is retained. Model-only findings survive without a pattern; local findings survive an empty model result.
+The implementation adapts bounded candidates, recency/frequency scoring, duplicate handling and association techniques studied in [Inner Self's integrated Auto-Cards](https://github.com/LewdLeah/Inner-Self/blob/main/src/library.js). AIST's `src/autoCards` files are obsolete stubs and are not the implementation. This is original AIST code using the existing reducer and proposal infrastructure.
 
-Targeting searches active cards by verified ID/exact title, specific aliases/trigger phrases, meaningful subject overlap, and associated participants. Continuing relationship/conflict subjects can receive a new development; participant overlap alone cannot attach a kiss to an unrelated government-conflict card. Historical completed cards stay immutable through generated updates. Tied plausible targets become visible choices in Memory Inbox, including CREATE. The verified result is not rerouted by a second fuzzy matcher. Approval appends chronology and preserves earlier content. Exceptional identity changes and their supporting Lore are separately reviewable.
+Local and model findings share `makeStoryCardSuggestion`, `storyCardTargets`, merging and Memory Inbox. Equivalent findings combine evidence and source snapshots; matching missing identities merge across exchanges. Model-only insights survive without regex matches, and local candidates survive empty model output. Distinct developments are not merged merely because participants match. Pending/approved/rejected repeats are suppressed. Persisted source fingerprints avoid rescanning unchanged exchanges; source edits invalidate them.
 
-Review proposals preserve source/player IDs and exact snapshots. Deleted, edited or regenerated sources cannot be approved. Reevaluate the revised source to obtain a fresh candidate. Pending suggestions remain excluded from narrator context.
+Targeting verifies IDs, compatible types, exact titles, specific aliases/triggers, participants and continuing subjects. Ongoing Lore is preferred for justified updates. Ambiguous targets remain visible choices. All compatible active targets are available to the reviewer, including choices outside the ranked set. CREATE and UPDATE can be switched without silently changing the former target. Closed history is preserved; later developments against a closed title become separately reviewed Lore. Appending preserves prior content and dates. Title cleanup removes actual headings, never the subject of an ordinary factual sentence.
 
-## Story time
+## Approval and evidence
 
-`initialStoryClock` uses an explicit opening/scene date, otherwise **2000-01-01** as a deterministic assumed anchor. The clock persists and the UI/context label established versus assumed time. It is unrelated to the real calendar or save timestamps and supports manual correction.
+Story Card auto-approval is **optional and off by default**. Saved preferences and the settings/Inbox controls are preserved. Local-only or uncertain findings, ambiguous destinations, protected targets, closed-history follow-ups and exceptional identity changes always require human review. Supported model findings can honor explicit opt-in only after their final source exists and matches its snapshot. Normal play binds the source before applying such findings. No semantic-validation model request is added.
 
-Next morning/day, numeric day/week skips, and explicit in-world headings advance locally. Player/narrator repetitions of the same transition count once, including during import replay. No transition retains the date; tomorrow's plans do not advance it. Flashbacks carry their historical date without rewinding the active clock. Textual fantasy/approximate dates preserve their precision. Older undated imports do not receive the newly assumed date. Suggestions attach available source time, precision, status and source IDs; an evolving subject keeps its original occurrence and gains a last-change date.
+Evidence keeps source IDs and source/player snapshots, including additional cited exchanges in compatibility catch-up results. Edited, deleted or regenerated sources cannot be approved. The user can approve, edit, redirect or reject. Pending suggestions are excluded from narration context.
 
-## On-demand evaluation and routing boundaries
+## Chronology
 
-Chronicle's **Evaluate Story Card Updates** evaluates one entry or a range of one to ten narrator entries. It runs the same scanner first and then at most one background-model request with the same Story Card instruction, source validation, target matcher, merge and review path. It never writes narration or Brain thoughts. Model failure retains locally detected candidates. The selected entry range is bounded before a provider call. Repeated evaluation suppresses equivalent pending/approved/rejected results.
+The persisted clock uses an explicit scenario date or the documented assumed default **2000-01-01**, unrelated to computer/save timestamps. It supports manual correction and includes a small current-date statement in narrator context.
 
-Normal turns add only local scanning. Existing recovery batching and output allowances remain. Recovery sends at most eight relevant card targets rather than the whole inventory. No embeddings, scheduled jobs, semantic-validation calls or additional agents were added. Provider settings and Brain update frequency remain unchanged.
+Next/following morning, numeric day/week/month/year skips and explicit dates advance deterministically; month ends clamp to the destination calendar. Player/narrator echoes count once, including the date attached to inline model findings. Flashbacks retain their historical date without rewinding the active clock. Ambiguous durations such as “several days later” retain the active date and expose an unresolved reference in the editor/context. Older imported entries without per-entry dates remain undated or relative; their relative skips are never reapplied to today's clock.
 
-One-pass component kinds are rejected. Automatic semantic component conditions and generated component actions are excluded. Plot Essentials, Current Arc, Active Pressure and their UI/manual tools remain. Deterministic Arc Director behavior is independent and unchanged. Explicit user-requested authoring/reconciliation tools retain their existing scope.
+Lore keeps occurrence precision, latest-change date, status and supporting source IDs. Continuing subjects retain the original date and earlier history. A past occurrence may have ongoing consequences.
 
-## Cost and validation
+## Automatic, requested and compatibility paths
 
-Same mocked 20-turn fixtures, with identical provider settings and completed story outputs. Approximate tokens include message-content estimates plus the fixture's eight-token overhead per message. Output figures are configured maximum allowances, not actual billed completions.
+Normal play scans the finalized entry and consumes its existing memory envelope. Missing/malformed envelopes keep the current batched recovery cadence and output allowance. Chronicle's **Evaluate Story Card Updates** evaluates one to ten narrator entries with the same scanner, compact assessment, matching, merge and review records using at most one explicitly requested background call. It never rewrites narration or changes Brains. Model failure retains local candidates; reevaluation is idempotent.
 
-| Fixture | Requests before → after | Prompt tokens before → after | Output allowance before → after |
+Older catch-up/event-search tools retain their compatibility response envelope while using the same semantic instruction, local scanner, suggestion constructor, matching, deduplication and source protections. Automatic memory never targets Plot Essentials, Current Arc, Active Pressure or other components. Explicit manual component tools and deterministic Arc Director pacing remain available.
+
+Brain parser/first-person thought format, accumulation, archival, perspective validation, triggers, cooldowns, cadence, manual tools, context injection and approvals remain unchanged. Imported Brain update instructions are preserved exactly.
+
+## Cost and verification
+
+Identical mocked 20-turn fixtures compare the parent implementation with this change. Counts include narration and missing-envelope recovery; token estimates include content plus the fixture's eight-token message overhead. Output figures are configured allowances, not billed completions. The optional `AIST_COST_REPORT` JSONL output makes the measurements reproducible.
+
+| 20-turn fixture | Calls before → after | Approx. prompt tokens before → after | Output allowance |
 | --- | --- | --- | --- |
-| Inline memory | 20 narration / 0 recovery → same | 70,493 → 59,340 | 24,000 → 24,000 |
-| Missing envelopes | 20 narration / 4 recovery → same | 77,966 → 64,558 | 48,000 → 48,000 |
-| 60-card Lore collection with Brain | 20 narration / 0 recovery → same | 71,020 → 59,989 | 24,000 → 24,000 |
+| Successful inline memory | 20 narration / 0 recovery → same | 59,340 → 59,054 | 24,000 → 24,000 |
+| Missing envelopes / batched recovery | 20 narration / 4 recovery → same | 64,558 → 64,156 | 48,000 → 48,000 |
+| 60-card archive with Brain updates | 20 narration / 0 recovery → same | 59,989 → 59,738 | 24,000 → 24,000 |
 
-Brain updates stayed at seven with cooldown three; irrelevant archived Lore stayed out of the payload. These are reproducible relative measurements against the parent commit, not a prediction of provider billing or a guarantee of a monthly dollar amount. `AIST_COST_REPORT` optionally writes the benchmark's JSONL measurements.
+The saved local working-tree baseline also decreased: inline 60,400 → 60,134; recovery 65,834 → 65,452; heavy 61,060 → 60,811, with the same request counts and output limits.
 
-Tests cover the requested 26 scenarios plus ambiguous target selection, multiple updates to one subject, stale source extensions, destroyed locations, imported clock replay and Chronicle review controls. The complete suite, TypeScript production build and production smoke check are required before committing.
+Brain cadence remains seven updates in 20 turns with cooldown three. Provider settings and output allowances are unchanged. Request/token comparisons demonstrate preserved modeled cost; actual monthly billing still depends on provider rates and play volume. Explicit manual evaluations are additional user-requested calls.
 
-Final scoped validation: **486 tests in 61 files passed**, including the on-demand runtime integration cases. TypeScript, production build and production smoke checks passed. The working-tree regression suite also passed before the final target-ID and runtime cases were added.
+Tests cover the requested scenarios plus threats/negation/dreams, organization references, alias victims, entity cooldowns, source fingerprints, short evidence, reviewer redirection, historical follow-ups, monthly/ambiguous progression, and source-date consistency. TypeScript, the full suite, production build and production smoke are required before committing.
+
+Final scoped verification: **514 tests in 62 files passed**; TypeScript, production build and production smoke passed. Full working-tree regression coverage also passes with the existing local Brain/source-review work retained separately.

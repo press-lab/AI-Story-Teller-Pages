@@ -47,7 +47,7 @@ Do not directly mutate adventure objects in components, trigger engines, importe
 - Context Preview must match the provider payload returned by `buildContext`. Empty sections are excluded from the payload but always present in `result.sections`.
 - `ContextBuildResult.pendingProposals` exposes pending Memory Proposals for the UI. These are never included in the model payload.
 - AI-generated memory updates must go through `src/memory/applyAIMemoryUpdate.ts` and then through reducer actions.
-- Automatic memory destinations are existing Brains and reviewed Story Card suggestions only. All Story Card changes await Memory Inbox approval regardless of legacy auto-approve settings. Automatic memory must never update Plot Essentials, Current Arc, Active Pressure, or other components. Explicit manual component tools remain available.
+- Automatic memory destinations are existing Brains and reviewed Story Card suggestions only. Story Card auto-approval is optional and off by default; preserve saved preferences. Local-only/uncertain candidates, ambiguous destinations, protected targets and exceptional identity changes always require review. Supported model findings can apply only with explicit opt-in and a valid finalized source. Automatic memory must never update Plot Essentials, Current Arc, Active Pressure, or other components. Explicit manual component tools remain available.
 - AI must not mutate AI Instructions, Author's Note, provider config, trigger definitions, quest definitions, raw imports, or the system shell.
 - Memory Inbox proposals live in `activeState.memoryProposals`; approving/rejecting/ignoring proposals must go through reducer actions.
 - Do not add silent stubs. If a feature is incomplete, label it clearly in both code and UI.
@@ -72,7 +72,7 @@ Do not add an opaque Memory Bank retrieval layer. A future Inspectable Memory Ba
 
 ## Known Architecture Decision: Semantic Engine vs Memory Proposals
 
-Automatic memory uses the completed exchange's existing one-pass envelope plus a bounded local Story Card scanner. It makes no additional normal-play request. Missing envelopes use the existing recovery batching. Story Card candidates from either detector merge in the same review queue; none become active context before approval. Source snapshots prevent approval after editing or regeneration. Brain thought format, cadence, archival, approval settings and imported instructions are unchanged.
+Automatic memory uses the completed exchange's existing one-pass envelope plus a bounded local Story Card scanner. It makes no additional normal-play request. Missing envelopes use the existing recovery batching. Story Card candidates from either detector merge in the same queue. Changes become active only after human approval or the user's explicit auto-approval preference; local-only/uncertain candidates always await human review. Source snapshots prevent approval after editing or regeneration. Brain thought format, cadence, archival, approval settings and imported instructions are unchanged.
 
 Automatic semantic component conditions/actions are excluded. Manual component editing, explicit AI authoring/reconciliation tools, and deterministic Arc Director pacing remain available. Do not remove these independent features.
 

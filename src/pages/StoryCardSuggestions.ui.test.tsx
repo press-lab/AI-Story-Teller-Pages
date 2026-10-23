@@ -12,10 +12,11 @@ import { ChroniclePage } from "./ChroniclePage";
 
 afterEach(cleanup);
 
-function Review({ stale = false }) {
+function Review({ stale = false, extraTarget = false }) {
   const initial = createDefaultAdventure();
   initial.messages = [{ id: "source", role: "assistant", content: "Draconia accepts Seth's proposal.", createdAt: "2026-01-01" }];
   initial.storyCards = ["one", "two"].map(id => makeStoryCard({ id, title: `Seth and Draconia Relationship ${id}`, type: "lore", memoryMode: "living", content: "Seth and Draconia are close." }));
+  if (extraTarget) initial.storyCards.push(makeStoryCard({ id: "other", title: "A separate Lore subject", type: "lore", content: "Preserved prior fact." }));
   initial.activeState.memoryProposals = [makeStoryCardSuggestion(initial, "source", initial.messages[0].content, {
     title: "Engagement", content: initial.messages[0].content, evidence: initial.messages[0].content, reason: "A commitment", participants: ["Seth", "Draconia"],
   })];
@@ -59,4 +60,27 @@ it("evaluates a Chronicle entry or selected range without opening the entry edit
   await user.click(screen.getByRole("button", { name: "Evaluate range" }));
   expect(evaluate).toHaveBeenLastCalledWith(["first", "second"]);
   expect(screen.getByRole("status")).toHaveTextContent("Review suggestions in Memory Inbox");
+});
+
+it("lets the reviewer redirect to a compatible target outside the ranked candidates", async () => {
+  render(<Review extraTarget />);
+  const user = userEvent.setup();
+  await user.selectOptions(screen.getByLabelText("Story Card destination"), "other");
+  await user.click(screen.getByRole("button", { name: "Approve" }));
+  const saved = JSON.parse(screen.getByTestId("saved").textContent!);
+  expect(saved.storyCards).toHaveLength(3);
+  expect(saved.storyCards[2].content).toContain("Preserved prior fact.");
+  expect(saved.storyCards[2].content).toContain("accepts Seth's proposal");
+});
+
+it("can change an UPDATE into a separate CREATE without touching the former target", async () => {
+  render(<Review />);
+  const user = userEvent.setup();
+  await user.selectOptions(screen.getByLabelText("Story Card destination"), "two");
+  await user.selectOptions(screen.getByLabelText("Story Card destination"), "");
+  await user.click(screen.getByRole("button", { name: "Approve" }));
+  const saved = JSON.parse(screen.getByTestId("saved").textContent!);
+  expect(saved.storyCards).toHaveLength(3);
+  expect(saved.storyCards.slice(0, 2).every((card: { content: string }) => card.content === "Seth and Draconia are close.")).toBe(true);
+  expect(saved.storyCards[2].title).toBe("Engagement");
 });

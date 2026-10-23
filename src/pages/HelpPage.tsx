@@ -487,7 +487,7 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
           <dt>Next Turn Note</dt>
           <dd>Short-term user-written steering for the next generation. It is visible, token-counted, and expires after use by default.</dd>
           <dt>Story Cards</dt>
-          <dd>Durable content triggered by keywords, phrases, or regex configuration. Every generated Story Card change waits for your review. Chronicle can evaluate one entry or up to ten narrator entries on demand.</dd>
+          <dd>Durable content triggered by keywords, phrases, or regex configuration. Generated Story Card changes wait for review by default; auto-approval is optional. Chronicle can evaluate one entry or up to ten narrator entries on demand.</dd>
           <dt>Brains</dt>
           <dd>Opt-in state for major characters only. AI may update a Brain only if it already exists.</dd>
           <dt>Plot Essentials</dt>

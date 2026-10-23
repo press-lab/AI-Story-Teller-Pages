@@ -35,7 +35,8 @@ it("completes an explicit evaluation with one background call and no narrative o
   expect(vi.mocked(sendOpenAICompatibleChatCompletion).mock.calls[0][0].purpose).toBe("otherBackground");
   expect(hook.result.current.runtime.error).toBeUndefined();
   const next = hook.result.current.adventure!;
-  expect(next.messages).toEqual(before.messages);
+  expect(next.messages.map(({ storyCardScan, ...message }) => message)).toEqual(before.messages);
+  expect(next.messages[0].storyCardScan?.fingerprint).toBeDefined();
   expect(next.brains).toEqual(before.brains);
   expect(next.activeState.memoryProposals).toContainEqual(expect.objectContaining({ proposedType: "storyCard", requiresReview: true, status: "pending" }));
 });

@@ -9,7 +9,7 @@ import { ONE_PASS_MEMORY_ID, isSceneRecapForCharacter, onePassMemoryActions, par
 function fixture() {
   const adventure = createDefaultAdventure("One-pass quality checks");
   adventure.memoryDetectionSettings = { ...adventure.memoryDetectionSettings, enabled: true };
-  adventure.memoryAutoApprove = { ...adventure.memoryAutoApprove, storyCard: true, brainUpdate: true, plotEssentialsUpdate: true };
+  adventure.memoryAutoApprove = { ...adventure.memoryAutoApprove, storyCard: false, brainUpdate: true, plotEssentialsUpdate: true };
   adventure.brains = [makeBrain({ id: "mira-brain", characterName: "Mira", active: true, thoughts: { old: "I distrust the duke." } })];
   adventure.storyCards = [makeStoryCard({ id: "mira-card", title: "Mira", type: "character", content: "Mira is a scout.", active: true, protected: false, pinned: true })];
   adventure.components = [
@@ -96,20 +96,20 @@ describe("one-pass memory quality boundary", () => {
     adventure.storyCards[0].pinned = false;
     adventure.storyCards[0].inclusionPolicy = "manual";
     const actions = onePassMemoryActions(adventure, buildContext(adventure), [update], story, "story-id");
-    expect(actions.find(a => a.type === "ADD_MEMORY_PROPOSAL")).toMatchObject({ proposal: { storyCardType: "lore", requiresReview: true, targetId: undefined } });
+    expect(actions.find(a => a.type === "ADD_MEMORY_PROPOSAL")).toMatchObject({ proposal: { storyCardType: "lore", requiresReview: false, targetId: undefined } });
   });
 
-  it("blocks automatic foundations and reviews new Lore even with auto-approve enabled", () => {
+  it("blocks automatic foundations and reviews new Lore with auto-approve disabled", () => {
     const adventure = fixture();
     const updates = [
       { ...update, kind: "essentials", target: "Foundations", content: "The exiles now defend their permanent home." },
-      { ...update, kind: "newCard", target: "Silver Curse", content: "The silver curse threatens every exile.", cardType: "plot", category: "plot_beat", triggers: ["silver curse"], memoryMode: "living" },
+      { ...update, kind: "newCard", target: "Silver Curse", content: "The silver curse threatens every exile.", cardType: "lore", category: "plot_beat", triggers: ["silver curse"], memoryMode: "living" },
     ];
     const next = onePassMemoryActions(adventure, buildContext(adventure), updates, story, "story-id").reduce(adventureReducer, adventure);
     expect(next.components).toEqual(adventure.components);
     expect(next.storyCards).toEqual(adventure.storyCards);
     expect(next.activeState.memoryProposals).toHaveLength(1);
-    expect(next.activeState.memoryProposals.every(p => p.requiresReview && p.status === "pending")).toBe(true);
+    expect(next.activeState.memoryProposals.every(p => p.status === "pending")).toBe(true);
     const proposal = next.activeState.memoryProposals.find(p => p.proposedType === "storyCard")!;
     const persisted = adventureReducer(next, { type: "ADD_MESSAGE", id: "story-id", role: "assistant", content: story });
     const approved = adventureReducer(persisted, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id });
@@ -131,8 +131,8 @@ describe("one-pass memory quality boundary", () => {
     const adventure = fixture();
     const newCard = { ...update, kind: "newCard", target: "Silver", cardType: "lore", category: "world_fact", triggers: ["silver burn"] };
     const actions = onePassMemoryActions(adventure, buildContext(adventure), [newCard, { ...newCard, target: "Metal" }, { ...newCard, target: "Letter arrival", cardType: "event" }], story, "story-id");
-    expect(actions.filter(a => a.type === "ADD_MEMORY_PROPOSAL")).toHaveLength(3);
-    expect(actions.filter(a => a.type === "ADD_MEMORY_PROPOSAL").every(a => a.proposal.requiresReview && a.proposal.storyCardType === "lore")).toBe(true);
+    expect(actions.filter(a => a.type === "ADD_MEMORY_PROPOSAL")).toHaveLength(2);
+    expect(actions.filter(a => a.type === "ADD_MEMORY_PROPOSAL").every(a => a.proposal.storyCardType === "lore")).toBe(true);
   });
 
   it("keeps a scene recap off a character card and proposes reusable lore for review", () => {
@@ -147,10 +147,10 @@ describe("one-pass memory quality boundary", () => {
     expect(next.storyCards.find(c => c.id === "mira-card")?.content).toBe("Mira is a scout.");
     expect(next.storyCards.find(c => c.id === "island-card")?.content).toBe("Buu trains on a private island.");
     expect(next.activeState.memoryProposals).toHaveLength(2);
-    expect(next.activeState.memoryProposals.every(p => p.storyCardType === "lore" && p.requiresReview)).toBe(true);
+    expect(next.activeState.memoryProposals.every(p => p.storyCardType === "lore" && p.status === "pending")).toBe(true);
   });
 
-  it("rejects the Dispatch sparring proposals without explicit durable character evidence", () => {
+  it("keeps inferred sparring traits as unconfirmed Lore candidates for human review", () => {
     const adventure = fixture();
     adventure.storyCards = [
       makeStoryCard({ id: "buu", title: "Good Buu / Majin Buu", type: "character", content: "Buu enjoys games.", pinned: true }),
@@ -162,11 +162,10 @@ describe("one-pass memory quality boundary", () => {
       { kind: "card", target: "Good Buu / Majin Buu", content: "Buu treats being blasted across the sky as a gift rather than an insult, immediately asking Seth to do it again; his cheerful tolerance for huge impacts is a stable trait, not a one-off reaction.", evidence: "You sent me to the sky. Do it again.", reason: "Stable trait" },
     ];
     const actions = onePassMemoryActions(adventure, buildContext(adventure), updates, scene, "scene-id");
-    expect(actions.map(action => action.type)).toEqual(["LOG_EVALUATION_RESULT"]);
-    expect(actions[0].type === "LOG_EVALUATION_RESULT" && actions[0].entry.errors).toEqual([
-      "One-pass memory skipped: Hercule / Mr. Satan: scene does not establish a durable habit",
-      "One-pass memory skipped: Good Buu / Majin Buu: scene does not establish a durable habit",
-    ]);
+    const candidates = actions.filter(action => action.type === "ADD_MEMORY_PROPOSAL");
+    expect(candidates).toHaveLength(2);
+    expect(candidates.every(action => action.proposal.storyCardType === "lore" && action.proposal.requiresReview && action.proposal.storyCardReview?.candidateOnly)).toBe(true);
+    expect(actions.reduce(adventureReducer, adventure).storyCards).toEqual(adventure.storyCards);
   });
 
   it("proposes an existing untriggered location for review instead of dropping the lore update", () => {
@@ -184,13 +183,13 @@ describe("one-pass memory quality boundary", () => {
     }], scene, "scene-id");
     const next = actions.reduce(adventureReducer, adventure);
     expect(next.storyCards.find(card => card.id === "estate")?.content).toBe("The private estate has a training field.");
-    expect(next.activeState.memoryProposals[0]).toMatchObject({ targetId: undefined, storyCardType: "lore", status: "pending", requiresReview: true });
+    expect(next.activeState.memoryProposals[0]).toMatchObject({ targetId: undefined, storyCardType: "lore", status: "pending", requiresReview: false });
     adventure.storyCards[1].inclusionPolicy = "manual";
     const manualActions = onePassMemoryActions(adventure, buildContext(adventure), [{
       kind: "lore", target: "Hercule and Buu's Estate", content: "The estate gym's east wall is gone, leaving it open to the air.",
       evidence: scene, reason: "Lasting change to a recurring place",
     }], scene, "scene-id");
-    expect(manualActions.find(action => action.type === "ADD_MEMORY_PROPOSAL")).toMatchObject({ proposal: { storyCardType: "lore", targetId: undefined, requiresReview: true } });
+    expect(manualActions.find(action => action.type === "ADD_MEMORY_PROPOSAL")).toMatchObject({ proposal: { storyCardType: "lore", targetId: undefined, requiresReview: false } });
   });
 
   it("creates a narrow lore proposal instead of appending a shared scene to a character", () => {
@@ -199,7 +198,7 @@ describe("one-pass memory quality boundary", () => {
     const updates = [{ kind: "lore", target: "Observatory Pact", content: "Mira and Raven signed a lasting pact at the old observatory.", evidence: scene, reason: "Lasting shared obligation", triggers: ["observatory pact"], category: "world_fact" }];
     const next = onePassMemoryActions(adventure, buildContext(adventure), updates, scene, "scene-id").reduce(adventureReducer, adventure);
     expect(next.storyCards).toEqual(adventure.storyCards);
-    expect(next.activeState.memoryProposals[0]).toMatchObject({ title: "Observatory Pact", storyCardType: "lore", status: "pending", requiresReview: true });
+    expect(next.activeState.memoryProposals[0]).toMatchObject({ title: "Observatory Pact", storyCardType: "lore", status: "pending", requiresReview: false });
   });
 
   it("creates and recalls an independent historical lore card for Seth and Buu's first fight", () => {
@@ -214,7 +213,7 @@ describe("one-pass memory quality boundary", () => {
     };
     const proposed = onePassMemoryActions(adventure, buildContext(adventure), [update], scene, "fight-scene").reduce(adventureReducer, adventure);
     const proposal = proposed.activeState.memoryProposals[0];
-    expect(proposal).toMatchObject({ title: update.target, storyCardType: "lore", memoryMode: "historical", status: "pending", requiresReview: true });
+    expect(proposal).toMatchObject({ title: update.target, storyCardType: "lore", memoryMode: "historical", status: "pending", requiresReview: false });
     expect(proposed.storyCards.find(card => card.id === "buu")?.content).toBe("Buu enjoys games.");
     const persisted = adventureReducer(proposed, { type: "ADD_MESSAGE", id: "fight-scene", role: "assistant", content: scene });
     const approved = adventureReducer(persisted, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id });
@@ -273,6 +272,6 @@ describe("one-pass memory quality boundary", () => {
     expect(next.components).toEqual(adventure.components);
     expect(next.storyCards).toEqual(adventure.storyCards);
     expect(next.activeState.memoryProposals).toHaveLength(1);
-    expect(next.activeState.memoryProposals[0]).toMatchObject({ status: "pending", requiresReview: true });
+    expect(next.activeState.memoryProposals[0]).toMatchObject({ status: "pending", requiresReview: false });
   });
 });
