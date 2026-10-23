@@ -26,9 +26,9 @@ describe("normalizeAdventure", () => {
 
     expect(normalized.activeState.stateFlags.compactStoryCardsMigrated).toBe(true);
     expect(card?.compactKind).toBe("coverStory");
-    expect(card?.coreFacts?.join("\n")).toContain("secret pact");
-    expect(card?.coreFacts?.join("\n")).toContain("official cover story");
-    expect([...(card?.currentFacts ?? []), ...(card?.recentDevelopments ?? [])].join("\n")).toContain("Sump air filter");
+    expect(card?.content).toContain("secret pact");
+    expect(card?.content).toContain("official cover story");
+    expect(card?.content).toContain("Sump air filter");
     expect(card?.pinned).toBe(false);
     expect(card?.protected).toBe(false);
   });

@@ -52,8 +52,6 @@ const GUARDED_FACT_PATTERNS = [
   /\b(accomplice|fugitive|harboring|reprisal|leash|obligation|debt|blackmail|betrayal)\b/i,
 ];
 
-const CURRENT_FACT_PATTERN = /\b(currently|now|still|remains?|ongoing|active|officially|has filed|is using|is repairing|is conducting)\b/i;
-
 function normalizePolicyText(value: string): string {
   return value
     .toLowerCase()
@@ -128,33 +126,23 @@ function isProminentCompactStatus(status: StoryCardCompactStatus | undefined): b
   return status === undefined || status === "active" || status === "strained" || status === "broken";
 }
 
-function partitionCompactFacts(card: StoryCardPolicyInput): Pick<StoryCard, "coreFacts" | "currentFacts" | "recentDevelopments" | "content"> {
-  const archivedFacts = splitStoryCardFacts(card.archivedFacts ?? "");
-  const contentFacts = splitStoryCardFacts(card.content);
-  const core: string[] = [...(card.coreFacts ?? [])];
-  const current: string[] = [...(card.currentFacts ?? [])];
-  const recent: string[] = [...(card.recentDevelopments ?? [])];
-  const content: string[] = [];
-
-  for (const fact of [...archivedFacts, ...contentFacts]) {
-    if (isGuardedStoryCardFact(card, fact)) {
-      core.push(fact);
-    } else if (CURRENT_FACT_PATTERN.test(fact)) {
-      current.push(fact);
-    } else {
-      recent.push(fact);
-    }
+/** Fold legacy fact fields into the single editable card body. */
+export function consolidateStoryCardContent<T extends StoryCardPolicyInput>(card: T): T {
+  const { coreFacts, currentFacts, recentDevelopments, ...rest } = card;
+  if (!coreFacts?.length && !currentFacts?.length && !recentDevelopments?.length) {
+    return rest as T;
   }
-
   return {
-    coreFacts: uniqueFacts(core),
-    currentFacts: uniqueFacts(current),
-    recentDevelopments: uniqueFacts(recent),
-    content: uniqueFacts(content).join("\n"),
-  };
+    ...rest,
+    content: uniqueFacts([
+      ...splitStoryCardFacts(card.content),
+      ...(coreFacts ?? []), ...(currentFacts ?? []), ...(recentDevelopments ?? []),
+    ]).join("\n"),
+  } as T;
 }
 
 export function applyGuardedStoryCardPolicy<T extends StoryCardPolicyInput>(card: T): T {
+  card = consolidateStoryCardContent(card);
   const compactKind = inferredCompactKind(card);
   if (!compactKind) return card;
   const compactStatus = card.compactStatus ?? DEFAULT_COMPACT_STATUS;
@@ -162,10 +150,8 @@ export function applyGuardedStoryCardPolicy<T extends StoryCardPolicyInput>(card
   const tokenBudget = card.tokenBudget && card.tokenBudget > 0
     ? card.tokenBudget
     : GUARDED_STORY_CARD_MIN_TOKEN_BUDGET;
-  const compactFacts = partitionCompactFacts({ ...card, compactKind, compactStatus });
   return {
     ...card,
-    ...compactFacts,
     compactKind,
     compactStatus,
     // Guarding facts against loss must not force a subplot into every scene.
@@ -200,20 +186,5 @@ export function appendSourceTurnIds(existing: string[] | undefined, sourceTurnId
 }
 
 export function storyCardContextContent(card: StoryCard): string {
-  const hasStructuredFacts =
-    (card.coreFacts?.length ?? 0) > 0 ||
-    (card.currentFacts?.length ?? 0) > 0 ||
-    (card.recentDevelopments?.length ?? 0) > 0;
-  if (!hasStructuredFacts) {
-    return card.content;
-  }
-
-  const sections: string[] = [
-    `Compact: ${card.compactKind ?? "unspecified"} (${card.compactStatus ?? DEFAULT_COMPACT_STATUS})`,
-  ];
-  if (card.coreFacts?.length) sections.push(["Core facts:", ...card.coreFacts.map((fact) => `- ${fact.replace(/^[-*\u2022]\s*/, "")}`)].join("\n"));
-  if (card.currentFacts?.length) sections.push(["Current facts:", ...card.currentFacts.map((fact) => `- ${fact.replace(/^[-*\u2022]\s*/, "")}`)].join("\n"));
-  if (card.recentDevelopments?.length) sections.push(["Recent developments:", ...card.recentDevelopments.map((fact) => `- ${fact.replace(/^[-*\u2022]\s*/, "")}`)].join("\n"));
-  if (card.content.trim()) sections.push(`Notes:\n${card.content}`);
-  return sections.join("\n\n");
+  return consolidateStoryCardContent(card).content;
 }

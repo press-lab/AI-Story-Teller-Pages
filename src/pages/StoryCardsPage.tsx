@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { ContextInclusionPolicy, StoryCard, StoryCardAIBuilderIntent, StoryCardCompactKind, StoryCardCompactStatus, StoryCardMemoryMode, StoryCardType, TriggerMatchType, StoryCardAIBuilderRequest } from "../types/adventure";
+import type { ContextInclusionPolicy, StoryCard, StoryCardAIBuilderIntent, StoryCardMemoryMode, StoryCardType, TriggerMatchType, StoryCardAIBuilderRequest } from "../types/adventure";
 import type { AuditRecommendation } from "../memory/storyCardAudit";
 import { storyCardContextContent } from "../memory/storyCardPolicy";
 import { makeStoryCard } from "../state/defaults";
@@ -9,16 +9,6 @@ import { CheckboxField, Field, Highlight, MemoryUpdateHistory, NumberInput, Toke
 
 const TYPE_ORDER: StoryCardType[] = ["character", "location", "lore", "plot", "event", "custom"];
 const MEMORY_MODE_OPTIONS: StoryCardMemoryMode[] = ["static", "living", "historical"];
-const COMPACT_KIND_OPTIONS: Array<{ value: StoryCardCompactKind; label: string }> = [
-  { value: "pact", label: "Pact / deal" },
-  { value: "promise", label: "Promise / oath" },
-  { value: "coverStory", label: "Cover story / shield" },
-  { value: "alliance", label: "Alliance / truce" },
-  { value: "debt", label: "Debt / obligation" },
-  { value: "secret", label: "Secret" },
-  { value: "truce", label: "Truce" },
-];
-const COMPACT_STATUS_OPTIONS: StoryCardCompactStatus[] = ["active", "strained", "broken", "resolved", "superseded"];
 const matchTypes: TriggerMatchType[] = ["keyword", "phrase", "regex"];
 const inclusionPolicies: ContextInclusionPolicy[] = ["always", "triggered", "manual", "systemSuggested"];
 
@@ -63,26 +53,19 @@ export function isLivingCard(card: StoryCard): boolean {
   return card.memoryMode === "living" || (card.state ?? "").split(/\s+/).includes("living");
 }
 
-/** Shown before a living card's title so they're instantly identifiable in the list. */
-export const LIVING_CARD_PREFIX = "⟳ ";
-
 function CardSummary({ card, query }: { card: StoryCard; query: string }) {
   const contextContent = storyCardContextContent(card);
   const snippet = contentSnippet(contextContent, query);
-  const living = isLivingCard(card);
   const archivedCount = card.archivedFacts?.split("\n").filter((line) => line.trim()).length ?? 0;
   const memoryUpdatedAt = formatCompactTimestamp(card.lastMemoryUpdatedAt);
   const tokenEstimate = approximateTokenCount(contextContent);
   return (
     <span className="story-card-summary">
       <span className="story-card-title">
-        {living && <span className="badge badge-priority" title="Living card — auto-updated; old facts are archived, not deleted">{LIVING_CARD_PREFIX}Living</span>}{" "}
         <Highlight text={card.title} query={query} />
       </span>
       <span className="story-card-badges">
         <span className="badge badge-type">{TYPE_LABELS[card.type]}</span>
-        {card.compactKind && <span className="badge badge-priority">{card.compactKind}</span>}
-        {card.compactStatus && <span className="badge badge-priority">{card.compactStatus}</span>}
         {!card.active && <span className="badge badge-inactive">Inactive</span>}
         {card.pinned && <span className="badge badge-pinned">Pinned</span>}
         {card.protected && <span className="badge badge-protected">Protected</span>}
@@ -107,17 +90,6 @@ function CardSummary({ card, query }: { card: StoryCard; query: string }) {
 
 function cardFactLines(text: string | undefined): string[] {
   return (text ?? "")
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-}
-
-function factListText(facts: string[] | undefined): string {
-  return (facts ?? []).join("\n");
-}
-
-function factListFromText(text: string): string[] {
-  return text
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean);
@@ -351,7 +323,7 @@ export function StoryCardsPage({
         <div className="editor-stat-row" aria-label="Story card counts">
           <span>{totalCards} total</span>
           <span>{activeCount} active</span>
-          <span>{livingCount} living</span>
+          <span>{livingCount} auto-updated</span>
           {(searchLower || filtersActive) && <span>{visibleCount} shown</span>}
         </div>
       </div>
@@ -397,7 +369,7 @@ export function StoryCardsPage({
                   if (next === "historical") setAiAutoUpdate(false);
                 }}
               >
-                <option value="living">living - current evolving tracker</option>
+                <option value="living">Auto-updated tracker</option>
                 <option value="static">static - always-true reference</option>
                 <option value="historical">historical - completed past event</option>
                 <option value="auto">let AI choose</option>
@@ -499,7 +471,7 @@ export function StoryCardsPage({
               aria-pressed={memoryFilter === "living"}
               onClick={() => setMemoryFilter("living")}
             >
-              Living
+              Auto-updated
             </button>
           </div>
           <div className="sort-toggle" role="group" aria-label="Card flag filter">
@@ -575,7 +547,7 @@ export function StoryCardsPage({
                 <div className="story-card-tool-copy">
                   <h3>Clean up existing cards</h3>
                   <p className="muted">
-                    Find broad triggers, stale current facts, misplaced history, duplicate cards, and profile details that should be split into living or historical cards.
+                    Find broad triggers, stale current facts, misplaced history, duplicate cards, and profile details that should be split into auto-updated or historical cards.
                   </p>
                 </div>
                 <div className="story-card-tool-controls">
@@ -785,7 +757,7 @@ export function StoryCardsPage({
                           onChange={(e) => updateRec(rec.id, { suggestedMemoryMode: e.target.value as StoryCardMemoryMode })}
                         >
                           {MEMORY_MODE_OPTIONS.map((mode) => (
-                            <option key={mode} value={mode}>{mode}</option>
+                            <option key={mode} value={mode}>{mode === "living" ? "Auto-updated" : mode}</option>
                           ))}
                         </select>
                       </label>
@@ -886,7 +858,7 @@ export function StoryCardsPage({
                       }
                     >
                       <option value="static">static — always-true reference facts</option>
-                      <option value="living">living — current evolving subject, updates merge/archive</option>
+                      <option value="living">Auto-updated tracker</option>
                       <option value="historical">historical — past event or completed arc record</option>
                     </select>
                   </Field>
@@ -908,83 +880,6 @@ export function StoryCardsPage({
                   <section className="item-focus-section">
                     <div className="item-section-heading">
                       <div>
-                        <p className="eyebrow">compact memory</p>
-                        <h4>Structured compact facts</h4>
-                      </div>
-                      {card.compactKind && <span className="badge badge-priority">{card.compactStatus ?? "active"}</span>}
-                    </div>
-                    <div className="grid two">
-                      <Field label="Compact Kind">
-                        <select
-                          value={card.compactKind ?? ""}
-                          onChange={(event) => {
-                            const value = event.target.value as StoryCardCompactKind | "";
-                            dispatch({
-                              type: "UPDATE_STORY_CARD",
-                              storyCardId: card.id,
-                              patch: value
-                                ? { compactKind: value, compactStatus: card.compactStatus ?? "active", memoryMode: "living" }
-                                : { compactKind: undefined, compactStatus: undefined },
-                            });
-                          }}
-                        >
-                          <option value="">none</option>
-                          {COMPACT_KIND_OPTIONS.map((option) => (
-                            <option key={option.value} value={option.value}>{option.label}</option>
-                          ))}
-                        </select>
-                      </Field>
-                      <Field label="Compact Status">
-                        <select
-                          value={card.compactStatus ?? "active"}
-                          onChange={(event) =>
-                            dispatch({
-                              type: "UPDATE_STORY_CARD",
-                              storyCardId: card.id,
-                              patch: { compactStatus: event.target.value as StoryCardCompactStatus },
-                            })
-                          }
-                        >
-                          {COMPACT_STATUS_OPTIONS.map((status) => (
-                            <option key={status} value={status}>{status}</option>
-                          ))}
-                        </select>
-                      </Field>
-                    </div>
-                    <Field label="Core Facts">
-                      <textarea
-                        rows={4}
-                        value={factListText(card.coreFacts)}
-                        onChange={(event) => dispatch({ type: "UPDATE_STORY_CARD", storyCardId: card.id, patch: { coreFacts: factListFromText(event.target.value) } })}
-                      />
-                    </Field>
-                    <Field label="Current Facts">
-                      <textarea
-                        rows={3}
-                        value={factListText(card.currentFacts)}
-                        onChange={(event) => dispatch({ type: "UPDATE_STORY_CARD", storyCardId: card.id, patch: { currentFacts: factListFromText(event.target.value) } })}
-                      />
-                    </Field>
-                    <Field label="Recent Developments">
-                      <textarea
-                        rows={3}
-                        value={factListText(card.recentDevelopments)}
-                        onChange={(event) => dispatch({ type: "UPDATE_STORY_CARD", storyCardId: card.id, patch: { recentDevelopments: factListFromText(event.target.value) } })}
-                      />
-                    </Field>
-                    {card.sourceTurnIds?.length ? (
-                      <Field label="Source Turns">
-                        <input
-                          value={card.sourceTurnIds.join(", ")}
-                          onChange={(event) => dispatch({ type: "UPDATE_STORY_CARD", storyCardId: card.id, patch: { sourceTurnIds: fromCommaList(event.target.value) } })}
-                        />
-                      </Field>
-                    ) : null}
-                  </section>
-                  <section className="item-focus-section">
-                    <div className="item-section-heading">
-                      <div>
-                        <p className="eyebrow">live memory</p>
                         <h4>Card text sent when triggered</h4>
                       </div>
                       <span className="muted">{cardFactLines(card.content).length} line{cardFactLines(card.content).length === 1 ? "" : "s"}</span>
