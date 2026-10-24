@@ -177,6 +177,7 @@ export function StoryCardsPage({
   const [aiAutoUpdateCooldown, setAiAutoUpdateCooldown] = useState(3);
   const [newCardId, setNewCardId] = useState<string | undefined>();
   const [sortMode, setSortMode] = useState<SortMode>("alpha");
+  const [typeFilter, setTypeFilter] = useState<StoryCardType | "all">("all");
   const [statusFilter, setStatusFilter] = useState<CardStatusFilter>("all");
   const [memoryFilter, setMemoryFilter] = useState<CardMemoryFilter>("all");
   const [flagFilter, setFlagFilter] = useState<CardFlagFilter>("all");
@@ -284,7 +285,8 @@ export function StoryCardsPage({
       (flagFilter === "flagged" && (card.pinned || card.protected)) ||
       (flagFilter === "pinned" && card.pinned) ||
       (flagFilter === "protected" && card.protected);
-    return statusMatches && memoryMatches && flagMatches;
+    const typeMatches = typeFilter === "all" || card.type === typeFilter;
+    return typeMatches && statusMatches && memoryMatches && flagMatches;
   }
 
   // Group cards by type, only include types that have at least one card
@@ -297,7 +299,7 @@ export function StoryCardsPage({
   const activeCount = activeCards.length;
   const visibleCount = groups.reduce((sum, group) => sum + group.cards.length, 0);
   const livingCount = adventure.storyCards.filter(isLivingCard).length;
-  const filtersActive = statusFilter !== "all" || memoryFilter !== "all" || flagFilter !== "all";
+  const filtersActive = typeFilter !== "all" || statusFilter !== "all" || memoryFilter !== "all" || flagFilter !== "all";
 
   async function handleBuildStoryCardMemory() {
     if (!onBuildStoryCardMemory || !aiDescription.trim()) return;
@@ -431,6 +433,16 @@ export function StoryCardsPage({
           onChange={(event) => setSearch(event.target.value)}
         />
         <div className="editor-filter-strip" aria-label="Story card filters">
+          <select
+            aria-label="Filter by card type"
+            value={typeFilter}
+            onChange={(event) => setTypeFilter(event.target.value as StoryCardType | "all")}
+          >
+            <option value="all">All card types</option>
+            {TYPE_ORDER.map((type) => (
+              <option key={type} value={type}>{TYPE_LABELS[type]}</option>
+            ))}
+          </select>
           <div className="sort-toggle" role="group" aria-label="Status filter">
             <button
               type="button"
@@ -514,7 +526,7 @@ export function StoryCardsPage({
           type="button"
           className="primary-action"
           onClick={() => {
-            const card = makeStoryCard({ title: "New Story Card", content: "" });
+            const card = makeStoryCard({ title: "New Story Card", content: "", type: typeFilter === "all" ? "custom" : typeFilter });
             dispatch({ type: "UPSERT_STORY_CARD", storyCard: card });
             setNewCardId(card.id);
           }}
