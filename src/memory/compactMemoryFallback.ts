@@ -196,7 +196,16 @@ export async function runCompactMemoryFallback(
         return !Array.isArray(candidate.sourceMessageIds) || !candidate.sourceMessageIds.length
           || !candidate.sourceMessageIds.includes(source.id)
           || candidate.sourceMessageIds.some(id => !allowedReferences.some(reference => reference.id === id));
-      })) { validationFailure = "source_attribution_invalid"; break; }
+      })) {
+        validationFailure = "source_attribution_invalid";
+        actions.push({ type: "LOG_EVALUATION_RESULT", entry: {
+          id: "recovery-rejected-" + source.id, turn: adventure.activeState.turn, createdAt: new Date().toISOString(),
+          conditionsEvaluated: [], conditionsFired: [], generatedContent: [],
+          actionsExecuted: ["Recovery evaluation failed; no mutations from this source committed", `Memory source: ${source.id}`],
+          errors: [diagnostic(validationFailure, response.finishReason)],
+        } });
+        continue;
+      }
       const turnActions = onePassMemoryActions(current, context, updates, source.content,
         source.id, undefined, batch ? "Batched memory recovery: source turn evaluated" : "Compact memory fallback: one API call", batch ? input : playerInput,
         [], allowedReferences);
@@ -206,7 +215,7 @@ export async function runCompactMemoryFallback(
         // No mutations from this source may commit if any of its candidates failed.
         actions.push(...turnActions.filter(action => action.type === "LOG_EVALUATION_RESULT").map(action => action.type === "LOG_EVALUATION_RESULT"
           ? { ...action, entry: { ...action.entry, actionsExecuted: ["Recovery evaluation failed; no mutations from this source committed", `Memory source: ${source.id}`] } } : action));
-        break;
+        continue;
       }
       acceptedSources.push(source);
       for (const action of turnActions) {
@@ -222,7 +231,7 @@ export async function runCompactMemoryFallback(
     if (acceptedSources.length < sources.length) actions.push({ type: "LOG_EVALUATION_RESULT", entry: {
       id: "recovery-partial-" + sources[0].id, turn: adventure.activeState.turn, createdAt: new Date().toISOString(),
       conditionsEvaluated: [], conditionsFired: [], generatedContent: [],
-      actionsExecuted: ["Recovery completed successfully for chronological prefix; remaining sources retained"],
+      actionsExecuted: ["Recovery completed successfully for validated sources; remaining sources retained"],
       errors: [diagnostic(validationFailure ?? "response_schema_invalid_partial", response.finishReason)],
     } });
     return { evaluatedTurns: turns, actions, tokenUsage, valid: true, attemptedSources: empty.attemptedSources, sourceSnapshots: evidenceMessages.map(({ id, content }) => ({ id, content })), processedSources: acceptedSources.map(({ id, content }) => ({ id, content })) };

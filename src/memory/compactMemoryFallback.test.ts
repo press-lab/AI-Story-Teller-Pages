@@ -138,3 +138,62 @@ it("retains a batch when the response omits a source, and rejects evidence from 
   expect(next.storyCards[0].content).toBe(adventure.storyCards[0].content);
   expect(next.activeState.evaluationLog.flatMap(log => log.errors).join(" ")).toContain("evidence is not in this turn");
 });
+
+
+describe("independent recovery source validation", () => {
+  beforeEach(() => provider.mockReset());
+
+  it.each([
+    [0, "evidence"], [1, "evidence"], [-1, "evidence"], [0, "update"], [0, "attribution"],
+  ] as const)("retains rejected sources without poisoning independent results (bad index %s, %s)", async (badIndex, failure) => {
+    let adventure = adventureWithMissingEnvelope();
+    const lines = [
+      "Lucian and Edythe defeated the Glass King at the silver gate in their first battle together.",
+      "Lucian and Edythe discovered the ancient silver language beneath the tower.",
+      "The room falls silent.",
+    ];
+    for (let i = 0; i < lines.length; i++) adventure = adventureReducer(adventure, {
+      type: "ADD_MESSAGE", id: `independent-${i}`, role: "assistant", content: lines[i],
+    });
+    const batch = adventure.messages.slice(-3);
+    const turns = batch.map((source, i) => ({ sourceTurnId: source.id, updates: i === 2 ? [] : [{
+      kind: "lore", target: i === 0 ? "The First Battle at the Silver Gate" : "The Silver Language Discovery",
+      content: lines[i], evidence: lines[i], reason: "Distinct completed shared history", category: "plot_beat",
+      triggers: [i === 0 ? "Glass King" : "silver language"],
+    }] }));
+    for (let i = 0; i < turns.length; i++) if (badIndex === -1 || badIndex === i) {
+      // A supported candidate in the same rejected source must also be discarded.
+      turns[i].updates.push({ kind: "lore", target: "Unsupported history", content: "Harry defeated Voldemort.",
+        evidence: "Harry defeated Voldemort.", reason: "Historical event", category: "plot_beat", triggers: ["Voldemort"] });
+    }
+    if (failure === "update") turns[0].updates.at(-1)!.kind = "unsupported-kind";
+    if (failure === "attribution") Object.assign(turns[0].updates.at(-1)!, { sourceMessageIds: [batch[0].id, "foreign"] });
+    provider.mockResolvedValue({ content: JSON.stringify({ turns }), raw: {}, finishReason: "stop" });
+    const result = await runCompactMemoryFallback(adventure, config, batch);
+    const accepted = batch.filter((_, i) => badIndex !== -1 && i !== badIndex);
+    expect(result.processedSources ?? []).toEqual(accepted.map(({ id, content }) => ({ id, content })));
+    expect(result.valid).toBe(accepted.length > 0);
+    const next = result.actions.reduce(adventureReducer, adventure);
+    expect(next.activeState.memoryProposals).toHaveLength(badIndex === -1 ? 0 : 1);
+    if (badIndex !== -1) expect(next.activeState.memoryProposals[0]).toMatchObject({
+      sourceTurnId: batch[badIndex === 0 ? 1 : 0].id, status: "pending", proposedType: "storyCard", memoryMode: "historical",
+    });
+    for (const source of batch.filter(source => !accepted.includes(source))) {
+      expect(next.activeState.evaluationLog.some(log => log.actionsExecuted.includes(`Memory source: ${source.id}`) && log.errors.length)).toBe(true);
+    }
+    expect(provider).toHaveBeenCalledTimes(1);
+    expect(provider.mock.calls[0][0].retry).toBe(false);
+  });
+
+  it.each(["foreign", "duplicate"])("fails closed for %s source IDs", async kind => {
+    const adventure = adventureWithMissingEnvelope();
+    const source = adventure.messages.at(-1)!;
+    const turns = [{ sourceTurnId: source.id, updates: [] }, { sourceTurnId: kind === "foreign" ? "foreign" : source.id, updates: [] }];
+    provider.mockResolvedValue({ content: JSON.stringify({ turns }), raw: {} });
+    const result = await runCompactMemoryFallback(adventure, config, [source]);
+    expect(result.valid).toBe(false);
+    expect(result.actions).toEqual([]);
+    expect(result.processedSources).toBeUndefined();
+    expect(provider).toHaveBeenCalledTimes(1);
+  });
+});

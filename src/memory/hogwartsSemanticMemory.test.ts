@@ -85,7 +85,11 @@ it("rejects a fabricated source reference without applying any updates", async (
   const result = await runCompactMemoryFallback(a, config, [a.messages.at(-1)!]);
   expect(result.valid).toBe(false);
   expect(result.error).toContain("source_attribution_invalid");
-  expect(result.actions).toHaveLength(0);
+  expect(result.actions).toHaveLength(1);
+  expect(result.actions[0]).toMatchObject({ type: "LOG_EVALUATION_RESULT", entry: {
+    actionsExecuted: expect.arrayContaining([`Memory source: ${harrySource}`]),
+    errors: [expect.stringContaining("source_attribution_invalid")],
+  } });
 });
 it("retains inline Brain behavior, defers Story Cards, and respects manual and per-turn cadence", async () => {
   let a = fixture();

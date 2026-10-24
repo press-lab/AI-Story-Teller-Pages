@@ -279,3 +279,30 @@ it("makes no automatic evaluator calls when dedicated mode is manual only", asyn
   expect(sendOpenAICompatibleChatCompletion).toHaveBeenCalledTimes(6);
   expect(vi.mocked(sendOpenAICompatibleChatCompletion).mock.calls.every(([options]) => options.purpose === "narration")).toBe(true);
 });
+
+
+it("completes accepted recovery sources and records bounded failures from the same response", async () => {
+  const provider = vi.mocked(sendOpenAICompatibleChatCompletion);
+  provider.mockReset();
+  provider.mockImplementation(async options => {
+    if (!options.responseFormat) return { content: story, raw: {} };
+    const { turns } = JSON.parse(batchReply(options));
+    turns[0].updates = [{ kind: "lore", target: "Unsupported history", content: "Harry defeated Voldemort.",
+      evidence: "Harry defeated Voldemort.", reason: "Historical event" }];
+    turns[1].updates = [{ kind: "card", target: "Mira", content: "Silver burns Mira's skin.",
+      evidence: story, reason: "Enduring weakness" }];
+    return { content: JSON.stringify({ turns }), raw: {}, finishReason: "stop" };
+  });
+  const { result } = setup();
+  for (let i = 0; i < 5; i++) await act(async () => { await result.current.runtime.submitTurn("I listen."); });
+  await waitFor(() => expect(result.current.adventure?.messages.filter(m => m.memoryRecovery?.status === "complete")).toHaveLength(4));
+  const sources = result.current.adventure!.messages.filter(m => m.role === "assistant");
+  expect(sources[0].memoryRecovery).toMatchObject({ status: "pending", failures: 1 });
+  expect(sources[0].memoryRecovery?.nextEligibleTurn).toBeGreaterThan(5);
+  expect(sources.slice(1).every(source => source.memoryRecovery?.status === "complete")).toBe(true);
+  expect(result.current.adventure!.activeState.memoryProposals).toContainEqual(expect.objectContaining({
+    sourceTurnId: sources[1].id, status: "pending", content: "Silver burns Mira's skin.",
+  }));
+  expect(provider.mock.calls.filter(([options]) => options.responseFormat)).toHaveLength(1);
+  expect(provider).toHaveBeenCalledTimes(6);
+});
