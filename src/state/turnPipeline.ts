@@ -117,6 +117,7 @@ export async function applyProviderResponse({
 
   const messageId = assistantMessageId ?? createId("message");
   let inlineValidationFailed = false;
+  let noInlineStoryCardCandidates = true;
   const dedicated = next.memoryDetectionSettings.evaluator === "dedicated";
   const memoryEnabled = mode !== "comms" && next.memoryDetectionSettings.enabled
     && preProviderContext.sections.some(s => s.items.some(i => i.id === ONE_PASS_MEMORY_ID))
@@ -127,6 +128,8 @@ export async function applyProviderResponse({
     const inlineUpdates = discarded ? [] : dedicated
       ? memory.updates.filter(update => update && typeof update === "object" && (update as { kind?: string }).kind === "thought")
       : memory.updates;
+    noInlineStoryCardCandidates = !inlineUpdates.some(update => update && typeof update === "object"
+      && "kind" in update && ["lore", "card", "newCard"].includes(String(update.kind)));
     const memoryError = continuityCorrected ? "Memory skipped after continuity correction."
       : !memoryEnabled ? "memory_instruction_omitted: actual provider payload has no memory instruction." : memory.error;
     const processing = `One-pass memory: no additional API call; instruction_in_payload=${memoryEnabled}; finish_reason=${response.finishReason?.slice(0, 40) ?? "unknown"}; narration_rewritten=${Boolean(response.narrationRewritten)}; continuity_rewritten=${continuityCorrected}; draft_discarded=${Boolean(discarded)}; envelope=${memory.error ? "failed" : "parsed"}`;
@@ -165,7 +168,7 @@ export async function applyProviderResponse({
     next = adventureReducer(next, { type: "ADVANCE_MEMORY_RECOVERY_TURN" });
   }
   if (mode !== "comms" && next.memoryDetectionSettings.enabled
-    && (dedicated || inlineValidationFailed || !memoryEnabled || memory.error || continuityCorrected)) {
+    && (dedicated || noInlineStoryCardCandidates || inlineValidationFailed || !memoryEnabled || memory.error || continuityCorrected)) {
     next = adventureReducer(next, { type: "QUEUE_MEMORY_RECOVERY", messageId,
       turn: next.activeState.memoryRecoveryStoryTurn ?? 0 });
   }

@@ -73,7 +73,11 @@ it("preserves Brain cadence across twenty turns with a large Lore collection", a
     ...Array.from({ length: 60 }, (_, index) => makeStoryCard({ title: `Archive ${index}`, type: "lore", memoryMode: "historical", content: `Past adventure ${index}. ` + "Archived scene details. ".repeat(40), keys: [`specific memory cue ${index}`] }))];
   let turn = 0;
   vi.mocked(sendOpenAICompatibleChatCompletion).mockReset();
-  vi.mocked(sendOpenAICompatibleChatCompletion).mockImplementation(async () => {
+  vi.mocked(sendOpenAICompatibleChatCompletion).mockImplementation(async options => {
+    if (options.responseFormat) {
+      const ids = JSON.parse(/EVERY source ID: (\[[^\]]*\])/.exec(options.messages.map(m => m.content).join("\n"))![1]) as string[];
+      return { raw: {}, content: JSON.stringify({ turns: ids.map(sourceTurnId => ({ sourceTurnId, updates: [] })) }) };
+    }
     const story = `Mira studies clue ${turn}.`;
     const content = `I must investigate clue ${turn++}.`;
     return { raw: {}, content: story + '<memory_updates>' + JSON.stringify({ updates: [{ kind: "thought", target: "Mira", content, evidence: story, reason: "New private plan" }] }) + '</memory_updates>' };
@@ -82,13 +86,16 @@ it("preserves Brain cadence across twenty turns with a large Lore collection", a
   for (let i = 0; i < 20; i++) await act(async () => { await hook.result.current.runtime.submitTurn("Mira studies the clue."); });
   const calls = vi.mocked(sendOpenAICompatibleChatCompletion).mock.calls.map(([o]) => o);
   const brain = hook.result.current.adventure!.brains[0];
-  expect(calls).toHaveLength(20);
+  const narration = calls.filter(o => !o.responseFormat);
+  const recovery = calls.filter(o => o.responseFormat);
+  expect(narration).toHaveLength(20);
+  expect(recovery).toHaveLength(4);
   expect(brain.lastUpdatedTurn).toBe(18);
   expect(Object.values(brain.thoughts)).toHaveLength(7);
-  expect(calls.every(o => !o.responseFormat && o.config.maxOutputTokens === defaultModelConfig.maxOutputTokens)).toBe(true);
+  expect(narration.every(o => o.config.maxOutputTokens === defaultModelConfig.maxOutputTokens)).toBe(true);
   expect(calls.every(o => !o.messages.some(m => m.content.includes("Archived scene details")))).toBe(true);
-  expect(calls.reduce((sum, o) => sum + o.messages.reduce((n, m) => n + approximateTokenCount(m.content) + 8, 0), 0)).toBeLessThanOrEqual(74580);
-  if (process.env.AIST_COST_REPORT) appendFileSync(process.env.AIST_COST_REPORT, JSON.stringify({ kind: "heavy", narration: calls.length, recovery: 0, brainUpdates: 7, promptTokens: calls.reduce((sum, o) => sum + o.messages.reduce((n, m) => n + approximateTokenCount(m.content) + 8, 0), 0), outputBudget: calls.reduce((sum, o) => sum + o.config.maxOutputTokens, 0) }) + "\n");
+  expect(narration.reduce((sum, o) => sum + o.messages.reduce((n, m) => n + approximateTokenCount(m.content) + 8, 0), 0)).toBeLessThanOrEqual(74580);
+  if (process.env.AIST_COST_REPORT) appendFileSync(process.env.AIST_COST_REPORT, JSON.stringify({ kind: "heavy", narration: narration.length, recovery: recovery.length, brainUpdates: 7, promptTokens: calls.reduce((sum, o) => sum + o.messages.reduce((n, m) => n + approximateTokenCount(m.content) + 8, 0), 0), outputBudget: calls.reduce((sum, o) => sum + o.config.maxOutputTokens, 0) }) + "\n");
   console.log("ARCHITECTURE_COST heavy", JSON.stringify({ requests: calls.length,
     promptTokens: calls.reduce((sum, o) => sum + o.messages.reduce((n, m) => n + approximateTokenCount(m.content) + 8, 0), 0),
     outputBudget: calls.reduce((sum, o) => sum + o.config.maxOutputTokens, 0), brainUpdates: 7 }));
