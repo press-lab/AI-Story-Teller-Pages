@@ -2,6 +2,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { createDefaultAdventure, defaultModelConfig, makeBrain } from "../state/defaults";
 import { adventureReducer } from "../state/adventureReducer";
 import { runTurnPipeline } from "../state/turnPipeline";
+import { memoryRecoveryBatch, pendingMemoryRecovery } from "./memoryRecoveryBatch";
 import { runCompactMemoryFallback } from "./compactMemoryFallback";
 import { sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
 vi.mock("../providers/openAICompatible", () => ({ sendOpenAICompatibleChatCompletion: vi.fn() }));
@@ -32,9 +33,10 @@ it.each([negotiation, outreach])("routes LLM development into Memory Inbox with 
   expect(result.adventure.messages.at(-1)?.content).toBe(text);
   expect(result.adventure.messages.at(-1)?.memoryRecovery).toBeUndefined();
 });
-it("treats empty evaluation as success without recovery or deterministic historical death nomination", async () => {
+it("queues empty inline evaluation for scheduled recovery without deterministic historical death nomination", async () => {
   const result = await runTurnPipeline({ adventure: fixture(), text: "We discuss history over dinner.", sendChatCompletion: async () => ({ content: 'They discuss Seth killing Voldemort on March 15, 2019.<memory_updates>{"updates":[]}</memory_updates>' }) });
-  expect(result.adventure.messages.at(-1)?.memoryRecovery).toBeUndefined();
+  expect(result.adventure.messages.at(-1)?.memoryRecovery?.status).toBe("pending");
+  expect(provider).not.toHaveBeenCalled();
   expect(result.adventure.activeState.memoryProposals).toHaveLength(0);
   expect(result.adventure.activeState.evaluationLog[0].actionsExecuted.join(" ")).toContain("memory_evaluation_empty");
 });
@@ -126,4 +128,62 @@ it("binds proposals to the final source when Brain reactions are printed", async
   const proposal = result.adventure.activeState.memoryProposals.find(proposal => proposal.storyCardReview)!;
   expect(proposal.storyCardReview?.sourceContent).toBe(result.adventure.messages.at(-1)?.content);
   expect(result.adventure.messages.at(-1)?.content).toContain("*[Hermione]");
+});
+
+it("queues valid Brain-only inline evaluation without calling the background provider", async () => {
+  const a = fixture();
+  a.brains = [makeBrain({ id: "Hermione", characterName: "Hermione", active: true })];
+  a.memoryAutoApprove.brainUpdate = true;
+  const updates = [{ kind: "thought", target: "Hermione", content: "I will review the framework first.", evidence: negotiation, reason: "Conditional plan" }];
+  const send = vi.fn(async () => ({ content: negotiation + '<memory_updates>' + JSON.stringify({ updates }) + '</memory_updates>' }));
+  const result = await runTurnPipeline({ adventure: a, text: "I listen to Hermione.", sendChatCompletion: send });
+  expect(Object.values(result.adventure.brains[0].thoughts)).toHaveLength(1);
+  expect(result.adventure.activeState.evaluationLog[0].errors).toEqual([]);
+  expect(pendingMemoryRecovery(result.adventure)).toHaveLength(1);
+  expect(send).toHaveBeenCalledTimes(1);
+  expect(provider).not.toHaveBeenCalled();
+});
+it("retains dedicated recovery even when the narrator supplies Lore", async () => {
+  const a = fixture();
+  a.memoryDetectionSettings.evaluator = "dedicated";
+  const result = await runTurnPipeline({ adventure: a, text: "I listen.", sendChatCompletion: async () => ({ content: negotiation + '<memory_updates>' + JSON.stringify({ updates: [update(negotiation)] }) + '</memory_updates>' }) });
+  expect(pendingMemoryRecovery(result.adventure)).toHaveLength(1);
+  expect(result.adventure.activeState.memoryProposals).toHaveLength(0);
+  expect(provider).not.toHaveBeenCalled();
+});
+it.each(["narrator", "dedicated"] as const)("never queues recovery with detection disabled (%s)", async evaluator => {
+  const a = fixture();
+  a.memoryDetectionSettings.enabled = false;
+  a.memoryDetectionSettings.evaluator = evaluator;
+  const result = await runTurnPipeline({ adventure: a, text: "I listen.", sendChatCompletion: async () => ({ content: negotiation + '<memory_updates>{"updates":[]}</memory_updates>' }) });
+  expect(pendingMemoryRecovery(result.adventure)).toHaveLength(0);
+  expect(provider).not.toHaveBeenCalled();
+});
+it("batches empty inline turns and cannot duplicate recovered proposals", async () => {
+  let a = fixture();
+  a.memoryDetectionSettings.evaluator = "narrator";
+  a.memoryDetectionSettings.everyNTurns = 5;
+  for (let turn = 1; turn <= 5; turn++) {
+    const result = await runTurnPipeline({ adventure: a, text: "I listen.", assistantMessageId: `empty-${turn}`, sendChatCompletion: async () => ({ content: negotiation + '<memory_updates>{"updates":[]}</memory_updates>' }) });
+    a = result.adventure;
+    if (turn < 5) expect(memoryRecoveryBatch(a)).toEqual([]);
+  }
+  expect(provider).not.toHaveBeenCalled();
+  const sources = memoryRecoveryBatch(a);
+  expect(sources).toHaveLength(5);
+  expect(new Set(pendingMemoryRecovery(a).map(source => source.id)).size).toBe(5);
+  a = adventureReducer(a, { type: "CLAIM_MEMORY_RECOVERY", turn: 5 });
+  expect(memoryRecoveryBatch(a)).toEqual([]);
+  provider.mockResolvedValueOnce({ raw: {}, content: JSON.stringify({ turns: sources.map((source, index) => ({ sourceTurnId: source.id, updates: index === 0 ? [update(negotiation)] : [] })) }) });
+  const recovered = await runCompactMemoryFallback(a, config, sources);
+  expect(recovered.valid).toBe(true);
+  const complete = { type: "COMPLETE_MEMORY_RECOVERY" as const, sources: recovered.processedSources!, dependencies: recovered.sourceSnapshots, actions: recovered.actions };
+  a = adventureReducer(a, complete);
+  expect(a.activeState.memoryProposals).toHaveLength(1);
+  expect(pendingMemoryRecovery(a)).toEqual([]);
+  expect(adventureReducer(a, complete)).toBe(a);
+  for (let turn = 0; turn < 10; turn++) a = adventureReducer(a, { type: "ADVANCE_MEMORY_RECOVERY_TURN" });
+  expect(memoryRecoveryBatch(a)).toEqual([]);
+  expect(a.activeState.memoryProposals).toHaveLength(1);
+  expect(provider).toHaveBeenCalledTimes(1);
 });
