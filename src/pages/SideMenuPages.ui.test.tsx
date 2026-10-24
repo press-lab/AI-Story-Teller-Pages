@@ -292,18 +292,24 @@ describe("side menu page smoke coverage", () => {
     expect(onAuditBrains).toHaveBeenCalledWith(20, false);
   });
 
-  it("filters Story Cards by active status and living mode", async () => {
+  it("combines Story Card type, search, active status and living mode filters", async () => {
     const user = userEvent.setup();
     const adventure: Adventure = {
       ...seedAdventure(),
       storyCards: [
-        makeStoryCard({ title: "Living Ally", content: "Changes over time.", active: true, memoryMode: "living" }),
-        makeStoryCard({ title: "Static Base", content: "Always true.", active: true, memoryMode: "static" }),
-        makeStoryCard({ title: "Dormant Romance", content: "Not currently active.", active: false, memoryMode: "living" }),
+        makeStoryCard({ title: "Living Ally", type: "lore", content: "Changes over time.", active: true, memoryMode: "living" }),
+        makeStoryCard({ title: "Static Base", type: "location", content: "Always true.", active: true, memoryMode: "static" }),
+        makeStoryCard({ title: "Dormant Romance", type: "lore", content: "Not currently active.", active: false, memoryMode: "living" }),
       ],
     };
 
     render(<StoryCardsPage adventure={adventure} dispatch={() => undefined} />);
+
+    const typeFilter = screen.getByRole("combobox", { name: "Filter by card type" });
+    expect(within(typeFilter).getAllByRole("option").map(option => option.textContent)).toEqual(["All card types", "Character", "Location", "Lore", "Custom"]);
+    await user.selectOptions(typeFilter, "lore");
+    expect(document.querySelectorAll(".story-card-editor-item")).toHaveLength(2);
+    expect(screen.getByText("2 shown")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Active" }));
     await user.click(screen.getByRole("button", { name: "Ongoing" }));
@@ -314,6 +320,15 @@ describe("side menu page smoke coverage", () => {
     expect(visibleCards[0]).not.toHaveTextContent("Static Base");
     expect(visibleCards[0]).not.toHaveTextContent("Dormant Romance");
     expect(screen.getByText("1 shown")).toBeInTheDocument();
+
+    await user.selectOptions(typeFilter, "character");
+    expect(screen.getByText("No story cards match the current search and filters.")).toBeInTheDocument();
+    await user.selectOptions(typeFilter, "all");
+    expect(document.querySelectorAll(".story-card-editor-item")).toHaveLength(1);
+    await user.type(screen.getByPlaceholderText("Search cards…"), "unmatched");
+    expect(document.querySelectorAll(".story-card-editor-item")).toHaveLength(0);
+    await user.clear(screen.getByPlaceholderText("Search cards…"));
+    expect(document.querySelectorAll(".story-card-editor-item")).toHaveLength(1);
   });
 
   it("filters Story Cards by pinned and protected flags", async () => {
