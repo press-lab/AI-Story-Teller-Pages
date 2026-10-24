@@ -20,6 +20,15 @@ describe("runAdventureGen", () => {
   beforeEach(() => {
     vi.mocked(sendOpenAICompatibleChatCompletion).mockReset();
   });
+  it("fills missing and blank generated card keys with reusable content phrases", async () => {
+    vi.mocked(sendOpenAICompatibleChatCompletion).mockResolvedValue({ raw: {}, content: JSON.stringify({ storyCards: [
+      { title: "Mira Vale", type: "character", content: "A scout." },
+      { title: "Ward research", type: "lore", keys: [], content: "Aperture gating supports ward design and runic arrays." },
+    ] }) });
+    const result = await runAdventureGen("Research", config);
+    expect(result.storyCards[0].keys).toContain("Mira Vale");
+    expect(result.storyCards[1].keys.map(key => key.toLowerCase())).toEqual(expect.arrayContaining(["ward research", "aperture gating", "ward design", "runic arrays"]));
+  });
 
   it("drops generated records with unsupported types or malformed fields", async () => {
     vi.mocked(sendOpenAICompatibleChatCompletion).mockResolvedValue({

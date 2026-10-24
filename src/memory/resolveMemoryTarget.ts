@@ -30,6 +30,7 @@ const TOKEN_STOPWORDS = new Set([
   "current", "during", "from", "has", "have", "into", "its", "new", "now", "official", "only", "that",
   "the", "their", "them", "this", "through", "turn", "under", "was", "were", "with", "without",
   "any", "he", "her", "hers", "him", "his", "it", "she", "they", "we", "you", "your",
+  "a", "an", "to", "of", "for", "i", "me", "my", "our", "us",
 ]);
 
 const GENERIC_TRIGGER_WORDS = new Set([
@@ -127,14 +128,9 @@ function childTitleFor(target: StoryCard, draft: MemoryTargetDraft, inferredMode
   return `${target.title}: Current Status`;
 }
 
-function triggerBelongsToOtherCard(adventure: Adventure, normalizedTrigger: string, targetId?: string): boolean {
-  return adventure.storyCards.some((card) => {
-    if (card.id === targetId) return false;
-    return [card.title, ...card.keys].some((key) => normalize(key) === normalizedTrigger);
-  });
-}
+type TriggerContext = { storyCards: Array<Pick<StoryCard, "id" | "title" | "type" | "keys">> };
 
-function triggerBelongsToCharacterCard(adventure: Adventure, normalizedTrigger: string, targetId?: string): boolean {
+function triggerBelongsToCharacterCard(adventure: TriggerContext, normalizedTrigger: string, targetId?: string): boolean {
   return adventure.storyCards.some((card) => {
     if (card.id === targetId || card.type !== "character") return false;
     return [card.title, ...card.keys].some((key) => normalize(key) === normalizedTrigger);
@@ -151,29 +147,73 @@ function isWeakTrigger(norm: string): boolean {
 }
 
 export function sanitizeStoryCardTriggers(
-  adventure: Adventure,
+  adventure: TriggerContext,
   title: string,
   triggers: string[] | undefined,
   targetId?: string,
   memoryMode?: StoryCardMemoryMode,
+  content = "",
 ): string[] {
-  const titleNorm = normalize(title);
   const seen = new Set<string>();
   const result: string[] = [];
   for (const raw of triggers ?? []) {
-    const clean = raw.trim();
+    const clean = raw.trim().replace(/^(?:the|an?)\s+/i, "");
     if (!clean) continue;
     const norm = normalize(clean);
-    if (!norm || norm === titleNorm) continue;
+    if (!norm) continue;
     if (seen.has(norm)) continue;
-    if (isWeakTrigger(norm)) continue;
-    if ((memoryMode === "living" || memoryMode === "historical") && triggerBelongsToCharacterCard(adventure, norm, targetId)) continue;
-    if (triggerBelongsToOtherCard(adventure, norm, targetId)) continue;
+    const shortName = norm === normalize(title) && norm.length >= 2 && /^\p{Lu}/u.test(clean)
+      && !TOKEN_STOPWORDS.has(norm) && !GENERIC_TRIGGER_WORDS.has(norm);
+    if (isWeakTrigger(norm) && !shortName) continue;
+    if (norm.split(/\s+/).length > 6) continue;
+    if ((memoryMode === "living" || memoryMode === "historical") && triggerBelongsToCharacterCard(adventure, norm, targetId)
+      && !(norm.includes(" ") && normalize(content).includes(norm))) continue;
     seen.add(norm);
     result.push(clean);
-    if (result.length >= 5) break;
+    if (result.length >= 6) break;
   }
   return result;
+}
+
+const PHRASE_BREAKS = new Set(("a an to of for on at by in as or but than then when where while who which what and is are was were be been being "
+  + "i me my our us it its this that these those his her their your we you he she they "
+  + "can could may might must should would will do does did has have had not no never now already later "
+  + "says said tells told asks asked agrees agreed accepts accepted confirms confirmed promises promised reveals revealed discovers discovered "
+  + "learns learned knows knew wants wanted needs needed becomes became remains remained gives gave gets got makes made uses used "
+  + "develops developed creates created establishes established tests tested proves proved finds found recovers recovered studies studied signs signed supports supported recognizes recognized offers offered "
+  + "before after during until since from with without through into over under between about also only still "
+  + "first new current ongoing completed historical history status event events development developments candidate interpretation unconfirmed "
+  + "one two three four five six seven eight nine ten twenty thirty percent").split(/\s+/));
+
+/** No extra model call: recover short, reusable topic phrases only from the card's own text. */
+export function generatedStoryCardTriggers(
+  adventure: TriggerContext, title: string, content: string, triggers?: string[], targetId?: string,
+  memoryMode?: StoryCardMemoryMode, type?: StoryCard["type"],
+): string[] {
+  const supplied = sanitizeStoryCardTriggers(adventure, title, triggers, targetId, memoryMode, content);
+  if (type === "character") return sanitizeStoryCardTriggers(adventure, title, [title, ...supplied], targetId, "static", content);
+  if (supplied.length) return supplied;
+  let text = `${title}\n${content.split(/VOICE CONTRACT/i)[0]}`.replace(/['’]s\b/gu, "");
+  // Names alone recall identity cards. Keep the topic of Lore rather than a participant's name.
+  for (const card of adventure.storyCards.filter(card => card.type === "character" && card.id !== targetId)) {
+    for (const name of [card.title, ...card.keys.filter(key => /^\p{Lu}/u.test(key))]) {
+      const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      if (escaped) text = text.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?:['’]s)?(?![\\p{L}\\p{N}])`, "giu"), "\n");
+    }
+  }
+  const chunks: string[][] = [];
+  let chunk: string[] = [];
+  for (const token of text.match(/[\p{L}\p{N}]+|[^\p{L}\p{N}\t ]+/gu) ?? []) {
+    if (!/\p{L}/u.test(token) || PHRASE_BREAKS.has(token.toLocaleLowerCase())) {
+      if (chunk.length) chunks.push(chunk);
+      chunk = [];
+    } else chunk.push(token);
+  }
+  if (chunk.length) chunks.push(chunk);
+  // Bigrams match ordinary future mentions more readily than an exact scene sentence.
+  const phrases = chunks.flatMap(words => words.slice(0, -1).map((word, index) => `${word} ${words[index + 1]}`));
+  const candidates = [...phrases, ...chunks.filter(words => words.length === 1).flat()];
+  return sanitizeStoryCardTriggers(adventure, title, candidates, targetId, memoryMode, content);
 }
 
 export function resolveMemoryTarget(adventure: Adventure, draft: MemoryTargetDraft): MemoryTargetResolution {
@@ -198,7 +238,7 @@ export function resolveMemoryTarget(adventure: Adventure, draft: MemoryTargetDra
   const memoryMode = target ? (targetMode ?? inferredMode) : inferredMode;
   const appendContent = target ? (draft.appendContent ?? true) : undefined;
   const title = target?.title ?? (blockedTarget ? childTitleFor(blockedTarget, draft, inferredMode) : draft.title);
-  const suggestedTriggers = sanitizeStoryCardTriggers(adventure, title, draft.suggestedTriggers, target?.id, memoryMode);
+  const suggestedTriggers = generatedStoryCardTriggers(adventure, title, draft.content, draft.suggestedTriggers, target?.id, memoryMode);
   const rationale = [
     draft.rationale,
     target && !draft.targetId ? `Routed to existing ${memoryMode} Story Card "${target.title}".` : undefined,

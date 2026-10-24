@@ -5,6 +5,7 @@ import { runLegacyCandidateFixture as runTurnPipeline } from "../test/legacyMemo
 import { makeMemoryProposal } from "../test/goldenAdventure";
 import { scanStoryCardExchange, makeStoryCardSuggestion, STORY_CARD_MEMORY_CHECK } from "./storyCardSuggestions";
 import type { Adventure } from "../types/adventure";
+import { buildContext } from "../contextBuilder/contextBuilder";
 
 function seed() {
   const state = createDefaultAdventure();
@@ -24,6 +25,30 @@ const lore = (state: Adventure) => cards(state).filter(proposal => proposal.stor
 const finding = (content: string, evidence = content, extra = {}) => ({ kind: "lore", target: "Seth and Draconia: first kiss", content, evidence, reason: "Meaningful development", triggers: ["first kiss"], ...extra });
 
 describe("merged Story Card suggestions", () => {
+  it("generates topic triggers without model keys and retrieves the approved card from ordinary future wording", () => {
+    let state = seed();
+    const content = "Draconia developed aperture gating and ward design for passive runic arrays.";
+    state = reduce(state, { type: "ADD_MESSAGE", id: "research-source", role: "assistant", content });
+    const proposal = makeStoryCardSuggestion(state, "research-source", content, { title: "Aperture research", type: "lore", content,
+      evidence: content, reason: "A durable research discovery", triggers: [] });
+    expect(proposal.suggestedTriggers.map(key => key.toLowerCase())).toContain("ward design");
+    state = reduce(state, { type: "ADD_MEMORY_PROPOSAL", proposal });
+    state = reduce(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id });
+    const card = state.storyCards.find(card => card.title === proposal.title)!;
+    expect(card.keys.map(key => key.toLowerCase())).toContain("runic arrays");
+    const context = buildContext({ ...state, messages: [] }, { currentInput: "Let's revisit the ward design." });
+    expect(context.sections.find(section => section.id === "storyCards")?.items.map(item => item.id)).toContain(card.id);
+  });
+  it("fills triggerless older pending suggestions during approval without changing existing authored keys", () => {
+    let state = seed();
+    const proposal = makeMemoryProposal({ id: "old-triggerless", proposedType: "storyCard", storyCardType: "lore", title: "Ward research",
+      content: "Aperture gating supports ward design and runic arrays.", suggestedTriggers: [], memoryMode: "historical" });
+    const authoredKeys = state.storyCards.map(card => card.keys);
+    state = reduce(state, { type: "ADD_MEMORY_PROPOSAL", proposal });
+    state = reduce(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id });
+    expect(state.storyCards.find(card => card.title === "Ward research")?.keys.map(key => key.toLowerCase())).toContain("ward design");
+    expect(state.storyCards.slice(0, authoredKeys.length).map(card => card.keys)).toEqual(authoredKeys);
+  });
   it("routes a model first-kiss finding into one pending dated Lore suggestion", async () => {
     const text = "Draconia grabs Seth's shirt and kisses him for the first time.";
     const state = await play(text, [finding("Seth and Draconia shared their first kiss.", text)]);

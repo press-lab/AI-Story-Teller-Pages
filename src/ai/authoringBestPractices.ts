@@ -35,7 +35,7 @@ export const TRIGGER_BEST_PRACTICES = `Trigger best practices:
 - Triggers decide whether a card enters context, so false matches are harmful.
 - Character aliases belong on the character identity card.
 - Event, relationship, location, and subplot cards should not use broad character names as triggers if those names already belong to character cards.
-- Prefer specific phrases, nicknames, object names, faction names, place names, case names, or consequences that uniquely identify the subject.
+- Supply 3-6 short, reusable topic phrases covering the card content: its subjects, activities and concepts. Prefer ordinary phrases such as "runic research", "ward design", "government reform", or "British exiles" over exact scene wording or an elaborate full title. Never return empty triggers. Related cards can share relevant topic phrases.
 - Avoid generic triggers such as "the team", "the agency", "current", "relationship", "status", "mission", or "event".`;
 
 export const PLOT_MEMORY_THRESHOLD = `Plot and relationship memory threshold:

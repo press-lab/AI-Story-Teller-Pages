@@ -123,6 +123,16 @@ call, automatic historical scan or new background subscription is introduced.
 
 ## Main files
 
+Generated cards must have reusable topic triggers covering their content, rather
+than depending on an exact scene sentence or elaborate title. Generation prompts
+request 3–6 short phrases (for example, "runic research", "ward design", or
+"government reform"). Useful title phrases and shared relevant topics are kept;
+unrelated character-name cues and empty catch-all words remain filtered.
+`generatedStoryCardTriggers` derives grounded phrases from the title/body when
+the model omits usable keys. This runs for discovery, proposal routing, approval
+(including older triggerless pending suggestions), and generated scenario cards.
+It adds no provider calls and does not rewrite existing adventures on load.
+
 Schema: `src/types/adventure.ts`. Migration and Brain import fix:
 `src/state/defaults.ts`, `src/importers/aidCardParser.ts`. Writes/history:
 `src/state/adventureReducer.ts`, `src/memory/applyAIMemoryUpdate.ts`.

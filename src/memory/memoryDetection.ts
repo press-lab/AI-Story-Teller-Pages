@@ -121,7 +121,7 @@ export async function detectStoryCardProposals(adventure: Adventure, providerCon
         { role: "system", content: `${STORY_CARD_MEMORY_CHECK}
 ${options.eventsOnly ? "Evaluate completed history as Lore only." : "Evaluate the supplied completed exchanges."}
 ${options.sourceId ? `Only propose developments established in source ${options.sourceId}. Earlier exchanges supply attribution and continuity, not events happening again now. Cite that establishing source and all necessary earlier evidence. Include evidenceQuotes:[{messageId,quote}] with exact unmodified quotes from the supplied original messages. Also provide memoryMode: historical|living|static and eventStatus: completed|ongoing|unresolved. A confirmed agreement is completed history even when the agreed future work remains unfinished. A discovery can have separate historical Lore and character-private Brain reactions; do not put private thoughts into this public record. Propose at most three findings.` : ""}
-Return ONLY a JSON array, [] when nothing qualifies. Each item: {"title":"subject or existing title","targetId":"existing ID for an update, otherwise omit","content":"NEW fact only; max 70 words","storyCardType":"lore|character|location|custom","suggestedTriggers":["1-3 specific phrases"],"rationale":"why durable","evidenceMessageIds":["supplied source IDs"]}. Routine hospitality and scene filler do not qualify. Do not repeat dismissed or already captured facts. This legacy catch-up response is adapted into the shared Story Card pipeline.` },
+Return ONLY a JSON array, [] when nothing qualifies. Each item: {"title":"subject or existing title","targetId":"existing ID for an update, otherwise omit","content":"NEW fact only; max 70 words","storyCardType":"lore|character|location|custom","suggestedTriggers":["3-6 short reusable topic phrases covering the card content; use ordinary future wording, not exact scene sentences or just the full title; never empty"],"rationale":"why durable","evidenceMessageIds":["supplied source IDs"]}. Routine hospitality and scene filler do not qualify. Do not repeat dismissed or already captured facts. This legacy catch-up response is adapted into the shared Story Card pipeline.` },
         ...memoryCanonMessages(adventure, excerpt, "Discover missing Story Cards", true),
         { role: "user", content: "Relevant existing cards: " + JSON.stringify(cardInventory) },
         { role: "user", content: "Previously considered Story Card proposals (including dismissed; omit duplicates): " + JSON.stringify(proposalInventory) },
@@ -181,7 +181,8 @@ Return ONLY a JSON array, [] when nothing qualifies. Each item: {"title":"subjec
         reason: typeof item.rationale === "string" ? item.rationale : "Grounded catch-up finding; review before applying.",
         type: isEvent ? "lore" : primaryStoryCardType(item.storyCardType),
         targetId: typeof item.targetId === "string" ? item.targetId : undefined,
-        triggers: Array.isArray(item.suggestedTriggers) ? item.suggestedTriggers.filter((trigger: unknown): trigger is string => typeof trigger === "string") : eventMemory?.recallCues,
+        triggers: Array.isArray(item.suggestedTriggers ?? item.triggers ?? item.keys)
+          ? (item.suggestedTriggers ?? item.triggers ?? item.keys).filter((trigger: unknown): trigger is string => typeof trigger === "string") : eventMemory?.recallCues,
         participants: eventMemory?.participants,
       });
       if (item.targetId && !adventure.storyCards.some(card => card.id === item.targetId)) continue;

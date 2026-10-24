@@ -2,6 +2,7 @@ import type { ComponentType, ProviderConfig, StoryCardMemoryMode, StoryCardType 
 import { isNativeDeepSeekProvider, sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
 import { ADVENTURE_GENERATION_BEST_PRACTICES } from "./authoringBestPractices";
 import { jsonrepair } from "jsonrepair";
+import { generatedStoryCardTriggers } from "../memory/resolveMemoryTarget";
 
 export interface GenComponent {
   title: string;
@@ -208,7 +209,7 @@ Story card guidelines:
 - Create cards for recurring named characters, significant recurring locations, factions, and key lore items introduced by the premise or opening scene.
 - Do not create cards for current scene position, temporary mission status, one-off scenery, or throwaway objects. Put immediate danger in activePressure and let the recent messages carry the next concrete beat.
 - memoryMode: use "static" for always-true facts, "living" for evolving current relationships/status/searches/arrangements, and "historical" for completed events or past-tense facts.
-- keys array: use the specific trigger phrases that should summon THIS card. Character aliases belong on character identity cards. Do not put broad character names on event, relationship, or subplot cards when those names already have character cards.
+- keys array: supply 3-6 short reusable topic phrases covering this card’s subjects and concepts, using ordinary future wording rather than exact scene sentences. Never leave keys empty. Character aliases belong on character identity cards. Do not put broad character names on event, relationship, or subplot cards when those names already have character cards.
 - Aim for 4–12 cards depending on the complexity of the premise. Quality over quantity.
 - Each card's content should be self-contained reference material the AI will use mid-story.
 - Location, faction, and lore cards: 3-6 bullet facts. Present tense unless memoryMode is "historical". What the AI needs to know to write it correctly.
@@ -297,12 +298,15 @@ export async function runAdventureGen(
   });
 
   const raw = parseJsonFenced<Partial<AdventureGenResult>>(response.content);
+  const cards = Array.isArray(raw.storyCards) ? raw.storyCards.filter(isValidCard) : [];
+  const triggerContext = { storyCards: cards.map((card, index) => ({ ...card, id: `generated:${index}`, keys: card.keys ?? [] })) };
 
   return {
     title: typeof raw.title === "string" ? raw.title : "New Adventure",
     openingScene: typeof raw.openingScene === "string" ? raw.openingScene : "",
     components: Array.isArray(raw.components) ? raw.components.filter(isValidComponent) : [],
-    storyCards: Array.isArray(raw.storyCards) ? raw.storyCards.filter(isValidCard) : [],
+    storyCards: cards.map((card, index) => ({ ...card, keys: generatedStoryCardTriggers(triggerContext, card.title, card.content,
+      card.keys, `generated:${index}`, card.memoryMode, card.type) })),
   };
 }
 

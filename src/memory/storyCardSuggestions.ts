@@ -4,6 +4,7 @@ import { isExceptionalIdentityChange, isHistoricalLore } from "./storyCardArchit
 import { readStoryTime, transitionKey } from "./storyTime";
 import { memoryTargetMatches } from "./memoryCycleState";
 import { storyCardEntityCandidates, characterParticipants } from "./storyCardEntities";
+import { generatedStoryCardTriggers } from "./resolveMemoryTarget";
 
 export const STORY_CARD_MEMORY_CHECK = `STORY CARD MEMORY CHECK
 Did anything NEW and MEANINGFUL happen in this exchange? Remember first meetings/kisses, proposals, relationships, commitments, betrayals, discoveries, major decisions, deaths, permanent changes, or significant new people/places. Ignore routine activity, movement, jokes, greetings and repeats that add no durable information. Dialogue can establish a new revelation, conditional offer, change of plan, or distinctive first impression worth recalling later. A first meeting alone does not establish friendship or trust; stated interest is not a research contract; discussing a prank is not a completed prank or partnership. Judge significance from context, not keywords.
@@ -11,7 +12,7 @@ For each: TYPE (Lore, Character, Location, Custom; prefer Lore); CREATE or UPDAT
 Character/Location hold durable identity or exceptional permanent changes. Plans, threats, dreams and almost-events are not completed actions. Preserve private knowledge and past history. Never invent facts, rewrite whole cards, duplicate memories or suggest Plot Component updates. Return suggestions or an empty updates array.
 END STORY CARD MEMORY CHECK`;
 
-export const STORY_CARD_OUTPUT_SCHEMA = `Story Card fields: kind=lore (events/changes), newCard (missing identity/reference), card (permanent identity); cardType=lore|character|location|custom; operation=CREATE|UPDATE; target=title; targetId=existing ID for UPDATE; content=new fact, max70 words; evidence=exact quote; reason; triggers=1-3 narrow phrases; optional participants. Shared maximum: four updates.`;
+export const STORY_CARD_OUTPUT_SCHEMA = `Story Card fields: kind=lore (events/changes), newCard (missing identity/reference), card (permanent identity); cardType=lore|character|location|custom; operation=CREATE|UPDATE; target=title; targetId=existing ID for UPDATE; content=new fact, max70 words; evidence=exact quote; reason; triggers=3-6 short reusable topic phrases covering the card's subjects, activities and concepts (for example "runic research", "ward design", "government reform"). Use ordinary future wording, not exact scene sentences or only the full title; never leave triggers empty. Avoid unrelated catch-all words and bare participant names on Lore. Optional participants. Shared maximum: four updates.`;
 
 export const normalizeMemoryText = (text: string) => text.normalize("NFKC").toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 const stop = new Set("the a an and but then now later today tomorrow yesterday i you he she they we it his her their our my your yes no january february march april may june july august september october november december monday tuesday wednesday thursday friday saturday sunday ministry current story date flashback candidate first possible political ordinary dinner breakfast lunch evening morning night meanwhile suddenly after before nearby fuck silver".split(" "));
@@ -124,11 +125,12 @@ export function makeStoryCardSuggestion(adventure: Adventure, sourceId: string, 
   const content = uncertain && !/^Candidate|^Plan \(/.test(finding.content) ? `Candidate interpretation (unconfirmed): ${finding.content}` : finding.content;
   const closedTitle = !choices.length && adventure.storyCards.some(card => isHistoricalLore(card) && normalizeMemoryText(card.title) === normalizeMemoryText(finding.title));
   const suggestedTitle = closedTitle ? `${finding.title}: ${finding.content.slice(0, 60)}` : finding.title;
+  const memoryMode = target?.memoryMode ?? (uncertain || continuing ? "living" : type === "lore" ? "historical" : "static");
   return {
     id: createId("proposal"), proposedType: "storyCard", storyCardType: type, title: target?.title ?? suggestedTitle,
     content, sourceTurnId: sourceId, sourceText: finding.evidence, rationale: finding.reason,
-    suggestedTriggers: finding.triggers ?? [], requiresReview: review || closedTitle, status: "pending", confidence: candidateOnly ? 0.45 : 0.8,
-    targetId: target?.id, appendContent: target ? true : undefined, memoryMode: target?.memoryMode ?? (uncertain || continuing ? "living" : type === "lore" ? "historical" : "static"),
+    suggestedTriggers: generatedStoryCardTriggers(adventure, finding.title, finding.content, finding.triggers, target?.id, memoryMode, type), requiresReview: review || closedTitle, status: "pending", confidence: candidateOnly ? 0.45 : 0.8,
+    targetId: target?.id, appendContent: target ? true : undefined, memoryMode,
     lore: type === "lore" ? { status: uncertain ? "unresolved" : target?.lore?.status ?? (continuing ? "ongoing" : "completed"), sourceMessageIds: [sourceId, ...(player ? [player.id] : [])], ...(time ? { occurredAt: time, lastChangedAt: time } : {}) } : undefined,
     storyCardReview: { origin: finding.origin ?? "model", candidateOnly, eventKind, participants, operation: target ? "update" : "create",
       targetCandidates: choices, suggestedTitle, sourceMessageId: sourceId, sourceContent: story,

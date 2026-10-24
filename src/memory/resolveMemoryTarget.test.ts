@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createDefaultAdventure, makeStoryCard } from "../state/defaults";
-import { resolveMemoryTarget, sanitizeStoryCardTriggers } from "./resolveMemoryTarget";
+import { generatedStoryCardTriggers, resolveMemoryTarget, sanitizeStoryCardTriggers } from "./resolveMemoryTarget";
 
 describe("resolveMemoryTarget", () => {
   it("creates a living child card instead of appending current state to a static profile", () => {
@@ -134,7 +134,7 @@ describe("resolveMemoryTarget", () => {
 });
 
 describe("sanitizeStoryCardTriggers", () => {
-  it("drops stopwords, pronouns, duplicate title keys, and character-name bleed for living cards", () => {
+  it("keeps useful title phrases while dropping stopwords, pronouns and unrelated character-name cues", () => {
     const adventure = {
       ...createDefaultAdventure("Triggers"),
       storyCards: [
@@ -156,6 +156,26 @@ describe("sanitizeStoryCardTriggers", () => {
         undefined,
         "living",
       ),
-    ).toEqual(["Council bombing", "closed session"]);
+    ).toEqual(["Council Bombing", "closed session"]);
+  });
+});
+
+describe("generated Story Card topic triggers", () => {
+  const adventure = { ...createDefaultAdventure(), storyCards: [makeStoryCard({ id: "draconia", title: "Draconia", type: "character", keys: ["Draconia"], content: "A researcher." })] };
+  const content = "Draconia developed aperture gating and ward design for passive runic arrays.";
+  it.each([undefined, [], ["Draconia", "the", "current status"]])("derives reusable subject phrases when supplied keys are unusable: %s", triggers => {
+    const keys = generatedStoryCardTriggers(adventure, "Aperture research", content, triggers, undefined, "historical", "lore").map(key => key.toLowerCase());
+    expect(keys).toEqual(expect.arrayContaining(["aperture research", "aperture gating", "ward design", "runic arrays"]));
+    expect(keys).not.toContain("draconia");
+    expect(keys.every(key => key.split(/\s+/).length <= 6)).toBe(true);
+  });
+  it("allows related cards to share a relevant topic and keeps a title that is itself a usable cue", () => {
+    const state = { ...adventure, storyCards: [...adventure.storyCards, makeStoryCard({ title: "Runic arrays", content: "A general reference.", type: "lore", keys: ["ward design"] })] };
+    expect(generatedStoryCardTriggers(state, "Runic arrays", content, ["Runic arrays", "ward design"], undefined, "historical", "lore")).toEqual(["Runic arrays", "ward design"]);
+  });
+  it("retains character identity aliases and supplies the name when generation omitted keys", () => {
+    expect(generatedStoryCardTriggers(adventure, "Mira Vale", "A scout.", [], undefined, "static", "character")).toEqual(["Mira Vale"]);
+    expect(generatedStoryCardTriggers(adventure, "Mira Vale", "A scout.", ["Mira", "Mira"], undefined, "static", "character")).toEqual(["Mira Vale", "Mira"]);
+    expect(generatedStoryCardTriggers(adventure, "Vi", "A Zaunite fighter.", [], undefined, "static", "character")).toEqual(["Vi"]);
   });
 });

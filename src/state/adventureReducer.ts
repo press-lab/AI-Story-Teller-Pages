@@ -31,7 +31,7 @@ import type {
 } from "../types/adventure";
 import { cardMatchesName, defaultArcState, defaultNextTurnNote, makeComponent, makeStoryCard } from "./defaults";
 import { createId, nowIso } from "../utils/id";
-import { isLivingStoryCard, resolveMemoryTarget, sanitizeStoryCardTriggers } from "../memory/resolveMemoryTarget";
+import { generatedStoryCardTriggers, isLivingStoryCard, resolveMemoryTarget, sanitizeStoryCardTriggers } from "../memory/resolveMemoryTarget";
 import {
   appendSourceTurnIds,
   applyGuardedStoryCardPolicy,
@@ -878,6 +878,8 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal)
     const existing = state.storyCards.find(
       (card) => proposal.targetId ? card.id === proposal.targetId : !proposal.storyCardReview && normalizeProposalTitle(card.title) === normalizeProposalTitle(proposal.title),
     );
+    proposal = { ...proposal, suggestedTriggers: generatedStoryCardTriggers(state, cardTitle, safeContent, proposal.suggestedTriggers,
+      existing?.id, proposal.memoryMode ?? existing?.memoryMode, proposal.storyCardType ? primaryStoryCardType(proposal.storyCardType) : existing?.type) };
     if (proposal.eventMemory && existing) return {};
     if (existing && isHistoricalLore(existing)) return {};
     const changeTime = proposal.lore?.lastChangedAt;
@@ -910,7 +912,7 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal)
             archivedFacts: merged.archivedFacts,
             keys: Array.from(new Set([
               ...preparedExisting.keys,
-              ...sanitizeStoryCardTriggers(state, preparedExisting.title, proposal.suggestedTriggers, preparedExisting.id, "living"),
+              ...sanitizeStoryCardTriggers(state, preparedExisting.title, proposal.suggestedTriggers, preparedExisting.id, "living", safeContent),
             ])),
             memoryMode: "living",
             sourceTurnIds: appendSourceTurnIds(preparedExisting.sourceTurnIds, proposal.sourceTurnId),
@@ -930,7 +932,7 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal)
             content: appendCardContent(existing.content, datedContent),
             keys: Array.from(new Set([
               ...existing.keys,
-              ...sanitizeStoryCardTriggers(state, existing.title, proposal.suggestedTriggers, existing.id, existing.memoryMode ?? proposal.memoryMode),
+              ...sanitizeStoryCardTriggers(state, existing.title, proposal.suggestedTriggers, existing.id, existing.memoryMode ?? proposal.memoryMode, safeContent),
             ])),
             memoryMode: existing.memoryMode ?? proposal.memoryMode,
             sourceTurnIds: appendSourceTurnIds(existing.sourceTurnIds, proposal.sourceTurnId),
@@ -952,7 +954,7 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal)
           // break alias-matching and let the card be duplicated again later).
           keys: Array.from(new Set([
             ...existing.keys,
-            ...sanitizeStoryCardTriggers(state, existing.title, proposal.suggestedTriggers, existing.id, proposal.memoryMode ?? existing.memoryMode),
+            ...sanitizeStoryCardTriggers(state, existing.title, proposal.suggestedTriggers, existing.id, proposal.memoryMode ?? existing.memoryMode, safeContent),
           ])),
           memoryMode: proposal.memoryMode ?? existing.memoryMode,
           type: proposal.storyCardType ? primaryStoryCardType(proposal.storyCardType) : existing.type,
@@ -970,7 +972,7 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal)
         guardStoryCard(makeStoryCard({
           title: cardTitle,
           content: safeContent,
-          keys: sanitizeStoryCardTriggers(state, cardTitle, proposal.suggestedTriggers, undefined, proposal.memoryMode ?? "static"),
+          keys: sanitizeStoryCardTriggers(state, cardTitle, proposal.suggestedTriggers, undefined, proposal.memoryMode ?? "static", safeContent),
           memoryMode: proposal.memoryMode ?? "static",
           type: proposal.storyCardType ?? "lore",
           eventMemory: proposal.eventMemory,
