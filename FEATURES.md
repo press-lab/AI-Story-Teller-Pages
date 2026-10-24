@@ -163,6 +163,11 @@ This produces consistent character voice across all turns. Trait lists ("is sarc
 
 ## 5. Brain System
 
+Character rows have up/down arrows for arranging the list, including while
+searching. The per-adventure display order is saved in `activeState.brainOrder`
+and survives export/import. It is independent of context priority; older saves
+keep their existing priority-based display until the user reorders a Brain.
+
 **Files:** `pages/BrainsPage.tsx`, `triggers/semanticEngine.ts`, `contextBuilder/contextBuilder.ts`
 
 Brains track named character inner state as a keyed thought record. Primary update path is now **inline capture** (model emits `<thought>` tags during story generation — zero extra API calls).

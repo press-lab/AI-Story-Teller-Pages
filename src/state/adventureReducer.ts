@@ -41,6 +41,7 @@ import {
   restoreGuardedFactsToLiveContent,
 } from "../memory/storyCardPolicy";
 import { dedupeBrainThoughts, normalizeThoughtForDedupe } from "../memory/thoughtDedupe";
+import { orderedBrains } from "./brainOrder";
 
 function touch<T extends { updatedAt: string }>(entry: T): T {
   return { ...entry, updatedAt: nowIso() };
@@ -1618,6 +1619,14 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
       return touchAdventure(state, { storyCards: moveByPriority(state.storyCards, action.storyCardId, action.direction) });
     case "UPSERT_BRAIN":
       return touchAdventure(state, { brains: upsertById(state.brains, touch(action.brain)) });
+    case "REORDER_BRAIN": {
+      const ids = orderedBrains(state).map(brain => brain.id);
+      const index = ids.indexOf(action.brainId);
+      const neighbor = action.neighborId ? ids.indexOf(action.neighborId) : index + (action.direction === "up" ? -1 : 1);
+      if (index < 0 || neighbor < 0 || neighbor >= ids.length || (action.direction === "up" ? neighbor >= index : neighbor <= index)) return state;
+      [ids[index], ids[neighbor]] = [ids[neighbor], ids[index]];
+      return touchAdventure(state, { activeState: { ...state.activeState, brainOrder: ids } });
+    }
     case "DELETE_BRAIN":
       return touchAdventure(state, { brains: deleteById(state.brains, action.brainId) });
     case "ACTIVATE_BRAIN":

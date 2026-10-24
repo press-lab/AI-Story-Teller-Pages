@@ -698,6 +698,8 @@ export interface ApiCallTotals {
 }
 
 export interface ActiveState {
+  /** Character list display order; does not change context priorities or Brain content. */
+  brainOrder?: string[];
   turn: number;
   forceIncludeNextTurn: ForceIncludeEntry[];
   triggerLog: TriggerLogEntry[];
@@ -951,6 +953,7 @@ export type AdventureAction =
   | { type: "APPLY_ARC_CONTINUATION"; componentId: string; option: ArcContinuationOption }
   | { type: "REORDER_STORY_CARD"; storyCardId: string; direction: "up" | "down" }
   | { type: "UPSERT_BRAIN"; brain: BrainEntry }
+  | { type: "REORDER_BRAIN"; brainId: string; direction: "up" | "down"; neighborId?: string }
   | { type: "DELETE_BRAIN"; brainId: string }
   | { type: "ACTIVATE_BRAIN"; brainId: string }
   | { type: "DEACTIVATE_BRAIN"; brainId: string }

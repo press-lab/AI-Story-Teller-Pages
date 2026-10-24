@@ -6,6 +6,7 @@ import { approximateTokenCount } from "../tokenizer/approximateTokenCount";
 import type { AdventurePageProps } from "./pageTypes";
 import { CheckboxField, Field, Highlight, NumberInput, TokenCountBadge, UpdatedAtBadge, commaList, fromCommaList } from "./shared";
 import { useEffect, useState } from "react";
+import { orderedBrains } from "../state/brainOrder";
 
 const inclusionPolicies: ContextInclusionPolicy[] = ["always", "triggered", "manual", "systemSuggested"];
 
@@ -247,8 +248,7 @@ export function BrainsPage({ adventure, dispatch, loading, onUpdateBrainNow, onA
   const [brainAuditIncludeAI, setBrainAuditIncludeAI] = useState(false);
   const [brainAudit, setBrainAudit] = useState<BrainAuditState | null>(null);
   const searchLower = search.toLowerCase().trim();
-  const visibleBrains = [...adventure.brains]
-    .sort((a, b) => b.priority - a.priority)
+  const visibleBrains = orderedBrains(adventure)
     .filter((brain) => !searchLower
       || brain.characterName.toLowerCase().includes(searchLower)
       || brain.triggers.some((trigger) => trigger.toLowerCase().includes(searchLower))
@@ -327,6 +327,7 @@ export function BrainsPage({ adventure, dispatch, loading, onUpdateBrainNow, onA
           {searchLower && <span>{visibleBrains.length} shown</span>}
         </div>
       </div>
+      <p className="muted">Use the arrows to arrange characters. List order is saved separately from context priority.</p>
       <p className="muted editor-legacy-help" style={{ margin: 0 }}>
         Character Brains are private internal monologue — thoughts only. The AI records one new thought per update.
         Old thoughts are archived rather than deleted. If a thought reveals a stable character truth, the brain can propose
@@ -419,7 +420,7 @@ export function BrainsPage({ adventure, dispatch, loading, onUpdateBrainNow, onA
       )}
 
       <div className="list split-editor-list">
-        {visibleBrains.map((brain) => (
+        {visibleBrains.map((brain, index) => (
           <details
             key={brain.id}
             className="card story-card-item split-editor-item brain-item"
@@ -432,6 +433,20 @@ export function BrainsPage({ adventure, dispatch, loading, onUpdateBrainNow, onA
               }}
             >
               <BrainSummary brain={brain} query={searchLower} />
+              <span className="row" role="group" aria-label={`Reorder ${brain.characterName || "Unnamed"}`}>
+                <button type="button" aria-label={`Move ${brain.characterName || "Unnamed"} up`} title="Move up"
+                  disabled={loading || index === 0}
+                  onClick={event => {
+                    event.preventDefault(); event.stopPropagation();
+                    dispatch({ type: "REORDER_BRAIN", brainId: brain.id, direction: "up", neighborId: visibleBrains[index - 1]?.id });
+                  }}>↑</button>
+                <button type="button" aria-label={`Move ${brain.characterName || "Unnamed"} down`} title="Move down"
+                  disabled={loading || index === visibleBrains.length - 1}
+                  onClick={event => {
+                    event.preventDefault(); event.stopPropagation();
+                    dispatch({ type: "REORDER_BRAIN", brainId: brain.id, direction: "down", neighborId: visibleBrains[index + 1]?.id });
+                  }}>↓</button>
+              </span>
             </summary>
             <div className="editor-card brain-inspector">
             <div className="panel-heading brain-inspector-heading">
