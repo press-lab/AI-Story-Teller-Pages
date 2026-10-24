@@ -48,6 +48,7 @@ describe("one-pass memory quality boundary", () => {
     expect(result.adventure.storyCards[0].content).not.toContain("Silver");
     expect(result.adventure.activeState.memoryProposals[0]).toMatchObject({ storyCardType: "lore", targetId: undefined, status: "pending" });
     expect(result.adventure.activeState.memoryProposals[0]).toMatchObject({ sourceTurnId: "new-story", sourceText: update.evidence });
+    expect(result.adventure.activeState.memoryDiagnostics).toEqual(expect.arrayContaining([expect.objectContaining({ sourceId: "new-story", outcome: "automatically_approved" })]));
     expect(Object.values(result.adventure.brains[0].thoughts)).toEqual(expect.arrayContaining(["I distrust the duke.", expect.stringContaining("stop fearing")]));
     expect(result.adventure.components.find(c => c.id === "pressure")?.content).toBe("The duke demands tribute.");
     expect(result.adventure.components.find(c => c.id === "essentials")?.content).toBe(adventure.components[0].content);
@@ -88,7 +89,8 @@ describe("one-pass memory quality boundary", () => {
     const adventure = fixture();
     const context = buildContext(adventure, { currentInput: "Mira listens." });
     const actions = onePassMemoryActions(adventure, context, [u], story, "story-id");
-    expect(actions.map(a => a.type)).toEqual(["LOG_EVALUATION_RESULT"]);
+    expect(actions.map(a => a.type)).toEqual(["RECORD_MEMORY_DIAGNOSTIC", "LOG_EVALUATION_RESULT"]);
+    expect(actions[0]).toMatchObject({ entry: { outcome: "validation_rejected" } });
   });
 
   it("keeps an omitted identity unchanged and proposes separate Lore for review", () => {

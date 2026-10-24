@@ -520,6 +520,7 @@ export function normalizeAdventure(adventure: Adventure): Adventure {
     activeState: {
       ...baseline.activeState,
       ...adventure.activeState,
+      memoryDiagnostics: (adventure.activeState?.memoryDiagnostics ?? []).slice(-600),
       evaluationLog: adventure.activeState?.evaluationLog ?? [],
       memoryProposals: (adventure.activeState?.memoryProposals ?? []).map(proposal => proposal.proposedType === "storyCard" && proposal.storyCardType
         ? { ...proposal, storyCardType: primaryStoryCardType(proposal.storyCardType), ...(proposal.storyCardType === "event" ? { memoryMode: "historical" as const } : {}) } : proposal),

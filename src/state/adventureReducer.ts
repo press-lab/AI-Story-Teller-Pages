@@ -1240,6 +1240,56 @@ function applyCompanionMemoryProposals(
 }
 
 export function adventureReducer(state: Adventure, action: AdventureAction): Adventure {
+  const next = reduceAdventure(state, action);
+  if (action.type === "APPLY_BRAIN_UPDATE" && action.diagnosticSourceId
+    && next.brains.find(brain => brain.id === action.brainId) !== state.brains.find(brain => brain.id === action.brainId)) {
+    return adventureReducer(next, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: {
+      id: createId("decision"), sourceId: action.diagnosticSourceId, createdAt: nowIso(), stage: "reducer", outcome: "automatically_approved",
+      reason: `Brain thought applied to ${action.brainId} under the saved auto-approval preference.`,
+    } });
+  }
+  if (action.type === "ADD_MEMORY_PROPOSAL") {
+    if (next.activeState.memoryDiagnostics !== state.activeState.memoryDiagnostics && next.activeState.memoryDiagnostics?.at(-1)?.outcome === "candidate_suppressed") return next;
+    const proposal = action.proposal;
+    const resulting = next.activeState.memoryProposals.find(p => p.id === proposal.id);
+    const merged = next.activeState.memoryProposals.find(p => p !== state.activeState.memoryProposals.find(old => old.id === p.id));
+    return adventureReducer(next, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: {
+      id: createId("decision"), sourceId: proposal.sourceTurnId ?? "unknown", createdAt: nowIso(), stage: "reducer",
+      outcome: resulting ? (resulting.status === "approved" ? "automatically_approved" : "proposal_accepted") : merged ? "candidate_merged" : "candidate_suppressed",
+      reason: resulting ? undefined : merged ? "Equivalent suggestion merged into an existing proposal." : "Reducer validation or duplicate policy prevented a new proposal.",
+      proposalId: resulting?.id ?? merged?.id,
+      candidate: { kind: proposal.storyCardType ?? proposal.proposedType, title: proposal.title, content: proposal.content.slice(0, 4000), evidence: (proposal.sourceText ?? "").slice(0, 4000), rationale: (proposal.rationale ?? "").slice(0, 600), targetId: proposal.targetId },
+    } });
+  }
+  if (action.type === "APPROVE_MEMORY_PROPOSAL" || action.type === "REJECT_MEMORY_PROPOSAL" || action.type === "IGNORE_MEMORY_PROPOSAL" || action.type === "UPDATE_MEMORY_PROPOSAL") {
+    const previous = state.activeState.memoryProposals.find(p => p.id === action.proposalId);
+    const proposal = next.activeState.memoryProposals.find(p => p.id === action.proposalId);
+    if (proposal && previous?.status !== proposal.status && proposal.status !== "pending") return adventureReducer(next, {
+      type: "RECORD_MEMORY_DIAGNOSTIC", entry: {
+        id: createId("decision"), sourceId: proposal.sourceTurnId ?? "unknown", createdAt: nowIso(), stage: "reducer", proposalId: proposal.id,
+        outcome: proposal.status === "approved" ? (action.type === "APPROVE_MEMORY_PROPOSAL" && action.automatic ? "automatically_approved" : "proposal_approved") : proposal.status === "rejected" ? "proposal_rejected" : "proposal_ignored",
+      },
+    });
+  }
+  if (action.type === "COMPLETE_MEMORY_RECOVERY") {
+    return action.sources.filter(source => next.messages.find(m => m.id === source.id)?.memoryRecovery?.status === "complete"
+      && state.messages.find(m => m.id === source.id)?.memoryRecovery?.status !== "complete").reduce((current, source) => adventureReducer(current, {
+      type: "RECORD_MEMORY_DIAGNOSTIC", entry: { id: createId("decision"), sourceId: source.id, createdAt: nowIso(), stage: "recovery", outcome: "recovery_completed" },
+    }), next);
+  }
+  if (action.type === "CLAIM_MEMORY_RECOVERY") {
+    return (action.sources ?? []).reduce((current, source) => adventureReducer(current, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: {
+      id: createId("decision"), sourceId: source.id, createdAt: nowIso(), stage: "recovery", outcome: "recovery_attempted",
+      sourceIds: action.sources?.map(item => item.id),
+    } }), next);
+  }
+  if (action.type === "QUEUE_MEMORY_RECOVERY") return adventureReducer(next, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: {
+    id: createId("decision"), sourceId: action.messageId, createdAt: nowIso(), stage: "recovery", outcome: "recovery_queued", reason: action.cause,
+  } });
+  return next;
+}
+
+function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
   switch (action.type) {
     case "SCAN_STORY_CARD_EXCHANGE": {
       const source = state.messages.find(message => message.id === action.sourceMessageId && message.role === "assistant");
@@ -1259,7 +1309,7 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
       // for the final saved source; local-only and ambiguous candidates still need review.
       if (next.memoryAutoApprove.storyCard) for (const proposal of next.activeState.memoryProposals) {
         if (proposal.status === "pending" && proposal.proposedType === "storyCard" && proposal.storyCardReview?.sourceMessageId === source.id && !storyCardMustBeReviewed(next, proposal)
-          && suggestionSourceValid(next, proposal)) next = adventureReducer(next, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id });
+          && suggestionSourceValid(next, proposal)) next = adventureReducer(next, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id, automatic: true });
       }
       return next;
     }
@@ -1583,6 +1633,9 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
           triggerLog: [action.entry, ...state.activeState.triggerLog].slice(0, 200),
         },
       });
+    case "RECORD_MEMORY_DIAGNOSTIC":
+      return touchAdventure(state, { activeState: { ...state.activeState,
+        memoryDiagnostics: [...(state.activeState.memoryDiagnostics ?? []), action.entry].slice(-600) } });
     case "LOG_EVALUATION_RESULT":
       return touchAdventure(state, {
         activeState: {
@@ -1633,7 +1686,12 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
       });
     case "ADD_MEMORY_PROPOSAL": {
       const clean = sanitizeProposal(routedProposal(state, action.proposal));
-      if (!clean) return state;
+      const suppressed = (reason: string, proposalId?: string) => adventureReducer(state, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: {
+        id: createId("decision"), sourceId: action.proposal.sourceTurnId ?? "unknown", createdAt: nowIso(),
+        stage: "reducer", outcome: "candidate_suppressed", reason, proposalId,
+        candidate: { kind: action.proposal.storyCardType ?? action.proposal.proposedType, title: action.proposal.title, content: action.proposal.content.slice(0, 4000), evidence: (action.proposal.sourceText ?? "").slice(0, 4000), rationale: (action.proposal.rationale ?? "").slice(0, 600) },
+      } });
+      if (!clean) return suppressed("Proposal sanitization rejected the candidate.");
       const comparableProposals = state.activeState.memoryProposals.filter(proposal => !proposal.storyCardReview || suggestionSourceValid(state, proposal)
         || (!state.messages.some(message => message.id === proposal.storyCardReview!.sourceMessageId)
           && proposal.storyCardReview.sourceMessageId === clean.storyCardReview?.sourceMessageId && proposal.storyCardReview.sourceContent === clean.storyCardReview.sourceContent));
@@ -1641,15 +1699,15 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
         clean.requiresReview = storyCardMustBeReviewed(state, clean);
         const duplicate = comparableProposals.find(proposal => equivalentStoryCardSuggestions(proposal, clean));
         if (duplicate) {
-          if (duplicate.status !== "pending") return state;
+          if (duplicate.status !== "pending") return suppressed("Equivalent suggestion already reviewed: " + duplicate.status, duplicate.id);
           const merged = mergeStoryCardSuggestions(duplicate, clean);
           const next = touchAdventure(state, { activeState: { ...state.activeState,
             memoryProposals: state.activeState.memoryProposals.map(proposal => proposal.id === duplicate.id ? merged : proposal) } });
           return state.memoryAutoApprove.storyCard && !storyCardMustBeReviewed(next, merged) && suggestionSourceValid(next, merged)
-            ? adventureReducer(next, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: merged.id }) : next;
+            ? adventureReducer(next, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: merged.id, automatic: true }) : next;
         }
       }
-      if (Boolean(clean.eventMemory) && [...state.storyCards.filter(isHistoricalLore), ...state.activeState.memoryProposals.filter(p => Boolean(p.eventMemory))].some(c => sameEventMemory(c, clean))) return state;
+      if (Boolean(clean.eventMemory) && [...state.storyCards.filter(isHistoricalLore), ...state.activeState.memoryProposals.filter(p => Boolean(p.eventMemory))].some(c => sameEventMemory(c, clean))) return suppressed("Duplicate historical event already recorded.");
       // Dedup: drop a proposal that duplicates one already pending, one the user already
       // dismissed (rejected/ignored), or a NEW story card whose title already exists as a card.
       // Without this, the model re-suggesting the same entity each turn spawns a fresh duplicate —
@@ -1711,7 +1769,8 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
             (component.id === clean.targetId || !clean.targetId) &&
             normalizedReplacementContent(component.content) === normalizedReplacementContent(clean.content),
         );
-      if (duplicatesPending || duplicatesDismissed || duplicatesCard || duplicatesStoryCardContent || duplicatesExistingCardContent || duplicatesExistingTargetContent || duplicatesCurrentPressure) return state;
+      if (duplicatesPending || duplicatesDismissed || duplicatesCard || duplicatesStoryCardContent || duplicatesExistingCardContent || duplicatesExistingTargetContent || duplicatesCurrentPressure) return suppressed(
+        duplicatesPending ? "Duplicate pending proposal" : duplicatesDismissed ? "Duplicate rejected or ignored proposal" : duplicatesCard ? "Story Card title already exists" : duplicatesStoryCardContent ? "Duplicate proposal content" : duplicatesExistingCardContent ? "Duplicate existing Story Card content" : duplicatesExistingTargetContent ? "Target already contains this content" : "Current pressure already contains this content");
       const autoApprove = (clean.proposedType !== "storyCard" || suggestionSourceValid(state, clean)) && (state.memoryAutoApprove?.[clean.proposedType as keyof typeof state.memoryAutoApprove] ?? false);
       if (autoApprove && !clean.requiresReview) {
         const approved = updateMemoryProposal(clean, { status: "approved" });

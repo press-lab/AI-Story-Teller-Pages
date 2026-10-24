@@ -170,6 +170,7 @@ describe("independent recovery source validation", () => {
     if (failure === "attribution") Object.assign(turns[0].updates.at(-1)!, { sourceMessageIds: [batch[0].id, "foreign"] });
     provider.mockResolvedValue({ content: JSON.stringify({ turns }), raw: {}, finishReason: "stop" });
     const result = await runCompactMemoryFallback(adventure, config, batch);
+    expect(result.request).toMatchObject({ transport: "succeeded", parsed: true });
     const accepted = batch.filter((_, i) => badIndex !== -1 && i !== badIndex);
     expect(result.processedSources ?? []).toEqual(accepted.map(({ id, content }) => ({ id, content })));
     expect(result.valid).toBe(accepted.length > 0);
@@ -180,6 +181,7 @@ describe("independent recovery source validation", () => {
     });
     for (const source of batch.filter(source => !accepted.includes(source))) {
       expect(next.activeState.evaluationLog.some(log => log.actionsExecuted.includes(`Memory source: ${source.id}`) && log.errors.length)).toBe(true);
+      expect(next.activeState.memoryDiagnostics?.some(entry => entry.sourceId === source.id && entry.outcome === "validation_rejected")).toBe(true);
     }
     expect(provider).toHaveBeenCalledTimes(1);
     expect(provider.mock.calls[0][0].retry).toBe(false);

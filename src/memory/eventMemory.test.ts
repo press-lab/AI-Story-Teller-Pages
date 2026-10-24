@@ -69,7 +69,8 @@ describe("Event Memories", () => {
     let state = adventureReducer(seed(), { type: "ADD_MEMORY_PROPOSAL", proposal: proposal() });
     state = adventureReducer(state, { type: "REJECT_MEMORY_PROPOSAL", proposalId: "event-proposal" });
     const repeated = adventureReducer(state, { type: "ADD_MEMORY_PROPOSAL", proposal: proposal({ id: "repeat", title: "Meeting at home" }) });
-    expect(repeated).toBe(state);
+    expect(repeated.activeState.memoryProposals).toBe(state.activeState.memoryProposals);
+    expect(repeated.activeState.memoryDiagnostics?.at(-1)).toMatchObject({ outcome: "candidate_suppressed", reason: "Duplicate historical event already recorded." });
     const different = proposal({ id: "different", title: "The revealed secret", content: "Edythe revealed that she could read other people's minds.", eventMemory: { ...eventMemory, kind: "revelation", recallCues: ["mind reading revelation"] } });
     expect(sameEventMemory(proposal(), different)).toBe(false);
     expect(adventureReducer(state, { type: "ADD_MEMORY_PROPOSAL", proposal: different }).activeState.memoryProposals).toHaveLength(2);

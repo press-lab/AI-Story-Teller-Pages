@@ -284,7 +284,14 @@ export function useAdventureRuntime(
         promptTokens: compact.tokenUsage.promptTokens,
         completionTokens: compact.tokenUsage.completionTokens,
       };
-      const actions: AdventureAction[] = [compactUsage];
+      const actions: AdventureAction[] = [compactUsage, ...batch.map(source => ({
+        type: "RECORD_MEMORY_DIAGNOSTIC" as const, entry: {
+          id: createId("decision"), sourceId: source.id, createdAt: nowIso(), stage: "recovery" as const,
+          outcome: compact.processedSources?.some(done => done.id === source.id) ? "recovery_validated" as const : "recovery_failed" as const,
+          reason: compact.processedSources?.some(done => done.id === source.id) ? undefined : compact.error,
+          sourceIds: batch.map(item => item.id), model: compact.request?.model, transport: compact.request?.transport, parsed: compact.request?.parsed, usage: compact.request?.usageReported ? compact.tokenUsage : undefined,
+        },
+      }))];
       if (compact.valid) actions.push({ type: "COMPLETE_MEMORY_RECOVERY", sources: compact.processedSources ?? batch.map(({ id, content }) => ({ id, content })), dependencies: compact.sourceSnapshots, actions: compact.actions });
       else actions.push({ type: "LOG_EVALUATION_RESULT", entry: {
         id: createId("eval"), turn: snapshot.activeState.turn, createdAt: nowIso(),

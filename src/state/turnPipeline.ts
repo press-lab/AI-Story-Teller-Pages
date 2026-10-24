@@ -11,7 +11,7 @@ import type {
   ProviderConfig,
   ProviderUsage,
 } from "../types/adventure";
-import { createId } from "../utils/id";
+import { createId, nowIso } from "../utils/id";
 import { adventureReducer } from "./adventureReducer";
 
 export interface MockableProviderResponse {
@@ -116,6 +116,17 @@ export async function applyProviderResponse({
   }
 
   const messageId = assistantMessageId ?? createId("message");
+  next = adventureReducer(next, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: {
+    id: createId("decision"), sourceId: messageId, createdAt: nowIso(), stage: "inline", model: providerConfig?.model,
+    instructionSupplied: preProviderContext.sections.some(s => s.items.some(i => i.id === ONE_PASS_MEMORY_ID)) && preProviderContext.messages.some(m => m.content.includes("[ONE-PASS MEMORY]")),
+    envelopeParsed: !memory.error,
+    candidateKinds: memory.updates.map(update => update && typeof update === "object" && "kind" in update ? String(update.kind).slice(0, 40) : "invalid"),
+    outcome: mode === "comms" || !next.memoryDetectionSettings.enabled ? "not_attempted"
+      : !(preProviderContext.sections.some(s => s.items.some(i => i.id === ONE_PASS_MEMORY_ID)) && preProviderContext.messages.some(m => m.content.includes("[ONE-PASS MEMORY]"))) ? "instruction_omitted"
+      : continuityCorrected || response.memoryDiscarded ? "draft_discarded"
+      : memory.error ? (/<memory_/i.test(response.content) ? "envelope_malformed" : "envelope_missing")
+      : memory.updates.length ? "candidates_produced" : "zero_candidates",
+  } });
   let inlineValidationFailed = false;
   let noInlineStoryCardCandidates = true;
   const dedicated = next.memoryDetectionSettings.evaluator === "dedicated";
@@ -170,7 +181,7 @@ export async function applyProviderResponse({
   if (mode !== "comms" && next.memoryDetectionSettings.enabled
     && (dedicated || noInlineStoryCardCandidates || inlineValidationFailed || !memoryEnabled || memory.error || continuityCorrected)) {
     next = adventureReducer(next, { type: "QUEUE_MEMORY_RECOVERY", messageId,
-      turn: next.activeState.memoryRecoveryStoryTurn ?? 0 });
+      turn: next.activeState.memoryRecoveryStoryTurn ?? 0, cause: dedicated ? "Dedicated evaluation configured" : continuityCorrected ? "Narrative corrected" : !memoryEnabled ? "Memory instruction omitted" : memory.error ? "Inline envelope unavailable" : inlineValidationFailed ? "Inline candidate validation failed" : "No inline Story Card candidates" });
   }
   next = adventureReducer(next, { type: "CONSUME_NEXT_TURN_NOTE" });
 

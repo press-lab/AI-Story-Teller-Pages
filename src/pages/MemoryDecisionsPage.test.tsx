@@ -1,0 +1,101 @@
+// @vitest-environment jsdom
+import { afterEach, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
+import { MemoryInboxPage } from "./MemoryInboxPage";
+import { MemoryDecisionsPage } from "./MemoryDecisionsPage";
+import { createDefaultAdventure } from "../state/defaults";
+import { adventureReducer } from "../state/adventureReducer";
+import { runTurnPipeline } from "../state/turnPipeline";
+import { buildContext } from "../contextBuilder/contextBuilder";
+import { onePassMemoryActions } from "../memory/onePassMemory";
+import { exportAdventureJson, importAdventureJson } from "../utils/json";
+import { saveAdventure, getAdventure } from "../db/adventureDb";
+
+afterEach(cleanup);
+const story = "Mira defeated the Glass King at the silver gate in their first battle together.";
+const candidate = { kind: "lore", target: "The Glass King's defeat", content: story, evidence: story, reason: "A consequential victory" };
+function seed() {
+  const adventure = createDefaultAdventure();
+  adventure.memoryDetectionSettings.enabled = true;
+  adventure.memoryAutoApprove.storyCard = false;
+  return adventure;
+}
+
+it.each([
+  [story, "envelope_missing", "Memory envelope missing"],
+  [story + '<memory_updates>{"updates":[]}</memory_updates>', "zero_candidates", "Model returned zero memory candidates."],
+  [story + '<memory_updates>{oops}</memory_updates>', "envelope_malformed", "Memory envelope malformed"],
+])("records and displays inline result %s", async (content, outcome, text) => {
+  const provider = vi.fn(async () => ({ content }));
+  const result = await runTurnPipeline({ adventure: seed(), text: "Mira fights.", assistantMessageId: "source", sendChatCompletion: provider });
+  expect(result.adventure.activeState.memoryDiagnostics).toEqual(expect.arrayContaining([expect.objectContaining({ sourceId: "source", stage: "inline", outcome })]));
+  render(<MemoryDecisionsPage adventure={result.adventure} onSuggestions={vi.fn()} />);
+  expect(screen.getAllByText(text, { exact: false }).length).toBeGreaterThan(0);
+  expect(provider).toHaveBeenCalledTimes(1);
+});
+
+it("records accepted and rejected Lore, exact evidence and duplicate disposition independently", () => {
+  const adventure = adventureReducer(seed(), { type: "ADD_MESSAGE", role: "assistant", id: "source", content: story });
+  const actions = onePassMemoryActions(adventure, buildContext(adventure), [candidate, { ...candidate, target: "Invented", evidence: "This never happened." }], story, "source");
+  let next = actions.reduce(adventureReducer, adventure);
+  expect(next.activeState.memoryDiagnostics).toEqual(expect.arrayContaining([
+    expect.objectContaining({ outcome: "validation_accepted", candidate: expect.objectContaining({ evidence: story }) }),
+    expect.objectContaining({ outcome: "validation_rejected", reason: expect.stringContaining("evidence") }),
+  ]));
+  const proposal = next.activeState.memoryProposals[0];
+  expect(proposal).toBeDefined();
+  next = adventureReducer(next, { type: "REJECT_MEMORY_PROPOSAL", proposalId: proposal.id });
+  next = adventureReducer(next, { type: "ADD_MEMORY_PROPOSAL", proposal: { ...proposal, id: "duplicate", status: "pending" } });
+  expect(next.activeState.memoryDiagnostics?.at(-1)?.outcome).toBe("candidate_suppressed");
+  render(<MemoryDecisionsPage adventure={next} onSuggestions={vi.fn()} />);
+  expect(screen.getByText("Rejected: the supplied evidence quote does not appear in the permitted source messages.", { exact: false })).toBeDefined();
+});
+
+it("provides accessible submenu navigation and read-only search and filtering at mobile width", () => {
+  const adventure = seed();
+  adventure.messages = [{ id: "old", role: "assistant", content: "An old turn.", createdAt: "2026-01-01" }];
+  const dispatch = vi.fn(), request = vi.fn();
+  const before = JSON.stringify(adventure);
+  Object.defineProperty(window, "innerWidth", { value: 375, configurable: true });
+  render(<MemoryInboxPage adventure={adventure} dispatch={dispatch} onFindEventMemories={request} />);
+  expect(screen.getByRole("navigation", { name: "Memory views" })).toBeDefined();
+  fireEvent.click(screen.getByRole("button", { name: "Decisions" }));
+  expect(screen.getByRole("button", { name: "Decisions" }).getAttribute("aria-pressed")).toBe("true");
+  expect(screen.getAllByText(/Diagnostics unavailable for older turns/).length).toBeGreaterThan(0);
+  fireEvent.change(screen.getByLabelText("Search decisions"), { target: { value: "no-match" } });
+  expect(screen.getByText("No matching turns.")).toBeDefined();
+  fireEvent.change(screen.getByLabelText("Filter"), { target: { value: "pending" } });
+  fireEvent.click(screen.getByRole("button", { name: "Suggestions" }));
+  expect(dispatch).not.toHaveBeenCalled();
+  expect(request).not.toHaveBeenCalled();
+  expect(JSON.stringify(adventure)).toBe(before);
+});
+
+it("shows pending and quarantined recovery and shared batch usage without treating transport as validation", () => {
+  let adventure = seed();
+  adventure.messages = ["pending", "quarantined"].map((status, i) => ({ id: `source-${i}`, role: "assistant" as const, content: story, createdAt: "2026-01-01", memoryRecovery: { turn: 1, status: status as "pending" | "quarantined", failures: i + 1 } }));
+  adventure = adventureReducer(adventure, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: {
+    id: "batch", sourceId: "source-0", createdAt: "2026-01-01", stage: "recovery", outcome: "recovery_failed",
+    transport: "succeeded", parsed: true, sourceIds: ["source-0", "source-1"], usage: { promptTokens: 50, completionTokens: 10 },
+    reason: "memory_evidence_rejected",
+  } });
+  render(<MemoryDecisionsPage adventure={adventure} onSuggestions={vi.fn()} />);
+  expect(screen.getByLabelText("Decision counts").textContent).toContain("1 pending recovery · 1 quarantined recovery");
+  expect(screen.getByText(/Transport: succeeded; JSON parsed: yes/)).toBeDefined();
+  expect(screen.getByText(/Batch total \(shared across all sources\): 50/)).toBeDefined();
+  fireEvent.change(screen.getByLabelText("Filter"), { target: { value: "failed" } });
+  expect(screen.getAllByText(/Recovery failed/).length).toBeGreaterThan(0);
+});
+
+it("bounds diagnostics and preserves them through export/import and IndexedDB reload", async () => {
+  Object.defineProperty(globalThis, "indexedDB", { value: new IDBFactory(), configurable: true });
+  Object.defineProperty(globalThis, "IDBKeyRange", { value: IDBKeyRange, configurable: true });
+  let adventure = seed();
+  for (let i = 0; i < 605; i++) adventure = adventureReducer(adventure, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: { id: String(i), sourceId: "source", createdAt: "2026-01-01", stage: "inline", outcome: "zero_candidates" } });
+  expect(adventure.activeState.memoryDiagnostics).toHaveLength(600);
+  const imported = importAdventureJson(exportAdventureJson(adventure));
+  expect(imported.activeState.memoryDiagnostics).toEqual(adventure.activeState.memoryDiagnostics);
+  await saveAdventure(imported);
+  expect((await getAdventure(imported.id))?.activeState.memoryDiagnostics).toEqual(adventure.activeState.memoryDiagnostics);
+});

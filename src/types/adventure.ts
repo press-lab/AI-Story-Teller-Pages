@@ -1,3 +1,27 @@
+export interface MemoryDiagnostic {
+  id: string;
+  sourceId: string;
+  createdAt: string;
+  stage: "inline" | "candidate" | "reducer" | "recovery";
+  outcome: "not_attempted" | "instruction_omitted" | "envelope_missing" | "envelope_malformed" | "draft_discarded"
+    | "zero_candidates" | "candidates_produced" | "validation_accepted" | "validation_rejected"
+    | "candidate_suppressed" | "candidate_merged" | "proposal_accepted" | "automatically_approved"
+    | "proposal_approved" | "proposal_rejected" | "proposal_ignored"
+    | "recovery_queued" | "recovery_attempted" | "recovery_validated" | "recovery_completed" | "recovery_failed";
+  origin?: "inline" | "recovery";
+  instructionSupplied?: boolean;
+  envelopeParsed?: boolean;
+  candidateKinds?: string[];
+  reason?: string;
+  candidate?: { kind: string; title: string; content: string; evidence: string; rationale: string; targetId?: string };
+  proposalId?: string;
+  sourceIds?: string[];
+  model?: string;
+  transport?: "succeeded" | "failed";
+  parsed?: boolean;
+  usage?: { promptTokens: number; completionTokens: number };
+}
+
 export type ISODateString = string;
 export type JsonObject = Record<string, unknown>;
 
@@ -656,6 +680,7 @@ export interface ActiveState {
   turn: number;
   forceIncludeNextTurn: ForceIncludeEntry[];
   triggerLog: TriggerLogEntry[];
+  memoryDiagnostics?: MemoryDiagnostic[];
   evaluationLog: EvaluationLogEntry[];
   memoryProposals: MemoryProposal[];
   pendingUpdates: PendingAdventureUpdate[];
@@ -862,6 +887,7 @@ export type BrainPatch = {
 };
 
 export type AdventureAction =
+  | { type: "RECORD_MEMORY_DIAGNOSTIC"; entry: MemoryDiagnostic }
   | { type: "SCAN_STORY_CARD_EXCHANGE"; sourceMessageId: string; manual?: boolean }
   | { type: "SET_STORY_CLOCK"; clock: StoryClock }
   | { type: "SET_TITLE"; title: string }
@@ -909,7 +935,7 @@ export type AdventureAction =
   | { type: "UPDATE_BRAIN"; brainId: string; patch: Partial<BrainEntry> }
   | { type: "APPEND_BRAIN_STATE"; brainId: string; field?: BrainStateField; text: string }
   | { type: "REPLACE_BRAIN_STATE"; brainId: string; field?: BrainStateField; text: string }
-  | { type: "APPLY_BRAIN_UPDATE"; brainId: string; patch: BrainPatch; mode?: "replace" | "append"; turn?: number; preview?: string }
+  | { type: "APPLY_BRAIN_UPDATE"; diagnosticSourceId?: string; brainId: string; patch: BrainPatch; mode?: "replace" | "append"; turn?: number; preview?: string }
   | { type: "UPSERT_TRIGGER_RULE"; triggerRule: TriggerRule }
   | { type: "DELETE_TRIGGER_RULE"; triggerRuleId: string }
   | { type: "UPDATE_TRIGGER_RULE"; triggerRuleId: string; patch: Partial<TriggerRule> }
@@ -922,7 +948,7 @@ export type AdventureAction =
   | { type: "DELETE_RAW_IMPORT"; rawImportId: string }
   | { type: "ADD_MEMORY_PROPOSAL"; proposal: MemoryProposal }
   | { type: "UPDATE_MEMORY_PROPOSAL"; proposalId: string; patch: Partial<MemoryProposal> }
-  | { type: "APPROVE_MEMORY_PROPOSAL"; proposalId: string; editedProposal?: Partial<MemoryProposal> }
+  | { type: "APPROVE_MEMORY_PROPOSAL"; proposalId: string; editedProposal?: Partial<MemoryProposal>; automatic?: boolean }
   | { type: "REJECT_MEMORY_PROPOSAL"; proposalId: string }
   | { type: "IGNORE_MEMORY_PROPOSAL"; proposalId: string }
   | { type: "UPDATE_ROLLING_SUMMARY"; content: string; lastSummarizedMessageIndex?: number }
@@ -937,7 +963,7 @@ export type AdventureAction =
   | { type: "SET_RESPONSE_LENGTH_HINT"; hint: number }
   | { type: "RECORD_API_CALL"; record: ApiCallRecord }
   | { type: "ADVANCE_MEMORY_RECOVERY_TURN" }
-  | { type: "QUEUE_MEMORY_RECOVERY"; messageId: string; turn: number }
+  | { type: "QUEUE_MEMORY_RECOVERY"; messageId: string; turn: number; cause?: string }
   | { type: "CLAIM_MEMORY_RECOVERY"; turn: number; sources?: Array<{ id: string; content: string }> }
   | { type: "FAIL_MEMORY_RECOVERY"; sources: Array<{ id: string; content: string }>; turn: number; error: string }
   | { type: "COMPLETE_MEMORY_RECOVERY"; sources: Array<{ id: string; content: string }>; dependencies?: Array<{ id: string; content: string }>; actions: AdventureAction[] }

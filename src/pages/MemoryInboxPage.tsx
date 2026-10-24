@@ -1,3 +1,4 @@
+import { MemoryDecisionsPage } from "./MemoryDecisionsPage";
 import { isHistoricalLore, proposalLore } from "../memory/storyCardArchitecture";
 import { suggestionSourceValid } from "../memory/storyCardSuggestions";
 import { formatStoryTime } from "../memory/storyTime";
@@ -30,7 +31,19 @@ interface MemoryInboxPageProps extends AdventurePageProps {
   loading?: boolean;
 }
 
-export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onReconcileMemory, onFindEventMemories, loading = false }: MemoryInboxPageProps) {
+export function MemoryInboxPage(props: MemoryInboxPageProps) {
+  const [proposalSearch, setProposalSearch] = useState("");
+  const [view, setView] = useState<"suggestions" | "decisions">("suggestions");
+  return <>
+    <nav aria-label="Memory views" className="editor-stat-row">
+      <button type="button" aria-pressed={view === "suggestions"} onClick={() => setView("suggestions")}>Suggestions</button>
+      <button type="button" aria-pressed={view === "decisions"} onClick={() => setView("decisions")}>Decisions</button>
+    </nav>
+    {view === "decisions" ? <MemoryDecisionsPage adventure={props.adventure} onSuggestions={title => { setProposalSearch(title ?? ""); setView("suggestions"); }} /> : <MemorySuggestionsPage {...props} initialSearch={proposalSearch} />}
+  </>;
+}
+
+function MemorySuggestionsPage({ adventure, dispatch, onRegenerateProposal, onReconcileMemory, onFindEventMemories, loading = false, initialSearch = "" }: MemoryInboxPageProps & { initialSearch?: string }) {
   const allProposals = [...adventure.activeState.memoryProposals].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const [eventScan, setEventScan] = useState<AbortController>();
   const [eventProgress, setEventProgress] = useState("");
@@ -38,7 +51,7 @@ export function MemoryInboxPage({ adventure, dispatch, onRegenerateProposal, onR
   const [reconcileDirective, setReconcileDirective] = useState("");
   const [reconcileEntryCount, setReconcileEntryCount] = useState(20);
   const [reconcileIncludeBrains, setReconcileIncludeBrains] = useState(true);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(initialSearch);
   const searchLower = search.toLowerCase().trim();
   const visibleProposals = allProposals.filter((proposal) => !searchLower
     || proposal.title.toLowerCase().includes(searchLower)

@@ -10,6 +10,7 @@ import type { Adventure, AdventureAction, ChatMessage, Message, ProviderConfig }
 import { MEMORY_OUTPUT_RESERVE, ONE_PASS_MEMORY_ID, onePassMemoryActions, onePassMemoryInstruction } from "./onePassMemory";
 
 export interface CompactMemoryFallbackResult {
+  request?: { model: string; transport: "succeeded" | "failed"; parsed?: boolean; usageReported?: boolean };
   evaluatedTurns?: Array<{ sourceTurnId: string; updates: unknown[] }>;
   attemptedSources?: Array<{ id: string; content: string }>;
   sourceSnapshots?: Array<{ id: string; content: string }>;
@@ -122,6 +123,7 @@ export async function runCompactMemoryFallback(
   let response;
   try {
     const backgroundConfig = resolveMemoryEvaluationProviderConfig(adventure, providerConfig);
+    empty.request = { model: backgroundConfig.model, transport: "failed" };
     // Reserve the same memory allowance per source; narration settings are untouched.
     response = await (useResponses ? sendOpenAIMemoryResponse : sendOpenAICompatibleChatCompletion)({
       config: { ...backgroundConfig, maxOutputTokens: Math.min(backgroundConfig.maxOutputTokens, MEMORY_OUTPUT_RESERVE) * sources.length }, messages,
@@ -144,6 +146,7 @@ export async function runCompactMemoryFallback(
       : /no content/i.test(message) ? "provider_empty_response" : "provider_request_failed";
     return { ...empty, error: diagnostic(classification) };
   }
+  if (empty.request) { empty.request.transport = "succeeded"; empty.request.usageReported = Boolean(response.usage); }
   const tokenUsage = {
     promptTokens: response.usage?.promptTokens ?? 0,
     completionTokens: response.usage?.completionTokens ?? 0,
@@ -153,6 +156,7 @@ export async function runCompactMemoryFallback(
     const raw = response.content.replace(/<think>[\s\S]*?<\/think>/gi, "").trim()
       .replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
     const parsed: unknown = JSON.parse(raw);
+    if (empty.request) empty.request.parsed = true;
     stage = "validation";
     if (!parsed || typeof parsed !== "object") return { ...empty, tokenUsage, error: diagnostic("response_schema_invalid", response.finishReason) };
     const turns: Array<{ sourceTurnId: string; updates: unknown[] }> = batch || useResponses
@@ -198,6 +202,15 @@ export async function runCompactMemoryFallback(
           || candidate.sourceMessageIds.some(id => !allowedReferences.some(reference => reference.id === id));
       })) {
         validationFailure = "source_attribution_invalid";
+        for (const raw of updates) {
+          const candidate = raw as Record<string, unknown>;
+          const field = (key: string, limit = 4000) => typeof candidate[key] === "string" ? String(candidate[key]).slice(0, limit) : "";
+          actions.push({ type: "RECORD_MEMORY_DIAGNOSTIC", entry: {
+            id: "recovery-candidate-" + source.id + "-" + actions.length, sourceId: source.id, createdAt: new Date().toISOString(), stage: "candidate", origin: "recovery",
+            outcome: "validation_rejected", reason: "source_attribution_invalid: source transaction rejected because a candidate has invalid source references or an update has no target ID.",
+            candidate: { kind: field("kind", 40), title: field("target", 150), content: field("content"), evidence: field("evidence"), rationale: field("reason", 600), targetId: field("targetId", 150) || undefined },
+          } });
+        }
         actions.push({ type: "LOG_EVALUATION_RESULT", entry: {
           id: "recovery-rejected-" + source.id, turn: adventure.activeState.turn, createdAt: new Date().toISOString(),
           conditionsEvaluated: [], conditionsFired: [], generatedContent: [],
@@ -208,12 +221,12 @@ export async function runCompactMemoryFallback(
       }
       const turnActions = onePassMemoryActions(current, context, updates, source.content,
         source.id, undefined, batch ? "Batched memory recovery: source turn evaluated" : "Compact memory fallback: one API call", batch ? input : playerInput,
-        [], allowedReferences);
+        [], allowedReferences, "recovery");
       const validationErrors = turnActions.flatMap(action => action.type === "LOG_EVALUATION_RESULT" ? action.entry.errors : []);
       if (validationErrors.length) {
         validationFailure = validationErrors.some(error => /evidence|quote/i.test(error)) ? "memory_evidence_rejected" : "memory_update_rejected";
         // No mutations from this source may commit if any of its candidates failed.
-        actions.push(...turnActions.filter(action => action.type === "LOG_EVALUATION_RESULT").map(action => action.type === "LOG_EVALUATION_RESULT"
+        actions.push(...turnActions.filter(action => action.type === "LOG_EVALUATION_RESULT" || action.type === "RECORD_MEMORY_DIAGNOSTIC").map(action => action.type === "LOG_EVALUATION_RESULT"
           ? { ...action, entry: { ...action.entry, actionsExecuted: ["Recovery evaluation failed; no mutations from this source committed", `Memory source: ${source.id}`] } } : action));
         continue;
       }
@@ -227,14 +240,14 @@ export async function runCompactMemoryFallback(
       actions.push(scan);
       current = adventureReducer(current, scan);
     }
-    if (!acceptedSources.length) return { ...empty, tokenUsage, actions: actions.filter(action => action.type === "LOG_EVALUATION_RESULT"), error: diagnostic(validationFailure ?? "response_schema_invalid", response.finishReason) };
+    if (!acceptedSources.length) return { ...empty, tokenUsage, actions: actions.filter(action => action.type === "LOG_EVALUATION_RESULT" || action.type === "RECORD_MEMORY_DIAGNOSTIC"), error: diagnostic(validationFailure ?? "response_schema_invalid", response.finishReason) };
     if (acceptedSources.length < sources.length) actions.push({ type: "LOG_EVALUATION_RESULT", entry: {
       id: "recovery-partial-" + sources[0].id, turn: adventure.activeState.turn, createdAt: new Date().toISOString(),
       conditionsEvaluated: [], conditionsFired: [], generatedContent: [],
       actionsExecuted: ["Recovery completed successfully for validated sources; remaining sources retained"],
       errors: [diagnostic(validationFailure ?? "response_schema_invalid_partial", response.finishReason)],
     } });
-    return { evaluatedTurns: turns, actions, tokenUsage, valid: true, attemptedSources: empty.attemptedSources, sourceSnapshots: evidenceMessages.map(({ id, content }) => ({ id, content })), processedSources: acceptedSources.map(({ id, content }) => ({ id, content })) };
+    return { request: empty.request, evaluatedTurns: turns, actions, tokenUsage, valid: true, attemptedSources: empty.attemptedSources, sourceSnapshots: evidenceMessages.map(({ id, content }) => ({ id, content })), processedSources: acceptedSources.map(({ id, content }) => ({ id, content })) };
   } catch {
     return { ...empty, tokenUsage, error: diagnostic(
       stage !== "parse" ? "memory_processing_failed" : ["length", "max_tokens"].includes(response.finishReason ?? "") ? "provider_output_truncated" : "provider_invalid_json",

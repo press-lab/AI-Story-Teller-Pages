@@ -63,8 +63,11 @@ export function hasDurableCharacterEvidence(evidence: string): boolean {
 }
 
 /** Local structural/evidence checks, not a claim that a quote proves every inference. */
-export function onePassMemoryActions(adventure: Adventure, context: ContextBuildResult, updates: unknown[], story: string, sourceTurnId: string, error?: string, sourceLabel = "One-pass memory: no additional API call", playerInputOverride?: string, recentEvidence: string[] = [], recoverySources: Message[] = []): AdventureAction[] {
+export function onePassMemoryActions(adventure: Adventure, context: ContextBuildResult, updates: unknown[], story: string, sourceTurnId: string, error?: string, sourceLabel = "One-pass memory: no additional API call", playerInputOverride?: string, recentEvidence: string[] = [], recoverySources: Message[] = [], origin: "inline" | "recovery" = "inline"): AdventureAction[] {
   const actions: AdventureAction[] = [];
+  if (origin === "recovery" && !error && !updates.length) actions.push({ type: "RECORD_MEMORY_DIAGNOSTIC", entry: {
+    id: createId("decision"), sourceId: sourceTurnId, createdAt: nowIso(), stage: "recovery", origin, outcome: "zero_candidates",
+  } });
   const errors = error ? [error] : [];
   const executed: string[] = !error && !updates.length ? ["memory_evaluation_empty: valid evaluation; zero updates"] : [];
   const visibleIds = new Set(context.sections.flatMap(s => s.items.map(i => i.id)));
@@ -81,6 +84,12 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
       && windowIds.has(message.id) && index <= sourceIndex && message.role !== "system" && message.inputMode !== "comms"));
   const seen = new Set<string>();
   for (const raw of updates) {
+    const beforeErrors = errors.length, beforeActions = actions.length;
+    let suppressionReason = "No new memory write after eligibility or duplicate checks.";
+    const suppress = (reason: string) => { suppressionReason = reason; };
+    const value = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+    const field = (key: string, limit = 4000) => typeof value[key] === "string" ? String(value[key]).slice(0, limit) : "";
+    try {
     const reject = (reason: string) => errors.push(`One-pass memory skipped: ${reason}`);
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) { reject("invalid update"); continue; }
     const u = raw as Record<string, unknown>;
@@ -117,17 +126,17 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
       // The prompt's eligible names includes empty brains, which have no context item yet.
       const eligibleNames = instruction.split("Eligible thought targets: ")[1]?.split(".\n")[0] ?? "";
       if (brain && (Object.keys({ ...brain.archivedThoughts, ...brain.thoughts }).some(key => key.endsWith(`_${sourceTurnId}`))
-        || adventure.activeState.memoryProposals.some(proposal => proposal.proposedType === "brainUpdate" && proposal.targetId === brain.id && proposal.sourceTurnId === sourceTurnId))) continue;
+        || adventure.activeState.memoryProposals.some(proposal => proposal.proposedType === "brainUpdate" && proposal.targetId === brain.id && proposal.sourceTurnId === sourceTurnId))) { suppress("Duplicate Brain update for this source."); continue; }
       if (brain && brain.lastUpdatedTurn !== undefined && adventure.activeState.turn - brain.lastUpdatedTurn < (brain.autoUpdateCooldownTurns ?? 0)) {
-        executed.push(`Brain cooldown retained: ${target}`); continue;
+        executed.push(`Brain cooldown retained: ${target}`); suppress("Brain cooldown retained."); continue;
       }
       if (!brain || !eligibleNames.includes(JSON.stringify(target))) { reject(`${target}: brain not eligible`); continue; }
       if (Object.keys(brain.thoughts ?? {}).length && !visibleIds.has(brain.id)) { reject(`${target}: brain context was omitted`); continue; }
       if (!evidenceSources.some(s => s.includes(norm(target)))) { reject(`${target}: character absent from this turn`); continue; }
-      if (Object.values({ ...brain.archivedThoughts, ...brain.thoughts }).some(t => norm(t).includes(norm(content)))) continue;
+      if (Object.values({ ...brain.archivedThoughts, ...brain.thoughts }).some(t => norm(t).includes(norm(content)))) { suppress("Duplicate existing Brain thought."); continue; }
       const patch = { thoughts: { [`${adventure.activeState.turn}_${sourceTurnId}`]: `${adventure.activeState.turn} → ${content}` } };
       const boundary = applyAIMemoryUpdate(adventure, [{ type: "brainPatch", brainId: brain.id, patch, mode: "append", turn: adventure.activeState.turn, preview: content }]);
-      if (adventure.memoryAutoApprove.brainUpdate) actions.push(...boundary.actions);
+      if (adventure.memoryAutoApprove.brainUpdate) actions.push(...boundary.actions.map(action => action.type === "APPLY_BRAIN_UPDATE" ? { ...action, diagnosticSourceId: sourceTurnId } : action));
       else actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal: { ...proposal, proposedType: "brainUpdate", targetId: brain.id, content: JSON.stringify(patch) } });
       executed.push(`Thought: ${target}`);
       continue;
@@ -139,10 +148,10 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
       const identityContext = [...identityHistory.map(reference => reference.content), story, playerInput].join("\n");
       const knownIdentity = kind === "newCard" && u.cardType === "character"
         ? matchingStoryCardEntities(adventure.storyCards.filter(card => card.type === "character"), target, identityContext) : [];
-      if (knownIdentity.length && !adventure.storyCards.some(card => card.title === target)) { executed.push(`Identity already covered or ambiguous: ${target}`); continue; }
+      if (knownIdentity.length && !adventure.storyCards.some(card => card.title === target)) { executed.push(`Identity already covered or ambiguous: ${target}`); suppress("Identity already covered or ambiguous."); continue; }
       const exact = adventure.storyCards.filter(card => u.targetId ? card.id === u.targetId : card.title === target);
       const existing = exact.length === 1 ? exact[0] : undefined;
-      if (existing && norm(existing.content).includes(norm(content))) continue;
+      if (existing && norm(existing.content).includes(norm(content))) { suppress("Duplicate content already present in target Story Card."); continue; }
       // Evidence can be dialogue; a biography update must be a factual summary.
       // Do not append a copied first/second-person scene quote as an identity change.
       if (existing?.type === "character" && (story.includes(content) || playerInput.includes(content))
@@ -195,6 +204,16 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
       executed.push(`Proposed ${kind}: ${target}`);
       continue;
     } else { reject(`${target}: only Story Cards and Brains are automatic memory destinations`); continue; }
+    } finally {
+      const proposals = actions.slice(beforeActions).filter(a => a.type === "ADD_MEMORY_PROPOSAL");
+      actions.push({ type: "RECORD_MEMORY_DIAGNOSTIC", entry: {
+        id: createId("decision"), sourceId: sourceTurnId, createdAt: nowIso(), stage: "candidate", origin,
+        outcome: errors.length > beforeErrors ? "validation_rejected" : actions.length > beforeActions ? "validation_accepted" : "candidate_suppressed",
+        reason: errors.length > beforeErrors ? errors.slice(beforeErrors).join("; ") : actions.length > beforeActions ? undefined : suppressionReason,
+        proposalId: proposals[0]?.type === "ADD_MEMORY_PROPOSAL" ? proposals[0].proposal.id : undefined,
+        candidate: { kind: field("cardType", 40) || field("kind", 40), title: field("target", 150), content: field("content"), evidence: field("evidence", 16000), rationale: field("reason", 600), targetId: field("targetId", 150) || undefined },
+      } });
+    }
   }
   if (!errors.length && executed.every(action => action.startsWith("Brain cooldown retained:"))) executed.push("memory_evaluation_empty: valid evaluation; no new meaningful updates after deduplication");
   actions.push({ type: "LOG_EVALUATION_RESULT", entry: {
