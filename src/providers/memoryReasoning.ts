@@ -19,6 +19,11 @@ export function memoryReasoningFields(config: ProviderConfig, transport: "chat" 
     if (transport !== "chat") throw new Error("memory_reasoning_control_incompatible: OpenRouter disabled uses the compatible Chat API.");
     return { reasoning: { enabled: false } };
   }
+  // OpenRouter documents reasoning.enabled=false for Chat Completions.
+  // Verify the endpoint hostname; model names do not declare this capability.
+  if (transport === "chat" && /(?:^|\.)openrouter\.ai$/.test(new URL(config.baseUrl).hostname)) {
+    return { reasoning: { enabled: false } };
+  }
   // DeepSeek documents this toggle for both API formats, independently of model
   // name. Other providers must declare a documented capability in Settings.
   if (/(?:^|\.)deepseek\.com$/.test(new URL(config.baseUrl).hostname)) {

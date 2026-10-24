@@ -366,6 +366,36 @@ describe("sendOpenAICompatibleChatCompletion", () => {
     expect(result.content).toBe("The door creaks.");
   });
 
+  it.each([undefined, "auto", "openRouterDisabled"] as const)("disables OpenRouter GLM 5.3 Flash memory reasoning with control %s in one request", async memoryReasoningControl => {
+    const spy = mockFetch(200, { choices: [{ finish_reason: "stop", message: { content: '{"updates":[]}' } }] });
+    await sendOpenAICompatibleChatCompletion({
+      config: { ...config, baseUrl: "https://openrouter.ai/api/v1", model: "z-ai/glm-5.3-flash", memoryReasoningControl },
+      messages: [], memoryEvaluation: true, purpose: "memoryRecovery", retry: true,
+    });
+    const body = JSON.parse(spy.mock.calls[0][1]?.body as string);
+    expect(body.reasoning).toEqual({ enabled: false });
+    expect(body.reasoning_effort).toBeUndefined();
+    expect(body.thinking).toBeUndefined();
+    expect(spy.mock.calls[0][0]).toBe("https://openrouter.ai/api/v1/chat/completions");
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps OpenRouter narration reasoning unchanged with memory auto configured", async () => {
+    const spy = mockFetch(200, { choices: [{ finish_reason: "stop", message: { content: "The door creaks." } }] });
+    await sendOpenAICompatibleChatCompletion({
+      config: { ...config, baseUrl: "https://openrouter.ai/api/v1", model: "z-ai/glm-5.3-flash", memoryReasoningControl: "auto" },
+      messages: [], purpose: "narration", thinking: "disabled",
+    });
+    expect(JSON.parse(spy.mock.calls[0][1]?.body as string).reasoning).toEqual({ effort: "low" });
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects unknown automatic memory capabilities before sending Chat requests", async () => {
+    const spy = vi.spyOn(globalThis, "fetch");
+    await expect(sendOpenAICompatibleChatCompletion({ config: { ...config, memoryReasoningControl: "auto" }, messages: [], memoryEvaluation: true })).rejects.toThrow("memory_non_thinking_capability_unknown");
+    expect(spy).not.toHaveBeenCalled();
+  });
+
   it("retries a GLM reply that ran out of tokens while reasoning, with more headroom", async () => {
     const lengthBody = {
       model: "z-ai/glm-5.3-flash",

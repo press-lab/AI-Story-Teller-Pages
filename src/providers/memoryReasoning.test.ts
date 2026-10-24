@@ -39,6 +39,20 @@ it("never converts a non-thinking Messages request to OpenAI reasoning fields", 
   expect(memoryReasoningFields({ ...base, memoryReasoningControl: "thinkingDisabled" }, "messages")).toEqual({ thinking: { type: "disabled" } });
   expect(() => memoryReasoningFields({ ...base, memoryReasoningControl: "none" }, "messages")).toThrow("incompatible");
 });
+it.each([undefined, "auto"] as const)("recognizes OpenRouter Chat with control %s independently of model names", memoryReasoningControl => {
+  expect(memoryReasoningFields({ ...base, baseUrl: "https://openrouter.ai/api/v1", memoryReasoningControl })).toEqual({ reasoning: { enabled: false } });
+});
+it.each(["messages", "responses"] as const)("does not infer OpenRouter Chat controls for %s", transport => {
+  expect(() => memoryReasoningFields({ ...base, baseUrl: "https://openrouter.ai/api/v1" }, transport)).toThrow("memory_non_thinking_capability_unknown");
+});
+it.each(["https://openrouter.ai.example/v1", "https://example.com/openrouter.ai", "https://openrouter.ai@example.com/v1"])("rejects unverified OpenRouter hostname: %s", baseUrl => {
+  expect(() => memoryReasoningFields({ ...base, baseUrl, model: "z-ai/glm-5.3-flash" })).toThrow("memory_non_thinking_capability_unknown");
+});
+it("still rejects reported reasoning tokens from OpenRouter auto", async () => {
+  const spy = reply({ choices: [{ message: { content: '{"updates":[]}' } }], usage: { completion_tokens_details: { reasoning_tokens: 1 } } });
+  await expect(sendOpenAICompatibleChatCompletion({ config: { ...base, baseUrl: "https://openrouter.ai/api/v1", memoryReasoningControl: "auto" }, messages: [], memoryEvaluation: true })).rejects.toThrow("memory_reasoning_not_disabled");
+  expect(spy).toHaveBeenCalledTimes(1);
+});
 it("fails if a provider reports reasoning after receiving its off control", async () => {
   reply({ choices: [{ message: { content: '{"updates":[]}', reasoning_content: "hidden work" } }], usage: { completion_tokens: 30, completion_tokens_details: { reasoning_tokens: 20 } } });
   await expect(sendOpenAICompatibleChatCompletion({ config: { ...base, memoryReasoningControl: "omit" }, messages: [], memoryEvaluation: true })).rejects.toThrow("memory_reasoning_not_disabled");
