@@ -119,7 +119,7 @@ async function sendStoryCompletionWithGuard({
   config: RuntimeProviderSettings;
   responseLengthHint: number;
   playerInput: string;
-}): Promise<{ content: string; usage?: ProviderUsage }> {
+}): Promise<{ content: string; usage?: ProviderUsage; finishReason?: string; memoryDiscarded?: boolean }> {
   const response = await sendOpenAICompatibleChatCompletion({ messages, config, purpose: "narration" });
   const guard = evaluateStoryResponseGuard(response.content, responseLengthHint, playerInput);
   if (!guard.needsCorrection) return response;
@@ -130,15 +130,23 @@ async function sendStoryCompletionWithGuard({
     wordLimit: guard.visibleWordLimit,
     reasons: guard.reasons,
   });
+  const hasMemoryInstruction = messages.some(message => message.content.includes("[ONE-PASS MEMORY]"));
+  if (hasMemoryInstruction) {
+    correctionMessages[0].content = correctionMessages[0].content
+      .replace("Return only the corrected visible story response.", "Return the corrected story, then the hidden <memory_updates> envelope required by the supplied ONE-PASS MEMORY rules. Evaluate ONLY the corrected story, never discarded draft events.")
+      .replace("or <memory> tags.", "or legacy <memory> tags. The required <memory_updates> JSON envelope is allowed and does not count toward the visible word limit.");
+  }
+  const correctedConfig = correctionConfig(config, responseLengthHint);
   const corrected = await sendOpenAICompatibleChatCompletion({
-    messages: correctionMessages,
-    config: correctionConfig(config, responseLengthHint),
+    // Retain canon and eligible Brain targets for evaluation of the rewritten source.
+    messages: hasMemoryInstruction ? [...messages, ...correctionMessages] : correctionMessages,
+    config: hasMemoryInstruction ? { ...correctedConfig, maxOutputTokens: correctedConfig.maxOutputTokens + MEMORY_OUTPUT_RESERVE } : correctedConfig,
     // This tightly constrained rewrite does not benefit from hidden reasoning. DeepSeek's
     // default thinking mode can otherwise consume the entire small correction budget.
     thinking: "disabled",
     purpose: "correction",
   });
-  return { content: corrected.content, usage: combineProviderUsage(response.usage, corrected.usage) };
+  return { content: corrected.content, finishReason: corrected.finishReason, memoryDiscarded: !hasMemoryInstruction, usage: combineProviderUsage(response.usage, corrected.usage) };
 }
 
 function stripThinkTags(text: string): string {
@@ -277,12 +285,12 @@ export function useAdventureRuntime(
         completionTokens: compact.tokenUsage.completionTokens,
       };
       const actions: AdventureAction[] = [compactUsage];
-      if (compact.valid) actions.push({ type: "COMPLETE_MEMORY_RECOVERY", sources: batch.map(({ id, content }) => ({ id, content })), actions: compact.actions });
+      if (compact.valid) actions.push({ type: "COMPLETE_MEMORY_RECOVERY", sources: compact.processedSources ?? batch.map(({ id, content }) => ({ id, content })), dependencies: compact.sourceSnapshots, actions: compact.actions });
       else actions.push({ type: "LOG_EVALUATION_RESULT", entry: {
         id: createId("eval"), turn: snapshot.activeState.turn, createdAt: nowIso(),
         conditionsEvaluated: [], conditionsFired: [], generatedContent: [],
         actionsExecuted: ["Memory recovery: one attempt; batch retained"],
-        errors: ["Recovery failed or returned invalid JSON. Pending final narratives will retry after five story turns."],
+        errors: [compact.error ?? "Recovery failed or returned invalid JSON. Pending final narratives will retry after five story turns."],
       } });
       if (adventureRef.current?.id !== snapshot.id) return;
       const next = reduceActions(mergeQueuedUpdates(adventureRef.current), actions);

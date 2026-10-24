@@ -1,0 +1,534 @@
+{
+  "messages": [
+    {
+      "id": "msg_mvlt9bbu_exk4irpu",
+      "role": "user",
+      "content": "I walk up the rows of tables, maintaining a dignified stance and go to the stool",
+      "inputMode": "do",
+      "createdAt": "2026-10-24T02:59:55.674Z",
+      "storyTime": {
+        "text": "2001-09-01",
+        "date": "2001-09-01",
+        "precision": "day"
+      }
+    },
+    {
+      "id": "message_mvlt9eny_hqx9cj2n",
+      "role": "assistant",
+      "content": "Four House tables' worth of eyes track the walk, whispered commentary dying as you pass. Near the end of the Slytherin benches, a pale blonde girl in green murmurs something to her twin that makes them both smirk.\n\nAt the stool, the hall goes properly quiet.\n\n\"Thank you, Mr. Press,\" McGonagall says briskly, lifting the Sorting Hat in both hands. \"Do relax your shoulders.\"\n\nThe hat descends and settles \u2014 then a dry voice speaks directly into your ear, unhurried and amused.\n\n\"Well, well. An American. And not a blank page, either \u2014 there's architecture in here I could spend an hour admiring.\" A pause. \"Ilvermorny never fit quite right, did it? So \u2014 tell me. What are you actually looking for, Seth Press?\"\n\nThe Hat waits.",
+      "usage": {
+        "promptTokens": 4660,
+        "completionTokens": 459,
+        "totalTokens": 5119,
+        "cacheReadTokens": 0,
+        "cacheCreationTokens": 0
+      },
+      "createdAt": "2026-10-24T03:00:00.000Z",
+      "storyTime": {
+        "text": "2001-09-01",
+        "date": "2001-09-01",
+        "precision": "day"
+      },
+      "storyCardScan": {
+        "fingerprint": "4cbed879:810"
+      },
+      "memoryRecovery": {
+        "turn": 1,
+        "status": "complete"
+      }
+    },
+    {
+      "id": "msg_mvltiadc_o8vx96um",
+      "role": "user",
+      "content": "You \u201cI care about research like my mother\u201d\nThe hat can tell there is a strong scene of justice in me \n\nAI - describe the scene of me and the hat. After much deliberation, gryphandor",
+      "inputMode": "do",
+      "createdAt": "2026-10-24T03:06:54.336Z",
+      "storyTime": {
+        "text": "2001-09-01",
+        "date": "2001-09-01",
+        "precision": "day"
+      }
+    },
+    {
+      "id": "message_mvlticbp_e1un3cjq",
+      "role": "assistant",
+      "content": "\"Research, then. A mind that builds.\" The hat's brim dips low over your eyes; from outside it looks as though you've simply gone still, hands resting on your knees, jaw set, while somewhere under the felt a voice murmurs on. \"Mm. Patience of a scholar, yes. But look here \u2014 this spine of yours. A strong sense of justice, wired deep. You don't just want to *understand* things, you want to *stand* somewhere.\"\n\nSilence stretches across four tables. Then the hat bellows:\n\n\"GRYFFINDOR!\"\n\nGryffindor table erupts. McGonagall lifts the hat off, and something almost like approval crosses her face.",
+      "usage": {
+        "promptTokens": 4097,
+        "completionTokens": 185,
+        "totalTokens": 4282,
+        "cacheReadTokens": 0,
+        "cacheCreationTokens": 0
+      },
+      "createdAt": "2026-10-24T03:06:56.870Z",
+      "storyTime": {
+        "text": "2001-09-01",
+        "date": "2001-09-01",
+        "precision": "day"
+      },
+      "storyCardScan": {
+        "fingerprint": "dea860e1:779"
+      },
+      "memoryRecovery": {
+        "turn": 2,
+        "status": "complete"
+      }
+    },
+    {
+      "id": "msg_mvlu09h5_6slvicef",
+      "role": "user",
+      "content": "I hand her the hat and find a seat on one of the long empty benches. \n\n\nAi - I happen to sit next to Harry, Ron, hermoine, Fred and George",
+      "inputMode": "do",
+      "createdAt": "2026-10-24T03:20:52.985Z",
+      "storyTime": {
+        "text": "2001-09-01",
+        "date": "2001-09-01",
+        "precision": "day"
+      }
+    },
+    {
+      "id": "message_mvlu0cuq_eqeo52kx",
+      "role": "assistant",
+      "content": "McGonagall accepts the hat with a nod. Down the Gryffindor table, a knot of older students shuffles to make room, and a gap opens between a dark-haired boy with round glasses and a tall redheaded pair.\n\n\"Fred Weasley,\" says one twin across the table, hand extended. \"George. Whichever's lying is the other one.\"\n\n\"Welcome to the lion den,\" the freckled boy beside the gap adds, sticking out a hand. \"Ron Weasley. That's Harry, that's Hermione. You're the American, then?\"",
+      "usage": {
+        "promptTokens": 4858,
+        "completionTokens": 294,
+        "totalTokens": 5152,
+        "cacheReadTokens": 0,
+        "cacheCreationTokens": 0
+      },
+      "createdAt": "2026-10-24T03:20:57.364Z",
+      "storyTime": {
+        "text": "2001-09-01",
+        "date": "2001-09-01",
+        "precision": "day"
+      },
+      "storyCardScan": {
+        "fingerprint": "d4c15828:613"
+      },
+      "memoryRecovery": {
+        "turn": 3,
+        "status": "complete"
+      }
+    },
+    {
+      "id": "msg_mvlu29rz_kd9nnhpz",
+      "role": "user",
+      "content": "You \u201cYup, Seth. Nice to meet you all. Kind of odd coming in as transfer but should be exciting\u201d",
+      "inputMode": "do",
+      "createdAt": "2026-10-24T03:22:26.687Z",
+      "storyTime": {
+        "text": "2001-09-01",
+        "date": "2001-09-01",
+        "precision": "day"
+      }
+    },
+    {
+      "id": "message_mvlu2bas_ll6n0hsk",
+      "role": "assistant",
+      "content": "\"Transfer fourth-year \u2014 that's mad,\" Ron says, loading his plate as food appears down the table's length. \"What's Ilvermorny like, then? Bigger than this?\"\n\n\"Ron,\" Hermione says, rolling her eyes. \"Let him eat first.\"\n\n\"Ignore them both,\" Harry says with a grin. \"It gets worse. Where'd you get Sorted from, exactly \u2014 I mean, what took you to Gryffindor?\"",
+      "usage": {
+        "promptTokens": 4737,
+        "completionTokens": 98,
+        "totalTokens": 4835,
+        "cacheReadTokens": 0,
+        "cacheCreationTokens": 0
+      },
+      "createdAt": "2026-10-24T03:22:28.661Z",
+      "storyTime": {
+        "text": "2001-09-01",
+        "date": "2001-09-01",
+        "precision": "day"
+      },
+      "storyCardScan": {
+        "fingerprint": "f9c2a216:454"
+      },
+      "memoryRecovery": {
+        "turn": 4,
+        "status": "complete"
+      }
+    },
+    {
+      "id": "msg_mvlu917z_yond2boz",
+      "role": "user",
+      "content": "I drink some of the wine \u201cnot bad\u201d I comment. \u201cThe hat said I had a spine. I was certain I\u2019d have been ravenclaw with my moms renown and my own interest in research\u201d",
+      "inputMode": "do",
+      "createdAt": "2026-10-24T03:27:42.191Z",
+      "storyTime": {
+        "text": "2001-09-01",
+        "date": "2001-09-01",
+        "precision": "day"
+      }
+    },
+    {
+      "id": "message_mvlu92rm_fxxl1c4j",
+      "role": "assistant",
+      "content": "\"Spine's the important bit,\" Fred says, raising his goblet. \"Ravenclaw's where they keep the people who *write* the clever things. Gryffindor's where they test them.\"\n\n\"Mostly on themselves,\" George adds.\n\n\"Research, though?\" Hermione leans in, genuinely interested now. \"What sort? My parents are Muggle dentists \u2014 I'm guessing your mother's magical, given Ilvermorny?\"\n\n\"Rebecca Press,\" Harry repeats slowly. \"Hang on \u2014 that name was in the Prophet. Spell-circumstances something or other?\"\n\nRon squints. \"Your mum's famous and you picked the *spine* House?\"",
+      "usage": {
+        "promptTokens": 4878,
+        "completionTokens": 153,
+        "totalTokens": 5031,
+        "cacheReadTokens": 0,
+        "cacheCreationTokens": 0
+      },
+      "createdAt": "2026-10-24T03:27:44.195Z",
+      "storyTime": {
+        "text": "2001-09-01",
+        "date": "2001-09-01",
+        "precision": "day"
+      },
+      "storyCardScan": {
+        "fingerprint": "f9c75651:729"
+      },
+      "memoryRecovery": {
+        "turn": 5,
+        "status": "complete"
+      }
+    },
+    {
+      "id": "msg_mvlub9og_alzfnidf",
+      "role": "user",
+      "content": "I laugh \u201cI didn\u2019t pick. But yeah my mom is Rebecca press. She\u2019s done some cool stuff\u201d I downplay. \u201cWhat about you all. Dentists, what else?\u201d",
+      "inputMode": "do",
+      "createdAt": "2026-10-24T03:29:26.464Z",
+      "storyTime": {
+        "text": "2001-09-01",
+        "date": "2001-09-01",
+        "precision": "day"
+      }
+    },
+    {
+      "id": "message_mvlubbgp_ssdqkwx2",
+      "role": "assistant",
+      "content": "\"Dentists,\" Ron repeats, mystified. \"Those are the teeth people, right?\"\n\n\"Muggle doctors for teeth,\" Hermione says patiently. \"I'm the first witch in my family. Which made the letter rather a shock.\" She turns her goblet by its stem. \"I'm in research myself, actually \u2014 magical law and magical theory, mostly. There's a house-elf rights campaign I run as well. S.P.E.W., if you'd like to hear about it\u2014\"\n\n\"He's been here ten minutes, Hermione,\" Ron groans.\n\nHarry leans forward past them. \"Your mum's circumstances work \u2014 did she help design your tattoos? We noticed them earlier.\"",
+      "usage": {
+        "promptTokens": 5452,
+        "completionTokens": 144,
+        "totalTokens": 5596,
+        "cacheReadTokens": 0,
+        "cacheCreationTokens": 0
+      },
+      "createdAt": "2026-10-24T03:29:28.777Z",
+      "storyTime": {
+        "text": "2001-09-01",
+        "date": "2001-09-01",
+        "precision": "day"
+      },
+      "storyCardScan": {
+        "fingerprint": "5fa2b5a9:726"
+      },
+      "memoryRecovery": {
+        "turn": 6,
+        "status": "complete"
+      }
+    },
+    {
+      "id": "msg_mvluhtl2_5lt5juvh",
+      "role": "user",
+      "content": "I smile \u201cmy own work. I focus on runes and spell amplification\u201d I show off my arm \u201chouse elf rights? I didn\u2019t have a house elf growing up.\u201d",
+      "inputMode": "do",
+      "createdAt": "2026-10-24T03:34:32.198Z",
+      "storyTime": {
+        "text": "2001-09-01",
+        "date": "2001-09-01",
+        "precision": "day"
+      }
+    },
+    {
+      "id": "message_mvluhvfk_stfz13f9",
+      "role": "assistant",
+      "content": "The arm draws a low whistle from down the table \u2014 blackwork sigils interlocking from wrist to elbow, precise as circuitry.\n\n\"Runic arrays,\" Hermione says, craning to look. \"Executable ones? I've only read about \u2014 that's genuinely advanced work.\"\n\n\"Merlin's beard,\" Ron breathes. \"Those aren't just tattoos?\"\n\n\"Interesting question,\" Fred says slowly, exchanging a look with George. \"Very interesting. Seth, mate, hypothetically \u2014 could something like that amplify a *prank*?\"\n\n\"Don't answer that yet,\" George says. \"Hermione, you were explaining the elves?\"",
+      "usage": {
+        "promptTokens": 5794,
+        "completionTokens": 148,
+        "totalTokens": 5942,
+        "cacheReadTokens": 0,
+        "cacheCreationTokens": 0
+      },
+      "createdAt": "2026-10-24T03:34:34.593Z",
+      "storyTime": {
+        "text": "2001-09-01",
+        "date": "2001-09-01",
+        "precision": "day"
+      },
+      "storyCardScan": {
+        "fingerprint": "1db88ae3:700"
+      },
+      "memoryRecovery": {
+        "turn": 7,
+        "status": "complete"
+      }
+    },
+    {
+      "id": "msg_mvluzldd_fs97hiii",
+      "role": "user",
+      "content": "You \u201cYes!\u201d My eyes dance with excitement to Fred and George. \u201cAnd yes Hermione\u201c still grinning.",
+      "inputMode": "do",
+      "createdAt": "2026-10-24T03:48:21.361Z",
+      "storyTime": {
+        "text": "2001-09-01",
+        "date": "2001-09-01",
+        "precision": "day"
+      }
+    },
+    {
+      "id": "message_mvluzope_nss3yby5",
+      "role": "assistant",
+      "content": "\"Oh, this is the best Sorting Day in years,\" Fred says, delighted.\n\n\"Prank amplification via applied runes,\" George muses. \"The applications are *staggering*.\"\n\n\"I will help you with research,\" Hermione says, \"if you two leave this poor man alone.\" She's already pulling a rolled pamphlet from her bag, flattening it on the table. \"S.P.E.W. \u2014 the Society for the Promotion of Elfish Welfare. The point is that house-elves are bound by ancient enchantments they don't choose, paid nothing, and most wizards insist they *like* it. You'd know about bindings, presumably \u2014 you must see how ethically fraught that is?\"",
+      "usage": {
+        "promptTokens": 6670,
+        "completionTokens": 155,
+        "totalTokens": 6825,
+        "cacheReadTokens": 0,
+        "cacheCreationTokens": 0
+      },
+      "createdAt": "2026-10-24T03:48:25.683Z",
+      "storyTime": {
+        "text": "2001-09-01",
+        "date": "2001-09-01",
+        "precision": "day"
+      },
+      "storyCardScan": {
+        "fingerprint": "7361afb7:712"
+      },
+      "memoryRecovery": {
+        "turn": 9,
+        "status": "complete"
+      }
+    },
+    {
+      "id": "msg_mvlv3cec_gb8iuxl0",
+      "role": "user",
+      "content": "I smile at her \u201cyeah. That makes sense.\u201d I\u2019m still trying to talk to everyone. \u201cWhat about your families?\u201d I ask Harry and the Weasleys \u201cyou all are clearly siblings\u201d I say to Ron, Fred and George",
+      "inputMode": "do",
+      "createdAt": "2026-10-24T03:51:16.356Z",
+      "storyTime": {
+        "text": "2001-09-01",
+        "date": "2001-09-01",
+        "precision": "day"
+      }
+    },
+    {
+      "id": "message_mvlv5vz4_917rdh4g",
+      "role": "assistant",
+      "content": "\"Twins, actually,\" Fred says, gesturing between himself and George. \"Bill and Charlie are off in Egypt and Romania, Percy's in the Ministry, and there's Ginny \u2014 third-year, around here somewhere.\"\n\n\"Big family,\" George says. \"Mum's delighted Ron's made friends. She'll have you round for dinner by October and force-feed you until you can't stand.\"\n\nHarry hesitates a moment before answering. \"My parents died when I was one. Raised by my aunt and uncle \u2014 Muggles, not fond of magic.\" He shrugs, tone deliberately light. \"Hogwarts is the first place that felt like home, honestly.\"",
+      "usage": {
+        "promptTokens": 6938,
+        "completionTokens": 161,
+        "totalTokens": 7099,
+        "cacheReadTokens": 0,
+        "cacheCreationTokens": 0
+      },
+      "createdAt": "2026-10-24T03:53:15.041Z",
+      "storyTime": {
+        "text": "2001-09-01",
+        "date": "2001-09-01",
+        "precision": "day"
+      },
+      "storyCardScan": {
+        "fingerprint": "701f7c21:781"
+      },
+      "memoryRecovery": {
+        "turn": 10,
+        "status": "pending"
+      }
+    },
+    {
+      "id": "msg_mvlv80s1_wshg2dzn",
+      "role": "user",
+      "content": "You \u201cSorry to hear that man\u201d I say to Harry clearly not recognizing him. \u201cSounds like you have a good family now\u201d I grin and drink more wine",
+      "inputMode": "do",
+      "createdAt": "2026-10-24T03:54:54.577Z",
+      "storyTime": {
+        "text": "2001-09-01",
+        "date": "2001-09-01",
+        "precision": "day"
+      }
+    },
+    {
+      "id": "message_mvlv82g3_1qjeu8mt",
+      "role": "assistant",
+      "content": "\"Blimey,\" Ron says, choking on his wine. \"You really don't \u2014 Harry, he doesn't\u2014\" He's grinning now. \"Mate, you've been Sorted next to the most famous wizard in Britain and you've no idea.\"\n\n\"Seth,\" Harry says, laughing, \"Harry Potter. The scar's usually a giveaway.\" He taps his forehead. \"Don't worry, it's honestly a nice change.\"\n\n\"He's going to be insufferable about this,\" George stage-whispers.",
+      "usage": {
+        "promptTokens": 7006,
+        "completionTokens": 122,
+        "totalTokens": 7128,
+        "cacheReadTokens": 0,
+        "cacheCreationTokens": 0
+      },
+      "createdAt": "2026-10-24T03:54:56.739Z",
+      "storyTime": {
+        "text": "2001-09-01",
+        "date": "2001-09-01",
+        "precision": "day"
+      },
+      "storyCardScan": {
+        "fingerprint": "c1145629:544"
+      },
+      "memoryRecovery": {
+        "turn": 11,
+        "status": "pending"
+      }
+    }
+  ],
+  "harryCard": {
+    "id": "story_hu2_12",
+    "title": "Harry Potter",
+    "type": "character",
+    "keys": [
+      "Harry Potter",
+      "Harry"
+    ],
+    "matchType": "phrase",
+    "content": "21-year-old fourth-year Gryffindor, the Boy Who Lived. Orphaned when Voldemort murdered James and Lily Potter; raised by the Dursleys. Loyal, brave, impulsive, stubborn, talented in defensive magic and Quidditch. Friends with Ron and Hermione. First three years involved Quirrell and the Stone, the Chamber, and Sirius Black. No knowledge of the coming year\u2019s exact events. Born July 31, 1980; parents killed October 31, 1981. Began adult Hogwarts in September 1998 at 18. Fourth-year age 21 in September 2001. Underage for the 24+ Triwizard rule.\n\nFIRST MEETING WITH SETH: At the September 1, 2001 Gryffindor feast, the new American transfer treated Harry as an ordinary student and offered sincere sympathy about his dead parents without recognizing who he was. Ron was startled and amused; Harry introduced himself by name and pointed out his scar, laughing that not being recognized was a nice change. The two have just met; deeper friendship or commitments are not yet established.",
+    "memoryMode": "static",
+    "sourceTurnIds": [
+      "msg_mvlv80s1_wshg2dzn",
+      "message_mvlv82g3_1qjeu8mt"
+    ],
+    "active": true,
+    "pinned": false,
+    "protected": false,
+    "inclusionPolicy": "triggered",
+    "priority": 170,
+    "autoUpdate": false,
+    "autoUpdateCooldownTurns": 3,
+    "state": "",
+    "archivedFacts": "",
+    "createdAt": "2026-10-24T02:33:00.642063+00:00",
+    "updatedAt": "2026-10-24T04:01:00.000Z",
+    "memoryUpdateHistory": []
+  },
+  "storyClock": {
+    "current": {
+      "text": "2001-09-01",
+      "date": "2001-09-01",
+      "precision": "day"
+    },
+    "anchor": {
+      "text": "2001-09-01",
+      "date": "2001-09-01",
+      "precision": "day"
+    },
+    "origin": "established"
+  },
+  "sethCard": {
+    "id": "story_hu2_1",
+    "title": "Seth Press / Player",
+    "type": "character",
+    "keys": [
+      "Seth Press",
+      "Seth",
+      "Press"
+    ],
+    "matchType": "phrase",
+    "content": "Seth Press is 21, a 6'4\" athletic, broad-shouldered American half-blood wizard with short dark-blond hair and blackwork sigil tattoos across torso, upper back and arms. He grew up on family land near Woodstock, Vermont, in a loving, intellectually curious home. His Muggle-born mother, Dr Rebecca Press, is an internationally respected spell-circumstances researcher; his Muggle father Daniel works in finance. Seth spent his first three university years at Ilvermorny and has now transferred to Hogwarts University for Year Four. He is an exceptionally powerful, curious, independent wandless mage and already an advanced runic specialist. His modular tattoos ground, anchor, channel, meter, gather, split, merge, gate, isolate, contain, shape, bind, stabilize, sustain, delay, trigger, detect, feed back, convert and discharge magic. He can cast without the tattoos; they make his work unusually flexible and efficient. His ultimate power limit is not established. He is not married, has never lived the Blackfriars 2018\u201319 adventure, had not previously met the Hogwarts students before the September 1, 2001 feast, and was sorted into Gryffindor at the end of the ceremony. The Sorting Hat considered his scholarly curiosity and strong sense of justice before choosing Gryffindor. He sat with Harry Potter, Ron Weasley, Hermione Granger, Fred Weasley and George Weasley at the opening feast. Seth did not recognize Harry as the famous Boy Who Lived until Harry personally introduced himself; he had offered sympathy about Harry losing his parents without recognizing his identity. The player alone controls Seth\u2019s future thoughts, dialogue, intentions, relationships and decisions. No narrator-assigned romance or quest.",
+    "memoryMode": "static",
+    "sourceTurnIds": [
+      "message_mvlticbp_e1un3cjq",
+      "message_mvlu0cuq_eqeo52kx",
+      "msg_mvlv80s1_wshg2dzn",
+      "message_mvlv82g3_1qjeu8mt"
+    ],
+    "active": true,
+    "pinned": true,
+    "protected": true,
+    "inclusionPolicy": "always",
+    "priority": 250,
+    "autoUpdate": false,
+    "autoUpdateCooldownTurns": 3,
+    "state": "",
+    "archivedFacts": "",
+    "createdAt": "2026-10-24T02:33:00.642063+00:00",
+    "updatedAt": "2026-10-24T04:01:00.000Z",
+    "memoryUpdateHistory": []
+  },
+  "documentedRecognition": {
+    "id": "story_mvlu9juw_fxaza8rj",
+    "title": "Harry Potter: At the 2001-09-01 start-of-term feast, Harry recognized Seth Pre",
+    "keys": [
+      "Prophet"
+    ],
+    "matchType": "phrase",
+    "content": "At the 2001-09-01 start-of-term feast, Harry recognized Seth Press's surname from press coverage, telling him his mother Rebecca Press 'was in the Prophet' regarding spell-circumstances work.",
+    "type": "lore",
+    "lore": {
+      "status": "completed",
+      "sourceMessageIds": [
+        "message_mvlu92rm_fxxl1c4j",
+        "msg_mvlu917z_yond2boz"
+      ],
+      "occurredAt": {
+        "text": "2001-09-01",
+        "date": "2001-09-01",
+        "precision": "day"
+      },
+      "lastChangedAt": {
+        "text": "2001-09-01",
+        "date": "2001-09-01",
+        "precision": "day"
+      }
+    },
+    "memoryMode": "historical",
+    "compactKind": "pact",
+    "compactStatus": "active",
+    "sourceTurnIds": [
+      "message_mvlu92rm_fxxl1c4j"
+    ],
+    "active": true,
+    "pinned": false,
+    "protected": false,
+    "inclusionPolicy": "triggered",
+    "priority": 80,
+    "autoUpdate": false,
+    "autoUpdateCooldownTurns": 3,
+    "lastMemoryUpdatedAt": "2026-10-24T03:28:06.345Z",
+    "memoryUpdateHistory": [
+      {
+        "id": "memoryRevision_mvlu9jux_aoahnajc",
+        "source": "memoryProposal",
+        "operation": "create",
+        "proposalId": "proposal_mvlu958c_ltqvewl4",
+        "sourceTurnId": "message_mvlu92rm_fxxl1c4j",
+        "previous": null,
+        "next": {
+          "title": "Harry Potter: At the 2001-09-01 start-of-term feast, Harry recognized Seth Pre",
+          "content": "At the 2001-09-01 start-of-term feast, Harry recognized Seth Press's surname from press coverage, telling him his mother Rebecca Press 'was in the Prophet' regarding spell-circumstances work.",
+          "state": "memoryProposal guardedMemory",
+          "keys": [
+            "Prophet"
+          ],
+          "type": "lore",
+          "lore": {
+            "status": "completed",
+            "sourceMessageIds": [
+              "message_mvlu92rm_fxxl1c4j",
+              "msg_mvlu917z_yond2boz"
+            ],
+            "occurredAt": {
+              "text": "2001-09-01",
+              "date": "2001-09-01",
+              "precision": "day"
+            },
+            "lastChangedAt": {
+              "text": "2001-09-01",
+              "date": "2001-09-01",
+              "precision": "day"
+            }
+          },
+          "memoryMode": "historical",
+          "compactKind": "pact",
+          "compactStatus": "active",
+          "sourceTurnIds": [
+            "message_mvlu92rm_fxxl1c4j"
+          ]
+        },
+        "updatedAt": "2026-10-24T03:28:06.345Z"
+      }
+    ],
+    "state": "memoryProposal guardedMemory",
+    "tokenBudget": 450,
+    "createdAt": "2026-10-24T03:28:06.344Z",
+    "updatedAt": "2026-10-24T03:28:06.345Z"
+  }
+}

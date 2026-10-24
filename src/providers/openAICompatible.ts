@@ -47,6 +47,7 @@ export interface SendChatCompletionOptions {
 export interface ProviderResponse {
   content: string;
   raw: unknown;
+  finishReason?: string;
   usage?: ProviderUsage;
 }
 
@@ -130,7 +131,7 @@ function wait(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
-async function waitForProviderThrottle(config: ProviderConfig, signal?: AbortSignal): Promise<void> {
+export async function waitForProviderThrottle(config: ProviderConfig, signal?: AbortSignal): Promise<void> {
   const throttle = normalizedThrottle(config);
   if (!throttle.enabled) return;
 
@@ -204,20 +205,20 @@ async function sendOpenAIRequest(
   if (!isGlmReasoningModel(config) || isNativeDeepSeekProvider(config) || !allowRetry) {
     const result = await sendOpenAIRequestOnce(endpoint, messages, config, 0, signal, responseFormat, thinking, purpose);
     if (result.content == null) throw new Error(`Provider returned no content. Body: ${result.rawText.slice(0, 300)}`);
-    return { content: result.content, raw: result.raw, usage: result.usage };
+    return { content: result.content, raw: result.raw, finishReason: result.finishReason, usage: result.usage };
   }
 
   // GLM: reserve room for hidden reasoning, and retry once with more room if the reply
   // still ran out of tokens before any visible text was written.
   const first = await sendOpenAIRequestOnce(endpoint, messages, config, GLM_REASONING_RESERVE_TOKENS, signal, responseFormat, thinking, purpose);
-  if (first.content?.trim()) return { content: first.content, raw: first.raw, usage: first.usage };
+  if (first.content?.trim()) return { content: first.content, raw: first.raw, finishReason: first.finishReason, usage: first.usage };
   if (first.finishReason !== "length") {
     throw new Error(`Provider returned no content. Body: ${first.rawText.slice(0, 300)}`);
   }
 
   const retry = await sendOpenAIRequestOnce(endpoint, messages, config, GLM_RETRY_REASONING_RESERVE_TOKENS, signal, responseFormat, thinking, purpose);
   const usage = addUsage(first.usage, retry.usage);
-  if (retry.content?.trim()) return { content: retry.content, raw: retry.raw, usage };
+  if (retry.content?.trim()) return { content: retry.content, raw: retry.raw, finishReason: retry.finishReason, usage };
   throw new Error(
     `Provider returned no content. ${config.model} used its whole output budget on hidden reasoning ` +
       `(finish reason: ${retry.finishReason ?? "unknown"}, max_tokens: ${config.maxOutputTokens + GLM_RETRY_REASONING_RESERVE_TOKENS}). ` +
@@ -268,7 +269,7 @@ async function sendOpenAIRequestOnce(
   }
 
   const rawText = await response.text().catch(() => "");
-  let raw: { error?: { message?: string }; choices?: Array<{ finish_reason?: string; message?: { content?: string | null } }>; usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number; prompt_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number } } };
+  let raw: { error?: { message?: string }; choices?: Array<{ finish_reason?: string; message?: { content?: string | Array<{ type: string; text?: string }> | null } }>; usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number; prompt_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number } } };
   try {
     raw = JSON.parse(rawText) as typeof raw;
   } catch {
@@ -280,7 +281,10 @@ async function sendOpenAIRequestOnce(
     throw new Error(`Provider error ${response.status} (${endpoint}): ${detail}`);
   }
 
-  const content = raw.choices?.[0]?.message?.content;
+  const suppliedContent = raw.choices?.[0]?.message?.content;
+  const content = Array.isArray(suppliedContent)
+    ? suppliedContent.filter(block => block.type === "text").map(block => block.text ?? "").join("")
+    : suppliedContent;
   const finishReason = raw.choices?.[0]?.finish_reason;
 
   const usage: ProviderUsage | undefined = raw.usage
@@ -345,7 +349,7 @@ async function sendAnthropicRequest(
   }
 
   const rawText = await response.text().catch(() => "");
-  let raw: { error?: { message?: string }; content?: Array<{ type: string; text?: string }>; usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } };
+  let raw: { stop_reason?: string; error?: { message?: string }; content?: Array<{ type: string; text?: string }>; usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } };
   try {
     raw = JSON.parse(rawText) as typeof raw;
   } catch {
@@ -357,7 +361,7 @@ async function sendAnthropicRequest(
     throw new Error(`Provider error ${response.status} (${endpoint}): ${detail}`);
   }
 
-  const content = raw.content?.find((c) => c.type === "text")?.text;
+  const content = raw.content?.filter(c => c.type === "text").map(c => c.text ?? "").join("");
   if (content == null) throw new Error(`Provider returned no content. Body: ${rawText.slice(0, 300)}`);
 
   const usage: ProviderUsage | undefined = raw.usage
@@ -370,7 +374,7 @@ async function sendAnthropicRequest(
       }
     : undefined;
 
-  return { content, raw, usage };
+  return { content, raw, finishReason: raw.stop_reason, usage };
 }
 
 export async function sendOpenAICompatibleChatCompletion({

@@ -356,7 +356,7 @@ function buildTurnScopeContract(responseLengthHint: number | undefined): string 
     ? Math.max(50, Math.min(500, responseLengthHint))
     : 250;
   const minWords = Math.floor(wordTarget * 0.55);
-  return `TURN SCOPE CONTRACT: The player's selected visible limit is ${wordTarget} words. Aim for ${minWords}-${wordTarget} visible words; shorter is acceptable when the next playable beat is clear. Do not mention word counts or pad prose. This is a scope ceiling, not a quota. If any other instruction asks for a fuller, substantial, complete, or cinematic scene, obey this turn scope contract first. Write only the next immediate exchange or consequence. Do not advance through multiple beats, tour multiple locations, wrap up the scene, or resolve a major outcome the player has not earned. Never narrate the player's unspoken actions, reactions, dialogue, consent, movement, commitments, or decisions. Stop as soon as the player could reasonably act, answer, interrupt, refuse, choose, or redirect. Hidden <thought> and <memory> tags do not count toward the visible limit, and they must not cause the visible prose to expand. End on a live in-scene moment, not an option menu or summary.`;
+  return `TURN SCOPE CONTRACT: The player's selected visible limit is ${wordTarget} words. Aim for ${minWords}-${wordTarget} visible words; shorter is acceptable when the next playable beat is clear. Do not mention word counts or pad prose. This is a scope ceiling, not a quota. If any other instruction asks for a fuller, substantial, complete, or cinematic scene, obey this turn scope contract first. Write only the next immediate exchange or consequence. Do not advance through multiple beats, tour multiple locations, wrap up the scene, or resolve a major outcome the player has not earned. Never narrate the player's unspoken actions, reactions, dialogue, consent, movement, commitments, or decisions. Stop as soon as the player could reasonably act, answer, interrupt, refuse, choose, or redirect. Hidden <memory_updates> JSON and <thought> tags do not count toward the visible limit, and they must not cause the visible prose to expand. End on a live in-scene moment, not an option menu or summary.`;
 }
 
 function buildPayload(sections: ContextSection[], recentMessagesNewestFirst: Message[], openingScene?: string) {
@@ -391,7 +391,7 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
     : buildTurnScopeContract(adventure.activeState.responseLengthHint);
   const captureEligible = options.skipThoughtCapture || authorTurn ? [] : eligibleBrainsForCapture(adventure, triggerText);
   const memoryText = !options.skipThoughtCapture && !authorTurn && adventure.memoryDetectionSettings.enabled
-    ? onePassMemoryInstruction(captureEligible, enabledMemoryCategories(adventure))
+    ? onePassMemoryInstruction(captureEligible, enabledMemoryCategories(adventure), adventure.memoryDetectionSettings.evaluator !== "dedicated")
       + "\nStory Card targets [id,title,type]: " + JSON.stringify(relevantStoryCardInventory(adventure, triggerText).map(card => [card.id, card.title, card.type])) : undefined;
   function pushExcluded(
     sourceType: ExcludedContextItem["sourceType"],
@@ -414,7 +414,7 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
   const turnScopeItem = item("turn-scope-contract", "system", "Turn Scope Contract", turnScopeText, 1000, true, false, true, "always", "system");
   pushIncluded(turnScopeItem, "Turn scope contract is always included and protected.");
   const memoryItem = memoryText
-    ? item(ONE_PASS_MEMORY_ID, "system", "One-pass Memory", memoryText, 900, false, false, true, "always", "system")
+    ? item(ONE_PASS_MEMORY_ID, "system", "One-pass Memory", memoryText, 900, true, false, true, "always", "system")
     : undefined;
   if (memoryItem) pushIncluded(memoryItem, "Narration and automatic memory share one response.");
 

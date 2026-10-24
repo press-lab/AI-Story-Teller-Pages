@@ -19,13 +19,13 @@ vi.mock("../triggers/semanticEngine", async importOriginal => ({
 
 afterEach(cleanup);
 
-function setup(enabled = true, customRule = false, saved?: Adventure) {
+function setup(enabled = true, customRule = false, saved?: Adventure, memoryOverrides: Partial<MemoryDetectionSettings> = {}) {
   const initial = createDefaultAdventure("Call accounting");
   initial.memoryDetectionSettings = { ...initial.memoryDetectionSettings, enabled: !enabled }; // deliberately stale saved settings
   initial.memoryAutoApprove = { ...initial.memoryAutoApprove, storyCard: false };
   if (customRule) initial.triggerRules.push(makeTriggerRule({ name: "Explicit custom rule", condition: "When Mira learns something", evaluationMode: "semantic" }));
   initial.storyCards = [makeStoryCard({ id: "mira", title: "Mira", content: "Mira is a scout.", active: true, pinned: true, protected: false })];
-  const globalMemory: MemoryDetectionSettings = { enabled, everyNTurns: 1, generateContent: true };
+  const globalMemory: MemoryDetectionSettings = { enabled, everyNTurns: 1, generateContent: true, ...memoryOverrides };
   return renderHook(() => {
     const [adventure, setAdventure] = useState<Adventure | undefined>(saved ?? initial);
     const runtime = useAdventureRuntime(adventure, setAdventure, { ...defaultModelConfig, apiKey: "test" }, vi.fn(), vi.fn(), vi.fn(), async () => undefined, globalMemory);
@@ -95,7 +95,8 @@ describe("runtime one-pass call accounting", () => {
     expect(result.current.adventure?.messages.at(-1)?.usage?.totalTokens).toBe(2370);
     expect(result.current.adventure?.storyCards[0].content).toBe("Mira is a scout.");
     const correction = vi.mocked(sendOpenAICompatibleChatCompletion).mock.calls[1][0];
-    expect(correction.messages.map(m => m.content).join("\n")).not.toContain("<memory_updates>");
+    expect(correction.messages.map(m => m.content).join("\n")).toContain("[ONE-PASS MEMORY]");
+    expect(correction.messages.at(-1)?.content).not.toContain("<memory_updates>");
     expect(runMemoryCycle).not.toHaveBeenCalled();
   });
 
@@ -237,4 +238,40 @@ it("resumes a due batch on reload without requesting another narration", async (
   expect(vi.mocked(sendOpenAICompatibleChatCompletion).mock.calls[0][0].purpose).toBe("memoryRecovery");
   expect(second.result.current.adventure!.messages.filter(m => m.memoryRecovery?.status === "pending")).toHaveLength(0);
   second.unmount();
+});
+
+it("evaluates the corrected final story in the existing rewrite request", async () => {
+  vi.mocked(sendOpenAICompatibleChatCompletion).mockReset()
+    .mockResolvedValueOnce({ content: "You agree to the duke's terms. " + response, raw: {} })
+    .mockResolvedValueOnce({ content: response, raw: {} });
+  const { result } = setup();
+  await act(async () => { await result.current.runtime.submitTurn("I listen."); });
+  expect(sendOpenAICompatibleChatCompletion).toHaveBeenCalledTimes(2);
+  expect(result.current.adventure?.messages.at(-1)?.memoryRecovery).toBeUndefined();
+  expect(result.current.adventure?.activeState.memoryProposals).toContainEqual(expect.objectContaining({ storyCardReview: expect.objectContaining({ sourceContent: story }) }));
+  const calls = vi.mocked(sendOpenAICompatibleChatCompletion).mock.calls;
+  expect(calls[1][0].config.maxOutputTokens).toBeGreaterThan(1400);
+});
+
+
+it("runs a dedicated evaluator only at the explicitly selected cadence", async () => {
+  vi.mocked(sendOpenAICompatibleChatCompletion).mockReset().mockImplementation(async options => {
+    if (!options.responseFormat) return { content: story + '<memory_updates>{"updates":[]}</memory_updates>', raw: {} };
+    const sources = JSON.parse(options.messages.at(-1)!.content.replace("Completed source exchanges and in-world dates: ", "")) as Array<{ sourceTurnId: string }>;
+    return { content: JSON.stringify({ turns: sources.map(source => ({ sourceTurnId: source.sourceTurnId, updates: [] })) }), raw: {} };
+  });
+  const { result } = setup(true, false, undefined, { evaluator: "dedicated", everyNTurns: 2 });
+  for (let turn = 0; turn < 4; turn++) await act(async () => { await result.current.runtime.submitTurn("Mira explains."); });
+  const calls = vi.mocked(sendOpenAICompatibleChatCompletion).mock.calls.map(([options]) => options);
+  expect(calls.filter(options => options.purpose === "narration")).toHaveLength(4);
+  expect(calls.filter(options => options.purpose === "memoryRecovery")).toHaveLength(2);
+  expect(result.current.adventure?.messages.filter(message => message.role === "assistant").every(message => message.memoryRecovery?.status === "complete")).toBe(true);
+});
+
+it("makes no automatic evaluator calls when dedicated mode is manual only", async () => {
+  vi.mocked(sendOpenAICompatibleChatCompletion).mockReset().mockResolvedValue({ content: story + '<memory_updates>{"updates":[]}</memory_updates>', raw: {} });
+  const { result } = setup(true, false, undefined, { evaluator: "dedicated", everyNTurns: 0 });
+  for (let turn = 0; turn < 6; turn++) await act(async () => { await result.current.runtime.submitTurn("Mira explains."); });
+  expect(sendOpenAICompatibleChatCompletion).toHaveBeenCalledTimes(6);
+  expect(vi.mocked(sendOpenAICompatibleChatCompletion).mock.calls.every(([options]) => options.purpose === "narration")).toBe(true);
 });

@@ -5,7 +5,7 @@ import { readStoryTime, transitionKey } from "./storyTime";
 import { storyCardEntityCandidates, characterParticipants } from "./storyCardEntities";
 
 export const STORY_CARD_MEMORY_CHECK = `STORY CARD MEMORY CHECK
-Did anything NEW and MEANINGFUL happen in this exchange? Remember first meetings/kisses, proposals, relationships, commitments, betrayals, discoveries, major decisions, deaths, permanent changes, or significant new people/places. Ignore routine activity, conversation, movement, temporary reactions and repeats.
+Did anything NEW and MEANINGFUL happen in this exchange? Remember first meetings/kisses, proposals, relationships, commitments, betrayals, discoveries, major decisions, deaths, permanent changes, or significant new people/places. Ignore routine activity, movement, jokes, greetings and repeats that add no durable information. Dialogue can establish a new revelation, conditional offer, change of plan, or distinctive first impression worth recalling later. A first meeting alone does not establish friendship or trust; stated interest is not a research contract; discussing a prank is not a completed prank or partnership. Judge significance from context, not keywords.
 For each: TYPE (Lore, Character, Location, Custom; prefer Lore); CREATE or UPDATE a relevant existing card; FACT (specific new development); WHEN (current story date unless historical); EVIDENCE (exact supporting quote).
 Character/Location hold durable identity or exceptional permanent changes. Plans, threats, dreams and almost-events are not completed actions. Preserve private knowledge and past history. Never invent facts, rewrite whole cards, duplicate memories or suggest Plot Component updates. Return suggestions or an empty updates array.
 END STORY CARD MEMORY CHECK`;

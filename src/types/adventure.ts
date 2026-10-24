@@ -402,6 +402,8 @@ export interface BackgroundProviderConfig {
 }
 
 export interface SemanticEvaluationSettings {
+  /** Memory-only transport; other background tasks keep their existing provider path. */
+  memoryEvaluationApi?: "chat" | "openaiResponses";
   evaluationModel: string;
   messagesIncluded: number;
   enabled: boolean;
@@ -419,6 +421,8 @@ export interface SemanticEvaluationSettings {
 
 
 export interface MemoryDetectionSettings {
+  /** Narrator remains the default. Dedicated evaluation uses the existing background queue. */
+  evaluator?: "narrator" | "dedicated";
   enabled: boolean;
   generateContent: boolean;
   everyNTurns: number;
@@ -924,7 +928,7 @@ export type AdventureAction =
   | { type: "ADVANCE_MEMORY_RECOVERY_TURN" }
   | { type: "QUEUE_MEMORY_RECOVERY"; messageId: string; turn: number }
   | { type: "CLAIM_MEMORY_RECOVERY"; turn: number }
-  | { type: "COMPLETE_MEMORY_RECOVERY"; sources: Array<{ id: string; content: string }>; actions: AdventureAction[] }
+  | { type: "COMPLETE_MEMORY_RECOVERY"; sources: Array<{ id: string; content: string }>; dependencies?: Array<{ id: string; content: string }>; actions: AdventureAction[] }
   | { type: "ACCUMULATE_BACKGROUND_TOKENS"; promptTokens: number; completionTokens: number }
   | { type: "SET_NEXT_TURN_NOTE"; note: Partial<NextTurnNote> }
   | { type: "CLEAR_NEXT_TURN_NOTE" }

@@ -1,13 +1,13 @@
 import { STORY_CARD_MEMORY_CHECK, STORY_CARD_OUTPUT_SCHEMA, makeStoryCardSuggestion, companionLoreSuggestion } from "./storyCardSuggestions";
 import { isExceptionalIdentityChange } from "./storyCardArchitecture";
-import type { Adventure, AdventureAction, BrainEntry, ContextBuildResult, MemoryProposal, StoryCardType } from "../types/adventure";
+import type { Adventure, AdventureAction, BrainEntry, ContextBuildResult, MemoryProposal, Message, StoryCardType } from "../types/adventure";
 import { createId, nowIso } from "../utils/id";
 import { applyAIMemoryUpdate } from "./applyAIMemoryUpdate";
 
 export const ONE_PASS_MEMORY_ID = "one-pass-memory";
 export const MEMORY_OUTPUT_RESERVE = 1400;
 
-export function onePassMemoryInstruction(brains: BrainEntry[], categories: string[]): string {
+export function onePassMemoryInstruction(brains: BrainEntry[], categories: string[], includeStoryCards = true): string {
   return `[ONE-PASS MEMORY]
 Write the requested narrative first, preserving its quality and visible word limit. Then append exactly one hidden JSON envelope:
 <memory_updates>{"updates":[]}</memory_updates>
@@ -15,8 +15,7 @@ An empty updates array is normal. Never invent changes to fill it. Maximum 4 sma
 Each update has: kind, target, content, evidence, reason. evidence is an EXACT quote from this turn's player input or your visible story, establishing the change. reason explains why it will matter beyond this scene. Do not treat a suggestion, possibility, or plan as an accomplished fact. Do not give absent characters knowledge they did not receive.
 Allowed kinds:
 - "thought": target is an eligible character name below; content is ONE new first-person internal reaction, belief, or private plan (max 45 words). Capture only if the character participated or learned something this turn. Never repeat existing thoughts or put generic world facts here.
-${STORY_CARD_MEMORY_CHECK}
-${STORY_CARD_OUTPUT_SCHEMA}
+${includeStoryCards ? STORY_CARD_MEMORY_CHECK + "\n" + STORY_CARD_OUTPUT_SCHEMA : "Story Cards are evaluated separately. Only eligible thought updates belong in this envelope; return an empty array when none changed."}
 Eligible thought targets: ${brains.map(b => JSON.stringify(b.characterName)).join(", ") || "none"}.
 Only output changes supported by this turn and consistent with ALL supplied canon. These hidden updates are not narrative and must never steer the scene merely to create memory.`;
 }
@@ -62,15 +61,21 @@ export function hasDurableCharacterEvidence(evidence: string): boolean {
 }
 
 /** Local structural/evidence checks, not a claim that a quote proves every inference. */
-export function onePassMemoryActions(adventure: Adventure, context: ContextBuildResult, updates: unknown[], story: string, sourceTurnId: string, error?: string, sourceLabel = "One-pass memory: no additional API call", playerInputOverride?: string, recentEvidence: string[] = []): AdventureAction[] {
+export function onePassMemoryActions(adventure: Adventure, context: ContextBuildResult, updates: unknown[], story: string, sourceTurnId: string, error?: string, sourceLabel = "One-pass memory: no additional API call", playerInputOverride?: string, recentEvidence: string[] = [], recoverySources: Message[] = []): AdventureAction[] {
   const actions: AdventureAction[] = [];
   const errors = error ? [error] : [];
-  const executed: string[] = [];
+  const executed: string[] = !error && !updates.length ? ["memory_evaluation_empty: valid evaluation; zero updates"] : [];
   const visibleIds = new Set(context.sections.flatMap(s => s.items.map(i => i.id)));
   const instruction = context.sections.flatMap(s => s.items).find(i => i.id === ONE_PASS_MEMORY_ID)?.content ?? "";
   const lastMessage = adventure.messages.at(-1);
   const playerInput = playerInputOverride ?? (lastMessage?.role === "user" ? lastMessage.content : "");
   const evidenceSources = [norm(story), norm(playerInput), ...recentEvidence.map(norm)];
+  const sourceIndex = adventure.messages.findIndex(message => message.id === sourceTurnId);
+  // Recovery may explicitly cite adjacent original messages. Normal narration has no
+  // such allowance. Snapshot binding is checked again before the batch commits.
+  const sourceReferences = recoverySources.filter(reference => sourceIndex >= 0
+    && adventure.messages.some((message, index) => message.id === reference.id && message.content === reference.content
+      && index >= Math.max(0, sourceIndex - 3) && index <= sourceIndex && message.role !== "system" && message.inputMode !== "comms"));
   const seen = new Set<string>();
   for (const raw of updates) {
     const reject = (reason: string) => errors.push(`One-pass memory skipped: ${reason}`);
@@ -78,8 +83,9 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
     const u = raw as Record<string, unknown>;
     if (![u.kind, u.target, u.content, u.evidence, u.reason].every(v => typeof v === "string" && v.trim())) { reject("missing fields"); continue; }
     const kind = u.kind as string, target = (u.target as string).trim(), content = (u.content as string).trim(), evidence = (u.evidence as string).trim();
+    const references = Array.isArray(u.sourceMessageIds) ? sourceReferences.filter(reference => (u.sourceMessageIds as unknown[]).includes(reference.id)) : [];
     const quote = norm(evidence);
-    if (!quote || (quote.length < 12 && !["card", "lore", "newCard"].includes(kind)) || !evidenceSources.some(s => s.includes(quote))) { reject(`${target}: evidence is not in this turn`); continue; }
+    if (!quote || (quote.length < 12 && !["card", "lore", "newCard"].includes(kind)) || ![...evidenceSources, ...references.map(reference => norm(reference.content))].some(s => s.includes(quote))) { reject(`${target}: evidence is not in this turn`); continue; }
     if (words(content) > (kind === "essentials" ? 180 : kind === "newCard" || kind === "lore" ? 90 : kind === "card" ? 70 : 45)) { reject(`${target}: content exceeds limit`); continue; }
     if (content.includes("<") || content.length > 4000 || target.length > 150 || (u.reason as string).length > 600) { reject(`${target}: invalid content`); continue; }
     const key = `${kind}:${norm(target)}${["card", "lore", "newCard"].includes(kind) ? ":" + norm(content) : ""}`;
@@ -96,7 +102,12 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
       const brain = brains.length === 1 ? brains[0] : undefined;
       // The prompt's eligible names includes empty brains, which have no context item yet.
       const eligibleNames = instruction.split("Eligible thought targets: ")[1]?.split(".\n")[0] ?? "";
-      if (!brain || !eligibleNames.includes(JSON.stringify(target)) || (brain.lastUpdatedTurn !== undefined && adventure.activeState.turn - brain.lastUpdatedTurn < (brain.autoUpdateCooldownTurns ?? 0))) { reject(`${target}: brain not eligible`); continue; }
+      if (brain && (Object.keys({ ...brain.archivedThoughts, ...brain.thoughts }).some(key => key.endsWith(`_${sourceTurnId}`))
+        || adventure.activeState.memoryProposals.some(proposal => proposal.proposedType === "brainUpdate" && proposal.targetId === brain.id && proposal.sourceTurnId === sourceTurnId))) continue;
+      if (brain && brain.lastUpdatedTurn !== undefined && adventure.activeState.turn - brain.lastUpdatedTurn < (brain.autoUpdateCooldownTurns ?? 0)) {
+        executed.push(`Brain cooldown retained: ${target}`); continue;
+      }
+      if (!brain || !eligibleNames.includes(JSON.stringify(target))) { reject(`${target}: brain not eligible`); continue; }
       if (Object.keys(brain.thoughts ?? {}).length && !visibleIds.has(brain.id)) { reject(`${target}: brain context was omitted`); continue; }
       if (!evidenceSources.some(s => s.includes(norm(target)))) { reject(`${target}: character absent from this turn`); continue; }
       if (Object.values({ ...brain.archivedThoughts, ...brain.thoughts }).some(t => norm(t).includes(norm(content)))) continue;
@@ -108,7 +119,7 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
       continue;
     }
     if (kind === "card" || kind === "newCard" || kind === "lore") {
-      if (!story.includes(evidence) && !playerInput.includes(evidence)) { reject(`${target}: Story Card quote must come from this completed exchange`); continue; }
+      if (!story.includes(evidence) && !playerInput.includes(evidence) && !references.some(reference => reference.content.includes(evidence))) { reject(`${target}: Story Card quote must come from this completed exchange`); continue; }
       if (typeof u.targetId === "string" && !adventure.storyCards.some(card => card.id === u.targetId)) { reject(`${target}: unknown target ID`); continue; }
       const exact = adventure.storyCards.filter(card => u.targetId ? card.id === u.targetId : card.title === target);
       const existing = exact.length === 1 ? exact[0] : undefined;
@@ -134,6 +145,15 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
         triggers: Array.isArray(u.triggers) ? u.triggers.filter((value): value is string => typeof value === "string").slice(0, 3) : [],
         participants: Array.isArray(u.participants) ? u.participants.filter((value): value is string => typeof value === "string").slice(0, 8) : undefined,
       });
+      if (references.length && suggestion.storyCardReview) {
+        suggestion.storyCardReview.additionalSources = references.map(({ id, content }) => ({ id, content }));
+        if (suggestion.lore) suggestion.lore.sourceMessageIds = [...new Set([...suggestion.lore.sourceMessageIds, ...references.map(reference => reference.id)])];
+      }
+      if (typeof u.eventDate === "string" && suggestion.lore) {
+        const source = adventure.messages[sourceIndex];
+        if (source?.storyTime?.date !== u.eventDate) { reject(`${target}: event date is not grounded in source time`); continue; }
+        suggestion.lore.occurredAt = { text: u.eventDate, date: u.eventDate, precision: "day" };
+      }
       actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal: suggestion });
       const companion = companionLoreSuggestion(adventure, suggestion);
       if (companion) actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal: companion });
@@ -141,9 +161,10 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
       continue;
     } else { reject(`${target}: only Story Cards and Brains are automatic memory destinations`); continue; }
   }
+  if (!errors.length && executed.every(action => action.startsWith("Brain cooldown retained:"))) executed.push("memory_evaluation_empty: valid evaluation; no new meaningful updates after deduplication");
   actions.push({ type: "LOG_EVALUATION_RESULT", entry: {
     id: createId("eval"), turn: adventure.activeState.turn, createdAt: nowIso(), conditionsEvaluated: [],
-    conditionsFired: [], actionsExecuted: [sourceLabel, ...executed], generatedContent: [], errors,
+    conditionsFired: [], actionsExecuted: [sourceLabel, `Memory source: ${sourceTurnId}`, ...executed], generatedContent: [], errors,
   } });
   return actions;
 }

@@ -185,3 +185,27 @@ describe("SettingsPage API throttle controls", () => {
     );
   });
 });
+
+
+it("keeps dedicated memory opt-in and configures OpenAI without changing narration", async () => {
+  const user = userEvent.setup();
+  const onPresets = vi.fn();
+  const onSettings = vi.fn();
+  function SettingsFixture() {
+    const [settings, setSettings] = useState(defaultGlobalAdventureSettings);
+    return <SettingsPage dispatch={vi.fn()} providerPresets={[makePreset()]} activePresetId="preset-test"
+      onProviderPresetsChange={onPresets} onSelectPreset={vi.fn()} uiPreferences={{ ...defaultUiPreferences, showAdvancedSettings: true }}
+      onUiPreferencesChange={vi.fn()} globalAdventureSettings={settings} onGlobalAdventureSettingsChange={next => { setSettings(next); onSettings(next); }} />;
+  }
+  render(<SettingsFixture />);
+  expect(screen.getByLabelText("Story Card memory evaluator")).toHaveValue("narrator");
+  await user.selectOptions(screen.getByLabelText("Story Card memory evaluator"), "dedicated");
+  expect(screen.getByLabelText("Evaluate every N story turns (0 = manual only, 1 = every turn)")).toHaveValue(5);
+  await user.selectOptions(screen.getByLabelText("Memory evaluation API"), "openaiResponses");
+  expect(onSettings).toHaveBeenLastCalledWith(expect.objectContaining({
+    memoryDetectionSettings: expect.objectContaining({ evaluator: "dedicated", everyNTurns: 5 }),
+    semanticEvaluationSettings: expect.objectContaining({ memoryEvaluationApi: "openaiResponses", backgroundProviderConfig: expect.objectContaining({ baseUrl: "https://api.openai.com/v1", model: "gpt-6.1-sol" }) }),
+  }));
+  expect(onPresets).not.toHaveBeenCalled();
+  cleanup();
+});

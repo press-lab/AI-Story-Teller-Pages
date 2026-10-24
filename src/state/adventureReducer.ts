@@ -1843,6 +1843,7 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
     case "CLAIM_MEMORY_RECOVERY":
       return touchAdventure(state, { activeState: { ...state.activeState, lastMemoryRecoveryAttemptTurn: action.turn } });
     case "COMPLETE_MEMORY_RECOVERY": {
+      if (action.dependencies?.some(source => !state.messages.some(message => message.id === source.id && message.content === source.content))) return state;
       // A deleted, edited or regenerated source invalidates this result, including queued results.
       if (!action.sources.every(source => state.messages.some(message => message.id === source.id
         && message.content === source.content && message.memoryRecovery?.status === "pending"))) return state;

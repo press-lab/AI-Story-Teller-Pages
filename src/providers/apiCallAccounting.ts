@@ -26,7 +26,7 @@ export async function fetchWithAccounting(url: string, init: RequestInit, config
         promptTokens: raw.prompt_tokens ?? raw.input_tokens ?? 0,
         completionTokens: raw.completion_tokens ?? raw.output_tokens ?? 0,
         totalTokens: raw.total_tokens ?? ((raw.prompt_tokens ?? raw.input_tokens ?? 0) + (raw.completion_tokens ?? raw.output_tokens ?? 0)),
-        cacheReadTokens: raw.cache_read_input_tokens ?? raw.prompt_tokens_details?.cached_tokens,
+        cacheReadTokens: raw.cache_read_input_tokens ?? raw.prompt_tokens_details?.cached_tokens ?? raw.input_tokens_details?.cached_tokens,
         cacheCreationTokens: raw.cache_creation_input_tokens ?? raw.prompt_tokens_details?.cache_write_tokens,
       };
     } catch { /* Missing usage stays unknown; it is never estimated as zero consumption. */ }
