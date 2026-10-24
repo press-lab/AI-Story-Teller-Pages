@@ -366,14 +366,15 @@ describe("sendOpenAICompatibleChatCompletion", () => {
     expect(result.content).toBe("The door creaks.");
   });
 
-  it.each([undefined, "auto", "openRouterDisabled"] as const)("disables OpenRouter GLM 5.3 Flash memory reasoning with control %s in one request", async memoryReasoningControl => {
+  it.each([undefined, "auto"] as const)("uses low OpenRouter GLM 5.3 Flash memory reasoning with control %s in one request", async memoryReasoningControl => {
     const spy = mockFetch(200, { choices: [{ finish_reason: "stop", message: { content: '{"updates":[]}' } }] });
     await sendOpenAICompatibleChatCompletion({
       config: { ...config, baseUrl: "https://openrouter.ai/api/v1", model: "z-ai/glm-5.3-flash", memoryReasoningControl },
       messages: [], memoryEvaluation: true, purpose: "memoryRecovery", retry: true,
     });
     const body = JSON.parse(spy.mock.calls[0][1]?.body as string);
-    expect(body.reasoning).toEqual({ enabled: false });
+    expect(body.reasoning).toEqual({ effort: "low" });
+    expect(body.max_tokens).toBe(256);
     expect(body.reasoning_effort).toBeUndefined();
     expect(body.thinking).toBeUndefined();
     expect(spy.mock.calls[0][0]).toBe("https://openrouter.ai/api/v1/chat/completions");

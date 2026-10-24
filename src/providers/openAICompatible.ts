@@ -280,6 +280,20 @@ async function sendOpenAIRequestOnce(
   }
 
   if (!response.ok) {
+    if (config.memoryReasoningControl) {
+      // Only persist fixed classifications. Never propagate provider text or URLs
+      // into recovery diagnostics, and do not infer a cause from HTTP status alone.
+      const error = raw.error as { param?: unknown; message?: unknown } | undefined;
+      const param = typeof error?.param === "string" ? error.param : "";
+      const message = typeof error?.message === "string" ? error.message : "";
+      const rejected = /unsupported|not supported|invalid|cannot|must|reject|not allowed/i.test(message);
+      const reasoning = /^(reasoning(?:[._].*)?|thinking(?:[._].*)?)$/.test(param)
+        || (rejected && /reasoning|thinking/i.test(message));
+      const format = /^(response_format|json_schema)(?:[.].*)?$/.test(param)
+        || (rejected && /response_format|json_schema/i.test(message));
+      const cause = reasoning && !format ? "reasoning_control" : format && !reasoning ? "response_format" : "unknown_parameter";
+      throw new Error(`memory_provider_http_${response.status}_${cause}: Provider rejected the memory request.`);
+    }
     const detail = raw.error?.message ?? rawText.slice(0, 300) ?? `HTTP ${response.status}`;
     throw new Error(`Provider error ${response.status} (${endpoint}): ${detail}`);
   }
@@ -397,8 +411,10 @@ export async function sendOpenAICompatibleChatCompletion({
     const { memoryReasoningControl: _memoryOnlyControl, ...narratorConfig } = config;
     config = narratorConfig;
   }
+  let memoryUsesLowReasoning = false;
   if (memoryEvaluation) {
-    memoryReasoningFields(config, isAnthropicFormat(config.baseUrl) ? "messages" : "chat"); // Fail before accounting or issuing a request.
+    const fields = memoryReasoningFields(config, isAnthropicFormat(config.baseUrl) ? "messages" : "chat"); // Fail before accounting or issuing a request.
+    memoryUsesLowReasoning = (fields.reasoning as { effort?: string } | undefined)?.effort === "low";
     config = { ...config, memoryReasoningControl: config.memoryReasoningControl ?? "auto" };
     retry = false;
   }
@@ -408,7 +424,7 @@ export async function sendOpenAICompatibleChatCompletion({
   const result = isAnthropicFormat(config.baseUrl)
     ? await sendAnthropicRequest(endpoint, messages, config, signal, thinking, purpose)
     : await sendOpenAIRequest(endpoint, messages, config, signal, responseFormat, thinking, purpose, retry);
-  if (memoryEvaluation) assertMemoryReasoningDisabled(result.raw);
+  if (memoryEvaluation && !memoryUsesLowReasoning) assertMemoryReasoningDisabled(result.raw);
   return result;
 }
 

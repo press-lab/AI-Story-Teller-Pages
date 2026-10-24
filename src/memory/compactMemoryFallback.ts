@@ -137,7 +137,7 @@ export async function runCompactMemoryFallback(
       tokenUsage: { promptTokens: error.usage?.promptTokens ?? 0, completionTokens: error.usage?.completionTokens ?? 0 } };
     const message = error instanceof Error ? error.message : "";
     const status = /Provider error (\d{3})/.exec(message)?.[1];
-    const classification = /^memory_[a-z_]+:/.test(message) ? message
+    const classification = /^memory_[a-z_0-9]+:/.test(message) ? message
       : status === "400" ? "provider_configuration_rejected_http_400: Check model, endpoint, JSON format and declared non-thinking capability."
       : status ? `provider_request_failed_http_${status}`
       : /response_format/i.test(message) ? "provider_response_format_unsupported"

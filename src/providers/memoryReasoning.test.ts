@@ -3,6 +3,8 @@ import { memoryReasoningFields } from "./memoryReasoning";
 import { sendOpenAICompatibleChatCompletion } from "./openAICompatible";
 import { sendOpenAIMemoryResponse } from "./openAIMemoryResponses";
 import { defaultModelConfig, normalizeAdventure, createDefaultAdventure } from "../state/defaults";
+import { pendingMemoryRecovery } from "../memory/memoryRecoveryBatch";
+import { adventureReducer } from "../state/adventureReducer";
 import { resolveBackgroundProviderConfig } from "./backgroundProvider";
 import { runCompactMemoryFallback } from "../memory/compactMemoryFallback";
 import { subscribeApiCalls } from "./apiCallAccounting";
@@ -81,4 +83,59 @@ it("does not send memory evaluation to a fallback provider when an imported Base
   const spy = reply({});
   const result = await runCompactMemoryFallback(a, { ...base, memoryReasoningControl: "omit" }, a.messages);
   expect(result.valid).toBe(false); expect(result.error).toContain("memory_background_base_url_invalid"); expect(spy).not.toHaveBeenCalled();
+});
+
+const glm = { ...base, baseUrl: "https://openrouter.ai/api/v1", model: "z-ai/glm-5.3-flash" };
+it("accepts reported reasoning only for the automatically selected GLM low effort", async () => {
+  const spy = reply({ choices: [{ message: { content: '{"updates":[]}', reasoning: "brief work" } }], usage: { completion_tokens_details: { reasoning_tokens: 12 } } });
+  const result = await sendOpenAICompatibleChatCompletion({ config: glm, messages: [], memoryEvaluation: true });
+  expect(result.content).toBe('{"updates":[]}');
+  expect(JSON.parse(spy.mock.calls[0][1]!.body as string)).toMatchObject({ model: glm.model, reasoning: { effort: "low" }, max_tokens: glm.maxOutputTokens });
+  expect(spy).toHaveBeenCalledTimes(1);
+});
+it.each(["openRouterDisabled", "thinkingDisabled", "none", "omit"] as const)("preserves explicit GLM off declaration %s and rejects unexpected reasoning", async memoryReasoningControl => {
+  const spy = reply({ choices: [{ message: { content: '{"updates":[]}' } }], usage: { completion_tokens_details: { reasoning_tokens: 12 } } });
+  await expect(sendOpenAICompatibleChatCompletion({ config: { ...glm, memoryReasoningControl }, messages: [], memoryEvaluation: true })).rejects.toThrow("memory_reasoning_not_disabled");
+  expect(JSON.parse(spy.mock.calls[0][1]!.body as string).reasoning?.effort).not.toBe("low");
+});
+it.each(["z-ai/glm-5", "z-ai/glm-5.3", "z-ai/glm-5.3-flash:free", "other/glm-5.3-flash"])("does not expand the exception to %s", model => {
+  expect(memoryReasoningFields({ ...glm, model })).toEqual({ reasoning: { enabled: false } });
+});
+it.each([
+  [{ param: "reasoning.enabled", message: "Unsupported reasoning control secret https://private.example" }, "reasoning_control"],
+  [{ message: "response_format is not supported secret" }, "response_format"],
+  [{ param: "temperature", message: "Invalid value secret" }, "unknown_parameter"],
+  [{ message: "Bad request secret" }, "unknown_parameter"],
+] as const)("classifies a rejected memory request safely: %j", async (error, cause) => {
+  const spy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ error }), { status: 400 }));
+  const a = createDefaultAdventure();
+  a.messages = [{ id: "source", role: "assistant", content: "The tower fell.", createdAt: "2001-01-01" }];
+  a.semanticEvaluationSettings = { ...a.semanticEvaluationSettings, backgroundProviderConfig: { baseUrl: glm.baseUrl, model: glm.model, memoryReasoningControl: "auto" } };
+  a.messages[0].memoryRecovery = { status: "pending", turn: 1 };
+  const before = JSON.stringify(a);
+  const result = await runCompactMemoryFallback(a, glm, a.messages);
+  expect(result.valid).toBe(false);
+  expect(result.error).toContain(`memory_provider_http_400_${cause}`);
+  expect(result.error).not.toMatch(/secret|private.example|Bearer/);
+  expect(result.actions).toEqual([]);
+  expect(result.processedSources).toBeUndefined();
+  expect(JSON.stringify(a)).toBe(before);
+  expect(pendingMemoryRecovery(result.actions.reduce(adventureReducer, a))).toEqual(a.messages);
+  expect(spy).toHaveBeenCalledTimes(1);
+});
+it("delivers a grounded GLM low-reasoning Lore proposal through the Memory Inbox", async () => {
+  const a = createDefaultAdventure();
+  a.semanticEvaluationSettings = { ...a.semanticEvaluationSettings, backgroundProviderConfig: { baseUrl: glm.baseUrl, model: glm.model, memoryReasoningControl: "auto" } };
+  const evidence = "The ancient tower fell, permanently sealing the northern pass.";
+  a.messages = [{ id: "source", role: "assistant", content: evidence, createdAt: "2001-01-01" }];
+  const spy = reply({ choices: [{ finish_reason: "stop", message: { content: JSON.stringify({ turns: [{ sourceTurnId: "source", updates: [{
+    kind: "lore", target: "The Fall of the Northern Tower", content: evidence, evidence,
+    reason: "A consequential completed event blocks future travel.", category: "plot_beat", triggers: ["northern pass", "ancient tower"], sourceMessageIds: ["source"],
+  }] }] }) } }], usage: { completion_tokens_details: { reasoning_tokens: 8 } } });
+  const result = await runCompactMemoryFallback(a, glm, a.messages);
+  expect(result.valid).toBe(true);
+  const next = result.actions.reduce(adventureReducer, a);
+  expect(next.activeState.memoryProposals).toContainEqual(expect.objectContaining({ status: "pending", proposedType: "storyCard", storyCardType: "lore", content: evidence }));
+  expect(result.processedSources).toEqual([{ id: "source", content: evidence }]);
+  expect(spy).toHaveBeenCalledTimes(1);
 });

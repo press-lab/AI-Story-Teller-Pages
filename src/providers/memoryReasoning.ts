@@ -22,6 +22,9 @@ export function memoryReasoningFields(config: ProviderConfig, transport: "chat" 
   // OpenRouter documents reasoning.enabled=false for Chat Completions.
   // Verify the endpoint hostname; model names do not declare this capability.
   if (transport === "chat" && /(?:^|\.)openrouter\.ai$/.test(new URL(config.baseUrl).hostname)) {
+    // This evaluator needs the same bounded effort as narration. Explicit off
+    // declarations above remain authoritative for compatible configurations.
+    if (config.model.trim().toLowerCase() === "z-ai/glm-5.3-flash") return { reasoning: { effort: "low" } };
     return { reasoning: { enabled: false } };
   }
   // DeepSeek documents this toggle for both API formats, independently of model
