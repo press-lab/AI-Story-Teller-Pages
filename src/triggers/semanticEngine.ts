@@ -560,7 +560,7 @@ async function generatedActionsFor(
         if (Object.keys(condensed).length > 0) {
           const condenseUpdate = applyAIMemoryUpdate(adventure, [{
             type: "brainPatch", brainId: brain.id, patch: condensed, mode: "replace",
-            turn: adventure.activeState.turn, preview: `[condensed] ${preview(JSON.stringify(condensed))}`,
+            turn: adventure.activeState.turn, preview: preview(raw),
           }]);
           return {
             actions: condenseUpdate.actions,

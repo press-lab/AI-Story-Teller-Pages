@@ -1,4 +1,4 @@
-import type { BrainEntry, ContextInclusionPolicy } from "../types/adventure";
+import type { Adventure, BrainEntry, ContextInclusionPolicy } from "../types/adventure";
 import type { BrainAuditRecommendation } from "../memory/brainAudit";
 import { dedupeThoughtRecord } from "../memory/thoughtDedupe";
 import { makeBrain } from "../state/defaults";
@@ -7,6 +7,7 @@ import type { AdventurePageProps } from "./pageTypes";
 import { CheckboxField, Field, Highlight, NumberInput, TokenCountBadge, UpdatedAtBadge, commaList, fromCommaList } from "./shared";
 import { useEffect, useState } from "react";
 import { orderedBrains } from "../state/brainOrder";
+import { suggestionSourceValid } from "../memory/storyCardSuggestions";
 
 const inclusionPolicies: ContextInclusionPolicy[] = ["always", "triggered", "manual", "systemSuggested"];
 
@@ -56,18 +57,38 @@ function BrainTriggerInput({
   );
 }
 
-function thoughtSortValue(key: string): number {
-  return Number(key.match(/\d+/)?.[0] ?? 0);
-}
-
 function thoughtTurnValue(key: string, value: string): number {
   return Number(value.match(/^(\d+)/)?.[1] ?? key.match(/\d+/)?.[0] ?? 0);
 }
 
 function brainThoughtEntries(thoughts: Record<string, string>): Array<[string, string]> {
   return Object.entries(thoughts)
+    .reverse()
     .filter(([, value]) => value.trim())
-    .sort((a, b) => thoughtSortValue(b[0]) - thoughtSortValue(a[0]) || b[0].localeCompare(a[0]));
+    .sort((a, b) => thoughtTurnValue(b[0], b[1]) - thoughtTurnValue(a[0], a[1]));
+}
+
+function previewThoughts(content: string): Record<string, string> {
+  try {
+    const patch = JSON.parse(content);
+    if (!patch?.thoughts || typeof patch.thoughts !== "object" || Array.isArray(patch.thoughts)) return {};
+    return Object.fromEntries(Object.entries(patch.thoughts).filter((entry): entry is [string, string] => typeof entry[1] === "string" && Boolean(entry[1].trim())));
+  } catch { return {}; }
+}
+
+function latestBrainThought(adventure: Adventure, brain: BrainEntry): { text?: string; pending?: boolean } {
+  const proposals = adventure.activeState.memoryProposals.filter(proposal => proposal.status === "pending"
+    && proposal.proposedType === "brainUpdate" && proposal.targetId === brain.id
+    && (!brain.lastUpdatedAt || proposal.updatedAt >= brain.lastUpdatedAt) && suggestionSourceValid(adventure, proposal))
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  for (const proposal of proposals) {
+    const thought = brainThoughtEntries(previewThoughts(proposal.content)).find(([key, value]) => brain.thoughts[key] !== value);
+    if (thought) return { text: thought[1], pending: true };
+  }
+  // A manual update may overwrite a key in the same story turn. Its saved patch
+  // identifies that thought even when key order and turn numbers cannot break a tie.
+  const updated = brainThoughtEntries(previewThoughts(brain.lastGeneratedUpdatePreview ?? "")).find(([key]) => Boolean(brain.thoughts[key]));
+  return { text: updated ? brain.thoughts[updated[0]] : brainThoughtEntries(brain.thoughts)[0]?.[1] ?? brainThoughtEntries(brain.archivedThoughts)[0]?.[1] };
 }
 
 function formatThoughts(thoughts: Record<string, string>): string {
@@ -209,10 +230,10 @@ function BrainThoughtHistory({
   );
 }
 
-function BrainSummary({ brain, query }: { brain: BrainEntry; query: string }) {
+function BrainSummary({ adventure, brain, query }: { adventure: Adventure; brain: BrainEntry; query: string }) {
   const thoughtCount = Object.keys(brain.thoughts).length;
   const archivedCount = Object.keys(brain.archivedThoughts).length;
-  const latestThought = brainThoughtEntries(brain.thoughts)[0]?.[1] ?? brainThoughtEntries(brain.archivedThoughts)[0]?.[1];
+  const latestThought = latestBrainThought(adventure, brain);
   const tokenEstimate = approximateTokenCount(brainContextText(brain));
   return (
     <span className="story-card-summary">
@@ -235,7 +256,9 @@ function BrainSummary({ brain, query }: { brain: BrainEntry; query: string }) {
           <Highlight text={brain.triggers.join(", ")} query={query} />
         </span>
       )}
-      {latestThought && <span className="search-snippet brain-summary-thought"><Highlight text={latestThought} query={query} /></span>}
+      {latestThought.text && <span className="search-snippet brain-summary-thought" title={latestThought.text}>
+        {latestThought.pending && "Pending approval: "}<Highlight text={latestThought.text} query={query} />
+      </span>}
     </span>
   );
 }
@@ -432,8 +455,8 @@ export function BrainsPage({ adventure, dispatch, loading, onUpdateBrainNow, onA
                 setOpenBrainId((current) => current === brain.id ? null : brain.id);
               }}
             >
-              <BrainSummary brain={brain} query={searchLower} />
-              <span className="row" role="group" aria-label={`Reorder ${brain.characterName || "Unnamed"}`}>
+              <BrainSummary adventure={adventure} brain={brain} query={searchLower} />
+              <span className="brain-order-controls" role="group" aria-label={`Reorder ${brain.characterName || "Unnamed"}`}>
                 <button type="button" aria-label={`Move ${brain.characterName || "Unnamed"} up`} title="Move up"
                   disabled={loading || index === 0}
                   onClick={event => {
