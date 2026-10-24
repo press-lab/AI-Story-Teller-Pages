@@ -11,7 +11,10 @@ export function memoryRecoveryBatch(adventure: Adventure) {
   if (!adventure.memoryDetectionSettings.enabled) return [];
   const pending = pendingMemoryRecovery(adventure);
   if (!pending.length) return [];
-  const interval = Math.max(MEMORY_RECOVERY_INTERVAL, adventure.memoryDetectionSettings.everyNTurns ?? 1);
+  const dedicated = adventure.memoryDetectionSettings.evaluator === "dedicated";
+  const cadence = adventure.memoryDetectionSettings.everyNTurns ?? 5;
+  if (dedicated && cadence === 0) return [];
+  const interval = dedicated ? Math.max(1, Math.min(100, Math.floor(cadence))) : Math.max(MEMORY_RECOVERY_INTERVAL, cadence);
   const last = adventure.activeState.lastMemoryRecoveryAttemptTurn;
   const turn = adventure.activeState.memoryRecoveryStoryTurn ?? 0;
   const due = turn - pending[0].memoryRecovery!.turn >= interval - 1

@@ -491,3 +491,20 @@ it("records default background usage without requiring a provider total_tokens f
       usage: { promptTokens: 70, completionTokens: 15, totalTokens: 85 } });
   } finally { unsubscribe(); }
 });
+
+
+it("preserves all Anthropic text blocks and stop reason while excluding reasoning", async () => {
+  mockFetch(200, { content: [{ type: "thinking", thinking: "private" }, { type: "text", text: "Story." },
+    { type: "text", text: '<memory_updates>{"updates":[]}</memory_updates>' }], stop_reason: "max_tokens" });
+  const result = await sendOpenAICompatibleChatCompletion({ config: { ...config, baseUrl: "https://api.deepseek.com/anthropic" }, messages: [] });
+  expect(result.content).toBe('Story.<memory_updates>{"updates":[]}</memory_updates>');
+  expect(result.finishReason).toBe("max_tokens");
+});
+
+it("preserves OpenAI text-block content and finish reason", async () => {
+  mockFetch(200, { choices: [{ message: { content: [{ type: "text", text: "Story." },
+    { type: "text", text: '<memory_updates>{"updates":[]}</memory_updates>' }] }, finish_reason: "stop" }] });
+  const result = await sendOpenAICompatibleChatCompletion({ config, messages: [] });
+  expect(result.content).toBe('Story.<memory_updates>{"updates":[]}</memory_updates>');
+  expect(result.finishReason).toBe("stop");
+});

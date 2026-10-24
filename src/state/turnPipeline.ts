@@ -17,6 +17,8 @@ import { adventureReducer } from "./adventureReducer";
 export interface MockableProviderResponse {
   content: string;
   usage?: ProviderUsage;
+  finishReason?: string;
+  memoryDiscarded?: boolean;
 }
 
 export interface RunTurnPipelineOptions {
@@ -88,6 +90,10 @@ export async function applyProviderResponse({
 
   // Extract inline thought tags and memory tags from the response before the player sees it.
   const memory = parseOnePassMemory(response.content);
+  if (response.memoryDiscarded) memory.error = "memory_draft_discarded: narration rewrite requires recovery of final story.";
+  if (memory.error && ["length", "max_tokens"].includes(response.finishReason ?? "")) {
+    memory.error = `provider_output_truncated: finish_reason=${response.finishReason}; ${memory.error}`;
+  }
   const { cleanContent: thoughtCleanContent } = extractInlineThoughts(memory.story);
   if (!thoughtCleanContent.trim()) throw new Error("The model returned no visible story. No memory was applied.");
   const rawContentForLint = thoughtCleanContent;
@@ -109,12 +115,21 @@ export async function applyProviderResponse({
   }
 
   const messageId = assistantMessageId ?? createId("message");
+  let inlineValidationFailed = false;
+  const dedicated = next.memoryDetectionSettings.evaluator === "dedicated";
   const memoryEnabled = mode !== "comms" && next.memoryDetectionSettings.enabled
-    && preProviderContext.sections.some(s => s.items.some(i => i.id === ONE_PASS_MEMORY_ID));
-  if (memoryEnabled) {
+    && preProviderContext.sections.some(s => s.items.some(i => i.id === ONE_PASS_MEMORY_ID))
+    && preProviderContext.messages.some(message => message.content.includes("[ONE-PASS MEMORY]"));
+  if (mode !== "comms" && next.memoryDetectionSettings.enabled) {
     // Never apply memory from a discarded draft after a continuity rewrite.
-    const actions = onePassMemoryActions(next, preProviderContext, continuityCorrected ? [] : memory.updates,
-      finalContent, messageId, continuityCorrected ? "Memory skipped after continuity correction." : memory.error);
+    const discarded = continuityCorrected || !memoryEnabled || response.memoryDiscarded;
+    const inlineUpdates = discarded ? [] : dedicated
+      ? memory.updates.filter(update => update && typeof update === "object" && (update as { kind?: string }).kind === "thought")
+      : memory.updates;
+    const memoryError = continuityCorrected ? "Memory skipped after continuity correction."
+      : !memoryEnabled ? "memory_instruction_omitted: actual provider payload has no memory instruction." : memory.error;
+    let actions = onePassMemoryActions(next, preProviderContext, inlineUpdates, finalContent, messageId, memoryError);
+    inlineValidationFailed = actions.some(action => action.type === "LOG_EVALUATION_RESULT" && action.entry.errors.length > 0);
     const before = next;
     next = reduceActions(next, actions);
     const visibleThoughts = next.brains.filter(b => b.printThoughts).flatMap(b => {
@@ -122,7 +137,14 @@ export async function applyProviderResponse({
       return Object.entries(b.thoughts).filter(([key, value]) => old?.thoughts[key] !== value)
         .map(([, value]) => "*[" + b.characterName + "]: " + value + "*");
     });
-    if (visibleThoughts.length) finalContent += "\n\n" + visibleThoughts.join("\n");
+    if (visibleThoughts.length) {
+      finalContent += "\n\n" + visibleThoughts.join("\n");
+      // Printed Brain reactions belong to the persisted source snapshot. Rebuild
+      // the same reducer transaction with final snapshots, not a second update.
+      actions = actions.map(action => action.type === "ADD_MEMORY_PROPOSAL" && action.proposal.storyCardReview
+        ? { ...action, proposal: { ...action.proposal, storyCardReview: { ...action.proposal.storyCardReview, sourceContent: finalContent } } } : action);
+      next = reduceActions(before, actions);
+    }
   }
 
 
@@ -140,7 +162,7 @@ export async function applyProviderResponse({
     next = adventureReducer(next, { type: "ADVANCE_MEMORY_RECOVERY_TURN" });
   }
   if (mode !== "comms" && next.memoryDetectionSettings.enabled
-    && (!memoryEnabled || memory.error || continuityCorrected)) {
+    && (dedicated || inlineValidationFailed || !memoryEnabled || memory.error || continuityCorrected)) {
     next = adventureReducer(next, { type: "QUEUE_MEMORY_RECOVERY", messageId,
       turn: next.activeState.memoryRecoveryStoryTurn ?? 0 });
   }

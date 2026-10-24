@@ -1,4 +1,5 @@
 import type { Adventure, AdventureAction, ProviderConfig } from "../types/adventure";
+import { createId, nowIso } from "../utils/id";
 import { adventureReducer } from "../state/adventureReducer";
 import { runCompactMemoryFallback } from "./compactMemoryFallback";
 
@@ -12,7 +13,22 @@ export async function evaluateStoryCardEntries(adventure: Adventure, config: Pro
   const snapshot = local.reduce(adventureReducer, adventure);
   try {
     const evaluated = await runCompactMemoryFallback(snapshot, config, sources, { storyCardsOnly: true });
-    return { ...evaluated, actions: [...local, ...evaluated.actions] };
+    if (!evaluated.valid) {
+      const diagnostics: AdventureAction[] = evaluated.actions.some(action => action.type === "LOG_EVALUATION_RESULT") ? [] : [{ type: "LOG_EVALUATION_RESULT", entry: {
+        id: createId("eval"), turn: adventure.activeState.turn, createdAt: nowIso(), conditionsEvaluated: [], conditionsFired: [], generatedContent: [],
+        actionsExecuted: ["Requested memory evaluation failed; sources retained", `Memory sources: ${ids.join(", ")}`],
+        errors: [evaluated.error ?? "Memory evaluation failed schema validation."],
+      } }];
+      return { ...evaluated, actions: [...local, ...evaluated.actions, ...diagnostics] };
+    }
+    // Explicit evaluation of already-evaluated history keeps its existing behavior.
+    // Pending work uses the same atomic completion path as automatic recovery.
+    if (!sources.some(source => source.memoryRecovery?.status === "pending")) return { ...evaluated, actions: [...local, ...evaluated.actions] };
+    const completed = evaluated.processedSources ?? [];
+    const queue: AdventureAction[] = completed.map(source => ({ type: "QUEUE_MEMORY_RECOVERY", messageId: source.id,
+      turn: adventure.activeState.memoryRecoveryStoryTurn ?? 0 }));
+    return { ...evaluated, actions: [...local, ...queue, { type: "COMPLETE_MEMORY_RECOVERY" as const,
+      sources: completed, dependencies: evaluated.sourceSnapshots, actions: evaluated.actions }] };
   } catch (error) {
     return { valid: false, actions: local, tokenUsage: { promptTokens: 0, completionTokens: 0 },
       error: error instanceof Error ? error.message : "Requested model evaluation failed; local candidates retained.", processedSources: [] };

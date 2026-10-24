@@ -28,7 +28,6 @@ describe("compact memory fallback", () => {
       content: JSON.stringify({ updates: [
         { kind: "card", target: "Lucian", content: "Lucian knows the intruder's silver-cup mark.", evidence: "Lucian says he knows the intruder's mark: a silver cup.", reason: "This knowledge matters to the unresolved intruder" },
         { kind: "thought", target: "Edythe", content: "I suspect Lucian is holding back what he knows about the cup.", evidence: "Edythe realizes he knows more than he admits.", reason: "Changed private suspicion" },
-        { kind: "pressure", target: "Active Pressure", content: "The intruder's silver-cup mark puts pressure on Seth and Edythe to identify them.", evidence: "Lucian says he knows the intruder's mark: a silver cup.", reason: "The immediate external mystery has changed" },
       ] }), raw: {}, usage: { promptTokens: 800, completionTokens: 100, totalTokens: 900 },
     });
     const adventure = adventureWithMissingEnvelope();
@@ -71,7 +70,7 @@ describe("compact memory fallback", () => {
   it("rejects invalid recovery without a second call", async () => {
     provider.mockResolvedValue({ content: "not JSON", raw: {}, usage: { promptTokens: 90, completionTokens: 10, totalTokens: 100 } });
     const result = await runCompactMemoryFallback(adventureWithMissingEnvelope(), config);
-    expect(result).toEqual({ actions: [], tokenUsage: { promptTokens: 90, completionTokens: 10 }, valid: false });
+    expect(result).toEqual({ actions: [], tokenUsage: { promptTokens: 90, completionTokens: 10 }, valid: false, error: expect.stringContaining("provider_invalid_json") });
     expect(provider).toHaveBeenCalledTimes(1);
   });
 
@@ -137,5 +136,5 @@ it("retains a batch when the response omits a source, and rejects evidence from 
   const recovered = await runCompactMemoryFallback(adventure, config, batch);
   const next = recovered.actions.reduce(adventureReducer, adventure);
   expect(next.storyCards[0].content).toBe(adventure.storyCards[0].content);
-  expect(next.activeState.evaluationLog[0].errors.join(" ")).toContain("evidence is not in this turn");
+  expect(next.activeState.evaluationLog.flatMap(log => log.errors).join(" ")).toContain("evidence is not in this turn");
 });

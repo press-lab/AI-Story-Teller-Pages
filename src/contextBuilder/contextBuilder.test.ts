@@ -325,7 +325,8 @@ describe("buildContext", () => {
     const result = buildContext(adventure);
     const recentIds = result.sections.find((section) => section.id === "recentMessages")?.items.map((item) => item.id);
     expect(recentIds).toEqual(["new"]);
-    expect(result.excludedItems.filter((item) => item.reason === "budget_exceeded").map((item) => item.id)).toEqual(["old", "middle", "one-pass-memory"]);
+    expect(result.excludedItems.filter((item) => item.reason === "budget_exceeded").map((item) => item.id)).toEqual(["old", "middle"]);
+    expect(result.messages.some(message => message.content.includes("[ONE-PASS MEMORY]"))).toBe(true);
   });
 
   it("rolling summary is not injected into context (deprecated)", () => {

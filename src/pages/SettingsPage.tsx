@@ -587,13 +587,43 @@ export function SettingsPage({
           <article className="panel settings-card">
             <h3>Memory Detection</h3>
             <p className="muted">
-              The narrator returns evidenced memory suggestions with the story. Local checks reject malformed, duplicate, or unsupported updates without another API call.
+              Narrator mode returns evidenced memory with the story. Dedicated mode evaluates completed exchanges on your chosen schedule. Both use existing evidence checks and Memory Inbox.
             </p>
             <CheckboxField
               label="Remember while narrating"
               checked={globalAdventureSettings.memoryDetectionSettings.enabled}
               onChange={(enabled) => updateMemoryDetection({ enabled })}
             />
+            <Field label="Story Card memory evaluator">
+              <select value={globalAdventureSettings.memoryDetectionSettings.evaluator ?? "narrator"}
+                onChange={e => updateMemoryDetection({ evaluator: e.target.value as "narrator" | "dedicated", everyNTurns: 5 })}>
+                <option value="narrator">Narrator with batched recovery (default)</option>
+                <option value="dedicated">Dedicated background semantic evaluator</option>
+              </select>
+            </Field>
+            {globalAdventureSettings.memoryDetectionSettings.evaluator === "dedicated" && <>
+              <Field label="Evaluate every N story turns (0 = manual only, 1 = every turn)">
+                <NumberInput min={0} max={100} value={globalAdventureSettings.memoryDetectionSettings.everyNTurns}
+                  onChange={everyNTurns => updateMemoryDetection({ everyNTurns: Math.max(0, Math.min(100, Math.floor(everyNTurns))) })} />
+              </Field>
+              <p className="muted">Uses Background Provider in LLM Evaluation. Narration remains on your active preset. Manual evaluation is available in Chronicle.</p>
+            </>}
+            <Field label="Memory evaluation API">
+              <select value={activeSettings.semanticEvaluationSettings.memoryEvaluationApi ?? "chat"}
+                onChange={e => updateSemanticSettings({ memoryEvaluationApi: e.target.value as "chat" | "openaiResponses",
+                  ...(e.target.value === "openaiResponses" ? { backgroundProviderConfig: {
+                    ...activeSettings.semanticEvaluationSettings.backgroundProviderConfig,
+                    baseUrl: activeSettings.semanticEvaluationSettings.backgroundProviderConfig?.baseUrl?.startsWith("http")
+                      ? activeSettings.semanticEvaluationSettings.backgroundProviderConfig.baseUrl : "https://api.openai.com/v1",
+                    model: activeSettings.semanticEvaluationSettings.backgroundProviderConfig?.model || "gpt-6.1-sol",
+                  } } : {}),
+                })}>
+                <option value="chat">Existing compatible provider</option>
+                <option value="openaiResponses">OpenAI Responses with strict Structured Outputs</option>
+              </select>
+            </Field>
+            {activeSettings.semanticEvaluationSettings.memoryEvaluationApi === "openaiResponses" &&
+              <p className="muted">Set Background Provider to https://api.openai.com/v1, supply its API key, and choose gpt-6.1-sol (recommended) or gpt-6-astra. Only supplied story evidence and canon are available to the API.</p>}
             {globalAdventureSettings.memoryDetectionSettings.enabled && (
               <>
                 <div className="auto-approve-toggles">
