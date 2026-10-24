@@ -64,13 +64,13 @@ describe("compact memory fallback", () => {
     const result = await runCompactMemoryFallback(adventure, config);
     const next = result.actions.reduce(adventureReducer, adventure);
     expect(next.activeState.memoryProposals.some(p => p.title === "The Returning Tower Working")).toBe(false);
-    expect(next.activeState.evaluationLog[0].errors.join(" ")).toContain("quote must come from this completed exchange");
+    expect(next.activeState.evaluationLog[0].errors.join(" ")).toMatch(/evidence is not in this turn|quote must come from this completed exchange/);
   });
 
   it("rejects invalid recovery without a second call", async () => {
     provider.mockResolvedValue({ content: "not JSON", raw: {}, usage: { promptTokens: 90, completionTokens: 10, totalTokens: 100 } });
     const result = await runCompactMemoryFallback(adventureWithMissingEnvelope(), config);
-    expect(result).toEqual({ actions: [], tokenUsage: { promptTokens: 90, completionTokens: 10 }, valid: false, error: expect.stringContaining("provider_invalid_json") });
+    expect(result).toMatchObject({ actions: [], tokenUsage: { promptTokens: 90, completionTokens: 10 }, valid: false, error: expect.stringContaining("provider_invalid_json") });
     expect(provider).toHaveBeenCalledTimes(1);
   });
 

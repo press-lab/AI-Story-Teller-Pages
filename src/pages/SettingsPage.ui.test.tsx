@@ -204,7 +204,7 @@ it("keeps dedicated memory opt-in and configures OpenAI without changing narrati
   await user.selectOptions(screen.getByLabelText("Memory evaluation API"), "openaiResponses");
   expect(onSettings).toHaveBeenLastCalledWith(expect.objectContaining({
     memoryDetectionSettings: expect.objectContaining({ evaluator: "dedicated", everyNTurns: 5 }),
-    semanticEvaluationSettings: expect.objectContaining({ memoryEvaluationApi: "openaiResponses", backgroundProviderConfig: expect.objectContaining({ baseUrl: "https://api.openai.com/v1", model: "gpt-6.1-sol" }) }),
+    semanticEvaluationSettings: expect.objectContaining({ memoryEvaluationApi: "openaiResponses" }),
   }));
   expect(onPresets).not.toHaveBeenCalled();
   cleanup();

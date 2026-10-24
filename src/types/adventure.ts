@@ -16,7 +16,8 @@ export interface Message {
   storyTime?: StoryTime;
   /** Local scanner version and source fingerprint; never a fictional timestamp. */
   storyCardScan?: { fingerprint: string };
-  memoryRecovery?: { turn: number; status: "pending" | "complete" };
+  memoryRecovery?: { turn: number; status: "pending" | "complete" | "quarantined";
+    failures?: number; nextEligibleTurn?: number; lastAttemptTurn?: number; batchLimit?: number; lastError?: string };
   createdAt: ISODateString;
 }
 
@@ -351,6 +352,7 @@ export interface TokenBudgetSettings {
 }
 
 export interface ProviderConfig {
+  memoryReasoningControl?: import("../providers/memoryReasoning").MemoryReasoningControl;
   name: string;
   baseUrl: string;
   apiKey?: string;
@@ -396,6 +398,7 @@ export interface ProviderUsage {
 }
 
 export interface BackgroundProviderConfig {
+  memoryReasoningControl?: import("../providers/memoryReasoning").MemoryReasoningControl;
   baseUrl: string;
   apiKey?: string;
   model: string;
@@ -486,6 +489,7 @@ export type MemoryProposalStatus = "pending" | "approved" | "rejected" | "ignore
 export interface StoryCardSuggestionReview {
   /** Compatibility catch-up findings can cite several completed exchanges. */
   additionalSources?: Array<{ id: string; content: string }>;
+  evidenceQuotes?: Array<{ messageId: string; quote: string }>;
   operation?: "create" | "update";
   origin: "model" | "deterministic" | "both";
   candidateOnly: boolean;
@@ -630,6 +634,12 @@ export interface ApiCallRecord {
   sessionId?: string;
   purpose: ApiCallPurpose;
   model: string;
+  provider?: string;
+  responseModel?: string;
+  outputTokenLimit?: number;
+  memoryInstructionPresent?: boolean;
+  memoryEnvelope?: "present" | "missing" | "incomplete";
+  finishReason?: string;
   startedAt: string;
   status: "started" | "succeeded" | "failed";
   usage?: ProviderUsage;
@@ -664,6 +674,7 @@ export interface ActiveState {
   lastMemoryCycleTurn?: number;
   /** Persist before sending recovery; failures/reloads wait for the next batch interval. */
   lastMemoryRecoveryAttemptTurn?: number;
+  lastMemoryRecoveryAttemptKind?: "fresh" | "retry";
   /** Successful story turns only: OOC messages and regeneration do not advance recovery. */
   memoryRecoveryStoryTurn?: number;
   apiCalls?: ApiCallRecord[];
@@ -927,7 +938,8 @@ export type AdventureAction =
   | { type: "RECORD_API_CALL"; record: ApiCallRecord }
   | { type: "ADVANCE_MEMORY_RECOVERY_TURN" }
   | { type: "QUEUE_MEMORY_RECOVERY"; messageId: string; turn: number }
-  | { type: "CLAIM_MEMORY_RECOVERY"; turn: number }
+  | { type: "CLAIM_MEMORY_RECOVERY"; turn: number; sources?: Array<{ id: string; content: string }> }
+  | { type: "FAIL_MEMORY_RECOVERY"; sources: Array<{ id: string; content: string }>; turn: number; error: string }
   | { type: "COMPLETE_MEMORY_RECOVERY"; sources: Array<{ id: string; content: string }>; dependencies?: Array<{ id: string; content: string }>; actions: AdventureAction[] }
   | { type: "ACCUMULATE_BACKGROUND_TOKENS"; promptTokens: number; completionTokens: number }
   | { type: "SET_NEXT_TURN_NOTE"; note: Partial<NextTurnNote> }

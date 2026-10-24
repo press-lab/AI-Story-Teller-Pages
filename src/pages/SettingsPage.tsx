@@ -610,20 +610,30 @@ export function SettingsPage({
             </>}
             <Field label="Memory evaluation API">
               <select value={activeSettings.semanticEvaluationSettings.memoryEvaluationApi ?? "chat"}
-                onChange={e => updateSemanticSettings({ memoryEvaluationApi: e.target.value as "chat" | "openaiResponses",
-                  ...(e.target.value === "openaiResponses" ? { backgroundProviderConfig: {
-                    ...activeSettings.semanticEvaluationSettings.backgroundProviderConfig,
-                    baseUrl: activeSettings.semanticEvaluationSettings.backgroundProviderConfig?.baseUrl?.startsWith("http")
-                      ? activeSettings.semanticEvaluationSettings.backgroundProviderConfig.baseUrl : "https://api.openai.com/v1",
-                    model: activeSettings.semanticEvaluationSettings.backgroundProviderConfig?.model || "gpt-6.1-sol",
-                  } } : {}),
-                })}>
+                onChange={e => updateSemanticSettings({ memoryEvaluationApi: e.target.value as "chat" | "openaiResponses" })}>
                 <option value="chat">Existing compatible provider</option>
                 <option value="openaiResponses">OpenAI Responses with strict Structured Outputs</option>
               </select>
             </Field>
             {activeSettings.semanticEvaluationSettings.memoryEvaluationApi === "openaiResponses" &&
-              <p className="muted">Set Background Provider to https://api.openai.com/v1, supply its API key, and choose gpt-6.1-sol (recommended) or gpt-6-astra. Only supplied story evidence and canon are available to the API.</p>}
+              <p className="muted">Use a Responses-compatible Background Provider and a model that supports disabling reasoning. Models requiring reasoning produce a configuration error. Only supplied story evidence and canon reach evaluation.</p>}
+            <Field label="Memory evaluator non-thinking control">
+              <select value={activeSettings.semanticEvaluationSettings.backgroundProviderConfig?.memoryReasoningControl ?? "auto"}
+                onChange={event => updateSemanticSettings({ backgroundProviderConfig: {
+                  baseUrl: activeSettings.semanticEvaluationSettings.backgroundProviderConfig?.baseUrl ?? "",
+                  model: activeSettings.semanticEvaluationSettings.backgroundProviderConfig?.model ?? "",
+                  ...activeSettings.semanticEvaluationSettings.backgroundProviderConfig,
+                  memoryReasoningControl: event.target.value as import("../providers/memoryReasoning").MemoryReasoningControl,
+                } })}>
+                <option value="auto">Provider default capability (error when unknown)</option>
+                <option value="omit">Provider has no default reasoning (omit fields)</option>
+                <option value="none">This model documents support for reasoning effort none</option>
+                <option value="thinkingDisabled">Provider supports Chat/Messages thinking disabled</option>
+                <option value="openRouterDisabled">OpenRouter reasoning disabled</option>
+                <option value="required">Model requires reasoning (evaluation unavailable)</option>
+              </select>
+            </Field>
+            <p className="muted">Memory evaluation never enables reasoning. For custom endpoints, select only a control documented by that provider.</p>
             {globalAdventureSettings.memoryDetectionSettings.enabled && (
               <>
                 <div className="auto-approve-toggles">

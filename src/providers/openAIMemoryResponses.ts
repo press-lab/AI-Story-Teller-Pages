@@ -1,3 +1,4 @@
+import { memoryReasoningFields, assertMemoryReasoningDisabled } from "./memoryReasoning";
 import { fetchWithAccounting } from "./apiCallAccounting";
 import { waitForProviderThrottle, type ProviderResponse, type SendChatCompletionOptions } from "./openAICompatible";
 
@@ -10,7 +11,7 @@ export const MEMORY_RESPONSE_SCHEMA = {
       sourceTurnId: { type: "string" },
       updates: { type: "array", items: {
         type: "object", additionalProperties: false,
-        required: ["kind", "target", "targetId", "cardType", "operation", "content", "evidence", "reason", "triggers", "participants", "sourceMessageIds", "eventDate"],
+        required: ["kind", "target", "targetId", "cardType", "operation", "content", "evidence", "reason", "triggers", "participants", "sourceMessageIds", "evidenceQuotes", "eventDate", "memoryMode", "eventStatus"],
         properties: {
           kind: { type: "string", enum: ["lore", "card", "newCard", "thought"] },
           target: { type: "string" }, targetId: { type: ["string", "null"] },
@@ -20,6 +21,9 @@ export const MEMORY_RESPONSE_SCHEMA = {
           triggers: { type: "array", items: { type: "string" } },
           participants: { type: "array", items: { type: "string" } },
           sourceMessageIds: { type: "array", items: { type: "string" } },
+          evidenceQuotes: { type: "array", items: { type: "object", additionalProperties: false, required: ["messageId", "quote"], properties: { messageId: { type: "string" }, quote: { type: "string" } } } },
+          memoryMode: { type: ["string", "null"], enum: ["historical", "living", "static", null] },
+          eventStatus: { type: ["string", "null"], enum: ["completed", "ongoing", "unresolved", null] },
           eventDate: { type: ["string", "null"], description: "Grounded in-world ISO date, or null when unknown. Never a save timestamp." },
         },
       } },
@@ -49,6 +53,7 @@ export async function sendOpenAIMemoryResponse(options: SendChatCompletionOption
     endpoint = new URL(base.endsWith("/responses") ? base : base.endsWith("/v1") ? base + "/responses" : base + "/v1/responses");
     if (!["http:", "https:"].includes(endpoint.protocol) || endpoint.pathname.includes("/anthropic")) throw new Error();
   } catch { throw new MemoryResponseError("responses_provider_configuration_invalid"); }
+  const reasoningFields = memoryReasoningFields(config, "responses");
   await waitForProviderThrottle(config, signal);
   let response;
   try {
@@ -56,12 +61,14 @@ export async function sendOpenAIMemoryResponse(options: SendChatCompletionOption
       method: "POST", signal,
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.apiKey}` },
       body: JSON.stringify({ model: config.model, input: messages, store: false,
-        reasoning: { effort: "medium" }, max_output_tokens: config.maxOutputTokens + 2048,
+        ...reasoningFields, max_output_tokens: config.maxOutputTokens,
         text: { format: { type: "json_schema", name: "memory_evaluation", strict: true, schema: MEMORY_RESPONSE_SCHEMA } },
       }),
     }, config, options.purpose ?? "memoryRecovery");
   } catch { throw new MemoryResponseError("provider_request_failed_network"); }
-  if (!response.ok) throw new MemoryResponseError(`provider_request_failed_http_${response.status}`);
+  if (!response.ok) throw new MemoryResponseError(response.status === 400
+    ? "provider_configuration_rejected_http_400: Check endpoint, model, Structured Outputs and declared non-thinking capability."
+    : `provider_request_failed_http_${response.status}`);
   let raw: ResponsesBody;
   try {
     const parsed: unknown = JSON.parse(await response.text());
@@ -69,6 +76,7 @@ export async function sendOpenAIMemoryResponse(options: SendChatCompletionOption
     raw = parsed as ResponsesBody;
   }
   catch { throw new MemoryResponseError("provider_invalid_json"); }
+  assertMemoryReasoningDisabled(raw);
   const usage = raw.usage ? { promptTokens: raw.usage.input_tokens ?? 0, completionTokens: raw.usage.output_tokens ?? 0,
     totalTokens: raw.usage.total_tokens ?? (raw.usage.input_tokens ?? 0) + (raw.usage.output_tokens ?? 0),
     cacheReadTokens: raw.usage.input_tokens_details?.cached_tokens } : undefined;

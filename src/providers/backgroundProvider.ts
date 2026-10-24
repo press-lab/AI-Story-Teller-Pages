@@ -28,6 +28,7 @@ export function resolveBackgroundProviderConfig(
     const baseUrl = bg.baseUrl.trim();
     return {
       ...providerConfig,
+      memoryReasoningControl: bg.memoryReasoningControl ?? providerConfig.memoryReasoningControl,
       baseUrl,
       apiKey: bg.apiKey?.trim() ? bg.apiKey : providerConfig.apiKey,
       model: bg.model?.trim() || providerConfig.model,
@@ -36,6 +37,15 @@ export function resolveBackgroundProviderConfig(
   }
   return {
     ...providerConfig,
-    model: adventure.semanticEvaluationSettings.evaluationModel || providerConfig.model,
+    memoryReasoningControl: bg?.memoryReasoningControl ?? providerConfig.memoryReasoningControl,
+    model: bg?.model?.trim() || adventure.semanticEvaluationSettings.evaluationModel || providerConfig.model,
   };
+}
+
+/** Memory evaluation must never silently replace an invalid configured endpoint. */
+export function resolveMemoryEvaluationProviderConfig(adventure: Adventure, active: ProviderConfig): ProviderConfig {
+  if (backgroundProviderConfigIssue(adventure)) throw new Error("memory_background_base_url_invalid: Background Base URL must be an absolute HTTP(S) URL; evaluation was not sent.");
+  const config = resolveBackgroundProviderConfig(adventure, active);
+  if (!isUsableProviderBaseUrl(config.baseUrl)) throw new Error("memory_provider_base_url_invalid: Evaluator Base URL must be an absolute HTTP(S) URL; evaluation was not sent.");
+  return config;
 }

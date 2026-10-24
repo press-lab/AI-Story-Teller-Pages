@@ -16,7 +16,7 @@ function fixture() {
   a.memoryAutoApprove.storyCard = false;
   a.memoryDetectionSettings = { enabled: true, evaluator: "dedicated", everyNTurns: 5, generateContent: true };
   a.semanticEvaluationSettings.memoryEvaluationApi = "openaiResponses";
-  a.semanticEvaluationSettings.backgroundProviderConfig = { baseUrl: "https://api.openai.com/v1", model: "gpt-6.1-sol" };
+  a.semanticEvaluationSettings.backgroundProviderConfig = { baseUrl: "https://api.openai.com/v1", model: "gpt-6-sol", memoryReasoningControl: "none" };
   return a;
 }
 function mockUpdates(sourceId: string, updates: unknown[]) {
@@ -43,7 +43,7 @@ it("routes the actual Harry non-recognition exchange to reviewed Lore, preservin
   expect(result.valid).toBe(true);
   expect(spy).toHaveBeenCalledTimes(1);
   const body = JSON.parse(spy.mock.calls[0][1]!.body as string);
-  expect(body.model).toBe("gpt-6.1-sol");
+  expect(body.model).toBe("gpt-6-sol");
   expect(JSON.stringify(body.input)).toContain("story_hu2_12");
   expect(JSON.stringify(body.input)).toContain("21-year-old fourth-year Gryffindor");
   const next = adventureReducer(a, { type: "COMPLETE_MEMORY_RECOVERY", sources: result.processedSources!, dependencies: result.sourceSnapshots, actions: result.actions });

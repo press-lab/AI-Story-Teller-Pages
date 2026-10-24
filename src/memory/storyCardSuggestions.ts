@@ -189,6 +189,8 @@ export function mergeStoryCardSuggestions(existing: MemoryProposal, incoming: Me
   return { ...chosen, id: existing.id, status: existing.status, createdAt: existing.createdAt,
     sourceText: [...new Set([existing.sourceText, incoming.sourceText])].join("\n"),
     storyCardReview: chosen.storyCardReview ? { ...chosen.storyCardReview,
+      evidenceQuotes: [existing.storyCardReview, incoming.storyCardReview].flatMap(review => review?.evidenceQuotes ?? [])
+        .filter((quote, index, all) => all.findIndex(other => other.messageId === quote.messageId && other.quote === quote.quote) === index),
       additionalSources: [existing.storyCardReview, incoming.storyCardReview].flatMap(review => review ? [
         ...(review.sourceMessageId !== chosen.storyCardReview!.sourceMessageId ? [{ id: review.sourceMessageId, content: review.sourceContent }] : []),
         ...(review.additionalSources ?? []),

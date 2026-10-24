@@ -2,12 +2,12 @@ import { afterEach, expect, it, vi } from "vitest";
 import { sendOpenAIMemoryResponse, MEMORY_RESPONSE_SCHEMA } from "./openAIMemoryResponses";
 import { subscribeApiCalls } from "./apiCallAccounting";
 import { defaultModelConfig } from "../state/defaults";
-const config = { ...defaultModelConfig, baseUrl: "https://api.openai.com/v1", model: "gpt-6.1-sol", apiKey: "test", maxOutputTokens: 1400 };
+const config = { ...defaultModelConfig, baseUrl: "https://api.openai.com/v1", model: "gpt-6-sol", apiKey: "test", memoryReasoningControl: "none" as const, maxOutputTokens: 1400 };
 function reply(raw: unknown, status = 200) {
   return vi.spyOn(globalThis, "fetch").mockResolvedValue({ ok: status === 200, status, text: async () => JSON.stringify(raw) } as Response);
 }
 afterEach(() => vi.restoreAllMocks());
-it.each(["gpt-6.1-sol", "gpt-6-astra"])("uses strict Responses JSON and accounts for %s", async model => {
+it.each(["gpt-6-sol", "gpt-6-luna"])("uses strict Responses JSON and accounts for %s", async model => {
   const spy = reply({ status: "completed", output: [{ type: "reasoning", summary: [] }, { type: "message", role: "assistant", content: [{ type: "output_text", text: '{"turns":[]}' }] }], usage: { input_tokens: 500, output_tokens: 40, total_tokens: 540, input_tokens_details: { cached_tokens: 200 } } });
   const records: unknown[] = [];
   const stop = subscribeApiCalls(record => records.push(record));
@@ -17,7 +17,7 @@ it.each(["gpt-6.1-sol", "gpt-6-astra"])("uses strict Responses JSON and accounts
     const body = JSON.parse(spy.mock.calls[0][1]!.body as string);
     expect(body).toMatchObject({ model, store: false, text: { format: { type: "json_schema", strict: true, schema: MEMORY_RESPONSE_SCHEMA } } });
     expect(body.temperature).toBeUndefined();
-    expect(body.max_output_tokens).toBe(3448);
+    expect(body.max_output_tokens).toBe(1400);
     expect(result.content).toBe('{"turns":[]}');
     expect(result.usage?.cacheReadTokens).toBe(200);
     expect(records).toContainEqual(expect.objectContaining({ purpose: "memoryRecovery", status: "succeeded", usage: expect.objectContaining({ cacheReadTokens: 200 }) }));

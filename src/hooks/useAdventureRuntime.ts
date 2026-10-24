@@ -119,7 +119,7 @@ async function sendStoryCompletionWithGuard({
   config: RuntimeProviderSettings;
   responseLengthHint: number;
   playerInput: string;
-}): Promise<{ content: string; usage?: ProviderUsage; finishReason?: string; memoryDiscarded?: boolean }> {
+}): Promise<{ content: string; usage?: ProviderUsage; finishReason?: string; memoryDiscarded?: boolean; narrationRewritten?: boolean }> {
   const response = await sendOpenAICompatibleChatCompletion({ messages, config, purpose: "narration" });
   const guard = evaluateStoryResponseGuard(response.content, responseLengthHint, playerInput);
   if (!guard.needsCorrection) return response;
@@ -146,7 +146,7 @@ async function sendStoryCompletionWithGuard({
     thinking: "disabled",
     purpose: "correction",
   });
-  return { content: corrected.content, finishReason: corrected.finishReason, memoryDiscarded: !hasMemoryInstruction, usage: combineProviderUsage(response.usage, corrected.usage) };
+  return { narrationRewritten: true, content: corrected.content, finishReason: corrected.finishReason, memoryDiscarded: !hasMemoryInstruction, usage: combineProviderUsage(response.usage, corrected.usage) };
 }
 
 function stripThinkTags(text: string): string {
@@ -273,7 +273,7 @@ export function useAdventureRuntime(
     memoryFallbackInFlight.current.add(snapshot.id);
     try {
       // Persist the attempt before sending. A crash cannot immediately replay a billable call.
-      snapshot = adventureReducer(snapshot, { type: "CLAIM_MEMORY_RECOVERY", turn: snapshot.activeState.memoryRecoveryStoryTurn ?? 0 });
+      snapshot = adventureReducer(snapshot, { type: "CLAIM_MEMORY_RECOVERY", sources: batch, turn: snapshot.activeState.memoryRecoveryStoryTurn ?? 0 });
       setAdventure(snapshot);
       adventureRef.current = snapshot;
       await saveAdventure(snapshot);
@@ -290,8 +290,12 @@ export function useAdventureRuntime(
         id: createId("eval"), turn: snapshot.activeState.turn, createdAt: nowIso(),
         conditionsEvaluated: [], conditionsFired: [], generatedContent: [],
         actionsExecuted: ["Memory recovery: one attempt; batch retained"],
-        errors: [compact.error ?? "Recovery failed or returned invalid JSON. Pending final narratives will retry after five story turns."],
+        errors: [compact.error ?? "Recovery failed or returned invalid JSON. Sources retained for bounded retry or manual evaluation."],
       } });
+      const failed = (compact.attemptedSources ?? batch).filter(source => !compact.processedSources?.some(done => done.id === source.id));
+      if (failed.length) actions.push({ type: "FAIL_MEMORY_RECOVERY", sources: failed,
+        turn: snapshot.activeState.memoryRecoveryStoryTurn ?? 0, error: compact.error ?? "Recovery incomplete; inspect evaluation log." });
+      if (!compact.valid) actions.push(...compact.actions);
       if (adventureRef.current?.id !== snapshot.id) return;
       const next = reduceActions(mergeQueuedUpdates(adventureRef.current), actions);
       adventureRef.current = next;

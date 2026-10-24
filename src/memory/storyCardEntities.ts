@@ -34,12 +34,18 @@ function entityMentions(text: string): EntityMention[] {
 /** Exact title/alias coverage first; a single surname may also resolve a known person.
  * Multiple surname matches remain covered/ambiguous, never a new duplicate person.
  */
-function matchingEntities(cards: StoryCard[], name: string): StoryCard[] {
+export function matchingStoryCardEntities(cards: StoryCard[], name: string, context = ""): StoryCard[] {
   const key = withoutTitle(name);
   const exact = cards.filter(card => [card.title, ...card.keys].some(alias => withoutTitle(alias) === key));
   if (exact.length) return exact;
-  return !key.includes(" ") ? cards.filter(card => card.type === "character"
-    && [card.title, ...card.keys].some(alias => withoutTitle(alias).split(" ").at(-1) === key)) : [];
+  if (key.includes(" ")) return [];
+  const surname = cards.filter(card => card.type === "character"
+    && [card.title, ...card.keys].some(alias => withoutTitle(alias).split(" ").at(-1) === key));
+  if (surname.length) return surname;
+  const givenName = cards.filter(card => card.type === "character" && withoutTitle(card.title).split(" ")[0] === key);
+  const normalizedContext = ` ${entityKey(context)} `;
+  // Full identity support is required; an unsupported first name stays reviewable.
+  return givenName.filter(card => normalizedContext.includes(` ${withoutTitle(card.title)} `));
 }
 
 /** Participants are resolved identities, never capitalization guesses. Explicit model
@@ -48,7 +54,7 @@ function matchingEntities(cards: StoryCard[], name: string): StoryCard[] {
 export function characterParticipants(cards: StoryCard[], text: string, provided?: string[]): string[] {
   const characters = cards.filter(card => card.type === "character");
   if (provided) return [...new Set(provided.flatMap(name => {
-    const matches = matchingEntities(characters, name);
+    const matches = matchingStoryCardEntities(characters, name, text);
     return matches.length === 1 ? [matches[0].title] : [];
   }))].slice(0, 8);
 
@@ -103,7 +109,7 @@ function quoteAt(text: string, index: number): string {
 export function storyCardEntityCandidates(text: string, recent: Message[], cards: StoryCard[]) {
   const history = recent.map(message => ({ message, mentions: entityMentions(message.content) }));
   return entityMentions(text).filter((mention, index, all) => all.findIndex(other => entityKey(other.name) === entityKey(mention.name)) === index)
-    .filter(mention => !matchingEntities(cards, mention.name).length)
+    .filter(mention => !matchingStoryCardEntities(cards, mention.name, text + "\n" + recent.slice(-6).map(message => message.content).join("\n")).length)
     .flatMap(mention => {
       const key = entityKey(mention.name);
       const occurrences = history.filter(entry => entry.mentions.some(other => entityKey(other.name) === key));

@@ -23,7 +23,7 @@ export async function evaluateStoryCardEntries(adventure: Adventure, config: Pro
     }
     // Explicit evaluation of already-evaluated history keeps its existing behavior.
     // Pending work uses the same atomic completion path as automatic recovery.
-    if (!sources.some(source => source.memoryRecovery?.status === "pending")) return { ...evaluated, actions: [...local, ...evaluated.actions] };
+    if (!sources.some(source => source.memoryRecovery && source.memoryRecovery.status !== "complete")) return { ...evaluated, actions: [...local, ...evaluated.actions] };
     const completed = evaluated.processedSources ?? [];
     const queue: AdventureAction[] = completed.map(source => ({ type: "QUEUE_MEMORY_RECOVERY", messageId: source.id,
       turn: adventure.activeState.memoryRecoveryStoryTurn ?? 0 }));

@@ -319,6 +319,9 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
 
       {proposal.storyCardReview && <div className="panel">
         <p>{proposal.storyCardReview.candidateOnly ? "Unconfirmed candidate — verify the interpretation against the source." : "Evidence-based suggestion — review before applying."} Detection: {proposal.storyCardReview.origin}.</p>
+        {Boolean(proposal.storyCardReview.evidenceQuotes?.length) && <details><summary>Supporting source quotes</summary>
+          <ul>{proposal.storyCardReview.evidenceQuotes!.map((item, index) => <li key={`${item.messageId}-${index}`}><code>{item.messageId}</code><blockquote>{item.quote}</blockquote></li>)}</ul>
+        </details>}
         {!sourceValid && <p role="alert">The source entry changed or was regenerated. This suggestion cannot be approved; reevaluate the revised entry.</p>}
         {proposal.lore && <p>Occurred: {formatStoryTime(proposal.lore.occurredAt)} · {proposal.lore.status} · Sources: {proposal.lore.sourceMessageIds.join(", ")}</p>}
         <Field label="Story Card destination"><select value={proposal.targetId ?? ""} disabled={!isPending}

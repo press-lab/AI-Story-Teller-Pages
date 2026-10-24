@@ -1,3 +1,4 @@
+import { memoryRecoveryInterval, MEMORY_RECOVERY_MAX_FAILURES } from "../memory/memoryRecoveryBatch";
 import { scanStoryCardExchange, equivalentStoryCardSuggestions, mergeStoryCardSuggestions, suggestionSourceValid, storyCardScanFingerprint, storyCardMustBeReviewed } from "../memory/storyCardSuggestions";
 import { mergeLoreMetadata, migrateStoryCard, primaryStoryCardType, isHistoricalLore, isExceptionalIdentityChange, proposalLore } from "../memory/storyCardArchitecture";
 import { readStoryTime, formatStoryTime, reconcileStoryClock, transitionKey, initialStoryClock } from "../memory/storyTime";
@@ -1841,7 +1842,21 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
       return touchAdventure(state, { messages: state.messages.map(message => message.id === action.messageId
         ? { ...message, memoryRecovery: { turn: action.turn, status: "pending" as const } } : message) });
     case "CLAIM_MEMORY_RECOVERY":
-      return touchAdventure(state, { activeState: { ...state.activeState, lastMemoryRecoveryAttemptTurn: action.turn } });
+      return touchAdventure(state, { activeState: { ...state.activeState, lastMemoryRecoveryAttemptTurn: action.turn,
+        lastMemoryRecoveryAttemptKind: action.sources?.some(source => state.messages.find(message => message.id === source.id)?.memoryRecovery?.failures) ? "retry" : "fresh" },
+        messages: state.messages.map(message => action.sources?.some(source => source.id === message.id && source.content === message.content) && message.memoryRecovery?.status === "pending"
+          ? { ...message, memoryRecovery: { ...message.memoryRecovery, lastAttemptTurn: action.turn,
+            nextEligibleTurn: action.turn + memoryRecoveryInterval(state) } } : message) });
+    case "FAIL_MEMORY_RECOVERY":
+      return touchAdventure(state, { messages: state.messages.map(message => {
+        if (message.memoryRecovery?.status !== "pending" || !action.sources.some(source => source.id === message.id && source.content === message.content)) return message;
+        const failures = (message.memoryRecovery.failures ?? 0) + 1;
+        return { ...message, memoryRecovery: { ...message.memoryRecovery, failures,
+          status: failures >= MEMORY_RECOVERY_MAX_FAILURES ? "quarantined" as const : "pending" as const,
+          nextEligibleTurn: action.turn + memoryRecoveryInterval(state) * Math.min(8, 2 ** failures),
+          batchLimit: Math.max(1, Math.floor(Math.min(message.memoryRecovery.batchLimit ?? 10, action.sources.length) / 2)),
+          lastError: action.error } };
+      }) });
     case "COMPLETE_MEMORY_RECOVERY": {
       if (action.dependencies?.some(source => !state.messages.some(message => message.id === source.id && message.content === source.content))) return state;
       // A deleted, edited or regenerated source invalidates this result, including queued results.

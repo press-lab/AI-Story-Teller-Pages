@@ -12,11 +12,12 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.clearAllMocks(); });
 
 function setup(saved?: Adventure) {
   const initial = saved ?? createDefaultAdventure("HTTP accounting");
+  initial.semanticEvaluationSettings.backgroundProviderConfig = { baseUrl: "https://example.test/v1", model: "arbitrary-evaluator", memoryReasoningControl: "omit" };
   const settings = { enabled: true, everyNTurns: 1, generateContent: true };
   return renderHook(() => {
     const [adventure, setAdventure] = useState<Adventure | undefined>(initial);
     return { adventure, runtime: useAdventureRuntime(adventure, setAdventure,
-      { ...defaultModelConfig, baseUrl: "https://example.test/v1", model: "deepseek-flash", apiKey: "test" },
+      { ...defaultModelConfig, baseUrl: "https://example.test/v1", model: "arbitrary-narrator", apiKey: "test" },
       vi.fn(), vi.fn(), vi.fn(), async () => undefined, settings) };
   });
 }
@@ -51,7 +52,7 @@ describe("actual HTTP call accounting", () => {
     expect(result.current.adventure!.activeState.apiCalls).toHaveLength(24);
   });
 
-  it("persists failure counts and retries the retained sources only after five more turns", async () => {
+  it("persists failure counts, backs off older failures and evaluates newer sources at the configured cadence", async () => {
     let recoveries = 0;
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
       const body = JSON.parse(init!.body as string);
@@ -72,7 +73,9 @@ describe("actual HTTP call accounting", () => {
     for (let i = 0; i < 5; i++) await act(async () => { await hook.result.current.runtime.continueTurn(); });
     expect(fetchMock).toHaveBeenCalledTimes(13); // ten turns, one regeneration, two recoveries
     expect(hook.result.current.adventure!.activeState.apiCallTotals!.memoryRecovery).toMatchObject({ requests: 2, failedRequests: 1, unreportedUsage: 1 });
-    expect(hook.result.current.adventure!.messages.filter(m => m.memoryRecovery?.status === "pending")).toHaveLength(0);
+    const retained = hook.result.current.adventure!.messages.filter(m => m.memoryRecovery?.status === "pending");
+    expect(retained).toHaveLength(4); // The regenerated fifth failed source was replaced; fresh work completed first.
+    expect(retained.every(message => message.memoryRecovery?.failures === 1 && message.memoryRecovery.nextEligibleTurn === 15)).toBe(true);
   });
 
   it("records corrections separately, including narration consumed before a failed correction", async () => {

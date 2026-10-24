@@ -10,7 +10,8 @@
     "smoke:prod": "node scripts/production-smoke.mjs",
     "test": "vitest run",
     "test:live": "vitest run --config vitest.live.config.ts",
-    "typecheck": "tsc -b"
+    "typecheck": "tsc -b",
+    "eval:memory": "node scripts/run-memory-eval.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.0.0",

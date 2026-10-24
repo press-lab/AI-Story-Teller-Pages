@@ -1,7 +1,7 @@
 import { makeStoryCardSuggestion, scanStoryCardExchange, relevantStoryCardInventory, STORY_CARD_MEMORY_CHECK } from "./storyCardSuggestions";
 import { isHistoricalLore, primaryStoryCardType } from "./storyCardArchitecture";
 import { sameEventMemory } from "./eventMemory";
-import { resolveBackgroundProviderConfig } from "../providers/backgroundProvider";
+import { resolveMemoryEvaluationProviderConfig } from "../providers/backgroundProvider";
 import type { Adventure, AdventureAction, MemoryProposal, ProviderConfig } from "../types/adventure";
 import { memoryCanonMessages } from "./memoryCanon";
 import { storyCardContextContent } from "./storyCardPolicy";
@@ -12,20 +12,6 @@ import {
   TRIGGER_BEST_PRACTICES,
   storyCardCreationGuidance,
 } from "../ai/authoringBestPractices";
-
-function resolvedProviderConfig(adventure: Adventure, providerConfig: ProviderConfig): ProviderConfig {
-  const bg = adventure.semanticEvaluationSettings.backgroundProviderConfig;
-  if (bg?.baseUrl) {
-    return {
-      ...providerConfig,
-      baseUrl: bg.baseUrl,
-      apiKey: bg.apiKey ?? providerConfig.apiKey,
-      model: bg.model || providerConfig.model,
-      promptCaching: bg.baseUrl === providerConfig.baseUrl ? providerConfig.promptCaching : undefined,
-    };
-  }
-  return { ...providerConfig, model: adventure.semanticEvaluationSettings.evaluationModel || providerConfig.model };
-}
 
 function proposalFormatInstruction(proposal: MemoryProposal): string {
   if (proposal.proposedType === "storyCard") {
@@ -75,7 +61,8 @@ ${proposalFormatInstruction(proposal)}
 Respond with ONLY the content: no JSON, no preamble, no labels.`;
 
   const response = await sendOpenAICompatibleChatCompletion({
-    config: resolvedProviderConfig(adventure, providerConfig),
+    config: resolveMemoryEvaluationProviderConfig(adventure, providerConfig),
+    memoryEvaluation: true, thinking: "disabled", retry: false,
     messages: [...memoryCanonMessages(adventure, proposal.sourceText, proposal.title), { role: "user", content: systemPrompt }],
   });
 
@@ -127,7 +114,8 @@ export async function detectStoryCardProposals(adventure: Adventure, providerCon
     .map(p => ({ title: p.title, status: p.status }));
   try {
     const response = await sendOpenAICompatibleChatCompletion({
-      config: resolveBackgroundProviderConfig(adventure, providerConfig),
+      config: resolveMemoryEvaluationProviderConfig(adventure, providerConfig),
+      memoryEvaluation: true, thinking: "disabled", retry: false,
       messages: [
         { role: "system", content: `${STORY_CARD_MEMORY_CHECK}
 ${options.eventsOnly ? "Evaluate completed history as Lore only." : "Evaluate the supplied completed exchanges."}

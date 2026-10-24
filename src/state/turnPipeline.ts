@@ -19,6 +19,7 @@ export interface MockableProviderResponse {
   usage?: ProviderUsage;
   finishReason?: string;
   memoryDiscarded?: boolean;
+  narrationRewritten?: boolean;
 }
 
 export interface RunTurnPipelineOptions {
@@ -128,7 +129,9 @@ export async function applyProviderResponse({
       : memory.updates;
     const memoryError = continuityCorrected ? "Memory skipped after continuity correction."
       : !memoryEnabled ? "memory_instruction_omitted: actual provider payload has no memory instruction." : memory.error;
+    const processing = `One-pass memory: no additional API call; instruction_in_payload=${memoryEnabled}; finish_reason=${response.finishReason?.slice(0, 40) ?? "unknown"}; narration_rewritten=${Boolean(response.narrationRewritten)}; continuity_rewritten=${continuityCorrected}; draft_discarded=${Boolean(discarded)}; envelope=${memory.error ? "failed" : "parsed"}`;
     let actions = onePassMemoryActions(next, preProviderContext, inlineUpdates, finalContent, messageId, memoryError);
+    for (const action of actions) if (action.type === "LOG_EVALUATION_RESULT") action.entry.actionsExecuted.push(processing);
     inlineValidationFailed = actions.some(action => action.type === "LOG_EVALUATION_RESULT" && action.entry.errors.length > 0);
     const before = next;
     next = reduceActions(next, actions);

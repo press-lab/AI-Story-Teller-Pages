@@ -1,3 +1,5 @@
+import { memoryEvidenceWindow } from "./memoryEvidenceWindow";
+import { matchingStoryCardEntities } from "./storyCardEntities";
 import { STORY_CARD_MEMORY_CHECK, STORY_CARD_OUTPUT_SCHEMA, makeStoryCardSuggestion, companionLoreSuggestion } from "./storyCardSuggestions";
 import { isExceptionalIdentityChange } from "./storyCardArchitecture";
 import type { Adventure, AdventureAction, BrainEntry, ContextBuildResult, MemoryProposal, Message, StoryCardType } from "../types/adventure";
@@ -73,9 +75,10 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
   const sourceIndex = adventure.messages.findIndex(message => message.id === sourceTurnId);
   // Recovery may explicitly cite adjacent original messages. Normal narration has no
   // such allowance. Snapshot binding is checked again before the batch commits.
+  const windowIds = new Set(memoryEvidenceWindow(adventure, sourceTurnId).map(message => message.id));
   const sourceReferences = recoverySources.filter(reference => sourceIndex >= 0
     && adventure.messages.some((message, index) => message.id === reference.id && message.content === reference.content
-      && index >= Math.max(0, sourceIndex - 3) && index <= sourceIndex && message.role !== "system" && message.inputMode !== "comms"));
+      && windowIds.has(message.id) && index <= sourceIndex && message.role !== "system" && message.inputMode !== "comms"));
   const seen = new Set<string>();
   for (const raw of updates) {
     const reject = (reason: string) => errors.push(`One-pass memory skipped: ${reason}`);
@@ -83,9 +86,20 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
     const u = raw as Record<string, unknown>;
     if (![u.kind, u.target, u.content, u.evidence, u.reason].every(v => typeof v === "string" && v.trim())) { reject("missing fields"); continue; }
     const kind = u.kind as string, target = (u.target as string).trim(), content = (u.content as string).trim(), evidence = (u.evidence as string).trim();
+    if (u.sourceMessageIds !== undefined && (!Array.isArray(u.sourceMessageIds) || !u.sourceMessageIds.length
+      || !u.sourceMessageIds.includes(sourceTurnId) || new Set(u.sourceMessageIds).size !== u.sourceMessageIds.length
+      || u.sourceMessageIds.some(id => !sourceReferences.some(reference => reference.id === id)))) { reject(`${target}: invalid source references`); continue; }
     const references = Array.isArray(u.sourceMessageIds) ? sourceReferences.filter(reference => (u.sourceMessageIds as unknown[]).includes(reference.id)) : [];
+    const evidenceQuotes: Array<{ messageId: string; quote: string }> = [];
+    if (u.evidenceQuotes !== undefined && (!Array.isArray(u.evidenceQuotes) || u.evidenceQuotes.length > 8
+      || u.evidenceQuotes.some(item => !item || typeof item !== "object" || typeof item.messageId !== "string"
+        || typeof item.quote !== "string" || !item.quote.trim()
+        || !references.some(reference => reference.id === item.messageId && reference.content.includes(item.quote))))) {
+      reject(`${target}: exact evidence quote or source reference invalid`); continue;
+    }
+    if (Array.isArray(u.evidenceQuotes)) evidenceQuotes.push(...u.evidenceQuotes);
     const quote = norm(evidence);
-    if (!quote || (quote.length < 12 && !["card", "lore", "newCard"].includes(kind)) || ![...evidenceSources, ...references.map(reference => norm(reference.content))].some(s => s.includes(quote))) { reject(`${target}: evidence is not in this turn`); continue; }
+    if (!quote || (quote.length < 12 && !["card", "lore", "newCard"].includes(kind)) || ![...evidenceSources, ...(["card", "lore", "newCard"].includes(kind) ? references.map(reference => norm(reference.content)) : [])].some(s => s.includes(quote))) { reject(`${target}: evidence is not in this turn`); continue; }
     if (words(content) > (kind === "essentials" ? 180 : kind === "newCard" || kind === "lore" ? 90 : kind === "card" ? 70 : 45)) { reject(`${target}: content exceeds limit`); continue; }
     if (content.includes("<") || content.length > 4000 || target.length > 150 || (u.reason as string).length > 600) { reject(`${target}: invalid content`); continue; }
     const key = `${kind}:${norm(target)}${["card", "lore", "newCard"].includes(kind) ? ":" + norm(content) : ""}`;
@@ -121,6 +135,11 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
     if (kind === "card" || kind === "newCard" || kind === "lore") {
       if (!story.includes(evidence) && !playerInput.includes(evidence) && !references.some(reference => reference.content.includes(evidence))) { reject(`${target}: Story Card quote must come from this completed exchange`); continue; }
       if (typeof u.targetId === "string" && !adventure.storyCards.some(card => card.id === u.targetId)) { reject(`${target}: unknown target ID`); continue; }
+      const identityHistory = recoverySources.length ? sourceReferences : adventure.messages.slice(-6).filter(message => message.role !== "system" && message.inputMode !== "comms");
+      const identityContext = [...identityHistory.map(reference => reference.content), story, playerInput].join("\n");
+      const knownIdentity = kind === "newCard" && u.cardType === "character"
+        ? matchingStoryCardEntities(adventure.storyCards.filter(card => card.type === "character"), target, identityContext) : [];
+      if (knownIdentity.length && !adventure.storyCards.some(card => card.title === target)) { executed.push(`Identity already covered or ambiguous: ${target}`); continue; }
       const exact = adventure.storyCards.filter(card => u.targetId ? card.id === u.targetId : card.title === target);
       const existing = exact.length === 1 ? exact[0] : undefined;
       if (existing && norm(existing.content).includes(norm(content))) continue;
@@ -139,13 +158,14 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
       const type: StoryCardType = existing && (existing.type === "lore" || existing.type === "custom") ? existing.type
         : existing && (existing.type === "character" || existing.type === "location") && isExceptionalIdentityChange(existing.type, content)
         ? existing.type : kind === "newCard" && !existing ? requested : "lore";
-      if (!existing && !adventure.systemTriggers?.enabled) { reject(`${target}: new card suggestions disabled`); continue; }
+      if (!existing && type !== "lore" && !adventure.systemTriggers?.enabled) { reject(`${target}: new card suggestions disabled`); continue; }
       const suggestion = makeStoryCardSuggestion(adventure, sourceTurnId, story, { title: target, content, evidence, reason: `One-pass memory: ${u.reason}`,
         type, targetId: typeof u.targetId === "string" ? u.targetId : existing?.id, candidateOnly: Boolean(inferredHabit || quote.length < 12),
         triggers: Array.isArray(u.triggers) ? u.triggers.filter((value): value is string => typeof value === "string").slice(0, 3) : [],
         participants: Array.isArray(u.participants) ? u.participants.filter((value): value is string => typeof value === "string").slice(0, 8) : undefined,
       });
       if (references.length && suggestion.storyCardReview) {
+        suggestion.storyCardReview.evidenceQuotes = evidenceQuotes;
         suggestion.storyCardReview.additionalSources = references.map(({ id, content }) => ({ id, content }));
         if (suggestion.lore) suggestion.lore.sourceMessageIds = [...new Set([...suggestion.lore.sourceMessageIds, ...references.map(reference => reference.id)])];
       }
@@ -154,9 +174,24 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
         if (source?.storyTime?.date !== u.eventDate) { reject(`${target}: event date is not grounded in source time`); continue; }
         suggestion.lore.occurredAt = { text: u.eventDate, date: u.eventDate, precision: "day" };
       }
+      if (u.memoryMode !== undefined && u.memoryMode !== null) {
+        if (!["historical", "living", "static"].includes(String(u.memoryMode))) { reject(`${target}: invalid memory mode`); continue; }
+        if (type === "lore") suggestion.memoryMode = u.memoryMode as "historical" | "living" | "static";
+      }
+      if (u.eventStatus !== undefined && u.eventStatus !== null) {
+        if (!["completed", "ongoing", "unresolved"].includes(String(u.eventStatus))) { reject(`${target}: invalid event status`); continue; }
+        if (suggestion.lore) suggestion.lore.status = u.eventStatus as "completed" | "ongoing" | "unresolved";
+      }
       actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal: suggestion });
       const companion = companionLoreSuggestion(adventure, suggestion);
-      if (companion) actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal: companion });
+      if (companion) {
+        if (companion.storyCardReview && suggestion.storyCardReview) {
+          companion.storyCardReview.additionalSources = suggestion.storyCardReview.additionalSources;
+          companion.storyCardReview.evidenceQuotes = suggestion.storyCardReview.evidenceQuotes;
+        }
+        if (companion.lore && suggestion.lore) companion.lore.sourceMessageIds = suggestion.lore.sourceMessageIds;
+        actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal: companion });
+      }
       executed.push(`Proposed ${kind}: ${target}`);
       continue;
     } else { reject(`${target}: only Story Cards and Brains are automatic memory destinations`); continue; }

@@ -328,9 +328,16 @@ export function ContextPreviewPage({ adventure, dispatch, contextResult, onBuild
               <td>{totals.requests}</td><td>{totals.failedRequests}</td><td>{totals.promptTokens.toLocaleString()}</td><td>{totals.completionTokens.toLocaleString()}</td><td>{totals.unreportedUsage}</td></tr>
           ))}</tbody>
         </table>
-        <p className="muted">Pending memory turns: {adventure.messages.filter(message => message.memoryRecovery?.status === "pending").length}. Recovery runs approximately every five story turns; failed batches remain pending.</p>
+        <p className="muted">Pending memory turns: {adventure.messages.filter(message => message.memoryRecovery?.status === "pending").length}.
+          Quarantined: {adventure.messages.filter(message => message.memoryRecovery?.status === "quarantined").length}.
+          Recovery follows the configured cadence, alternates new work with retries, and pauses a source after four failures. Retry paused entries in Chronicle.</p>
         <details><summary>Recent HTTP attempts (up to 500)</summary>
-          <ul>{(adventure.activeState.apiCalls ?? []).map(call => <li key={call.id}>{call.startedAt} � {call.purpose} � {call.model} � {call.status} � {call.usage ? `${call.usage.promptTokens} prompt / ${call.usage.completionTokens} completion tokens` : "usage unknown"}</li>)}</ul>
+          <ul>{(adventure.activeState.apiCalls ?? []).map(call => <li key={call.id}>
+            {call.startedAt} · {call.purpose} · {call.provider ?? "provider not recorded"} · {call.model} · {call.status} · {call.usage ? `${call.usage.promptTokens} prompt / ${call.usage.completionTokens} completion tokens` : "usage unknown"}
+            <span> {call.responseModel && ` · response model: ${call.responseModel}`} · output limit: {call.outputTokenLimit ?? "unknown"} · finish: {call.finishReason ?? "unknown"}
+              · memory instruction: {call.memoryInstructionPresent === undefined ? "not recorded" : call.memoryInstructionPresent ? "sent" : "absent"}
+              {call.memoryEnvelope && ` · envelope: ${call.memoryEnvelope}`}</span>
+          </li>)}</ul>
         </details>
       </details>
 

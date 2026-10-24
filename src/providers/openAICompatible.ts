@@ -1,3 +1,4 @@
+import { memoryReasoningFields, assertMemoryReasoningDisabled } from "./memoryReasoning";
 import { fetchWithAccounting } from "./apiCallAccounting";
 import type { ApiCallPurpose, ChatMessage, ProviderConfig, ProviderRequestThrottle, ProviderUsage } from "../types/adventure";
 
@@ -39,6 +40,7 @@ export interface SendChatCompletionOptions {
   signal?: AbortSignal;
   responseFormat?: "json_object";
   thinking?: "enabled" | "disabled";
+  memoryEvaluation?: boolean;
   purpose?: ApiCallPurpose;
   /** Recovery must be exactly one HTTP attempt even on reasoning-model exhaustion. */
   retry?: boolean;
@@ -174,6 +176,7 @@ function openAIReasoningFields(
   config: ProviderConfig,
   thinking: SendChatCompletionOptions["thinking"],
 ): Record<string, unknown> {
+  if (config.memoryReasoningControl) return memoryReasoningFields(config);
   if (isGlmReasoningModel(config) && isOpenRouterProvider(config)) {
     return { reasoning: { effort: thinking === "enabled" ? "medium" : "low" } };
   }
@@ -202,7 +205,7 @@ async function sendOpenAIRequest(
   purpose: ApiCallPurpose = "otherBackground",
   allowRetry = true,
 ): Promise<ProviderResponse> {
-  if (!isGlmReasoningModel(config) || isNativeDeepSeekProvider(config) || !allowRetry) {
+  if (config.memoryReasoningControl || !isGlmReasoningModel(config) || isNativeDeepSeekProvider(config) || !allowRetry) {
     const result = await sendOpenAIRequestOnce(endpoint, messages, config, 0, signal, responseFormat, thinking, purpose);
     if (result.content == null) throw new Error(`Provider returned no content. Body: ${result.rawText.slice(0, 300)}`);
     return { content: result.content, raw: result.raw, finishReason: result.finishReason, usage: result.usage };
@@ -337,10 +340,9 @@ async function sendAnthropicRequest(
         // Anthropic supports top_p / top_k but NOT presence/frequency penalties.
         ...(config.topP !== undefined ? { top_p: config.topP } : {}),
         ...(config.topK !== undefined && config.topK > 0 ? { top_k: config.topK } : {}),
-        ...(isNativeDeepSeekProvider(config)
-          // Anthropic uses thinking.type; reasoning.effort belongs to Responses.
-          ? { thinking: { type: thinking ?? "disabled" } }
-          : {}),
+        ...(config.memoryReasoningControl
+          ? memoryReasoningFields(config, "messages")
+          : isNativeDeepSeekProvider(config) ? { thinking: { type: thinking ?? "disabled" } } : {}),
       }),
     }, config, purpose);
   } catch (err) {
@@ -385,18 +387,29 @@ export async function sendOpenAICompatibleChatCompletion({
   thinking,
   purpose = "otherBackground",
   retry = true,
+  memoryEvaluation = false,
 }: SendChatCompletionOptions): Promise<ProviderResponse> {
   if (!config.apiKey?.trim()) {
     throw new Error("Missing API key. Add one in Settings before generating.");
   }
 
+  if (!memoryEvaluation && config.memoryReasoningControl) {
+    const { memoryReasoningControl: _memoryOnlyControl, ...narratorConfig } = config;
+    config = narratorConfig;
+  }
+  if (memoryEvaluation) {
+    memoryReasoningFields(config, isAnthropicFormat(config.baseUrl) ? "messages" : "chat"); // Fail before accounting or issuing a request.
+    config = { ...config, memoryReasoningControl: config.memoryReasoningControl ?? "auto" };
+    retry = false;
+  }
   await waitForProviderThrottle(config, signal);
 
   const endpoint = completionEndpoint(config.baseUrl);
-  if (isAnthropicFormat(config.baseUrl)) {
-    return sendAnthropicRequest(endpoint, messages, config, signal, thinking, purpose);
-  }
-  return sendOpenAIRequest(endpoint, messages, config, signal, responseFormat, thinking, purpose, retry);
+  const result = isAnthropicFormat(config.baseUrl)
+    ? await sendAnthropicRequest(endpoint, messages, config, signal, thinking, purpose)
+    : await sendOpenAIRequest(endpoint, messages, config, signal, responseFormat, thinking, purpose, retry);
+  if (memoryEvaluation) assertMemoryReasoningDisabled(result.raw);
+  return result;
 }
 
 export function isNativeDeepSeekProvider(config: Pick<ProviderConfig, "baseUrl">): boolean {

@@ -5,3 +5,8 @@ dist
 *.local
 *.tsbuildinfo
 .codex-firefox-profile-test/
+
+codex-artifacts/memory-semantic/
+codex-artifacts/lore-quality-tests.log
+
+.memory-eval.local/

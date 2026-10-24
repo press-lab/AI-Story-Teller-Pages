@@ -477,8 +477,8 @@ export function persistedBackgroundProviderConfig(
   if (!config) return undefined;
   const baseUrl = config.baseUrl?.trim() ?? "";
   const model = config.model?.trim() ?? "";
-  if (!baseUrl && !model) return undefined;
-  return { baseUrl, model };
+  if (!baseUrl && !model && !config.memoryReasoningControl) return undefined;
+  return { baseUrl, model, ...(config.memoryReasoningControl ? { memoryReasoningControl: config.memoryReasoningControl } : {}) };
 }
 
 export function persistedSemanticEvaluationSettings(

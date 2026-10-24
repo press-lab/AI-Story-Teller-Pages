@@ -102,6 +102,10 @@ export function ChroniclePage({ adventure, dispatch, loading = false, onEvaluate
             >
               <span className="chronicle-role">{message.role}</span>
               <p className="chronicle-text">{message.content}</p>
+              {message.memoryRecovery && message.memoryRecovery.status !== "complete" && <p className="muted" role="status">
+                Memory: {message.memoryRecovery.status} · {message.memoryRecovery.failures ?? 0} failed evaluations.
+                {message.memoryRecovery.status === "quarantined" && " Automatic retries paused. Evaluate this entry manually to retry."}
+              </p>}
               {message.role === "assistant" && onEvaluateStoryCards && <button type="button" disabled={loading}
                 onClick={event => { event.stopPropagation(); void evaluate([message.id]); }}>Evaluate Story Card Updates</button>}
             </article>

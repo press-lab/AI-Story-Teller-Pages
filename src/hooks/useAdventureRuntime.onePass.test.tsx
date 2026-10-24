@@ -229,6 +229,10 @@ it("resumes a due batch on reload without requesting another narration", async (
   const saved = normalizeAdventure(JSON.parse(JSON.stringify(first.result.current.adventure)));
   // Model a crash after the fifth narrative was saved, before the recovery claim committed.
   delete saved.activeState.lastMemoryRecoveryAttemptTurn;
+  delete saved.activeState.lastMemoryRecoveryAttemptKind;
+  // A crash BEFORE the claim also predates all per-source attempt/failure metadata.
+  saved.messages = saved.messages.map(message => message.memoryRecovery ? { ...message,
+    memoryRecovery: { turn: message.memoryRecovery.turn, status: "pending" as const } } : message);
   first.unmount();
   vi.mocked(sendOpenAICompatibleChatCompletion).mockClear();
   vi.mocked(sendOpenAICompatibleChatCompletion).mockImplementation(async options => ({ content: batchReply(options), raw: {} }));
