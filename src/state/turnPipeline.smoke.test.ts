@@ -4,7 +4,7 @@ import { adventureReducer } from "./adventureReducer";
 import { createDefaultAdventure, makeBrain, makeComponent, makeStoryCard, makeTriggerRule } from "./defaults";
 import type { Adventure, AdventureAction, ChatMessage, ContextBuildResult } from "../types/adventure";
 import { makeMemoryProposal } from "../test/goldenAdventure";
-import { runTurnPipeline } from "./turnPipeline";
+import { runLegacyCandidateFixture as runTurnPipeline } from "../test/legacyMemory";
 
 const timestamp = "2026-01-01T00:00:00.000Z";
 

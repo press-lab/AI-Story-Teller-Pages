@@ -26,19 +26,21 @@ export function resolveBackgroundProviderConfig(
   const bg = adventure.semanticEvaluationSettings.backgroundProviderConfig;
   if (bg?.baseUrl?.trim() && isUsableProviderBaseUrl(bg.baseUrl)) {
     const baseUrl = bg.baseUrl.trim();
+    const model = bg.model?.trim() || providerConfig.model;
     return {
       ...providerConfig,
-      memoryReasoningControl: bg.memoryReasoningControl ?? (baseUrl === providerConfig.baseUrl.trim() ? providerConfig.memoryReasoningControl : undefined),
+      memoryReasoningControl: bg.memoryReasoningControl ?? (baseUrl === providerConfig.baseUrl.trim() && model === providerConfig.model ? providerConfig.memoryReasoningControl : undefined),
       baseUrl,
       apiKey: bg.apiKey?.trim() ? bg.apiKey : providerConfig.apiKey,
-      model: bg.model?.trim() || providerConfig.model,
+      model,
       promptCaching: baseUrl === providerConfig.baseUrl ? providerConfig.promptCaching : undefined,
     };
   }
+  const model = bg?.model?.trim() || adventure.semanticEvaluationSettings.evaluationModel || providerConfig.model;
   return {
     ...providerConfig,
-    memoryReasoningControl: bg?.memoryReasoningControl ?? providerConfig.memoryReasoningControl,
-    model: bg?.model?.trim() || adventure.semanticEvaluationSettings.evaluationModel || providerConfig.model,
+    memoryReasoningControl: bg?.memoryReasoningControl ?? (model === providerConfig.model ? providerConfig.memoryReasoningControl : undefined),
+    model,
   };
 }
 

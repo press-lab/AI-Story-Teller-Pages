@@ -91,23 +91,16 @@ it("rejects a fabricated source reference without applying any updates", async (
     errors: [expect.stringContaining("source_attribution_invalid")],
   } });
 });
-it("retains inline Brain behavior, defers Story Cards, and respects manual and per-turn cadence", async () => {
-  let a = fixture();
-  a.messages = []; a.brains = [makeBrain({ id: "Harry", characterName: "Harry", active: true, autoUpdateCooldownTurns: 0 })];
-  a.memoryAutoApprove.brainUpdate = true;
-  a.memoryDetectionSettings.everyNTurns = 0;
-  const story = "Harry learns the northern door is trapped.";
-  const send = vi.fn(async () => ({ content: story + '<memory_updates>' + JSON.stringify({ updates: [{ kind: "thought", target: "Harry", content: "I must avoid the northern door.", evidence: story, reason: "New private knowledge" }] }) + '</memory_updates>' }));
+it("leaves narrator thoughts unapplied in manual-only mode and queues independent sources when enabled", async () => {
+  const a = fixture(); a.messages = []; a.memoryDetectionSettings.everyNTurns = 0;
+  a.brains = [makeBrain({ id: "Harry", characterName: "Harry", active: true })];
+  const send = vi.fn(async () => ({ content: 'Harry learns the northern door is trapped.<memory_updates>{"updates":[]}</memory_updates>' }));
   const result = await runTurnPipeline({ adventure: a, text: "I warn Harry.", sendChatCompletion: send });
   expect(send).toHaveBeenCalledTimes(1);
-  expect(Object.values(result.adventure.brains[0].thoughts).join(" ")).toContain("northern door");
-  expect(memoryRecoveryBatch(result.adventure)).toHaveLength(0);
-  const scheduled = { ...result.adventure, memoryDetectionSettings: { ...a.memoryDetectionSettings, everyNTurns: 1 } };
-  expect(memoryRecoveryBatch(scheduled)).toHaveLength(1);
-  scheduled.memoryDetectionSettings.everyNTurns = 5;
-  expect(memoryRecoveryBatch(scheduled)).toHaveLength(0);
-  scheduled.activeState.memoryRecoveryStoryTurn = 5;
-  expect(memoryRecoveryBatch(scheduled)).toHaveLength(1);
+  expect(result.adventure.brains[0].thoughts).toEqual({});
+  expect(result.adventure.messages.at(-1)?.memoryEvaluation).toBeUndefined();
+  const scheduled = await runTurnPipeline({ adventure: { ...a, memoryDetectionSettings: { ...a.memoryDetectionSettings, everyNTurns: 1 } }, text: "I warn Harry.", sendChatCompletion: send });
+  expect(scheduled.adventure.messages.at(-1)?.memoryEvaluation?.status).toBe("pending");
 });
 it("does not let a background provider error damage narration or clear pending work", async () => {
   const a = fixture();

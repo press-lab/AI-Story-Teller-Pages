@@ -1,5 +1,7 @@
 # AI Story Teller
 
+Automatic memory now uses the [original independent memory foundation](docs/foundation-migration.md), with Pages evidence, review, chronology and browser-local saves preserved.
+
 A browser-only MVP for building and playing local AI adventure sessions. It uses React, TypeScript, Vite, IndexedDB persistence, and an OpenAI-compatible provider call. Users supply their own API key in Settings.
 
 ## Setup

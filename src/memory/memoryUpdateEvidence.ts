@@ -4,5 +4,7 @@ import type { Adventure } from "../types/adventure";
 export function latestMemoryTurn(adventure: Adventure) {
   const messages = adventure.messages.filter(m => m.role === "user" || m.role === "assistant");
   const lastUser = messages.map(m => m.role).lastIndexOf("user");
-  return messages.slice(lastUser < 0 ? -1 : lastUser);
+  const lastAssistant = messages.map(m => m.role).lastIndexOf("assistant");
+  const previousAssistant = messages.slice(0, lastAssistant).map(m => m.role).lastIndexOf("assistant");
+  return messages.slice(Math.max(lastUser, previousAssistant + 1, 0));
 }

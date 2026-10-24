@@ -232,7 +232,7 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
           <strong>Arc Premise:</strong> Seed the component with a one-line premise describing this arc. Its authored pacing and Arc Director remain available.
         </p>
         <p>
-          <strong>Arc Log:</strong> Edit the log manually or use an explicitly requested authoring tool. Automatic memory suggestions go to Story Cards and Brains; they do not append to this component.
+          <strong>Arc Log:</strong> Independent evaluation can propose completed arc developments when automatic updates are allowed. Review settings control application. You can also edit the log manually; the Arc Director phase remains deterministic.
         </p>
         <h4>Best Practices</h4>
         <ul>

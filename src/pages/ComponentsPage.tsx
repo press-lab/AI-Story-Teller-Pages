@@ -845,13 +845,18 @@ export function ComponentsPage({ adventure, dispatch, loading, onSuggestPlotUpda
                   {component.type === "plotEssentials" && (
                     <CheckboxField
                       label="Auto-suggest full replacements when current truth drifts"
-                      checked={component.autoUpdate ?? adventure.memoryDetectionSettings.enabled}
+                      checked={component.autoUpdate ?? false}
                       onChange={(autoUpdate) => dispatch({ type: "UPDATE_COMPONENT", componentId: component.id, patch: { autoUpdate } })}
                     />
                   )}
+                    {component.type !== "plotEssentials" && <CheckboxField
+                      label={component.type === "currentArc" ? "Automatically evaluate arc developments" : "Automatically evaluate external pressure"}
+                      checked={component.autoUpdate !== false}
+                      onChange={autoUpdate => dispatch({ type: "UPDATE_COMPONENT", componentId: component.id, patch: { autoUpdate } })}
+                    />}
                   <Field label="Auto-update cooldown (turns)">
                     <NumberInput
-                      value={component.autoUpdateCooldownTurns ?? (component.type === "currentArc" ? 4 : 3)}
+                        value={component.autoUpdateCooldownTurns ?? (component.type === "activePressure" ? 0 : component.type === "currentArc" ? 4 : 3)}
                       min={0}
                       onChange={(value) => dispatch({ type: "UPDATE_COMPONENT", componentId: component.id, patch: { autoUpdateCooldownTurns: value } })}
                     />

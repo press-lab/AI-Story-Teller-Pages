@@ -324,7 +324,7 @@ export function ContextPreviewPage({ adventure, dispatch, contextResult, onBuild
         <table>
           <thead><tr><th>Operation</th><th>Requests</th><th>Failed</th><th>Prompt tokens</th><th>Completion tokens</th><th>Unknown usage</th></tr></thead>
           <tbody>{Object.entries(adventure.activeState.apiCallTotals ?? {}).map(([purpose, totals]) => (
-            <tr key={purpose}><td>{{ narration: "Narration", correction: "Corrections / continuity", memoryRecovery: "Memory recovery", otherBackground: "Other background operations" }[purpose] ?? purpose}</td>
+            <tr key={purpose}><td>{{ narration: "Narration", correction: "Corrections / continuity", memoryEvaluation: "Independent memory evaluation", memoryRecovery: "Memory recovery", otherBackground: "Other background operations" }[purpose] ?? purpose}</td>
               <td>{totals.requests}</td><td>{totals.failedRequests}</td><td>{totals.promptTokens.toLocaleString()}</td><td>{totals.completionTokens.toLocaleString()}</td><td>{totals.unreportedUsage}</td></tr>
           ))}</tbody>
         </table>

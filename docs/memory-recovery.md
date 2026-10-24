@@ -1,5 +1,7 @@
 # Batched automatic memory recovery
 
+> Historical architecture/validation record preceding the original-foundation migration. For current automatic scheduling, costs and permissions, use [Foundation migration](foundation-migration.md). The compact pipeline described here remains available for explicit legacy catch-up.
+
 ## Call paths
 
 Before this change, `submitTurn`, `continueTurn`, and `regenerateLastResponse` in

@@ -44,7 +44,7 @@ export class MemoryResponseError extends Error {
 }
 
 /** One HTTP attempt; no tools, persisted conversations, narration settings or automatic retries. */
-export async function sendOpenAIMemoryResponse(options: SendChatCompletionOptions): Promise<ProviderResponse> {
+export async function sendOpenAIMemoryResponse(options: SendChatCompletionOptions & { schema?: Record<string, unknown> }): Promise<ProviderResponse> {
   const { config, messages, signal } = options;
   if (!config.apiKey?.trim()) throw new MemoryResponseError("provider_api_key_missing");
   let endpoint: URL;
@@ -62,7 +62,7 @@ export async function sendOpenAIMemoryResponse(options: SendChatCompletionOption
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.apiKey}` },
       body: JSON.stringify({ model: config.model, input: messages, store: false,
         ...reasoningFields, max_output_tokens: config.maxOutputTokens,
-        text: { format: { type: "json_schema", name: "memory_evaluation", strict: true, schema: MEMORY_RESPONSE_SCHEMA } },
+        text: { format: { type: "json_schema", name: "memory_evaluation", strict: true, schema: options.schema ?? MEMORY_RESPONSE_SCHEMA } },
       }),
     }, config, options.purpose ?? "memoryRecovery");
   } catch { throw new MemoryResponseError("provider_request_failed_network"); }

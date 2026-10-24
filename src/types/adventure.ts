@@ -2,12 +2,13 @@ export interface MemoryDiagnostic {
   id: string;
   sourceId: string;
   createdAt: string;
-  stage: "inline" | "candidate" | "reducer" | "recovery";
+  stage: "inline" | "candidate" | "reducer" | "recovery" | "independent";
   outcome: "not_attempted" | "instruction_omitted" | "envelope_missing" | "envelope_malformed" | "draft_discarded"
     | "zero_candidates" | "candidates_produced" | "validation_accepted" | "validation_rejected"
     | "candidate_suppressed" | "candidate_merged" | "proposal_accepted" | "automatically_approved"
     | "proposal_approved" | "proposal_rejected" | "proposal_ignored"
-    | "recovery_queued" | "recovery_attempted" | "recovery_validated" | "recovery_completed" | "recovery_failed";
+    | "recovery_queued" | "recovery_attempted" | "recovery_validated" | "recovery_completed" | "recovery_failed"
+    | "evaluation_queued" | "evaluation_started" | "evaluation_completed" | "evaluation_failed" | "evaluation_stale";
   origin?: "inline" | "recovery";
   instructionSupplied?: boolean;
   envelopeParsed?: boolean;
@@ -30,6 +31,22 @@ export type MemoryPriorityMode = "userLocked" | "systemSuggested" | "hybrid";
 export type ContextInclusionPolicy = "always" | "triggered" | "manual" | "systemSuggested";
 export type InputMode = "do" | "story" | "comms";
 
+export type MemoryEvaluationGroup = "plot" | "storyCards" | "brains" | "discovery";
+export interface MemoryEvaluationState {
+  turn: number;
+  status: "pending" | "running" | "complete" | "failed" | "quarantined";
+  attempts: number;
+  completedGroups: MemoryEvaluationGroup[];
+  nextEligibleTurn?: number;
+  lastError?: string;
+}
+
+export interface MemoryTargetSnapshot {
+  kind: "brain" | "storyCard" | "component";
+  id: string;
+  value: string;
+}
+
 export interface Message {
   id: string;
   role: MessageRole;
@@ -42,6 +59,8 @@ export interface Message {
   storyCardScan?: { fingerprint: string };
   memoryRecovery?: { turn: number; status: "pending" | "complete" | "quarantined";
     failures?: number; nextEligibleTurn?: number; lastAttemptTurn?: number; batchLimit?: number; lastError?: string };
+  /** Only new finalized story responses are queued automatically. Legacy history is never replayed on load. */
+  memoryEvaluation?: MemoryEvaluationState;
   createdAt: ISODateString;
 }
 
@@ -448,8 +467,8 @@ export interface SemanticEvaluationSettings {
 
 
 export interface MemoryDetectionSettings {
-  /** Narrator remains the default. Dedicated evaluation uses the existing background queue. */
-  evaluator?: "narrator" | "dedicated";
+  /** Legacy narrator/dedicated values remain readable; independent evaluation now owns normal play. */
+  evaluator?: "independent" | "narrator" | "dedicated";
   enabled: boolean;
   generateContent: boolean;
   everyNTurns: number;
@@ -528,6 +547,8 @@ export interface StoryCardSuggestionReview {
 }
 
 export interface MemoryProposal {
+  /** Independent evaluation evidence and destination at generation time. */
+  evaluationSource?: { messages: Array<{ id: string; content: string }>; target?: MemoryTargetSnapshot };
   storyCardReview?: StoryCardSuggestionReview;
   /** Consequential automatic changes require explicit review, regardless of generic auto-approval. */
   requiresReview?: boolean;
@@ -652,7 +673,7 @@ export interface StoryEditHistoryEntry {
   redo: StoryEditPatch;
 }
 
-export type ApiCallPurpose = "narration" | "correction" | "memoryRecovery" | "otherBackground";
+export type ApiCallPurpose = "narration" | "correction" | "memoryEvaluation" | "memoryRecovery" | "otherBackground";
 export interface ApiCallRecord {
   id: string;
   sessionId?: string;
@@ -888,6 +909,9 @@ export type BrainPatch = {
 
 export type AdventureAction =
   | { type: "RECORD_MEMORY_DIAGNOSTIC"; entry: MemoryDiagnostic }
+  | { type: "QUEUE_MEMORY_EVALUATION"; sourceId: string; turn: number }
+  | { type: "CLAIM_MEMORY_EVALUATION"; sourceId: string; turn: number; manual?: boolean }
+  | { type: "COMMIT_MEMORY_EVALUATION_GROUP"; source: { id: string; content: string }; group: MemoryEvaluationGroup; dependencies: Array<{ id: string; content: string }>; targets: MemoryTargetSnapshot[]; actions: AdventureAction[]; error?: string }
   | { type: "SCAN_STORY_CARD_EXCHANGE"; sourceMessageId: string; manual?: boolean }
   | { type: "SET_STORY_CLOCK"; clock: StoryClock }
   | { type: "SET_TITLE"; title: string }

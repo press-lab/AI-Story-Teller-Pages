@@ -1,5 +1,7 @@
 # Story Card suggestion skill
 
+> Historical architecture/validation record preceding the original-foundation migration. For current automatic scheduling, costs and permissions, use [Foundation migration](foundation-migration.md). The compact pipeline described here remains available for explicit legacy catch-up.
+
 Completed exchange → local detection + existing one-pass LLM assessment → shared matching and merge → Memory Inbox → approval. No new agent, embedding service, scheduled job or normal-play provider request is added. Character, Location, Lore and Custom remain the only primary card types.
 
 ## Runtime contract

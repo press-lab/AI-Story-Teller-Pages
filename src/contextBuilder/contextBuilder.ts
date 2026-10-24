@@ -1,7 +1,5 @@
-import { relevantStoryCardInventory } from "../memory/storyCardSuggestions";
 import { isHistoricalLore, loreExcerpt } from "../memory/storyCardArchitecture";
 import { formatStoryTime } from "../memory/storyTime";
-import { ONE_PASS_MEMORY_ID, onePassMemoryInstruction } from "../memory/onePassMemory";
 import { selectEventMemories } from "../memory/eventMemory";
 import { PLOT_MEMORY_THRESHOLD } from "../ai/authoringBestPractices";
 import type {
@@ -389,10 +387,6 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
   const turnScopeText = authorTurn
     ? "AUTHOR RESPONSE CONTRACT: Reply ONLY out of character, directly to the author as the AI. Answer the question or acknowledge the instruction. Do not continue or advance the scene, include character dialogue/actions/reactions, or emit thought or memory tags. Story context is reference material for your answer. This contract overrides all narrative style and scene-continuation instructions."
     : buildTurnScopeContract(adventure.activeState.responseLengthHint);
-  const captureEligible = options.skipThoughtCapture || authorTurn ? [] : eligibleBrainsForCapture(adventure, triggerText);
-  const memoryText = !options.skipThoughtCapture && !authorTurn && adventure.memoryDetectionSettings.enabled
-    ? onePassMemoryInstruction(captureEligible, enabledMemoryCategories(adventure), adventure.memoryDetectionSettings.evaluator !== "dedicated")
-      + "\nStory Card targets [id,title,type]: " + JSON.stringify(relevantStoryCardInventory(adventure, triggerText).map(card => [card.id, card.title, card.type])) : undefined;
   function pushExcluded(
     sourceType: ExcludedContextItem["sourceType"],
     id: string,
@@ -413,10 +407,6 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
   pushIncluded(systemItem, "System shell is always included and protected.");
   const turnScopeItem = item("turn-scope-contract", "system", "Turn Scope Contract", turnScopeText, 1000, true, false, true, "always", "system");
   pushIncluded(turnScopeItem, "Turn scope contract is always included and protected.");
-  const memoryItem = memoryText
-    ? item(ONE_PASS_MEMORY_ID, "system", "One-pass Memory", memoryText, 900, true, false, true, "always", "system")
-    : undefined;
-  if (memoryItem) pushIncluded(memoryItem, "Narration and automatic memory share one response.");
 
   // Track which component IDs have already been logged as excluded to avoid double-logging
   const loggedExcluded = new Set<string>();
@@ -439,7 +429,7 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
     pushIncluded(next, `Narration Rules loaded; priority=${component.priority}; protected=${component.protected}.`);
     return [next];
   });
-  const runtimeSystemItems = [turnScopeItem, memoryItem].filter((entry): entry is ContextItem => Boolean(entry));
+  const runtimeSystemItems = [turnScopeItem];
   const systemSection = section("system", "A. System Shell / Global Generation Rules", 0, [systemItem, ...narrationRulesItems, ...runtimeSystemItems]);
 
   // B2. AI Instructions — all active components with type === "aiInstructions"
@@ -577,17 +567,7 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
   });
 
   // J. Next Output Bias (+ response length hint)
-  if (memoryItem) {
-    // Single-item sections need not print their title. Explicit target names let the
-    // model address the correct entry without copying the full memory inventory.
-    const editableComponents = [...plotEssentialItems, ...currentArcItems].filter(entry =>
-      adventure.components.find(c => c.id === entry.id)?.autoUpdate !== false);
-    memoryItem.content += `\nEligible existing targets (use the exact title; omit updates if their content is absent): ${JSON.stringify({
-      cards: storyCardItems.map(entry => entry.title),
-      components: editableComponents.map(entry => ({ title: entry.title, type: adventure.components.find(c => c.id === entry.id)?.type })),
-    })}`;
-    memoryItem.tokenEstimate = approximateTokenCount(memoryItem.content);
-  }
+
 
   const nextTurnNote = adventure.activeState.nextTurnNote;
   if (nextTurnNote?.content.trim() && !nextTurnNote.active) {

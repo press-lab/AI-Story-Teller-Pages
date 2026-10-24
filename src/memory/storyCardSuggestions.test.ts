@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createDefaultAdventure, makeBrain, makeComponent, makeStoryCard, normalizeAdventure } from "../state/defaults";
 import { adventureReducer as reduce } from "../state/adventureReducer";
-import { runTurnPipeline } from "../state/turnPipeline";
+import { runLegacyCandidateFixture as runTurnPipeline } from "../test/legacyMemory";
 import { makeMemoryProposal } from "../test/goldenAdventure";
 import { scanStoryCardExchange, makeStoryCardSuggestion, STORY_CARD_MEMORY_CHECK } from "./storyCardSuggestions";
 import type { Adventure } from "../types/adventure";

@@ -6,6 +6,9 @@ import { makeMemoryProposal } from "../test/goldenAdventure";
 
 const testedActionTypes = [
   "SCAN_STORY_CARD_EXCHANGE",
+  "QUEUE_MEMORY_EVALUATION",
+  "CLAIM_MEMORY_EVALUATION",
+  "COMMIT_MEMORY_EVALUATION_GROUP",
   "SET_STORY_CLOCK",
   "SET_TITLE",
   "SET_OPENING_SCENE",
@@ -975,7 +978,7 @@ describe("adventureReducer", () => {
     expect(state.activeState.memoryProposals.some((p) => p.id === "already-carded")).toBe(false);
   });
 
-  it("quietly applies auto-approved Active Pressure without filling Memory Suggestions history", () => {
+  it("records auto-approved Active Pressure in review history", () => {
     const base = baseAdventure();
     const pressure = makeComponent({
       id: "comp-pressure",
@@ -1005,7 +1008,7 @@ describe("adventureReducer", () => {
     expect(state.components.find((component) => component.id === "comp-pressure")?.content).toBe(
       "Caitlyn's task force is sealing the Pumpworks around Seth and Jinx.",
     );
-    expect(state.activeState.memoryProposals.some((p) => p.id === "pressure-1")).toBe(false);
+    expect(state.activeState.memoryProposals.find(p => p.id === "pressure-1")?.status).toBe("approved");
 
     state = reduce(state, {
       type: "ADD_MEMORY_PROPOSAL",

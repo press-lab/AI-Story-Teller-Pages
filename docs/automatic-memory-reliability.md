@@ -1,5 +1,7 @@
 # Automatic memory reliability audit
 
+> Historical architecture/validation record preceding the original-foundation migration. For current automatic scheduling, costs and permissions, use [Foundation migration](foundation-migration.md). The compact pipeline described here remains available for explicit legacy catch-up.
+
 Baseline: origin/main `86a5499` (24 October 2026). Source: the supplied Hogwarts University export, inspected read-only. The fixture contains four small transcript windows; no adventure file was changed.
 
 ## Findings and changes

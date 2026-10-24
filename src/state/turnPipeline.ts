@@ -1,4 +1,4 @@
-import { ONE_PASS_MEMORY_ID, onePassMemoryActions, parseOnePassMemory } from "../memory/onePassMemory";
+import { parseOnePassMemory } from "../memory/onePassMemory";
 import { buildContext, extractInlineThoughts } from "../contextBuilder/contextBuilder";
 import { runContinuityCheck, scanForRiskyClaims } from "../continuityLint";
 import { evaluateTriggerRules, type TriggerEvaluationEvent } from "../triggers/triggerEngine";
@@ -116,55 +116,6 @@ export async function applyProviderResponse({
   }
 
   const messageId = assistantMessageId ?? createId("message");
-  next = adventureReducer(next, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: {
-    id: createId("decision"), sourceId: messageId, createdAt: nowIso(), stage: "inline", model: providerConfig?.model,
-    instructionSupplied: preProviderContext.sections.some(s => s.items.some(i => i.id === ONE_PASS_MEMORY_ID)) && preProviderContext.messages.some(m => m.content.includes("[ONE-PASS MEMORY]")),
-    envelopeParsed: !memory.error,
-    candidateKinds: memory.updates.map(update => update && typeof update === "object" && "kind" in update ? String(update.kind).slice(0, 40) : "invalid"),
-    outcome: mode === "comms" || !next.memoryDetectionSettings.enabled ? "not_attempted"
-      : !(preProviderContext.sections.some(s => s.items.some(i => i.id === ONE_PASS_MEMORY_ID)) && preProviderContext.messages.some(m => m.content.includes("[ONE-PASS MEMORY]"))) ? "instruction_omitted"
-      : continuityCorrected || response.memoryDiscarded ? "draft_discarded"
-      : memory.error ? (/<memory_/i.test(response.content) ? "envelope_malformed" : "envelope_missing")
-      : memory.updates.length ? "candidates_produced" : "zero_candidates",
-  } });
-  let inlineValidationFailed = false;
-  let noInlineStoryCardCandidates = true;
-  const dedicated = next.memoryDetectionSettings.evaluator === "dedicated";
-  const memoryEnabled = mode !== "comms" && next.memoryDetectionSettings.enabled
-    && preProviderContext.sections.some(s => s.items.some(i => i.id === ONE_PASS_MEMORY_ID))
-    && preProviderContext.messages.some(message => message.content.includes("[ONE-PASS MEMORY]"));
-  if (mode !== "comms" && next.memoryDetectionSettings.enabled) {
-    // Never apply memory from a discarded draft after a continuity rewrite.
-    const discarded = continuityCorrected || !memoryEnabled || response.memoryDiscarded;
-    const inlineUpdates = discarded ? [] : dedicated
-      ? memory.updates.filter(update => update && typeof update === "object" && (update as { kind?: string }).kind === "thought")
-      : memory.updates;
-    noInlineStoryCardCandidates = !inlineUpdates.some(update => update && typeof update === "object"
-      && "kind" in update && ["lore", "card", "newCard"].includes(String(update.kind)));
-    const memoryError = continuityCorrected ? "Memory skipped after continuity correction."
-      : !memoryEnabled ? "memory_instruction_omitted: actual provider payload has no memory instruction." : memory.error;
-    const processing = `One-pass memory: no additional API call; instruction_in_payload=${memoryEnabled}; finish_reason=${response.finishReason?.slice(0, 40) ?? "unknown"}; narration_rewritten=${Boolean(response.narrationRewritten)}; continuity_rewritten=${continuityCorrected}; draft_discarded=${Boolean(discarded)}; envelope=${memory.error ? "failed" : "parsed"}`;
-    let actions = onePassMemoryActions(next, preProviderContext, inlineUpdates, finalContent, messageId, memoryError);
-    for (const action of actions) if (action.type === "LOG_EVALUATION_RESULT") action.entry.actionsExecuted.push(processing);
-    inlineValidationFailed = actions.some(action => action.type === "LOG_EVALUATION_RESULT" && action.entry.errors.length > 0);
-    const before = next;
-    next = reduceActions(next, actions);
-    const visibleThoughts = next.brains.filter(b => b.printThoughts).flatMap(b => {
-      const old = before.brains.find(previous => previous.id === b.id);
-      return Object.entries(b.thoughts).filter(([key, value]) => old?.thoughts[key] !== value)
-        .map(([, value]) => "*[" + b.characterName + "]: " + value + "*");
-    });
-    if (visibleThoughts.length) {
-      finalContent += "\n\n" + visibleThoughts.join("\n");
-      // Printed Brain reactions belong to the persisted source snapshot. Rebuild
-      // the same reducer transaction with final snapshots, not a second update.
-      actions = actions.map(action => action.type === "ADD_MEMORY_PROPOSAL" && action.proposal.storyCardReview
-        ? { ...action, proposal: { ...action.proposal, storyCardReview: { ...action.proposal.storyCardReview, sourceContent: finalContent } } } : action);
-      next = reduceActions(before, actions);
-    }
-  }
-
-
   next = adventureReducer(next, {
     type: "ADD_MESSAGE",
     role: "assistant",
@@ -174,14 +125,16 @@ export async function applyProviderResponse({
     createdAt,
     usage: response.usage,
   });
-  if (mode !== "comms") next = adventureReducer(next, { type: "SCAN_STORY_CARD_EXCHANGE", sourceMessageId: messageId });
   if (mode !== "comms" && incrementTurn) {
     next = adventureReducer(next, { type: "ADVANCE_MEMORY_RECOVERY_TURN" });
   }
-  if (mode !== "comms" && next.memoryDetectionSettings.enabled
-    && (dedicated || noInlineStoryCardCandidates || inlineValidationFailed || !memoryEnabled || memory.error || continuityCorrected)) {
-    next = adventureReducer(next, { type: "QUEUE_MEMORY_RECOVERY", messageId,
-      turn: next.activeState.memoryRecoveryStoryTurn ?? 0, cause: dedicated ? "Dedicated evaluation configured" : continuityCorrected ? "Narrative corrected" : !memoryEnabled ? "Memory instruction omitted" : memory.error ? "Inline envelope unavailable" : inlineValidationFailed ? "Inline candidate validation failed" : "No inline Story Card candidates" });
+  if (mode !== "comms" && next.memoryDetectionSettings.enabled && next.memoryDetectionSettings.everyNTurns > 0) {
+    next = adventureReducer(next, { type: "QUEUE_MEMORY_EVALUATION", sourceId: messageId,
+      turn: next.activeState.turn + (incrementTurn ? 1 : 0) });
+  } else {
+    next = adventureReducer(next, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: { id: createId("decision"), sourceId: messageId,
+      createdAt: nowIso(), stage: "independent", outcome: "not_attempted",
+      reason: mode === "comms" ? "Out-of-story communication." : !next.memoryDetectionSettings.enabled ? "Automatic memory is disabled." : "Automatic cadence is manual-only." } });
   }
   next = adventureReducer(next, { type: "CONSUME_NEXT_TURN_NOTE" });
 

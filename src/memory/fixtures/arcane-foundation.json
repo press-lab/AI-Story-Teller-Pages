@@ -1,0 +1,59 @@
+{
+  "provenance": {
+    "title": "Arcane: After the Rocket",
+    "adventureId": "adv_mr1hfa1t_6dgvuvv5",
+    "saveId": "2026-07-13T17-56-54-425Z-manual",
+    "sha256": "d274e2c87f052aca2a2732bb738b2ce9ef9ab8785d0f80c54558d894be6d9104",
+    "selection": "First four completed exchanges, copied read-only; no later character state included."
+  },
+  "messages": [
+    {
+      "id": "msg_mr1hl3rx_lz3x5yrj",
+      "role": "user",
+      "content": "You “Jayce. Get him to the hexcore”",
+      "createdAt": "2026-07-01T02:58:57.501Z"
+    },
+    {
+      "id": "msg_mr1hmwan_d2petn3b",
+      "role": "assistant",
+      "content": "Jayce doesn't hesitate. He moves to Viktor, his movements heavy but certain, his hands finding purchase under Viktor's shoulders. The scientist's head lolls, a thin line of blood tracing from his temple to his jaw. \"The lab,\" Jayce says, the word a command to himself as much as to the room.\n\nMel steps into the path of the smoke, her gold-etched sleeve brushing your arm as she passes. \"The Hexcore is an uncontrolled variable,\" she says, her voice low, urgent. \"Piltover cannot afford a second catastrophe before it has counted the first.\"\n\nBelow your feet, the hum deepens. A fractured section of the floor glows with the pale blue of unstable Hextech energy, the light pulsing in time with the damaged conduits. It's reacting to the ambient magic—to your wards, to the residual shockwave, to the sheer concentration of arcane stress in a room full of dead and dying Councilors.\n\nShoola staggers to her feet, clutching her arm. \"The doors are jammed,\" she calls, voice shaking. \"The blast twisted the mechanisms.\"\n\nFrom the hall beyond the ruined chamber doors, a new sound cuts through the chaos: the sharp, disciplined cadence of enforcer boots on marble, moving fast. A familiar voice, tight with controlled fury, shouts orders. \"Clear that debris! I want a path!\"\n\nCaitlyn.\n\nShe hasn't seen the bodies yet. She hasn't seen her mother.\n\nJayce is halfway to the shattered chamber doors with Viktor's weight in his arms, his face a mask of grim focus. The humming from below swells, and a fine crackle of blue energy arcs up from the broken floor near Salo's still form. Salo cries out—a sharp, pained sound—as the energy licks at his leg.\n\nThe Hextech isn't just damaged. It's hungry, and it's waking up.",
+      "createdAt": "2026-07-01T03:00:21.119Z"
+    },
+    {
+      "id": "msg_mr1hqf4s_jsfwzea4",
+      "role": "user",
+      "content": "You “Everyone on the other side, take cover. I will clear the rumble” I say to the people on the other side of it. Once clear, I use force magic",
+      "createdAt": "2026-07-01T03:03:05.500Z"
+    },
+    {
+      "id": "msg_mr1hqsh9_ikjebgds",
+      "role": "assistant",
+      "content": "Your voice cuts through the rising panic, calm and carrying. “Everyone on the other side, take cover.”\n\nShoola stumbles back, pulling Salo with her as best she can. Mel’s eyes lock with yours for a fraction of a second—a silent acknowledgment of the risk, the calculation, the trust—before she moves smoothly to the far wall, placing herself between the unstable energy and Jayce’s path.\n\nThe enforcers on the other side go silent. You hear the scrape of boots retreating.\n\nYou don’t cast a spell so much as you *become* one. Force magic isn’t a tool you pick up; it’s a discipline you’ve worn into your bones. Your wards tighten, reinforcing your stance, anchoring you to the cracked marble. You extend your hands, palms open, and the air between you and the jammed, twisted doors thickens, warps, and then *pushes*.\n\nIt’s not a blast. It’s a controlled, immense shove—a wave of kinetic pressure that doesn’t explode outward but focuses forward in a clean, widening column. The shattered table remnants, the fallen stone blocks, the twisted brass of the door mechanism—all of it groans, grinds, and slides backward in a single, grinding shriek.\n\nDust billows. The doors, half off their hinges, tear free and slam into the corridor beyond with a deafening crash.\n\nThe corridor is full of enforcers in formation, rifles ready, faces pale under their helmets. At their front stands Caitlyn Kiramman, her uniform immaculate, her blue eyes already scanning the ruin behind you—past you—searching.\n\nFor a heartbeat, there is only the settling dust and the ragged breathing from the chamber.\n\nThen the unstable Hextech conduit under the floor *surges*.\n\nThe blue energy that had been licking at the cracks erupts upward in a jagged, roaring whip-crack of power, arcing directly toward the exposed wiring in the ceiling above the enforcers’ heads.",
+      "createdAt": "2026-07-01T03:03:22.797Z"
+    },
+    {
+      "id": "msg_mr1hsfo6_rrbm7p3x",
+      "role": "user",
+      "content": "You “Jayce” I say, indicating for him to take Viktor. “Mel, it’s the only way he lives”",
+      "createdAt": "2026-07-01T03:04:39.510Z"
+    },
+    {
+      "id": "msg_mr1hszq3_ctnlqah0",
+      "role": "assistant",
+      "content": "Jayce’s gaze snaps to yours, then to the searing arc of energy climbing the wall. He understands the math. He nods once, a sharp, final motion, and hefts Viktor higher in his arms. “Don’t let it spread,” he says, the words raw. Then he’s moving, boots crunching over debris, carrying Viktor through the newly cleared doorway and into the corridor.\n\nThe enforcers part for him, discipline overriding shock. Caitlyn doesn’t move to stop him; her eyes are fixed past the threshold, into the smoke and ruin where her mother’s chair lies overturned.\n\nMel stands between you and the retreating form of Jayce, her posture perfectly still. “Seth,” she says, her voice low enough that only you can hear it over the rising crackle of energy. “You are making a public spectacle of your power in a room full of dead Councilors. Piltover will remember which choice you amplified.”\n\nThe Hextech surge isn’t waiting for politics. It finds a weak point in the chamber’s main power conduit—a thick, glass-insulated line running along the wall—and latches on. The blue-white energy floods the conduit, turning it into a blinding, pulsing vein of raw power. The light throbs, and with each pulse, the hum deepens, vibrating through the floor and into your teeth.\n\nFrom the corridor, Vi pushes through the enforcer line, her eyes scanning the chaos, landing on Caitlyn’s rigid back, then on the surging energy. “Great,” she mutters, voice carrying. “The magic Council guy lived. Can he turn that off before it cooks the whole block?”\n\nThe conduit groans. A shower of sparks erupts from a junction box near the ceiling. The energy isn’t just unstable; it’s building, feeding on the ambient magic and the damaged Hextech lattice, growing louder, hungrier.",
+      "createdAt": "2026-07-01T03:05:05.499Z"
+    },
+    {
+      "id": "msg_mr1hztua_prze1iqi",
+      "role": "user",
+      "content": "I focus the hextech, turning it off. I nod to Mel",
+      "createdAt": "2026-07-01T03:10:24.466Z"
+    },
+    {
+      "id": "msg_mr1i07tn_g8db76yq",
+      "role": "assistant",
+      "content": "You don't fight the surge. You don't try to smother it. That would only make it thrash. Instead, you focus—not on the energy itself, but on the *path* it's taking, the hungry, frantic loop it's building inside the damaged conduit.\n\nYour magic isn't about raw force here; it's about precision, about understanding a system's desire to complete a circuit. You extend a hand, fingers splayed, and your wards flare softly, not as a shield, but as a tuning fork. You match the resonance of the Hextech, feeling for the point of instability—the break in the flow that's causing it to lash out.\n\nThen you *amplify* that break.\n\nYou don't push power into the conduit; you push *silence* into the feedback loop. It's a sudden, surgical negation of the energy's ability to sustain itself. The roaring blue-white light doesn't fade—it *snaps* off, like a switch thrown. The hum cuts out into a ringing, heavy quiet. The last few sparks fall from the ceiling and die on the marble.\n\nThe sudden silence is almost louder than the chaos.\n\nDust settles. The only sounds are the distant alarm bells, the muffled shouts from elsewhere in the building, and Salo's shallow, pained breathing.\n\nYou lower your hand. Your wards settle back to their usual low hum, invisible again under your sleeves. You meet Mel's eyes and give her a single, slow nod.\n\nShe doesn't smile. She doesn't need to. Her expression is one of clear, cold assessment. She just inclined her head slightly in return, then turned her gaze toward the corridor—and Caitlyn.\n\nCaitlyn hasn't moved. She's standing just inside the ruined doorway now, her back straight, her rifle held loosely at her side. Her eyes are scanning the chamber, methodical, relentless. They pass over the overturned chairs, the shattered nameplates, the dark stains on the marble.\n\nThey find Cassandra Kiramman's chair.\n\nThey stop.\n\nVi steps up beside her, close but not touching. \"Cait,\" Vi says, her voice low, stripped of all sarcasm.\n\nCaitlyn doesn't seem to hear her. She takes one step forward, then another, moving like someone in a dream. She kneels beside the chair, her gloved hand reaching out to touch the polished wood, her fingers brushing the spot where her mother's hand would have rested.\n\nHer shoulders are perfectly still. Her face is pale, utterly composed.\n\nFrom the hallway, an enforcer lieutenant approaches, his helmet removed, his expression grim. \"Councillor,\" he says, addressing you. \"The lower levels are secure, but the Hexgate control room is reporting erratic fluctuations. The… incident here may have propagated through the main lines. And we have reports of unrest in the Sump levels. They heard the blast.\"\n\nHe hesitates, his eyes flicking to Caitlyn's kneeling form, then back to you. \"The Acting Council—what's left of it—needs to convene. Immediately. Ambessa Medarda has already been notified and is en route to the Academy.\"",
+      "createdAt": "2026-07-01T03:10:42.587Z"
+    }
+  ]
+}

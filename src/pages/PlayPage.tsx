@@ -1,5 +1,6 @@
 import { formatStoryTime } from "../memory/storyTime";
 import { useEffect, useRef, useState } from "react";
+import { displayedBrainThoughts } from "../memory/displayedBrainThoughts";
 import type { InputMode, Message } from "../types/adventure";
 import type { PlayRuntimeProps } from "./pageTypes";
 import { CheckboxField, Field, NumberInput } from "./shared";
@@ -414,6 +415,7 @@ export function PlayPage({
                       </button>
                     )}
                   />
+                  {displayedBrainThoughts(adventure, message).map(thought => <p key={thought} className="muted"><em>{thought}</em></p>)}
                   {message.role === "assistant" && (message.usage || (message.id === lastAssistant?.id && pendingMemoryCount > 0)) && (
                     <span className="message-usage muted">
                       {message.usage && (

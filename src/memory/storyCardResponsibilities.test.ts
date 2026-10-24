@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createDefaultAdventure, makeBrain, makeStoryCard } from "../state/defaults";
 import { adventureReducer } from "../state/adventureReducer";
-import { runTurnPipeline } from "../state/turnPipeline";
+import { runLegacyCandidateFixture as runTurnPipeline } from "../test/legacyMemory";
 import { characterParticipants } from "./storyCardEntities";
 import { makeStoryCardSuggestion, scanStoryCardExchange, suggestionSourceValid } from "./storyCardSuggestions";
 
@@ -22,7 +22,7 @@ async function narrate(text: string, updates: unknown[], state = fixture()) {
   const provider = vi.fn(async () => ({ content: `${text}\n<memory_updates>${JSON.stringify({ updates })}</memory_updates>` }));
   const result = await runTurnPipeline({ adventure: state, text: "I ask Draconia and Hermione about Britain.", assistantMessageId: "source", sendChatCompletion: provider });
   expect(provider).toHaveBeenCalledTimes(1);
-  expect(result.providerPayload.some(m => m.content.includes("[ONE-PASS MEMORY]") && m.content.includes("<memory_updates>"))).toBe(true);
+  expect(result.providerPayload.some(m => m.content.includes("[ONE-PASS MEMORY]"))).toBe(false);
   expect(result.responseContent).toBe(text);
   return result.adventure;
 }

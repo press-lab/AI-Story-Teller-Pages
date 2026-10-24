@@ -1,0 +1,299 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createDefaultAdventure, defaultModelConfig, makeBrain, makeComponent, makeStoryCard, normalizeAdventure } from "../state/defaults";
+import { adventureReducer } from "../state/adventureReducer";
+import { runTurnPipeline } from "../state/turnPipeline";
+import { runMemoryCycle } from "../triggers/semanticEngine";
+import { buildContext } from "../contextBuilder/contextBuilder";
+import { exportAdventureJson, importAdventureJson } from "../utils/json";
+import { memoryCycleSources } from "./memoryCycleState";
+import { suggestionSourceValid } from "./storyCardSuggestions";
+import reliability from "./fixtures/hogwarts-reliability.json";
+import arcane from "./fixtures/arcane-foundation.json";
+import { displayedBrainThoughts } from "./displayedBrainThoughts";
+import type { Adventure } from "../types/adventure";
+
+vi.mock("../providers/openAICompatible", () => ({ isNativeDeepSeekProvider: () => true, sendOpenAICompatibleChatCompletion: vi.fn() }));
+import { sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
+const provider = vi.mocked(sendOpenAICompatibleChatCompletion);
+const config = { ...defaultModelConfig, apiKey: "offline-test" };
+let fired: string[], discoveries: unknown[], fail: string | undefined, reject: boolean;
+const reaction = (name: string) => `I trust ${name === "Mira" ? "Seth's offer" : "the evidence"} after what we established; I will check the ward myself.`;
+function seed() {
+  const a = createDefaultAdventure("Original foundation regression");
+  a.semanticEvaluationSettings = { ...a.semanticEvaluationSettings };
+  a.components = [];
+  a.brains = [makeBrain({ id: "mira", characterName: "Mira", active: true, thoughts: { old: "I still distrust the duke." }, inclusionPolicy: "always" })];
+  a.messages = [{ id: "ask", role: "user", content: "Mira, I offer to share the ward research.", createdAt: "2026-07-01" },
+    { id: "source", role: "assistant", content: "Mira accepts Seth's offer and reveals the ward's hidden key.", createdAt: "2026-07-01" }];
+  return a;
+}
+function finding(a: Adventure, content = "Mira and Seth discovered the ward's hidden key.") {
+  return { title: "The ward key discovery", storyCardType: "lore", content, suggestedTriggers: ["hidden key"],
+    rationale: "A significant completed discovery", evidenceMessageIds: ["ask", "source"],
+    evidenceQuotes: a.messages.map(message => ({ messageId: message.id, quote: message.content })) };
+}
+async function evaluate(a: Adventure, sourceId = "source") {
+  const claimed = adventureReducer(a, { type: "CLAIM_MEMORY_EVALUATION", sourceId, turn: a.activeState.memoryRecoveryStoryTurn ?? 0, manual: true });
+  const result = await runMemoryCycle(claimed, config, { sourceId });
+  return { ...result, state: result.actions.reduce(adventureReducer, claimed), claimed };
+}
+beforeEach(() => {
+  fired = ["brain:mira"]; discoveries = []; fail = undefined; reject = false;
+  provider.mockReset();
+  provider.mockImplementation(async request => {
+    const text = request.messages.map(message => message.content).join("\n");
+    let content = "[]";
+    if (text.includes("MEMORY UPDATE VALIDATION")) {
+      if (fail === "validation") throw new Error("offline validation failure");
+      const body = JSON.parse(request.messages.at(-1)!.content);
+      content = JSON.stringify({ accepted: !reject, meaningfulChange: !reject, reason: "Supported change in the supplied establishing exchange",
+        evidenceMessageIds: body.latestTurnMessageIds, identityMatchesTarget: true, pressureChange: "changed_obligation" });
+    } else if (text.includes("evaluation engine")) {
+      const body = JSON.parse(request.messages.at(-1)!.content);
+      if (fail && body.conditions.some((condition: { id: string }) => condition.id.includes(fail!))) throw new Error("offline condition failure");
+      content = JSON.stringify(body.conditions.filter((condition: { id: string }) => fired.includes(condition.id)).map((condition: { id: string }) => condition.id));
+    } else if (text.includes("STORY CARD MEMORY CHECK")) {
+      if (fail === "discovery") return { content: "malformed", raw: {}, usage: { promptTokens: 5, completionTokens: 1, totalTokens: 6 } };
+      content = JSON.stringify(discoveries);
+    } else if (text.includes("recording one new thought")) {
+      const name = /private plan for ([^.]+) based on/.exec(text)?.[1] ?? "Mira";
+      content = JSON.stringify({ thoughts: { ward_research: `1 → ${reaction(name)}` } });
+    } else if (text.includes("pruning")) {
+      content = '{"thoughts":{"old":null}}';
+    } else if (text.includes("maintaining Plot Essentials")) {
+      content = "The old regime has fallen; the coalition now governs under a binding charter.";
+    } else if (text.includes("updating the Active Pressure")) {
+      content = "The council requires the signed charter by dawn.";
+    } else if (text.includes("appending to a running log")) {
+      content = "Mira confirmed the key and opened the sealed ward.";
+    } else if (text.includes("Maintain the evolving Lore subject")) {
+      content = "The coalition signed a binding charter.";
+    }
+    return { content, raw: {}, usage: { promptTokens: 5, completionTokens: 1, totalTokens: 6 } };
+  });
+});
+
+describe("original independent foundation", () => {
+  it("measures false negatives, false positives, duplicate destinations and calls on a fixed offline routing benchmark", async () => {
+    const metrics = { truePositives: 0, falseNegatives: 0, falsePositives: 0, duplicates: 0, providerCalls: 0 };
+    for (const name of ["brain", "ordinary", "event", "known-event", "shared-discovery"]) {
+      const a = seed(); fired = name === "brain" || name === "shared-discovery" ? ["brain:mira"] : [];
+      discoveries = name === "event" || name === "known-event" || name === "shared-discovery" ? [finding(a)] : [];
+      if (name === "event" || name === "known-event") a.brains = [];
+      if (name === "known-event") a.storyCards = [makeStoryCard({ title: "The ward key discovery", content: "Mira and Seth discovered the ward's hidden key.", type: "lore", memoryMode: "historical" })];
+      if (name === "shared-discovery") { a.brains.push(makeBrain({ id: "vi", characterName: "Vi", active: true })); a.messages.at(-1)!.content += " Vi confirms the finding."; fired.push("brain:vi"); discoveries = [finding(a)]; }
+      const expected = name === "brain" ? ["brainUpdate:mira"] : name === "event" ? ["storyCard:The ward key discovery"]
+        : name === "shared-discovery" ? ["brainUpdate:mira", "brainUpdate:vi", "storyCard:The ward key discovery"] : [];
+      provider.mockClear(); const result = await evaluate(a);
+      const actual = result.state.activeState.memoryProposals.map(proposal => `${proposal.proposedType}:${proposal.targetId ?? proposal.title}`);
+      metrics.truePositives += expected.filter(destination => actual.includes(destination)).length;
+      metrics.falseNegatives += expected.filter(destination => !actual.includes(destination)).length;
+      metrics.falsePositives += actual.filter(destination => !expected.includes(destination)).length;
+      metrics.duplicates += actual.length - new Set(actual).size;
+      metrics.providerCalls += provider.mock.calls.length;
+    }
+    expect(metrics).toEqual({ truePositives: 5, falseNegatives: 0, falsePositives: 0, duplicates: 0, providerCalls: 16 });
+    console.log("FOUNDATION_OFFLINE_ROUTING", JSON.stringify(metrics));
+  });
+  it("captures a first-person Brain change from plain narration, preserves history and keeps pending memory out of canon", async () => {
+    const a = seed();
+    const result = await evaluate(a);
+    expect(result.state.brains[0].thoughts).toEqual(a.brains[0].thoughts);
+    const proposal = result.state.activeState.memoryProposals.find(proposal => proposal.proposedType === "brainUpdate")!;
+    expect(proposal.sourceTurnId).toBe("source");
+    expect(proposal.evaluationSource?.messages.map(message => message.id)).toEqual(["ask", "source"]);
+    expect(buildContext(result.state).messages.map(message => message.content).join("\n")).not.toContain(reaction("Mira"));
+    const approved = adventureReducer(result.state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id });
+    expect(approved.brains[0].thoughts.old).toBe(a.brains[0].thoughts.old);
+    expect(Object.values(approved.brains[0].thoughts)).toContain(`1 → ${reaction("Mira")}`);
+    expect(buildContext(approved).messages.map(message => message.content).join("\n")).toContain(reaction("Mira"));
+    expect(result.state.messages.at(-1)?.memoryEvaluation?.status).toBe("complete");
+  });
+  it("recognizes a pronoun continuation through the bounded original exchange", async () => {
+    const a = seed(); a.messages = reliability[2].messages as Adventure["messages"];
+    a.brains = [makeBrain({ id: "draconia", characterName: "Draconia", active: true })];
+    fired = ["brain:draconia"];
+    const source = a.messages.at(-1)!;
+    const result = await evaluate(a, source.id);
+    expect(result.state.activeState.memoryProposals.some(proposal => proposal.targetId === "draconia")).toBe(true);
+    const evaluation = provider.mock.calls.find(([request]) => request.messages[0].content.includes("evaluation engine"))![0];
+    expect(evaluation.messages.at(-1)!.content).toContain("Draconia");
+    expect(result.logEntry.conditionsEvaluated.map(condition => condition.id)).toContain("brain:draconia");
+  });
+  it("preserves the original Brain condition contract on the actual July Arcane exchange without an appendix", async () => {
+    const a = seed(); a.messages = arcane.messages as Adventure["messages"];
+    a.brains = [makeBrain({ id: "mel", characterName: "Mel Medarda", triggers: ["Mel"], active: true })];
+    fired = ["brain:mel"];
+    expect(a.messages.every(message => !message.content.includes("<memory_updates>"))).toBe(true);
+    const result = await evaluate(a, a.messages.at(-1)!.id);
+    expect(result.logEntry.conditionsFired).toContain("brain:mel");
+    expect(result.state.activeState.memoryProposals).toContainEqual(expect.objectContaining({ proposedType: "brainUpdate", targetId: "mel", sourceTurnId: a.messages.at(-1)!.id }));
+    expect(arcane.provenance.title).toBe("Arcane: After the Rocket");
+  });
+  it("differentiates a shared completed discovery from two private reactions", async () => {
+    const a = seed(); a.brains.push(makeBrain({ id: "vi", characterName: "Vi", active: true }));
+    a.messages.at(-1)!.content += " Vi confirms the finding.";
+    fired.push("brain:vi"); discoveries = [finding(a)];
+    const result = await evaluate(a);
+    expect(result.state.activeState.memoryProposals.filter(proposal => proposal.proposedType === "brainUpdate")).toHaveLength(2);
+    const lore = result.state.activeState.memoryProposals.find(proposal => proposal.storyCardType === "lore")!;
+    expect(lore.memoryMode).toBe("historical"); expect(lore.content).not.toContain("I trust");
+    expect(lore.lore?.sourceMessageIds).toEqual(expect.arrayContaining(["ask", "source"]));
+    expect(suggestionSourceValid(result.state, lore)).toBe(true);
+  });
+  it("attributes a multi-turn relationship change to confirmation and preserves the earlier offer", async () => {
+    const a = seed();
+    a.messages = [{ id: "offer", role: "assistant", content: "Mira offers a lasting research partnership.", createdAt: "2026-07-01" }, ...a.messages];
+    discoveries = [{ ...finding(a, "Mira and Seth confirmed their research partnership."), title: "Confirmed research partnership", evidenceMessageIds: ["offer", "ask", "source"] }];
+    const result = await evaluate(a);
+    const proposal = result.state.activeState.memoryProposals.find(proposal => proposal.proposedType === "storyCard")!;
+    expect(proposal.evaluationSource?.messages.map(message => message.id)).toContain("offer");
+    expect(proposal.storyCardReview?.evidenceQuotes).toHaveLength(3);
+  });
+  it("does not recreate an already-established historical event", async () => {
+    const a = seed(); a.brains = []; const known = finding(a);
+    a.storyCards = [makeStoryCard({ title: known.title, type: "lore", content: known.content, memoryMode: "historical" })];
+    discoveries = [known];
+    const result = await evaluate(a);
+    expect(result.state.activeState.memoryProposals).toHaveLength(0);
+  });
+  it("records a confirmed agreement as historical even when its promised work is still future", async () => {
+    const a = seed(); discoveries = [{ ...finding(a, "Mira agreed to share the ward research tomorrow."), memoryMode: "historical", eventStatus: "completed" }];
+    const result = await evaluate(a);
+    expect(result.state.activeState.memoryProposals.find(proposal => proposal.storyCardType === "lore")).toMatchObject({ memoryMode: "historical", lore: { status: "completed" } });
+  });
+  it("honors explicit auto-approval while keeping protected Brains under review", async () => {
+    const a = seed(); a.semanticEvaluationSettings.requireApprovalForAutoUpdates = false; a.memoryAutoApprove.brainUpdate = true;
+    const applied = await evaluate(a);
+    expect(Object.values(applied.state.brains[0].thoughts)).toContain(`1 → ${reaction("Mira")}`);
+    const protectedAdventure = seed(); protectedAdventure.brains[0].protected = true;
+    protectedAdventure.semanticEvaluationSettings.requireApprovalForAutoUpdates = false; protectedAdventure.memoryAutoApprove.brainUpdate = true;
+    const protectedResult = await evaluate(protectedAdventure);
+    expect(protectedResult.state.brains[0].thoughts).toEqual(protectedAdventure.brains[0].thoughts);
+    expect(protectedResult.state.activeState.memoryProposals[0].status).toBe("pending");
+  });
+  it("records an evidence rejection without applying the update or treating a valid negative verdict as a transport failure", async () => {
+    reject = true; const a = seed(); const result = await evaluate(a);
+    expect(result.state.activeState.memoryProposals).toHaveLength(0);
+    expect(result.state.brains).toEqual(a.brains);
+    expect(result.state.messages.at(-1)?.memoryEvaluation?.status).toBe("complete");
+    expect(result.state.activeState.memoryDiagnostics).toContainEqual(expect.objectContaining({ outcome: "validation_rejected" }));
+  });
+  it("restores all three distinct plot conditions, respects opt-outs, and leaves Director phases unchanged", async () => {
+    const a = seed(); a.brains = [];
+    a.components = [makeComponent({ id: "pe", title: "Plot Essentials", type: "plotEssentials", autoUpdate: true, content: "The regime governs." }),
+      makeComponent({ id: "arc", title: "Current Arc", type: "currentArc", arcPremise: "Open the sealed ward", content: "The ward was found." }),
+      makeComponent({ id: "pressure", title: "Active Pressure", type: "activePressure", content: "The regime threatens the city." })];
+    fired = ["plotEssentialsDrift:pe", "currentArc:arc", "plotEssentialsPressure:pressure"];
+    const result = await evaluate(a);
+    expect(result.logEntry.conditionsFired).toEqual(expect.arrayContaining(fired));
+    expect(result.state.activeState.memoryProposals.map(proposal => proposal.proposedType)).toEqual(expect.arrayContaining(["plotEssentialsUpdate", "currentArcUpdate", "plotPressureUpdate"]));
+    expect(result.state.components).toEqual(a.components);
+    let approved = result.state;
+    for (const proposal of result.state.activeState.memoryProposals) approved = adventureReducer(approved, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id });
+    expect(approved.components[1].content).toContain("The ward was found.");
+    expect(approved.components[1].content).toContain("Mira confirmed");
+    expect(approved.components[1].arcState).toEqual(a.components[1].arcState);
+    const optedOut = seed(); optedOut.components = a.components.map(component => ({ ...component, autoUpdate: false }));
+    expect((await evaluate(optedOut)).logEntry.conditionsEvaluated.some(condition => condition.sourceType === "component")).toBe(false);
+  });
+  it("updates an existing Lore subject without replacing its historical facts", async () => {
+    const a = seed(); a.brains = [];
+    a.storyCards = [makeStoryCard({ id: "coalition", title: "Coalition", type: "lore", memoryMode: "living", content: "The coalition formed after the siege.", keys: [], autoUpdate: true })];
+    fired = ["storyCard:coalition"];
+    const result = await evaluate(a);
+    const proposal = result.state.activeState.memoryProposals[0];
+    expect(proposal.targetId).toBe("coalition");
+    const approved = adventureReducer(result.state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id });
+    expect(approved.storyCards[0].content).toContain("formed after the siege");
+    expect(approved.storyCards[0].content).toContain("signed a binding charter");
+  });
+  it("leaves ordinary dialogue unwritten and measures the three relevant condition checks plus discovery", async () => {
+    const a = seed(); fired = []; a.components = [makeComponent({ id: "pressure", title: "Active Pressure", type: "activePressure", content: "No threat" })];
+    a.storyCards = [makeStoryCard({ title: "Ward", content: "A sealed ward", type: "lore", memoryMode: "living", keys: [], autoUpdate: true })];
+    const result = await evaluate(a);
+    expect(result.state.activeState.memoryProposals).toHaveLength(0);
+    expect(provider).toHaveBeenCalledTimes(4);
+    expect(result.tokenUsage).toEqual({ promptTokens: 20, completionTokens: 4 });
+  });
+  it("retries only a failed group; never stamps failed discovery as successful", async () => {
+    const a = seed(); fail = "discovery";
+    const first = await evaluate(a);
+    expect(first.state.messages.at(-1)?.memoryEvaluation).toMatchObject({ status: "failed", completedGroups: ["plot", "storyCards", "brains"] });
+    expect(first.state.activeState.lastMemoryCycleTurn).toBeUndefined();
+    expect(first.state.messages.at(-1)?.content).toBe(a.messages.at(-1)?.content);
+    provider.mockClear(); fail = undefined;
+    const second = await evaluate(first.state);
+    expect(provider).toHaveBeenCalledTimes(1);
+    expect(second.state.messages.at(-1)?.memoryEvaluation?.status).toBe("complete");
+    expect(second.state.activeState.memoryProposals).toHaveLength(1);
+    await evaluate(second.state); expect(provider).toHaveBeenCalledTimes(1);
+  });
+  it("discards stale source and destination transactions and blocks approval after an edit", async () => {
+    const a = seed(), result = await evaluate(a);
+    const edited = adventureReducer(result.claimed, { type: "UPDATE_MESSAGE", messageId: "ask", content: "A different offer." });
+    const stale = result.actions.reduce(adventureReducer, edited);
+    expect(stale.activeState.memoryProposals).toHaveLength(0);
+    const targetEdited = { ...result.claimed, brains: result.claimed.brains.map(brain => ({ ...brain, notes: "User edited this character." })) };
+    expect(result.actions.reduce(adventureReducer, targetEdited).activeState.memoryProposals).toHaveLength(0);
+    const pending = result.state.activeState.memoryProposals[0];
+    const changed = adventureReducer(result.state, { type: "UPDATE_MESSAGE", messageId: "source", content: "It was a dream." });
+    expect(adventureReducer(changed, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: pending.id })).toBe(changed);
+  });
+  it("keeps rejection and manual edits effective and cannot apply a successful transaction twice", async () => {
+    const a = seed(), result = await evaluate(a);
+    const proposal = result.state.activeState.memoryProposals[0];
+    const rejected = adventureReducer(result.state, { type: "REJECT_MEMORY_PROPOSAL", proposalId: proposal.id });
+    expect(rejected.brains).toEqual(a.brains);
+    expect(result.actions.reduce(adventureReducer, rejected).activeState.memoryProposals).toEqual(rejected.activeState.memoryProposals);
+    const approved = adventureReducer(result.state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id, editedProposal: { content: '{"thoughts":{"reviewed":"I will verify this myself."}}' } });
+    expect(approved.brains[0].thoughts.reviewed).toBe("I will verify this myself.");
+  });
+  it("preserves condensation history through reviewed patches", async () => {
+    const a = seed(); a.brains[0].condenseThreshold = 1;
+    const result = await evaluate(a); const proposal = result.state.activeState.memoryProposals[0];
+    const approved = adventureReducer(result.state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id });
+    expect(approved.brains[0].archivedThoughts.old).toBe(a.brains[0].thoughts.old);
+    expect(Object.values(approved.brains[0].thoughts)).toContain(`1 → ${reaction("Mira")}`);
+  });
+  it("shows approved printed thoughts without altering the stored evidence or provider transcript", async () => {
+    const a = seed(); a.brains[0].printThoughts = true;
+    const result = await evaluate(a); const proposal = result.state.activeState.memoryProposals[0];
+    expect(displayedBrainThoughts(result.state, result.state.messages.at(-1)!)).toEqual([]);
+    const approved = adventureReducer(result.state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id });
+    expect(displayedBrainThoughts(approved, approved.messages.at(-1)!)).toEqual([`Mira: 1 → ${reaction("Mira")}`]);
+    expect(approved.messages).toEqual(a.messages.map((message, index) => index === a.messages.length - 1 ? expect.objectContaining({ id: message.id, content: message.content }) : message));
+    expect(suggestionSourceValid(approved, { ...proposal, evaluationSource: { messages: proposal.evaluationSource!.messages } })).toBe(true);
+  });
+  it("preserves optional state and legacy recovery in export/import without scheduling history", async () => {
+    const a = seed(); a.messages[0].memoryRecovery = { turn: 1, status: "pending" };
+    const state = (await evaluate(a)).state;
+    const imported = importAdventureJson(exportAdventureJson(state));
+    expect(imported.messages).toEqual(state.messages);
+    expect(imported.activeState.memoryProposals).toEqual(state.activeState.memoryProposals);
+    const legacy = normalizeAdventure(seed());
+    expect(memoryCycleSources(legacy)).toHaveLength(0);
+  });
+  it.each([false, true])("makes no automatic request when disabled or manual-only (%s)", async enabled => {
+    const a = seed(); a.memoryDetectionSettings = { enabled, everyNTurns: enabled ? 0 : 1, generateContent: true };
+    await runMemoryCycle(a, config); expect(provider).not.toHaveBeenCalled();
+  });
+  it("preserves a plain story and queues independent work without adding narrator instructions or applying an unsolicited envelope", async () => {
+    const a = seed(); a.messages = [];
+    const send = vi.fn(async () => ({ content: 'Mira reveals the hidden key.<memory_updates>{"updates":[]}</memory_updates>' }));
+    const result = await runTurnPipeline({ adventure: a, text: "I ask Mira.", sendChatCompletion: send });
+    expect(send).toHaveBeenCalledTimes(1); expect(provider).not.toHaveBeenCalled();
+    expect(result.providerPayload.map(message => message.content).join("\n")).not.toContain("[ONE-PASS MEMORY]");
+    expect(result.adventure.messages.at(-1)?.memoryEvaluation?.status).toBe("pending");
+    expect(result.adventure.messages.at(-1)?.content).toBe("Mira reveals the hidden key.");
+  });
+  it("does not timestamp old imported discoveries with the current story date or borrow later evidence", async () => {
+    const a = seed(); a.storyClock = { origin: "established", current: { text: "2030-10-01", date: "2030-10-01", precision: "day" } };
+    a.messages.push({ id: "future", role: "assistant", content: "The ward exploded years later.", createdAt: "2026-10-24" });
+    discoveries = [finding({ ...a, messages: a.messages.slice(0, 2) })];
+    const result = await evaluate(a);
+    const proposal = result.state.activeState.memoryProposals.find(proposal => proposal.storyCardType === "lore")!;
+    expect(proposal.lore?.occurredAt?.date).toBeUndefined();
+    expect(proposal.evaluationSource?.messages.map(message => message.id)).not.toContain("future");
+  });
+});

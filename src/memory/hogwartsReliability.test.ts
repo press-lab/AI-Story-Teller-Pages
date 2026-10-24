@@ -2,7 +2,7 @@ import { expect, it } from "vitest";
 import sequences from "./fixtures/hogwarts-reliability.json";
 import { createDefaultAdventure, makeBrain, makeStoryCard } from "../state/defaults";
 import { adventureReducer } from "../state/adventureReducer";
-import { buildContext } from "../contextBuilder/contextBuilder";
+import { legacyMemoryContext as buildContext } from "../test/legacyMemory";
 import { onePassMemoryActions } from "./onePassMemory";
 import type { Message } from "../types/adventure";
 

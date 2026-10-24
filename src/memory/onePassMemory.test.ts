@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { buildContext } from "../contextBuilder/contextBuilder";
+import { legacyMemoryContext as buildContext } from "../test/legacyMemory";
 import { adventureReducer } from "../state/adventureReducer";
 import { createDefaultAdventure, makeBrain, makeComponent, makeStoryCard } from "../state/defaults";
-import { runTurnPipeline } from "../state/turnPipeline";
+import { runLegacyCandidateFixture as runTurnPipeline } from "../test/legacyMemory";
 import { evaluateStoryResponseGuard } from "../state/storyResponseGuard";
 import { ONE_PASS_MEMORY_ID, continuousThoughtParticipant, isSceneRecapForCharacter, onePassMemoryActions, parseOnePassMemory } from "./onePassMemory";
 
@@ -297,12 +297,12 @@ describe("continuous conversation attribution", () => {
       content: "I should explain my design carefully.", evidence: current, reason: "A private plan for the discussion" }], current, "new-source");
     expect(actions.some(action => action.type === "APPLY_BRAIN_UPDATE")).toBe(accepted);
   });
-  it("places mandatory memory output after scenario narration rules in the system payload", () => {
+  it("keeps legacy adapter instructions out of normal narration payloads", () => {
     const a = fixture();
     a.components.push(makeComponent({ title: "Rules", type: "narrationRules", content: "SCENARIO_STOP_RULE" }));
     const context = buildContext(a, { currentInput: "Mira listens." });
     const system = context.messages[0].content;
-    expect(system.indexOf("[ONE-PASS MEMORY]")).toBeGreaterThan(system.indexOf("SCENARIO_STOP_RULE"));
-    expect(system).toContain("envelope is mandatory on EVERY narrative response");
+    expect(system).toContain("SCENARIO_STOP_RULE");
+    expect(system).not.toContain("[ONE-PASS MEMORY]");
   });
 });

@@ -1,5 +1,7 @@
 # Memory decision inspector
 
+> Historical architecture/validation record preceding the original-foundation migration. For current automatic scheduling, costs and permissions, use [Foundation migration](foundation-migration.md). The compact pipeline described here remains available for explicit legacy catch-up.
+
 Memory → Decisions is a read-only view of persisted observations. Suggestions retains the existing review controls. Native expandable rows, labeled controls, wrapping source IDs and the existing wrapping toolbar support narrow screens and keyboard navigation.
 
 The latest 600 structured diagnostic events are retained per adventure. They travel with normal autosave, JSON export/import and IndexedDB persistence. Existing evaluation logs are preserved independently. Older turns can show proposals, recovery state and source-linked evaluation logs even when new diagnostic stages are unavailable. The timeline shows the latest 100 matching narrator messages; search can locate older matching messages.

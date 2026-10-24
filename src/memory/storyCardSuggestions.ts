@@ -2,6 +2,7 @@ import type { Adventure, MemoryProposal, Message, StoryCardType } from "../types
 import { createId, nowIso } from "../utils/id";
 import { isExceptionalIdentityChange, isHistoricalLore } from "./storyCardArchitecture";
 import { readStoryTime, transitionKey } from "./storyTime";
+import { memoryTargetMatches } from "./memoryCycleState";
 import { storyCardEntityCandidates, characterParticipants } from "./storyCardEntities";
 
 export const STORY_CARD_MEMORY_CHECK = `STORY CARD MEMORY CHECK
@@ -61,6 +62,10 @@ function sourcePlayer(adventure: Adventure, sourceId: string): Message | undefin
 }
 
 export function suggestionSourceValid(adventure: Adventure, proposal: MemoryProposal): boolean {
+  if (proposal.evaluationSource) {
+    if (proposal.evaluationSource.messages.some(source => !adventure.messages.some(message => message.id === source.id && message.content === source.content))) return false;
+    if (proposal.status !== "approved" && proposal.evaluationSource.target && !memoryTargetMatches(adventure, proposal.evaluationSource.target)) return false;
+  }
   const review = proposal.storyCardReview;
   if (!review) return true; // explicit user-authored/manual proposals retain their existing path
   const source = adventure.messages.find(message => message.id === review.sourceMessageId);

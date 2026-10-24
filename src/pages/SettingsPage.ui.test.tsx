@@ -187,7 +187,7 @@ describe("SettingsPage API throttle controls", () => {
 });
 
 
-it("keeps dedicated memory opt-in and configures OpenAI without changing narration", async () => {
+it("configures independent memory transport and cadence without changing narration", async () => {
   const user = userEvent.setup();
   const onPresets = vi.fn();
   const onSettings = vi.fn();
@@ -198,12 +198,10 @@ it("keeps dedicated memory opt-in and configures OpenAI without changing narrati
       onUiPreferencesChange={vi.fn()} globalAdventureSettings={settings} onGlobalAdventureSettingsChange={next => { setSettings(next); onSettings(next); }} />;
   }
   render(<SettingsFixture />);
-  expect(screen.getByLabelText("Story Card memory evaluator")).toHaveValue("narrator");
-  await user.selectOptions(screen.getByLabelText("Story Card memory evaluator"), "dedicated");
-  expect(screen.getByLabelText("Evaluate every N story turns (0 = manual only, 1 = every turn)")).toHaveValue(5);
+  expect(screen.getByLabelText("Evaluate every N story turns (0 = manual only, 1 = every turn)")).toHaveValue(1);
   await user.selectOptions(screen.getByLabelText("Memory evaluation API"), "openaiResponses");
   expect(onSettings).toHaveBeenLastCalledWith(expect.objectContaining({
-    memoryDetectionSettings: expect.objectContaining({ evaluator: "dedicated", everyNTurns: 5 }),
+    memoryDetectionSettings: expect.objectContaining({ evaluator: "independent", everyNTurns: 1 }),
     semanticEvaluationSettings: expect.objectContaining({ memoryEvaluationApi: "openaiResponses" }),
   }));
   expect(onPresets).not.toHaveBeenCalled();

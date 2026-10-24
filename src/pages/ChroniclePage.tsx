@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { displayedBrainThoughts } from "../memory/displayedBrainThoughts";
 import type { AdventurePageProps } from "./pageTypes";
 
 const PAGE_SIZE = 100;
@@ -102,6 +103,7 @@ export function ChroniclePage({ adventure, dispatch, loading = false, onEvaluate
             >
               <span className="chronicle-role">{message.role}</span>
               <p className="chronicle-text">{message.content}</p>
+              {displayedBrainThoughts(adventure, message).map(thought => <p key={thought} className="muted"><em>{thought}</em></p>)}
               {message.memoryRecovery && message.memoryRecovery.status !== "complete" && <p className="muted" role="status">
                 Memory: {message.memoryRecovery.status} · {message.memoryRecovery.failures ?? 0} failed evaluations.
                 {message.memoryRecovery.status === "quarantined" && " Automatic retries paused. Evaluate this entry manually to retry."}

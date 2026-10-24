@@ -383,8 +383,8 @@ export function SettingsPage({
 
         <article className="panel settings-card settings-section-full">
           <h3>Automatic memory</h3>
-          <CheckboxField label="Remember while narrating (one pass)" checked={globalAdventureSettings.memoryDetectionSettings.enabled} onChange={(enabled) => updateMemoryDetection({ enabled })} />
-          <p className="muted">Story and small memory updates share one response. Unchanged memory needs no update. Routine memory checks no longer make separate API calls. Explicit custom rules, continuity corrections, and next-arc generation can still use additional calls.</p>
+          <CheckboxField label="Automatic memory evaluation" checked={globalAdventureSettings.memoryDetectionSettings.enabled} onChange={(enabled) => updateMemoryDetection({ enabled })} />
+          <p className="muted">After each scheduled story turn, independent background calls evaluate meaningful changes to characters, Story Cards and eligible plot components. The story is saved first. Review proposals in Memory Suggestions; cadence, costs and approval controls are in advanced Memory Detection settings.</p>
         </article>
         {/* ── Context Budget (advanced) ─────────────── */}
         {advanced && (
@@ -520,12 +520,12 @@ export function SettingsPage({
               />
             </Field>
             <CheckboxField
-              label="Review updates from custom semantic rules"
+              label="Review all automatic updates"
               checked={activeSettings.semanticEvaluationSettings.requireApprovalForAutoUpdates ?? true}
               onChange={(requireApprovalForAutoUpdates) => updateSemanticSettings({ requireApprovalForAutoUpdates })}
             />
             <p className="muted">
-              When on, updates from custom semantic rules go to Memory Suggestions. Automatic one-pass memory uses the per-type approval controls below.
+              When on, independent memory updates and custom rule updates require review. When off, the per-type auto-approval controls below apply; protected and uncertain changes still require review.
             </p>
             <h4>Background Provider</h4>
             <p className="muted">
@@ -587,27 +587,19 @@ export function SettingsPage({
           <article className="panel settings-card">
             <h3>Memory Detection</h3>
             <p className="muted">
-              Narrator mode returns evidenced memory with the story. Dedicated mode evaluates completed exchanges on your chosen schedule. Both use existing evidence checks and Memory Inbox.
+              Independent evaluation checks plot developments, existing Story Cards, character Brains and missing durable memories after the story is saved. It works without a narrator memory appendix and uses targeted background calls on your chosen schedule.
             </p>
             <CheckboxField
-              label="Remember while narrating"
+              label="Automatic memory evaluation"
               checked={globalAdventureSettings.memoryDetectionSettings.enabled}
               onChange={(enabled) => updateMemoryDetection({ enabled })}
             />
-            <Field label="Story Card memory evaluator">
-              <select value={globalAdventureSettings.memoryDetectionSettings.evaluator ?? "narrator"}
-                onChange={e => updateMemoryDetection({ evaluator: e.target.value as "narrator" | "dedicated", everyNTurns: 5 })}>
-                <option value="narrator">Narrator with batched recovery (default)</option>
-                <option value="dedicated">Dedicated background semantic evaluator</option>
-              </select>
+            <p className="muted">Evaluator: original independent memory foundation. Legacy narrator/dedicated preferences are retained in exports; both now use independent evaluation.</p>
+            <Field label="Evaluate every N story turns (0 = manual only, 1 = every turn)">
+              <NumberInput min={0} max={100} value={globalAdventureSettings.memoryDetectionSettings.everyNTurns}
+                onChange={everyNTurns => updateMemoryDetection({ everyNTurns: Math.max(0, Math.min(100, Math.floor(everyNTurns))) })} />
             </Field>
-            {globalAdventureSettings.memoryDetectionSettings.evaluator === "dedicated" && <>
-              <Field label="Evaluate every N story turns (0 = manual only, 1 = every turn)">
-                <NumberInput min={0} max={100} value={globalAdventureSettings.memoryDetectionSettings.everyNTurns}
-                  onChange={everyNTurns => updateMemoryDetection({ everyNTurns: Math.max(0, Math.min(100, Math.floor(everyNTurns))) })} />
-              </Field>
-              <p className="muted">Uses Background Provider in LLM Evaluation. Narration remains on your active preset. Manual evaluation is available in Chronicle.</p>
-            </>}
+            <p className="muted">Uses Background Provider in LLM Evaluation. Each source uses up to three condition checks plus discovery, then generation and validation for changed targets. Up to ten queued sources run per cadence window. Failed groups retry at most three times with backoff. Loading an adventure makes no memory requests. Retry a source explicitly in Memory Suggestions → Decisions.</p>
             <Field label="Memory evaluation API">
               <select value={activeSettings.semanticEvaluationSettings.memoryEvaluationApi ?? "chat"}
                 onChange={e => updateSemanticSettings({ memoryEvaluationApi: e.target.value as "chat" | "openaiResponses" })}>
@@ -648,7 +640,7 @@ export function SettingsPage({
                 </div>
                 <p className="muted">
                   These toggles apply to Memory Suggestions created by automatic detection, manual builders,
-                  and one-pass memory. Story Card auto-approval is off by default. Unconfirmed candidates, ambiguous destinations, protected cards and exceptional identity changes always require review. Automatic memory targets Story Cards and Brains; manual Plot Component tools remain available.
+                  and independent evaluation. Story Card auto-approval is off by default. Unconfirmed candidates, ambiguous destinations, protected cards and exceptional identity changes always require review. Plot Essentials requires component auto-update permission; Current Arc and Active Pressure respect explicit opt-outs.
                 </p>
               </>
             )}

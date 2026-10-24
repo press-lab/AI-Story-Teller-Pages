@@ -23,13 +23,13 @@ function seed() {
 }
 
 it.each([
-  [story, "envelope_missing", "Memory envelope missing"],
-  [story + '<memory_updates>{"updates":[]}</memory_updates>', "zero_candidates", "Model returned zero memory candidates."],
-  [story + '<memory_updates>{oops}</memory_updates>', "envelope_malformed", "Memory envelope malformed"],
-])("records and displays inline result %s", async (content, outcome, text) => {
+  [story, "evaluation_queued", "Independent evaluation queued"],
+  [story + '<memory_updates>{"updates":[]}</memory_updates>', "evaluation_queued", "Independent evaluation queued"],
+  [story + '<memory_updates>{oops}</memory_updates>', "evaluation_queued", "Independent evaluation queued"],
+])("queues independent evaluation regardless of legacy inline result %s", async (content, outcome, text) => {
   const provider = vi.fn(async () => ({ content }));
   const result = await runTurnPipeline({ adventure: seed(), text: "Mira fights.", assistantMessageId: "source", sendChatCompletion: provider });
-  expect(result.adventure.activeState.memoryDiagnostics).toEqual(expect.arrayContaining([expect.objectContaining({ sourceId: "source", stage: "inline", outcome })]));
+  expect(result.adventure.activeState.memoryDiagnostics).toEqual(expect.arrayContaining([expect.objectContaining({ sourceId: "source", stage: "independent", outcome })]));
   render(<MemoryDecisionsPage adventure={result.adventure} onSuggestions={vi.fn()} />);
   expect(screen.getAllByText(text, { exact: false }).length).toBeGreaterThan(0);
   expect(provider).toHaveBeenCalledTimes(1);

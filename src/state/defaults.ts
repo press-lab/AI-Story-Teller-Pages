@@ -89,6 +89,7 @@ export const defaultSemanticEvaluationSettings: SemanticEvaluationSettings = {
 };
 
 export const defaultMemoryDetectionSettings: MemoryDetectionSettings = {
+  evaluator: "independent",
   enabled: true,
   generateContent: true,
   everyNTurns: 1,

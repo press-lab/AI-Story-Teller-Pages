@@ -11,6 +11,8 @@ const labels: Record<string, string> = {
   candidate_suppressed: "Candidate suppressed", candidate_merged: "Candidate merged",
   proposal_accepted: "Suggestion queued", automatically_approved: "Automatically approved memory",
   recovery_validated: "Recovery source passed validation (commit tracked separately)", recovery_attempted: "Recovery attempted", recovery_queued: "Recovery queued", recovery_completed: "Recovery completed", recovery_failed: "Recovery failed",
+  evaluation_queued: "Independent evaluation queued", evaluation_started: "Independent evaluation started",
+  evaluation_completed: "Evaluation group completed", evaluation_failed: "Evaluation group failed", evaluation_stale: "Evaluation discarded after an edit",
 };
 const label = (outcome: string) => labels[outcome] ?? outcome;
 function explanation(reason?: string) {
@@ -19,7 +21,7 @@ function explanation(reason?: string) {
   return reason;
 }
 
-export function MemoryDecisionsPage({ adventure, onSuggestions }: { adventure: Adventure; onSuggestions: (title?: string) => void }) {
+export function MemoryDecisionsPage({ adventure, onSuggestions, onEvaluateMemory, loading }: { adventure: Adventure; onSuggestions: (title?: string) => void; onEvaluateMemory?: (sourceIds: string[]) => Promise<void>; loading?: boolean }) {
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
   const diagnostics = adventure.activeState.memoryDiagnostics ?? [];
@@ -37,9 +39,9 @@ export function MemoryDecisionsPage({ adventure, onSuggestions }: { adventure: A
     const recovery = message.memoryRecovery;
     const matches = filter === "all" || filter === "missing" && !linked.length && !entries.some(e => e.outcome === "automatically_approved")
       || filter === "rejected" && entries.some(d => d.outcome === "validation_rejected")
-      || filter === "pending" && recovery?.status === "pending"
-      || filter === "failed" && Boolean(recovery?.failures || recovery?.status === "quarantined")
-      || filter === "completed" && (recovery?.status === "complete" || !recovery
+      || filter === "pending" && (recovery?.status === "pending" || ["pending", "running"].includes(message.memoryEvaluation?.status ?? ""))
+      || filter === "failed" && (Boolean(recovery?.failures || recovery?.status === "quarantined") || ["failed", "quarantined"].includes(message.memoryEvaluation?.status ?? ""))
+      || filter === "completed" && (message.memoryEvaluation?.status === "complete" || recovery?.status === "complete" || !recovery
         && entries.some(d => d.stage === "inline" && ["zero_candidates", "candidates_produced"].includes(d.outcome))
         && !entries.some(d => d.outcome === "validation_rejected"));
     return matches && `${position} ${message.id} ${message.content} ${entries.map(e => JSON.stringify(e.candidate)).join(" ")} ${linked.map(p => p.title).join(" ")}`.toLowerCase().includes(search.toLowerCase());
@@ -66,11 +68,21 @@ export function MemoryDecisionsPage({ adventure, onSuggestions }: { adventure: A
       const logs = adventure.activeState.evaluationLog.filter(e => e.actionsExecuted.includes(`Memory source: ${message.id}`));
       const recovery = message.memoryRecovery;
       return <details key={message.id} style={{ borderBottom: "1px solid var(--border-color, #888)", padding: "0.75rem 0" }}>
-        <summary>Message {position} · {inline ? label(inline.outcome) : "Diagnostics unavailable for older turns"} · {candidates.length} recorded candidates · recovery {recovery?.status ?? "not recorded"} · {linked.length} suggestions</summary>
+        <summary>Message {position} · {message.memoryEvaluation ? `Independent evaluation ${message.memoryEvaluation.status}` : inline ? label(inline.outcome) : "Diagnostics unavailable for older turns"} · {candidates.length} recorded candidates · recovery {recovery?.status ?? "not recorded"} · {linked.length} suggestions</summary>
         <p><strong>Source:</strong> {message.id} · <time>{message.createdAt}</time></p>
         <p>{message.content.slice(0, 240)}{message.content.length > 240 ? "…" : ""}</p>
+        <h3>Independent evaluation</h3>
+        <p>Status: {message.memoryEvaluation?.status ?? "not recorded; older sources are evaluated only on request"}. Attempts: {message.memoryEvaluation?.attempts ?? 0}. Completed groups: {message.memoryEvaluation?.completedGroups.join(", ") || "none"}.</p>
+        {message.memoryEvaluation?.lastError && <p>{message.memoryEvaluation.lastError}</p>}
+        {entries.filter(entry => entry.stage === "independent").map(entry => <p key={entry.id}>{label(entry.outcome)} · {entry.reason}</p>)}
+        {logs.map(log => <details key={log.id}><summary>Conditions and generated destinations</summary>
+          <ul>{log.conditionsEvaluated.map(condition => <li key={condition.id}><strong>{condition.label}</strong> ({condition.sourceType}) — {log.conditionsFired.includes(condition.id) ? "condition fired" : "condition did not fire; no model rationale supplied"}<p>{condition.condition}</p></li>)}</ul>
+          {log.generatedContent.map((item, index) => <p key={index}>{item.targetType}: {item.title} ({item.targetId ?? "new destination"}) — {item.preview}</p>)}
+          {log.errors.map((error, index) => <p key={index}>{error}</p>)}
+        </details>)}
+        {onEvaluateMemory && message.memoryEvaluation?.status !== "complete" && <button type="button" disabled={loading} onClick={() => void onEvaluateMemory([message.id])}>Evaluate this source independently</button>}
         <h3>A. Inline evaluation</h3>
-        <p>{inline ? label(inline.outcome) : "Diagnostics unavailable for older turns. No conclusion about evaluation can be drawn from missing metadata."}</p>
+        <p>{message.memoryEvaluation ? "Independent evaluation owns memory for this source; narrator metadata is not used." : inline ? label(inline.outcome) : "Diagnostics unavailable for older turns. No conclusion about evaluation can be drawn from missing metadata."}</p>
         {inline && ["envelope_missing", "envelope_malformed", "instruction_omitted", "draft_discarded"].includes(inline.outcome) && <p>Memory evaluation failed; no decision is available.</p>}
         {inline && <p>Memory instruction supplied: {inline.instructionSupplied ? "yes" : "no"}. Envelope parsed: {inline.envelopeParsed ? "yes" : "no"}. Returned candidate kinds: {inline.candidateKinds?.join(", ") || "none"}. {inline.model && `Configured narrator model: ${inline.model}`}</p>}
         <h3>B. Candidate evaluation</h3>

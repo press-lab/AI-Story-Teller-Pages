@@ -1,4 +1,6 @@
 import { memoryRecoveryInterval, MEMORY_RECOVERY_MAX_FAILURES } from "../memory/memoryRecoveryBatch";
+import { MEMORY_EVALUATION_GROUPS, memoryTargetMatches } from "../memory/memoryCycleState";
+import { memoryEvidenceWindow } from "../memory/memoryEvidenceWindow";
 import { scanStoryCardExchange, equivalentStoryCardSuggestions, mergeStoryCardSuggestions, suggestionSourceValid, storyCardScanFingerprint, storyCardMustBeReviewed } from "../memory/storyCardSuggestions";
 import { mergeLoreMetadata, migrateStoryCard, primaryStoryCardType, isHistoricalLore, isExceptionalIdentityChange, proposalLore } from "../memory/storyCardArchitecture";
 import { readStoryTime, formatStoryTime, reconcileStoryClock, transitionKey, initialStoryClock } from "../memory/storyTime";
@@ -984,6 +986,7 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal)
         proposalMemoryMeta("create"),
       );
     }
+    if (proposal.evaluationSource) storyCard = { ...storyCard, lastAutoUpdateTurn: state.activeState.turn };
     let cards = upsertById(state.storyCards, storyCard);
     if (existing && (existing.type === "character" || existing.type === "location") && isExceptionalIdentityChange(existing.type, safeContent) && !proposal.storyCardReview) {
       const title = `${existing.title}: ${safeContent.slice(0, 64)}`;
@@ -1291,6 +1294,47 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
 
 function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
   switch (action.type) {
+    case "QUEUE_MEMORY_EVALUATION": {
+      const next = touchAdventure(state, { messages: state.messages.map(message => message.id === action.sourceId && !message.memoryEvaluation
+        ? { ...message, memoryEvaluation: { turn: action.turn, status: "pending" as const, attempts: 0, completedGroups: [] } } : message) });
+      return adventureReducer(next, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: {
+        id: createId("decision"), sourceId: action.sourceId, createdAt: nowIso(), stage: "independent", outcome: "evaluation_queued",
+      } });
+    }
+    case "CLAIM_MEMORY_EVALUATION": {
+      const source = state.messages.find(message => message.id === action.sourceId);
+      if (!source || source.role !== "assistant" || source.inputMode === "comms" || source.memoryEvaluation?.status === "complete"
+        || (!action.manual && ((source.memoryEvaluation?.attempts ?? 0) >= 3 || (source.memoryEvaluation?.nextEligibleTurn ?? 0) > action.turn))) return state;
+      const next = touchAdventure(state, { messages: state.messages.map(message => message.id === action.sourceId
+        ? { ...message, memoryEvaluation: { ...message.memoryEvaluation, turn: message.memoryEvaluation?.turn ?? action.turn,
+          status: "running" as const, attempts: (message.memoryEvaluation?.attempts ?? 0) + 1,
+          completedGroups: message.memoryEvaluation?.completedGroups ?? [],
+          nextEligibleTurn: action.turn + Math.max(1, state.memoryDetectionSettings.everyNTurns) * 2 ** Math.min(3, message.memoryEvaluation?.attempts ?? 0) } } : message) });
+      return adventureReducer(next, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: {
+        id: createId("decision"), sourceId: action.sourceId, createdAt: nowIso(), stage: "independent", outcome: "evaluation_started",
+      } });
+    }
+    case "COMMIT_MEMORY_EVALUATION_GROUP": {
+      const source = state.messages.find(message => message.id === action.source.id);
+      if (!source || source.memoryEvaluation?.completedGroups.includes(action.group)) return state;
+      const stale = source.content !== action.source.content || action.dependencies.some(item => !state.messages.some(message => message.id === item.id && message.content === item.content))
+        || action.targets.some(target => !memoryTargetMatches(state, target));
+      const error = stale ? "Source evidence or destination changed during evaluation; result discarded." : action.error;
+      const next = error ? state : action.actions.reduce(adventureReducer, state);
+      const completedGroups = [...(source.memoryEvaluation?.completedGroups ?? []), ...(!error ? [action.group] : [])];
+      const complete = MEMORY_EVALUATION_GROUPS.every(group => completedGroups.includes(group));
+      const updated = touchAdventure(next, { messages: next.messages.map(message => message.id === source.id
+        ? { ...message, memoryEvaluation: { ...message.memoryEvaluation, turn: source.memoryEvaluation?.turn ?? state.activeState.turn,
+          attempts: source.memoryEvaluation?.attempts ?? 0, completedGroups,
+          status: complete ? "complete" as const : error ? (source.memoryEvaluation?.attempts ?? 0) >= 3 ? "quarantined" as const : "failed" as const
+            : message.memoryEvaluation?.status === "quarantined" ? "quarantined" as const : message.memoryEvaluation?.status === "failed" ? "failed" as const : "pending" as const,
+          lastError: complete ? undefined : error ?? message.memoryEvaluation?.lastError } } : message) });
+      return adventureReducer(updated, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: {
+        id: createId("decision"), sourceId: source.id, createdAt: nowIso(), stage: "independent",
+        outcome: stale ? "evaluation_stale" : error ? "evaluation_failed" : "evaluation_completed",
+        reason: `${action.group}: ${error ?? "Evaluation complete; proposals and suppressions are recorded separately."}`,
+      } });
+    }
     case "SCAN_STORY_CARD_EXCHANGE": {
       const source = state.messages.find(message => message.id === action.sourceMessageId && message.role === "assistant");
       if (!source || (!action.manual && !state.memoryDetectionSettings.enabled)) return state;
@@ -1349,7 +1393,9 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
         state,
         {
           messages: state.messages.map((message) =>
-            message.id === action.messageId ? { ...message, content: action.content } : message,
+            message.id === action.messageId ? { ...message, content: action.content, memoryEvaluation: undefined }
+              : message.memoryEvaluation && memoryEvidenceWindow(state, message.id).some(evidence => evidence.id === action.messageId)
+                ? { ...message, memoryEvaluation: undefined } : message,
           ),
         },
         storyHistoryEntry(
@@ -1725,6 +1771,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
         normalizeProposalTitle(p.title) === normTitle &&
         (p.targetId ?? "") === (clean.targetId ?? "");
       const duplicatesPending = comparableProposals.some((p) => p.status === "pending" && matchesTarget(p)
+        && (!clean.evaluationSource || p.content === clean.content)
         && (!clean.storyCardReview || equivalentStoryCardSuggestions(p, clean)));
       // A dismissed new-card suggestion should not come back every turn. Targeted updates are
       // different: a Brain or Story Card keeps evolving, so rejecting one revision must not mute
@@ -1771,13 +1818,10 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
         );
       if (duplicatesPending || duplicatesDismissed || duplicatesCard || duplicatesStoryCardContent || duplicatesExistingCardContent || duplicatesExistingTargetContent || duplicatesCurrentPressure) return suppressed(
         duplicatesPending ? "Duplicate pending proposal" : duplicatesDismissed ? "Duplicate rejected or ignored proposal" : duplicatesCard ? "Story Card title already exists" : duplicatesStoryCardContent ? "Duplicate proposal content" : duplicatesExistingCardContent ? "Duplicate existing Story Card content" : duplicatesExistingTargetContent ? "Target already contains this content" : "Current pressure already contains this content");
-      const autoApprove = (clean.proposedType !== "storyCard" || suggestionSourceValid(state, clean)) && (state.memoryAutoApprove?.[clean.proposedType as keyof typeof state.memoryAutoApprove] ?? false);
+      const autoApprove = suggestionSourceValid(state, clean) && (state.memoryAutoApprove?.[clean.proposedType as keyof typeof state.memoryAutoApprove] ?? false);
       if (autoApprove && !clean.requiresReview) {
         const approved = updateMemoryProposal(clean, { status: "approved" });
         const applied = applyApprovedMemoryProposal(state, approved);
-        if (clean.proposedType === "plotPressureUpdate") {
-          return touchAdventure(state, applied);
-        }
         return touchAdventure(state, {
           ...applied,
           activeState: {

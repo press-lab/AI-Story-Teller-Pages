@@ -1,5 +1,7 @@
 # Background memory cost and quality
 
+> Historical architecture/validation record preceding the original-foundation migration. For current automatic scheduling, costs and permissions, use [Foundation migration](foundation-migration.md). The compact pipeline described here remains available for explicit legacy catch-up.
+
 Memory maintenance keeps the narrator's model, context budget, response length,
 and cadence settings unchanged. The optimization is in background reference
 selection, prompt reuse, and redundant proposals.

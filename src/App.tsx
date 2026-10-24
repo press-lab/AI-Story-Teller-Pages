@@ -366,6 +366,7 @@ export default function App() {
             onRegenerateProposal={runtime.regenerateMemoryProposal}
             onFindEventMemories={runtime.findEventMemories}
             onReconcileMemory={runtime.reconcileMemory}
+            onEvaluateMemory={runtime.evaluateMemorySources}
           />
         );
       case "cloudSaves":

@@ -183,7 +183,6 @@ describe("buildContext", () => {
     expect(result.sections.find((section) => section.id === "system")?.items.map((item) => item.id)).toEqual([
       "system-shell",
       "turn-scope-contract",
-      "one-pass-memory",
     ]);
     // Each type has its own section
     expect(result.sections.find((section) => section.id === "aiInstructions")?.items.map((item) => item.id)).toEqual(["c-ai"]);
@@ -326,7 +325,7 @@ describe("buildContext", () => {
     const recentIds = result.sections.find((section) => section.id === "recentMessages")?.items.map((item) => item.id);
     expect(recentIds).toEqual(["new"]);
     expect(result.excludedItems.filter((item) => item.reason === "budget_exceeded").map((item) => item.id)).toEqual(["old", "middle"]);
-    expect(result.messages.some(message => message.content.includes("[ONE-PASS MEMORY]"))).toBe(true);
+    expect(result.messages.some(message => message.content.includes("[ONE-PASS MEMORY]"))).toBe(false);
   });
 
   it("rolling summary is not injected into context (deprecated)", () => {

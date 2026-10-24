@@ -6,8 +6,7 @@ import { buildContext } from "../contextBuilder/contextBuilder";
 import { saveAdventure } from "../db/adventureDb";
 import { scanEventMemories } from "../memory/eventMemoryScan";
 import { regenerateProposalContent } from "../memory/memoryDetection";
-import { memoryRecoveryBatch } from "../memory/memoryRecoveryBatch";
-import { runCompactMemoryFallback } from "../memory/compactMemoryFallback";
+import { memoryCycleSources } from "../memory/memoryCycleState";
 import { generateArcContinuations, generateArcDirector, generateArcFromHistory, generateBrainFromName as generateBrainEntry, generateComponentContent, pickConvergentContinuation } from "../ai/generators";
 import { PLOT_ESSENTIALS_BEST_PRACTICES } from "../ai/authoringBestPractices";
 import { runStoryCardAudit, type AuditRecommendation } from "../memory/storyCardAudit";
@@ -36,6 +35,7 @@ import {
   runPlotAIBuilder,
   runRememberThis,
   runSemanticPostTurnEvaluation,
+  runMemoryCycle,
   runStoryCardAIBuilder,
 } from "../triggers/semanticEngine";
 import type {
@@ -265,72 +265,51 @@ export function useAdventureRuntime(
     return { ...next, memoryDetectionSettings: { ...globalMemorySettingsRef.current } };
   }
 
-  async function startMemoryFallback(snapshot: Adventure) {
-    if (!snapshot.memoryDetectionSettings.enabled || memoryFallbackInFlight.current.has(snapshot.id)) return;
-    const batch = memoryRecoveryBatch(snapshot);
-    if (!batch.length) return;
-
+  async function startIndependentMemory(snapshot: Adventure, sourceIds?: string[]) {
+    if (memoryFallbackInFlight.current.has(snapshot.id)) return;
+    const selected = sourceIds ? snapshot.messages.filter(message => sourceIds.includes(message.id)
+      && message.role === "assistant" && message.inputMode !== "comms" && message.memoryEvaluation?.status !== "complete").slice(0, 10)
+      : memoryCycleSources(snapshot);
+    if (!selected.length) return;
     memoryFallbackInFlight.current.add(snapshot.id);
+    adventureRef.current = snapshot;
     try {
-      // Persist the attempt before sending. A crash cannot immediately replay a billable call.
-      snapshot = adventureReducer(snapshot, { type: "CLAIM_MEMORY_RECOVERY", sources: batch, turn: snapshot.activeState.memoryRecoveryStoryTurn ?? 0 });
-      setAdventure(snapshot);
-      adventureRef.current = snapshot;
-      await saveAdventure(snapshot);
-      const config = buildBackgroundConfig(snapshot, providerSettingsRef.current);
-      const compact = await runCompactMemoryFallback(snapshot, config, batch);
-      const compactUsage: AdventureAction = {
-        type: "ACCUMULATE_BACKGROUND_TOKENS",
-        promptTokens: compact.tokenUsage.promptTokens,
-        completionTokens: compact.tokenUsage.completionTokens,
-      };
-      const actions: AdventureAction[] = [compactUsage, ...batch.map(source => ({
-        type: "RECORD_MEMORY_DIAGNOSTIC" as const, entry: {
-          id: createId("decision"), sourceId: source.id, createdAt: nowIso(), stage: "recovery" as const,
-          outcome: compact.processedSources?.some(done => done.id === source.id) ? "recovery_validated" as const : "recovery_failed" as const,
-          reason: compact.processedSources?.some(done => done.id === source.id) ? undefined : compact.error,
-          sourceIds: batch.map(item => item.id), model: compact.request?.model, transport: compact.request?.transport, parsed: compact.request?.parsed, usage: compact.request?.usageReported ? compact.tokenUsage : undefined,
-        },
-      }))];
-      if (compact.valid) actions.push({ type: "COMPLETE_MEMORY_RECOVERY", sources: compact.processedSources ?? batch.map(({ id, content }) => ({ id, content })), dependencies: compact.sourceSnapshots, actions: compact.actions });
-      else actions.push({ type: "LOG_EVALUATION_RESULT", entry: {
-        id: createId("eval"), turn: snapshot.activeState.turn, createdAt: nowIso(),
-        conditionsEvaluated: [], conditionsFired: [], generatedContent: [],
-        actionsExecuted: ["Memory recovery: one attempt; batch retained"],
-        errors: [compact.error ?? "Recovery failed or returned invalid JSON. Sources retained for bounded retry or manual evaluation."],
-      } });
-      const failed = (compact.attemptedSources ?? batch).filter(source => !compact.processedSources?.some(done => done.id === source.id));
-      if (failed.length) actions.push({ type: "FAIL_MEMORY_RECOVERY", sources: failed,
-        turn: snapshot.activeState.memoryRecoveryStoryTurn ?? 0, error: compact.error ?? "Recovery incomplete; inspect evaluation log." });
-      if (!compact.valid) actions.push(...compact.actions);
-      if (adventureRef.current?.id !== snapshot.id) return;
-      const next = reduceActions(mergeQueuedUpdates(adventureRef.current), actions);
-      adventureRef.current = next;
-      setAdventure(next);
-      await saveAdventure(next);
-    } catch (fallbackError) {
-      if (adventureRef.current?.id === snapshot.id) {
-        setError(fallbackError instanceof Error ? fallbackError.message : "Automatic memory fallback failed.");
+      for (const source of selected) {
+        if (adventureRef.current?.id !== snapshot.id) return;
+        snapshot = adventureReducer(mergeQueuedUpdates(adventureRef.current), { type: "CLAIM_MEMORY_EVALUATION",
+          sourceId: source.id, turn: adventureRef.current.activeState.memoryRecoveryStoryTurn ?? 0, manual: Boolean(sourceIds) });
+        // Persist the claim first. Reloading the app never replays a paid request.
+        adventureRef.current = snapshot;
+        setAdventure(snapshot);
+        await saveAdventure(snapshot);
+        const result = await runMemoryCycle(snapshot, mergeProviderConfig(snapshot, providerSettingsRef.current),
+          { sourceId: source.id, manual: Boolean(sourceIds) });
+        if (adventureRef.current?.id !== snapshot.id) return;
+        let next = reduceActions(mergeQueuedUpdates(adventureRef.current), result.actions);
+        if (sourceIds && next.messages.find(message => message.id === source.id)?.memoryEvaluation?.status === "complete"
+          && source.memoryRecovery?.status === "pending") {
+          next = adventureReducer(next, { type: "COMPLETE_MEMORY_RECOVERY", sources: [{ id: source.id, content: source.content }], actions: [] });
+        }
+        adventureRef.current = next;
+        setAdventure(next);
+        await saveAdventure(next);
       }
+    } catch (error) {
+      if (adventureRef.current?.id === snapshot.id) setError(error instanceof Error ? error.message : "Independent memory evaluation failed; story saved.");
     } finally {
       memoryFallbackInFlight.current.delete(snapshot.id);
     }
   }
 
-  // Resume an already-due batch on load. A persisted claim suppresses replay after a
-  // crash during a request; the retained sources retry after the next five story turns.
-  useEffect(() => {
-    const current = adventureRef.current;
-    if (!current || isSubmittingRef.current) return;
-    const snapshot = { ...current, memoryDetectionSettings: { ...globalMemorySettingsRef.current } };
-    if (!memoryRecoveryBatch(snapshot).length) return;
+  async function evaluateMemorySources(sourceIds: string[]) {
+    const snapshot = adventureRef.current;
+    if (!snapshot || loading || isSubmittingRef.current) return;
+    if (!sourceIds.length || sourceIds.length > 10) throw new Error("Select one to ten completed sources.");
     isSubmittingRef.current = true;
     setLoading(true);
-    void startMemoryFallback(snapshot).finally(() => {
-      isSubmittingRef.current = false;
-      setLoading(false);
-    });
-  }, [adventure?.id]);
+    try { await startIndependentMemory(snapshot, sourceIds); }
+    finally { isSubmittingRef.current = false; setLoading(false); }
+  }
 
   async function startSemanticEvaluation(snapshot: Adventure) {
     if (!snapshot.semanticEvaluationSettings.enabled || semanticInFlight.current.has(snapshot.id)) return;
@@ -446,7 +425,7 @@ export function useAdventureRuntime(
       await saveAdventure(next);
       setSaveStatus("saved");
       if (mode !== "comms") {
-        await startMemoryFallback(next);
+        await startIndependentMemory(next);
         void startSemanticEvaluation(next);
         void checkArcContinuation(next);
       }
@@ -519,7 +498,7 @@ export function useAdventureRuntime(
       setContextResult(result.postTurnContext);
       await saveAdventure(next);
       setSaveStatus("saved");
-      await startMemoryFallback(next);
+      await startIndependentMemory(next);
       void startSemanticEvaluation(next);
       void checkArcContinuation(next);
     } catch (providerError) {
@@ -578,7 +557,7 @@ export function useAdventureRuntime(
       setContextResult(buildContext(next, { latestModelOutput: applied.responseContent }));
       await saveAdventure(next);
       setSaveStatus("saved");
-      await startMemoryFallback(next);
+      await startIndependentMemory(next);
       void startSemanticEvaluation(next);
     } catch (providerError) {
       setError(providerError instanceof Error ? providerError.message : "Regeneration failed.");
@@ -913,6 +892,7 @@ Respond with ONLY the new content — no preamble, no labels, no explanation.`;
     regenerateMemoryProposal,
     findEventMemories,
     evaluateStoryCards,
+    evaluateMemorySources,
     regeneratePlotEssentials,
     generateComponent,
     generateArc,

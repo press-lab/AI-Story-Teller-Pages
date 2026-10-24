@@ -6,6 +6,10 @@ import type { Adventure, AdventureAction, MemoryProposal, ProviderConfig } from 
 import { memoryCanonMessages } from "./memoryCanon";
 import { storyCardContextContent } from "./storyCardPolicy";
 import { sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
+import { sendMemoryCompletion } from "../providers/memoryCompletion";
+import { memoryEvidenceWindow } from "./memoryEvidenceWindow";
+import { validateMemoryUpdate } from "./validateMemoryUpdate";
+import { createId, nowIso } from "../utils/id";
 import {
   PLOT_ESSENTIALS_BEST_PRACTICES,
   STORY_CARD_BEST_PRACTICES,
@@ -83,21 +87,21 @@ function alreadyCaptured(content: string, existing: string[]): boolean {
 }
 
 /** Catch up across the configured interval without replacing existing-card updates. */
-export async function detectStoryCardProposals(adventure: Adventure, providerConfig: ProviderConfig, options: { messages?: Adventure["messages"]; eventsOnly?: boolean } = {}) {
+export async function detectStoryCardProposals(adventure: Adventure, providerConfig: ProviderConfig, options: { messages?: Adventure["messages"]; eventsOnly?: boolean; sourceId?: string } = {}) {
   const result = {
     actions: [] as AdventureAction[], errors: [] as string[], evaluated: false,
     tokenUsage: { promptTokens: 0, completionTokens: 0 },
   };
   if (!options.eventsOnly && !adventure.memoryDetectionSettings.enabled) return result;
-  const messages = (options.messages ?? adventure.messages.filter(m => m.role === "user" || m.role === "assistant")
+  const messages = (options.messages ?? (options.sourceId ? memoryEvidenceWindow(adventure, options.sourceId) : adventure.messages.filter(m => m.role === "user" || m.role === "assistant")
     .slice(-Math.max(8, adventure.semanticEvaluationSettings.messagesIncluded,
-      2 * adventure.memoryDetectionSettings.everyNTurns))).filter(m => m.role === "user" || m.role === "assistant");
+      2 * adventure.memoryDetectionSettings.everyNTurns)))).filter(m => m.role === "user" || m.role === "assistant");
   if (!messages.some(m => m.role === "assistant" && m.content.trim())) return result;
   result.evaluated = true;
   const excerpt = messages.map(m => `[${m.id}] ${m.role}: ${m.content}`).join("\n\n");
   // Older catch-up tools retain their response envelope, but use the same local
   // scanner, matcher and review records as normal play and Chronicle evaluation.
-  for (const source of messages.filter(message => message.role === "assistant" && message.inputMode !== "comms").slice(-12)) {
+  for (const source of messages.filter(message => message.role === "assistant" && message.inputMode !== "comms" && (!options.sourceId || message.id === options.sourceId)).slice(-12)) {
     for (const proposal of scanStoryCardExchange(adventure, source)) {
       if (options.eventsOnly && proposal.storyCardType !== "lore") continue;
       result.actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal });
@@ -113,35 +117,50 @@ export async function detectStoryCardProposals(adventure: Adventure, providerCon
   const proposalInventory = considered.filter(p => excerpt.toLowerCase().includes(p.title.toLowerCase())).slice(-8)
     .map(p => ({ title: p.title, status: p.status }));
   try {
-    const response = await sendOpenAICompatibleChatCompletion({
-      config: resolveMemoryEvaluationProviderConfig(adventure, providerConfig),
-      memoryEvaluation: true, thinking: "disabled", retry: false,
-      messages: [
+    const response = await sendMemoryCompletion(adventure, providerConfig, [
         { role: "system", content: `${STORY_CARD_MEMORY_CHECK}
 ${options.eventsOnly ? "Evaluate completed history as Lore only." : "Evaluate the supplied completed exchanges."}
+${options.sourceId ? `Only propose developments established in source ${options.sourceId}. Earlier exchanges supply attribution and continuity, not events happening again now. Cite that establishing source and all necessary earlier evidence. Include evidenceQuotes:[{messageId,quote}] with exact unmodified quotes from the supplied original messages. Also provide memoryMode: historical|living|static and eventStatus: completed|ongoing|unresolved. A confirmed agreement is completed history even when the agreed future work remains unfinished. A discovery can have separate historical Lore and character-private Brain reactions; do not put private thoughts into this public record. Propose at most three findings.` : ""}
 Return ONLY a JSON array, [] when nothing qualifies. Each item: {"title":"subject or existing title","targetId":"existing ID for an update, otherwise omit","content":"NEW fact only; max 70 words","storyCardType":"lore|character|location|custom","suggestedTriggers":["1-3 specific phrases"],"rationale":"why durable","evidenceMessageIds":["supplied source IDs"]}. Routine hospitality and scene filler do not qualify. Do not repeat dismissed or already captured facts. This legacy catch-up response is adapted into the shared Story Card pipeline.` },
         ...memoryCanonMessages(adventure, excerpt, "Discover missing Story Cards", true),
         { role: "user", content: "Relevant existing cards: " + JSON.stringify(cardInventory) },
         { role: "user", content: "Previously considered Story Card proposals (including dismissed; omit duplicates): " + JSON.stringify(proposalInventory) },
         { role: "user", content: "Recent story evidence:\n" + excerpt },
-      ],
-    });
+      ]);
     result.tokenUsage.promptTokens += response.usage?.promptTokens ?? 0;
     result.tokenUsage.completionTokens += response.usage?.completionTokens ?? 0;
     const raw = response.content.replace(/<think>[\s\S]*?<\/think>/gi, "").trim()
       .replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) throw new Error("Discovery response was not an array.");
+    if (options.sourceId && parsed.length > 3) throw new Error("Discovery exceeded its three-finding limit.");
     for (const item of parsed) {
       if (!item || typeof item !== "object" || typeof item.title !== "string" || !item.title.trim()
-        || typeof item.content !== "string" || !item.content.trim()) continue;
+        || typeof item.content !== "string" || !item.content.trim()) throw new Error("Discovery candidate has invalid title/content.");
       const title = item.title.trim();
       // Event records are independent of character/current-state coverage.
       // Their occurrence-aware dedupe below also preserves distinct occasions.
       if (item.storyCardType !== "event" && alreadyCaptured(item.content, capturedContent)) continue;
       const evidence = messages.filter(m => Array.isArray(item.evidenceMessageIds) && item.evidenceMessageIds.includes(m.id));
+      if (options.sourceId && (!evidence.length || !evidence.some(message => message.id === options.sourceId)
+        || item.evidenceMessageIds.some((id: unknown) => !messages.some(message => message.id === id)))) throw new Error("Discovery lacks valid establishing source evidence.");
       if (evidence.length === 0) continue;
       if (item.evidenceMessageIds.some((id: unknown) => !messages.some(m => m.id === id))) continue;
+      if (options.sourceId) {
+        if (!Array.isArray(item.evidenceQuotes) || !item.evidenceQuotes.length || item.evidenceQuotes.some((quote: { messageId?: unknown; quote?: unknown }) => !quote
+          || typeof quote.quote !== "string" || !quote.quote.trim() || !evidence.some(message => message.id === quote.messageId && message.content.includes(quote.quote as string)))) {
+          throw new Error("Discovery lacks exact supporting quotes from its referenced sources.");
+        }
+        const target = typeof item.targetId === "string" ? adventure.storyCards.find(card => card.id === item.targetId) : undefined;
+        const validation = await validateMemoryUpdate(adventure, providerConfig, "storyCard", title, target?.content ?? "", item.content, result.tokenUsage, true);
+        if (!validation.changed) {
+          result.actions.push({ type: "RECORD_MEMORY_DIAGNOSTIC", entry: { id: createId("decision"), sourceId: options.sourceId, createdAt: nowIso(),
+            stage: "candidate", outcome: "validation_rejected", reason: validation.error ?? "No new durable change.",
+            candidate: { kind: "storyCard", title, content: item.content, evidence: evidence.map(message => `[${message.id}] ${message.content}`).join("\n"), rationale: item.rationale ?? "" } } });
+          if (validation.retryable) result.errors.push(validation.error ?? "Discovery validation failed.");
+          continue;
+        }
+      }
       const isEvent = item.storyCardType === "event" || Boolean(item.eventMemory);
       if (options.eventsOnly && !isEvent) continue;
       const strings = (value: unknown) => Array.isArray(value) ? value.filter((v): v is string => typeof v === "string" && Boolean(v.trim())).map(v => v.trim()).slice(0, 12) : [];
@@ -154,7 +173,7 @@ Return ONLY a JSON array, [] when nothing qualifies. Each item: {"title":"subjec
       if (isEvent && (!eventMemory?.participants.length || !eventMemory.recallCues.length)) continue;
       if (isEvent && [...adventure.storyCards.filter(c => isHistoricalLore(c)), ...adventure.activeState.memoryProposals.filter(p => Boolean(p.eventMemory))]
         .some(existing => sameEventMemory(existing, { content: item.content, eventMemory }))) continue;
-      const source = (isEvent ? evidence.find(message => message.role === "assistant") : evidence.filter(message => message.role === "assistant").at(-1))
+      const source = (options.sourceId ? messages.find(message => message.id === options.sourceId) : isEvent ? evidence.find(message => message.role === "assistant") : evidence.filter(message => message.role === "assistant").at(-1))
         ?? messages.find((message, index) => message.role === "assistant" && evidence.some(item => messages[index - 1]?.id === item.id));
       if (!source) continue;
       const proposal = makeStoryCardSuggestion(adventure, source.id, source.content, {
@@ -167,6 +186,13 @@ Return ONLY a JSON array, [] when nothing qualifies. Each item: {"title":"subjec
       });
       if (item.targetId && !adventure.storyCards.some(card => card.id === item.targetId)) continue;
       proposal.storyCardReview = { ...proposal.storyCardReview!, additionalSources: evidence.filter(message => message.id !== source.id).map(({ id, content }) => ({ id, content })) };
+      if (options.sourceId) proposal.storyCardReview.evidenceQuotes = item.evidenceQuotes;
+      if (options.sourceId && proposal.storyCardType === "lore") {
+        if (item.memoryMode !== undefined && !["historical", "living", "static"].includes(item.memoryMode)) throw new Error("Invalid discovery memory mode.");
+        if (item.eventStatus !== undefined && !["completed", "ongoing", "unresolved"].includes(item.eventStatus)) throw new Error("Invalid discovery event status.");
+        if (item.memoryMode) proposal.memoryMode = item.memoryMode;
+        if (item.eventStatus && proposal.lore) proposal.lore.status = item.eventStatus;
+      }
       if (proposal.lore) proposal.lore.sourceMessageIds = [...new Set([...proposal.lore.sourceMessageIds, ...evidence.map(message => message.id)])];
       if (eventMemory) { proposal.eventMemory = eventMemory; proposal.memoryMode = "historical"; proposal.requiresReview = true; }
       if (!options.eventsOnly && !adventure.memoryDetectionSettings.generateContent) { proposal.content = ""; proposal.requiresReview = true; }

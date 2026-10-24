@@ -1,5 +1,7 @@
 # Semantic memory evaluation and reliability
 
+> Historical architecture/validation record preceding the original-foundation migration. For current automatic scheduling, costs and permissions, use [Foundation migration](foundation-migration.md). The compact pipeline described here remains available for explicit legacy catch-up.
+
 Narrator memory remains the default: the existing hidden `<memory_updates>{"updates":[]}</memory_updates>` contract, no extra normal-turn request, and recovery after five story turns. Deterministic discovery still nominates credible identities only. Narrative developments come from model evaluation.
 
 ## Optional dedicated evaluator

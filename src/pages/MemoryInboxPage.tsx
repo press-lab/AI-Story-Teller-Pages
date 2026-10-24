@@ -1,6 +1,7 @@
 import { MemoryDecisionsPage } from "./MemoryDecisionsPage";
 import { isHistoricalLore, proposalLore } from "../memory/storyCardArchitecture";
 import { suggestionSourceValid } from "../memory/storyCardSuggestions";
+import { memoryTargetSnapshot } from "../memory/memoryCycleState";
 import { formatStoryTime } from "../memory/storyTime";
 import { ProposalEventDate } from "./ProposalEventDate";
 import { useState } from "react";
@@ -25,6 +26,7 @@ const proposalTypes: MemoryProposalType[] = [
 const storyCardTypes: StoryCardType[] = ["character", "location", "lore", "custom"];
 
 interface MemoryInboxPageProps extends AdventurePageProps {
+  onEvaluateMemory?: (sourceIds: string[]) => Promise<void>;
   onFindEventMemories?: (onProgress: (message: string) => void, signal: AbortSignal) => Promise<void>;
   onRegenerateProposal?: (proposalId: string) => Promise<void>;
   onReconcileMemory?: (request: MemoryReconcileRequest) => Promise<void>;
@@ -39,7 +41,7 @@ export function MemoryInboxPage(props: MemoryInboxPageProps) {
       <button type="button" aria-pressed={view === "suggestions"} onClick={() => setView("suggestions")}>Suggestions</button>
       <button type="button" aria-pressed={view === "decisions"} onClick={() => setView("decisions")}>Decisions</button>
     </nav>
-    {view === "decisions" ? <MemoryDecisionsPage adventure={props.adventure} onSuggestions={title => { setProposalSearch(title ?? ""); setView("suggestions"); }} /> : <MemorySuggestionsPage {...props} initialSearch={proposalSearch} />}
+    {view === "decisions" ? <MemoryDecisionsPage adventure={props.adventure} loading={props.loading} onEvaluateMemory={props.onEvaluateMemory} onSuggestions={title => { setProposalSearch(title ?? ""); setView("suggestions"); }} /> : <MemorySuggestionsPage {...props} initialSearch={proposalSearch} />}
   </>;
 }
 
@@ -330,12 +332,17 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
         </div>
       </div>
 
+      {proposal.evaluationSource && <details><summary>Independent evaluation evidence</summary>
+        <p>Destination: {proposal.targetId ?? "new Story Card"}</p>
+        {proposal.evaluationSource.messages.map(source => <div key={source.id}><code>{source.id}</code><blockquote>{source.content}</blockquote></div>)}
+        {!sourceValid && !proposal.storyCardReview && <p role="alert">The source evidence or destination changed. Reevaluate this source before approval.</p>}
+      </details>}
       {proposal.storyCardReview && <div className="panel">
         <p>{proposal.storyCardReview.candidateOnly ? "Unconfirmed candidate — verify the interpretation against the source." : "Evidence-based suggestion — review before applying."} Detection: {proposal.storyCardReview.origin}.</p>
         {Boolean(proposal.storyCardReview.evidenceQuotes?.length) && <details><summary>Supporting source quotes</summary>
           <ul>{proposal.storyCardReview.evidenceQuotes!.map((item, index) => <li key={`${item.messageId}-${index}`}><code>{item.messageId}</code><blockquote>{item.quote}</blockquote></li>)}</ul>
         </details>}
-        {!sourceValid && <p role="alert">The source entry changed or was regenerated. This suggestion cannot be approved; reevaluate the revised entry.</p>}
+        {!sourceValid && <p role="alert">The source evidence or destination changed. This suggestion cannot be approved; reevaluate the revised entry.</p>}
         {proposal.lore && <p>Occurred: {formatStoryTime(proposal.lore.occurredAt)} · {proposal.lore.status} · Sources: {proposal.lore.sourceMessageIds.join(", ")}</p>}
         <Field label="Story Card destination"><select value={proposal.targetId ?? ""} disabled={!isPending}
           onChange={event => {
@@ -344,6 +351,7 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
             const createTitle = adventure.storyCards.some(existing => existing.title.toLowerCase() === suggestedTitle.toLowerCase())
               ? `${suggestedTitle}: ${proposal.content.slice(0, 60)}` : suggestedTitle;
             onUpdate(proposal, { targetId: card?.id, title: card?.title ?? createTitle,
+              ...(proposal.evaluationSource ? { evaluationSource: { ...proposal.evaluationSource, target: card ? memoryTargetSnapshot(adventure, "storyCard", card.id) : undefined } } : {}),
               appendContent: card ? true : undefined, memoryMode: card?.memoryMode ?? proposal.memoryMode,
               storyCardReview: { ...proposal.storyCardReview!, operation: card ? "update" : "create" } });
           }}>

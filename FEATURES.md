@@ -24,7 +24,7 @@ The app is browser-only, local-first, IndexedDB-persisted, no backend. All LLM c
 6. Continuity Lint — if risky claim patterns matched, optional LLM correction pass
 7. Local memory validation — reject invalid evidence, targets, duplicates, and oversized output
 8. Approved thoughts update eligible existing Brains and print only when `printThoughts: true`
-9. One-pass `<memory_updates>` JSON tail — locally checked proposals and eligible Brain thoughts; no separate routine memory call
+9. Independent memory evaluation after final story persistence — targeted Brain, Story Card and eligible plot updates with source-bound review
 10. `ADD_MESSAGE` — store cleaned assistant response
 11. `CONSUME_NEXT_TURN_NOTE` — clears if `expiresAfterUse`
 12. `applyRuntimeEngines` on `output` — keyword/regex trigger rules fire again
@@ -32,7 +32,7 @@ The app is browser-only, local-first, IndexedDB-persisted, no backend. All LLM c
 
 ### Background (async, after turn — not blocking):
 - Semantic evaluation (`runSemanticPostTurnEvaluation`) every `semanticEvalEveryNTurns` turns
-- `memoryDetectionSettings.enabled` selects the one-pass instruction. If the story model omits or corrupts the hidden memory envelope, the runtime falls back to the background memory cycle at the configured interval so automatic memory does not silently stop.
+- `memoryDetectionSettings.enabled` enables the original independent memory evaluator after finalized narration is saved. Cadence and review controls are preserved; normal narration does not request a hidden memory appendix. See [Foundation migration](docs/foundation-migration.md).
 - Arc continuation runs exceptionally after an arc reaches aftermath. Custom rule and arc requests are guarded against overlap.
 
 ---
@@ -83,7 +83,7 @@ When total exceeds `maxContextTokens`, items are dropped in priority order:
 |---|---|---|---|---|
 | `narrationRules` | Yes | System shell (A) | No | Primary per-adventure behavior contract. POV, agency, continuity, tone, format. Protected. One per adventure. |
 | `aiInstructions` | Yes | B | No | Optional separately inspectable scenario-specific contract. Not required when Narration Rules already contain the stable rules. Protected. One per adventure. |
-| `plotEssentials` | Yes | C | Yes (append) | Overarching premise, long-term conflict, and persistent story-wide constraints. Edited manually or through explicit authoring tools; automatic memory never targets this component. |
+| `plotEssentials` | Yes | C | Yes (append) | Overarching premise, long-term conflict, and persistent story-wide constraints. Independent evaluation requires explicit auto-update permission and review settings. |
 | `currentArc` | Yes | C2 | Yes (append) | Running arc log. Requires `arcPremise` for auto-update. Graduate → Story Card when done. |
 | `activePressure` | No* | C | Yes (replace) | One-sentence current external threat or obligation. Auto-updated, auto-approved by default. |
 | `immediateMomentum` | No | — | No | Disabled legacy type. Not generated, auto-updated, or assembled into context. |
@@ -181,7 +181,7 @@ Brains track named character inner state as a keyed thought record. Primary upda
 Triggered by `characterName` or any string in `triggers`, matched against recent text (phrase match). Also respects `inclusionPolicy`, `pinned`, `protected`.
 
 ### Update paths:
-1. **One-pass memory thoughts** — narrator returns an evidenced thought in the same response; existing eligible Brains only, honoring per-type auto-approval and cooldowns
+1. **Independent targeted Brain updates** — evaluate meaningful private reactions across the bounded recent exchange; generate first-person patches for existing eligible Brains, honoring review controls and cooldowns
 2. **Semantic engine** (`updateBrain`/`appendBrain` actions) — still available via explicitly configured trigger rules
 3. **Manual** — "Update Now" button in BrainsPage
 
@@ -196,10 +196,10 @@ All AI-generated content suggestions pass through Memory Proposals before becomi
 ### Proposal types:
 | Type | Source | Auto-Approve Default | Apply Behavior |
 |---|---|---|---|
-| `storyCard` | One-pass memory, story card audit, "Remember This" | Off | Upsert story card |
+| `storyCard` | Independent evaluation, story card audit, "Remember This" | Off | Upsert story card |
 | `brainUpdate` | Semantic engine (updateBrain/appendBrain) | Off | Apply BrainPatch |
-| `plotEssentialsUpdate` | Semantic engine, "Suggest Updates" | Off | Append to PE component |
-| `currentArcUpdate` | Semantic engine (updateComponentArc) | **On** | Append to arc component |
+| `plotEssentialsUpdate` | Semantic engine, "Suggest Updates" | Off | Replace PE component |
+| `currentArcUpdate` | Semantic engine (updateComponentArc) | Off | Append to arc component |
 | `plotPressureUpdate` | Semantic engine (updateComponentPressure) | **On** | Replace activePressure content |
 | `plotMomentumUpdate` | Legacy/disabled | Off | No-op |
 | `summaryUpdate` | Semantic engine (summaryConditions) — deprecated | Off | Append to rollingSummary |
@@ -207,15 +207,15 @@ All AI-generated content suggestions pass through Memory Proposals before becomi
 
 Auto-approve settings: `adventure.memoryAutoApprove` — all togglable per adventure.
 
-### One-pass validation and approval
+### Independent validation and approval
 
-Narration and up to four small updates share one provider response. Empty updates are normal. Local checks verify shape, length, current-turn evidence, target existence/eligibility, and duplicates. Existing cards receive additive facts; at most one new recurring subject is proposed. New event recap cards are not generated. Arc updates append evidenced developments without changing authored pacing.
+The original `runMemoryCycle()` independently evaluates plot conditions, existing Story Cards and character Brains. Targeted generation and evidence review follow positive conditions. A separate discovery check uses the shared Story Card matcher to propose missing identities and completed historical events. A bounded local scanner supplies review-only identity candidates.
 
-`ADD_MEMORY_PROPOSAL` honors the matching auto-approval flag unless `requiresReview` is true. Automatic memory targets Story Cards and Brains. Local-only/uncertain candidates, ambiguous targets, protected cards and exceptional identity changes always require review. A broken or missing memory tail preserves the narrative, logs the problem, and never starts a repair call. Continuity/agency corrections retain their exceptional calls and discard memory from the rejected draft.
+`requireApprovalForAutoUpdates` forces review; otherwise the saved per-type auto-approval preference applies. Protected/uncertain/ambiguous changes always require review. Plot Essentials requires explicit component auto-update permission. Current Arc and Active Pressure respect explicit opt-outs. Arc Director phase and authored cost instructions remain deterministic and unchanged.
 
-The one-pass instruction is named and token-counted in Context Preview. Global memory enablement is used consistently for preview and generation and saved to the adventure snapshot. Output reserves up to 1,400 extra tokens for the hidden tail while respecting the configured provider cap. Usage includes both story and memory tokens in the narration call. This is an allowance, not a mandatory output size.
+Source-bound transactions retain successful groups and retry failed groups with backoff, up to three automatic attempts. No memory work runs on load. Explicit per-source evaluation is available in Memory Suggestions → Decisions. Narration is saved before any memory request, and legacy hidden tails are stripped without applying their findings.
 
-These checks prove local routing and call counts, not model accuracy or literary quality. Memory evidence matching cannot establish every inference. Actual dollar savings depend on provider usage and optional exceptional calls.
+Costs: up to three nonempty condition checks, one discovery check, and targeted generation/validation for changed destinations. Reviews may add calls; no live reliability or price claims follow from the mocked regression tests.
 
 ---
 
@@ -232,9 +232,9 @@ Runs in background after each turn (async, doesn't block story).
 - Applies non-generated actions immediately (activate/deactivate/pin/force-include)
 - Queues generated actions (brain/card/component updates) — run in parallel up to `maxParallelUpdateCalls`
 
-### Legacy `runMemoryCycle` (not scheduled by normal play):
+### Authoritative `runMemoryCycle` (scheduled after saved narration):
 - Plot conditions are evaluated independently: Plot Essentials, Active Pressure, and Current Arc may all fire in one cycle. Pressure cannot consume the Plot Essentials slot.
-- At most one eligible Story Card and one Brain update are selected per cycle; discovery separately proposes missing durable subjects.
+- All eligible changed targets can be selected; a plot development or one character cannot consume another destination’s evaluation slot. Discovery separately proposes missing durable subjects.
 - Generated output routes through Memory Inbox and honors per-type auto-approval settings.
 - Plot Essentials and Active Pressure replacements and targeted Story Card rewrites pass size/format checks and a separate model-based evidence review before a proposal or direct write. Unchanged output is skipped. Invalid output leaves memory unchanged and records an evaluation error. Review calls use the background provider and count toward background token usage; they add one call per nonempty, changed candidate that passes format checks. This review is a model judgment, not a guarantee of factual accuracy.
 - Plot Essentials replacements retain valid constraints, remove stale current state, and distinguish knowledge from belief, claims from facts, and plans from completed events. Removed text remains in component update history; removal alone never creates historical Story Cards.
@@ -456,7 +456,7 @@ Player input
         ← authorNote
         ← nextTurnNote (if active)
         ← challengeMode instruction (if SET_CHALLENGE_MODE was dispatched)
-        ← [ONE-PASS MEMORY] instruction (if automatic memory enabled)
+        ← independent memory runs after final story persistence; no narrator appendix
     → LLM call (story provider)
     → parseOnePassMemory (strip tail, preserve visible story)
         → local evidence/target/dedup checks
@@ -510,13 +510,13 @@ Memory Suggestions offers “Find event memories in earlier play”: an explicit
 
 ## Story Card suggestion engine (October 2026)
 
-Automatic memory targets Story Cards and existing Brains only. Story Card auto-approval remains optional and off by default. Supported model findings honor an explicit opt-in after source validation; local-only/uncertain candidates and sensitive changes always await review. Plot Essentials, Current Arc, Active Pressure and other components retain manual editing and explicit generation tools, but receive no automatic memory suggestions. Arc Director pacing remains deterministic.
+Independent automatic memory evaluates Story Cards, existing Brains and eligible Plot Components. Story Card auto-approval remains optional and off by default. The shared source validation, review requirements, semantic matching and identity/Lore split are preserved. See [Foundation migration](docs/foundation-migration.md) for the authoritative end-to-end flow.
 
-Completed exchanges combine a bounded local milestone/name detector with the existing one-pass model findings. Equivalent findings merge with evidence; distinct developments remain separate. Durable identity stays in Character/Location; ordinary events and changing circumstances become Lore. Target matching verifies IDs, subjects and aliases, offers ambiguous alternatives for review, and appends dated developments without removing earlier facts. Edited or regenerated sources invalidate approval.
+Equivalent findings merge with evidence; distinct developments remain separate. Durable identity stays in Character/Location; ordinary events and changing circumstances become Lore. Edited sources or changed destinations invalidate pending approval.
 
 The persisted fictional clock uses established scenario time or the labeled assumed default **2000-01-01**. Explicit skips advance locally, player/narrator echoes count once, and flashbacks do not rewind the present. Historical undated imports remain undated. The clock can be corrected in Story Cards.
 
-Chronicle offers **Evaluate Story Card Updates** for a completed entry or a range of up to ten narrator entries. This explicitly requested background evaluation shares the normal scanner/merge/review pipeline, never continues narration, and leaves Brains unchanged. Normal play adds no model requests; Brain cadence, thoughts, archival and imported instructions remain intact. Implementation, exact runtime instructions and benchmark results: [Memory suggestion engine](docs/memory-suggestion-engine.md).
+Chronicle offers **Evaluate Story Card Updates** for a completed entry or a range of up to ten narrator entries. This explicitly requested background evaluation shares the normal scanner/merge/review pipeline, never continues narration, and leaves Brains unchanged. Normal play uses independent targeted evaluation; Brain thoughts, archival and imported instructions remain intact. Implementation, exact runtime instructions and benchmark results: [Memory suggestion engine](docs/memory-suggestion-engine.md).
 
 The suggestion policy is compact and separate from its output schema. Normal prompts include at most eight relevant `[id,title,type]` targets. Legacy catch-up tools use the same local scanner, proposal constructor, target matcher and source checks. Deterministic matches stay unconfirmed candidates; named organizations use Custom, never a Faction category. A four-exchange entity nomination cooldown does not delay unique milestones. Source scan fingerprints persist without entering model context.
 
