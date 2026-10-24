@@ -131,13 +131,13 @@ it.each([
   expect(result.actions.some(action => action.type === "ADD_MEMORY_PROPOSAL")).toBe(false);
 });
 
-it("expands to three adjacent exchanges but never across a private boundary", () => {
+it("expands to three story exchanges and excludes a legacy OOC reply", () => {
   const a = fixture();
   const window = memoryEvidenceWindow(a, partnershipSourceId);
   expect(window.map(source => source.id)).toContain("synthetic-source-13");
   const index = a.messages.findIndex(source => source.id === acceptanceId);
   a.messages[index].inputMode = "comms";
-  expect(memoryEvidenceWindow(a, partnershipSourceId).map(source => source.id)).toEqual([partnershipSourceId]);
+  expect(memoryEvidenceWindow(a, partnershipSourceId).map(source => source.id)).toEqual([]);
 });
 
 it("recognizes Pat Jordan by a context-supported first name without joining unrelated identities", () => {

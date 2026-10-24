@@ -145,7 +145,7 @@ describe("Event Memories", () => {
     provider.mockReset();
     provider.mockResolvedValueOnce({ content: JSON.stringify([candidate]), raw: {} }).mockRejectedValueOnce(new Error("Provider unavailable"));
     const persisted = vi.fn();
-    await expect(scanEventMemories(a, config, persisted, vi.fn(), new AbortController().signal)).rejects.toThrow("Provider unavailable");
+    await expect(scanEventMemories(a, config, persisted, vi.fn(), new AbortController().signal)).rejects.toThrow("provider failure (details omitted)");
     expect(persisted).toHaveBeenCalledTimes(1);
   });
 });

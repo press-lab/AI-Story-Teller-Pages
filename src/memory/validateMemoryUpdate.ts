@@ -25,6 +25,7 @@ export async function validateMemoryUpdate(
   surface: ValidatedMemorySurface, title: string, previous: string, content: string,
   accum?: { promptTokens: number; completionTokens: number },
   appendOnly = false,
+  reviewOnly = false,
 ): Promise<{ changed: boolean; error?: string; evidenceMessageIds?: string[]; retryable?: boolean }> {
   const normalize = (text: string) => text.toLocaleLowerCase().replace(/[\s•*-]+/g, " ").trim();
   if (!content.trim() || /^(NONE|NO_CHANGE)$/i.test(content.trim()) || normalize(content) === normalize(previous)) return { changed: false };
@@ -46,10 +47,11 @@ For currentArc: require a new completed development in the established arc. This
 For activePressure: require one external threat, obligation, or force bearing on the player, not predicted actions, atmosphere, stage directions, or the next scene. Unchanged pressure is not a meaningful change. Compare the underlying threat, obligation, stakes and deadline, not wording or camera position. Showering, walking the same route, another drink, a typing indicator, or continuing the same conversation are not changes. Ordinary leisure plans are not automatically threats. Accept resolution without inventing a replacement danger.
 For activePressure also return pressureChange: "new_threat" | "changed_stakes" | "changed_obligation" | "resolved" | "none". A change must occur in latestTurnMessageIds; older events are attribution context, not new developments.
 For storyCard: require genuinely new durable facts or a factual correction about the named subject. Character identity cards, including living character cards, must not accumulate gestures, travel positions, scene recaps, other people's profiles/voice samples, or private emotional interpretations belonging in Brains. Preserve valid identity and the character's own voice. A paraphrase or repetition is not meaningful.
+For historical Lore: significant interpersonal actions and their actual outcomes are eligible independently of identity-card permissions. Accept an invitation acceptance as history even before the meeting; do not call a research dinner a romantic date without evidence. An explicit attempted kiss followed by withdrawal is completed history of the attempt, never a completed kiss. For a review-only candidate, accept grounded observable advances and responses with explicit uncertainty when the surrounding scene establishes significance; an ambiguous lean does not prove a kiss attempt. Reject ordinary gestures presented as romance, unsupported private interpretations or consent/relationship assumptions. Review uncertainty as uncertainty, not as an established fact.
 For brain: review a PATCH, not a full replacement. Omitted fields remain unchanged; null thoughts archive entries. The first-person speaker must be exactly the named target, never the player or narrator. Require evidence that the target witnessed, learned, or experienced the event; do not grant off-screen knowledge. Private reactions may be inferred from the target's established perspective, but never transfer another person's actions, texts, dates, or beliefs to them.
 For brain and storyCard also return identityMatchesTarget: boolean. Explicitly resolve who spoke, acted, sent each text, and knows each fact. A name mentioned in the scene, an initial, or a shared location does not establish identity. Reject ambiguous attribution. Preserve established identity and voice contracts.
-Every meaningful change must be supported by supplied recent message IDs. Return accepted=false for uncertainty or invalid output, meaningfulChange=false for an unnecessary rewrite.` },
-        { role: "user", content: JSON.stringify({ surface, title, previous, proposed: content, operation: appendOnly ? "append new facts; previous facts are retained unchanged" : "replacement or Brain patch", recentEvidence: evidence, latestTurnMessageIds: latest.map(m => m.id) }) },
+Every meaningful change must be supported by supplied recent message IDs. Return accepted=false for unsupported certainty or invalid output, meaningfulChange=false for an unnecessary rewrite.` },
+        { role: "user", content: JSON.stringify({ surface, title, previous, proposed: content, reviewOnly, operation: appendOnly ? "append new facts; previous facts are retained unchanged" : "replacement or Brain patch", recentEvidence: evidence, latestTurnMessageIds: latest.map(m => m.id) }) },
       ]);
     if (accum) {
       accum.promptTokens += response.usage?.promptTokens ?? 0;
@@ -75,6 +77,6 @@ Every meaningful change must be supported by supplied recent message IDs. Return
     if (!v.evidenceMessageIds.some(id => latest.some(message => message.id === id))) return { changed: false, error: "Memory change lacks evidence from the establishing exchange." };
     return { changed: true, evidenceMessageIds: v.evidenceMessageIds as string[] };
   } catch (error) {
-    return { changed: false, retryable: true, error: `Memory validation failed for ${title}: ${error instanceof Error ? error.message : String(error)}` };
+    return { changed: false, retryable: true, error: `Memory validation failed for ${title}: Invalid review response or provider failure (details omitted).` };
   }
 }

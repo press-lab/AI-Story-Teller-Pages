@@ -1,3 +1,4 @@
+import { storyMemoryMessages } from "./memoryEvidenceWindow";
 import type { Adventure, MemoryTargetSnapshot } from "../types/adventure";
 
 export const MEMORY_EVALUATION_GROUPS = ["plot", "storyCards", "brains", "discovery"] as const;
@@ -8,7 +9,7 @@ export function memoryCycleSources(adventure: Adventure) {
   const cadence = Math.max(0, Math.floor(settings.everyNTurns));
   const turn = adventure.activeState.memoryRecoveryStoryTurn ?? 0;
   if (!settings.enabled || !cadence || turn % cadence !== 0) return [];
-  return adventure.messages.filter(message => message.role === "assistant" && message.inputMode !== "comms"
+  return storyMemoryMessages(adventure).filter(message => message.role === "assistant" && message.inputMode !== "comms"
     && message.memoryEvaluation && ["pending", "failed", "running"].includes(message.memoryEvaluation.status)
     && message.memoryEvaluation.attempts < 3
     && (message.memoryEvaluation.nextEligibleTurn ?? 0) <= turn).slice(0, 10);

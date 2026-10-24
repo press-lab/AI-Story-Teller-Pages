@@ -121,6 +121,9 @@ export function storyCardEntityCandidates(text: string, recent: Message[], cards
       const named = namedType(mention.name);
       const type = named ?? (currentEvidence === "explicit" || explicit || personal.length >= 2 ? "character" : undefined);
       if (!type) return [];
+      // A proper place name in dialogue or a destination is not identity evidence.
+      // Require an attached durable description; semantic discovery handles subtler cases.
+      if (type === "location" && !/^(?:\s+(?:is|was|stands|lies|contains|houses|serves)\b|,\s+(?:the |a |an )?(?:new |ancient |hidden )?(?:magical )?(?:academy|fortress|village|city|sanctuary|harbou?r)\b)/i.test(text.slice(mention.end, mention.end + 120))) return [];
       const support = currentEvidence !== "explicit" && !named
         ? explicit ? [explicit.message] : personal.map(entry => entry.message) : [];
       const rank = recent.reduce((score, message, index) => score + (occurrences.some(entry => entry.message.id === message.id) ? 1 + (index + 1) / Math.max(1, recent.length) : 0), 0);

@@ -4,12 +4,14 @@ import { isExceptionalIdentityChange, isHistoricalLore } from "./storyCardArchit
 import { readStoryTime, transitionKey } from "./storyTime";
 import { memoryTargetMatches } from "./memoryCycleState";
 import { storyCardEntityCandidates, characterParticipants } from "./storyCardEntities";
+import { storyMemoryMessages } from "./memoryEvidenceWindow";
 import { generatedStoryCardTriggers } from "./resolveMemoryTarget";
 
 export const STORY_CARD_MEMORY_CHECK = `STORY CARD MEMORY CHECK
-Did anything NEW and MEANINGFUL happen in this exchange? Remember first meetings/kisses, proposals, relationships, commitments, betrayals, discoveries, major decisions, deaths, permanent changes, or significant new people/places. Ignore routine activity, movement, jokes, greetings and repeats that add no durable information. Dialogue can establish a new revelation, conditional offer, change of plan, or distinctive first impression worth recalling later. A first meeting alone does not establish friendship or trust; stated interest is not a research contract; discussing a prank is not a completed prank or partnership. Judge significance from context, not keywords.
-For each: TYPE (Lore, Character, Location, Custom; prefer Lore); CREATE or UPDATE a relevant existing card; FACT (specific new development); WHEN (current story date unless historical); EVIDENCE (exact supporting quote).
-Character/Location hold durable identity or exceptional permanent changes. Plans, threats, dreams and almost-events are not completed actions. Preserve private knowledge and past history. Never invent facts, rewrite whole cards, duplicate memories or suggest Plot Component updates. Return suggestions or an empty updates array.
+Find NEW MEANINGFUL durable developments, judging context, not keywords. Include significant first romantic advances, explicit attempted kisses, mutual first kisses, accepted/declined invitations, confessions, boundaries, commitments, betrayals, discoveries, deaths and permanent changes.
+Separate completed interactions from intended outcomes: an accepted invitation happened before dinner; a declined kiss attempt happened without a kiss. Research dinner need not be romantic. Significant flirtation with a lean-in/lean-back may warrant candidateOnly=true describing observations and uncertainty, NEVER a confirmed kiss attempt. Ordinary smiles, leaning to read, jokes, movement and meals alone do not qualify. Attempts require review; uncertain interpretations require candidateOnly=true,eventStatus=unresolved. Never infer consent or relationship status.
+Lore holds observable history; Brains hold supported private changes; Character/Location hold durable identity. autoUpdate=false protects existing cards, not independent new Lore. Preserve private knowledge and source quotes. Never invent outcomes, duplicate memories or suggest Plot Component updates.
+Return suggestions or an empty array.
 END STORY CARD MEMORY CHECK`;
 
 export const STORY_CARD_OUTPUT_SCHEMA = `Story Card fields: kind=lore (events/changes), newCard (missing identity/reference), card (permanent identity); cardType=lore|character|location|custom; operation=CREATE|UPDATE; target=title; targetId=existing ID for UPDATE; content=new fact, max70 words; evidence=exact quote; reason; triggers=3-6 short reusable topic phrases covering the card's subjects, activities and concepts (for example "runic research", "ward design", "government reform"). Use ordinary future wording, not exact scene sentences or only the full title; never leave triggers empty. Avoid unrelated catch-all words and bare participant names on Lore. Optional participants. Shared maximum: four updates.`;
@@ -103,7 +105,7 @@ export function storyCardTargets(adventure: Adventure, finding: { title: string;
 
 export function makeStoryCardSuggestion(adventure: Adventure, sourceId: string, story: string, finding: {
   title: string; content: string; evidence: string; reason: string; type?: StoryCardType; targetId?: string;
-  triggers?: string[]; participants?: string[]; candidateOnly?: boolean; eventKind?: string; origin?: "model" | "deterministic";
+  triggers?: string[]; participants?: string[]; candidateOnly?: boolean; evidenceReviewed?: boolean; eventKind?: string; origin?: "model" | "deterministic";
 }): MemoryProposal {
   const player = sourcePlayer(adventure, sourceId);
   const source = adventure.messages.find(message => message.id === sourceId);
@@ -117,7 +119,7 @@ export function makeStoryCardSuggestion(adventure: Adventure, sourceId: string, 
   const target = choices.length === 1 ? adventure.storyCards.find(card => card.id === choices[0]) : undefined;
   const now = nowIso();
   // Entity nominations always await review; model interpretations retain their uncertainty policy.
-  const uncertain = finding.origin === "deterministic" ? false : uncertainty.test(finding.evidence);
+  const uncertain = finding.origin === "deterministic" || finding.evidenceReviewed ? false : uncertainty.test(finding.evidence);
   const candidateOnly = Boolean(finding.candidateOnly || uncertain || finding.origin === "deterministic");
   const eventKind = finding.eventKind ?? findingKind(finding.content + " " + finding.evidence);
   const continuing = ["politicalPlan", "promise", "agreement", "decision", "engagement"].includes(eventKind ?? "") || /\b(history|relationship|conflict|alliance|agreement|pact)\b/i.test(finding.title);
@@ -155,7 +157,7 @@ export function scanStoryCardExchange(adventure: Adventure, source: Message): Me
   const text = source.content.replace(/^\*\[[^\]]+\]:[^\n]*\*$/gm, "");
   const proposals: MemoryProposal[] = [];
   // Identity evidence qualifies candidates first; frequency/recency only ranks them.
-  const recent = adventure.messages.filter(message => message.role === "assistant").slice(-80);
+  const recent = storyMemoryMessages(adventure).filter(message => message.role === "assistant").slice(-80);
   const candidates = storyCardEntityCandidates(text, recent, adventure.storyCards)
     // Suppress pending identities and recently dismissed nominations for four exchanges.
     // Model findings arrive separately and are unaffected by entity cooldowns.

@@ -56,8 +56,8 @@ describe("Seattle memory quality", () => {
       { title: "Broken gate", content: "The floodgate has permanently collapsed." },
     ].map(p => ({ ...p, storyCardType: "plot", evidenceMessageIds: ["new"] }))), raw: {} });
     const result = await detectStoryCardProposals(a, config);
-    expect(result.actions).toHaveLength(1);
-    expect(result.actions[0]).toMatchObject({ type: "ADD_MEMORY_PROPOSAL", proposal: { title: "Floodgate" } });
+    expect(result.actions.filter(action => action.type === "ADD_MEMORY_PROPOSAL")).toHaveLength(1);
+    expect(result.actions.find(action => action.type === "ADD_MEMORY_PROPOSAL")).toMatchObject({ type: "ADD_MEMORY_PROPOSAL", proposal: { title: "Floodgate" } });
     const prompt = provider.mock.calls[0][0].messages.map(m => m.content).join("\n");
     expect(prompt).toContain("Routine hospitality");
     expect(prompt).toContain("Earnest offered Seth a chair");

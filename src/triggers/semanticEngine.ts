@@ -39,7 +39,7 @@ import { matchPatterns, splitList } from "./matching";
 import { isTriggerOnCooldown, triggerActionToAdventureActions } from "./triggerEngine";
 import { storyCardContextContent } from "../memory/storyCardPolicy";
 import { sendMemoryCompletion } from "../providers/memoryCompletion";
-import { memoryEvidenceWindow } from "../memory/memoryEvidenceWindow";
+import { memoryEvidenceWindow, storyMemoryMessages } from "../memory/memoryEvidenceWindow";
 import { MEMORY_EVALUATION_GROUPS, memoryTargetSnapshot } from "../memory/memoryCycleState";
 import { makeStoryCardSuggestion, companionLoreSuggestion } from "../memory/storyCardSuggestions";
 import { isExceptionalIdentityChange } from "../memory/storyCardArchitecture";
@@ -81,7 +81,7 @@ function sanitizeMessageCount(value: number | undefined, fallback: number, max =
 function recentExcerpt(adventure: Adventure, messageCount = adventure.semanticEvaluationSettings.messagesIncluded): string {
   const count = sanitizeMessageCount(messageCount, adventure.semanticEvaluationSettings.messagesIncluded);
   if (count <= 0) return "";
-  return adventure.messages
+  return storyMemoryMessages(adventure)
     .slice(-count)
     .map((message) => `[${message.id}] ${message.role}: ${message.content}`)
     .join("\n\n");
@@ -101,7 +101,7 @@ function preview(text: string): string {
   return text.replace(/\s+/g, " ").trim().slice(0, 500);
 }
 
-const MEMORY_CHANGE_GUIDANCE = "For memory conditions, evaluate what CHANGED in latestTurn, using storyExcerpt only for attribution and continuity. Repeated mentions or continued actions are not new developments. Keep the player, narrator, and each named character distinct. A brain requires evidence the named character experienced or learned something; mentioning an absent character does not give them knowledge. Return no memory condition for uncertain identity.";
+const MEMORY_CHANGE_GUIDANCE = "For memory conditions, evaluate what CHANGED in latestTurn, using storyExcerpt only for attribution and continuity. Repeated mentions or continued actions are not new developments. Keep the player, narrator, and each named character distinct. A brain requires evidence the named character experienced or learned something; mentioning an absent character does not give them knowledge. Historical Lore records observable interactions and outcomes; Brains record only supported new private interpretations, intentions or changed perceptions. Significant advances, accepted/declined invitations, confessions and boundary-setting can support either independently, but an observable action alone does not prove a private change. Respect authored Brain conditions. Return no memory condition for uncertain identity.";
 
 function defaultBrainPrompt(brain: BrainEntry, turn: number): string {
   const thoughtEntries = Object.entries(brain.thoughts);
@@ -395,7 +395,7 @@ async function evaluateConditionIds(
     if (parsed.some(id => typeof id !== "string" || !conditions.some(condition => condition.id === id))) return { firedIds: [], errors: ["Semantic response contains an unknown condition ID."] };
     return { firedIds: [...new Set(parsed as string[])], errors: [] };
   } catch (error) {
-    return { firedIds: [], errors: [error instanceof Error ? error.message : "Semantic condition evaluation failed."] };
+    return { firedIds: [], errors: ["Semantic condition evaluation failed: invalid response or provider failure (details omitted)."] };
   }
 }
 
@@ -1977,7 +1977,11 @@ export async function runMemoryCycle(
       errors.push(...discovery.errors);
       accum.promptTokens += discovery.tokenUsage.promptTokens;
       accum.completionTokens += discovery.tokenUsage.completionTokens;
-      if (discovery.actions.some(action => action.type === "ADD_MEMORY_PROPOSAL")) logEntry.conditionsFired.push("storyCardDiscovery");
+      for (const origin of ["model", "deterministic"] as const) {
+        const proposals = discovery.actions.filter(action => action.type === "ADD_MEMORY_PROPOSAL" && action.proposal.storyCardReview?.origin === origin);
+        logEntry.actionsExecuted.push(`${origin === "model" ? "Semantic discovery" : "Deterministic identity"}: ${proposals.length} proposals`);
+        if (proposals.length) logEntry.conditionsFired.push(origin === "model" ? "storyCardDiscovery" : "storyCardIdentityDiscovery");
+      }
     }
     // Every original output uses the same Pages review/provenance and approval route.
     const routed: AdventureAction[] = [];

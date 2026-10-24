@@ -6,6 +6,10 @@ import { runMemoryCycle } from "../triggers/semanticEngine";
 import { buildContext } from "../contextBuilder/contextBuilder";
 import { exportAdventureJson, importAdventureJson } from "../utils/json";
 import { memoryCycleSources } from "./memoryCycleState";
+import { pendingMemoryRecovery } from "./memoryRecoveryBatch";
+import { memoryEvidenceWindow } from "./memoryEvidenceWindow";
+import { memoryCanonMessages } from "./memoryCanon";
+import { scanStoryCardExchange, STORY_CARD_MEMORY_CHECK } from "./storyCardSuggestions";
 import { suggestionSourceValid } from "./storyCardSuggestions";
 import reliability from "./fixtures/hogwarts-reliability.json";
 import arcane from "./fixtures/arcane-foundation.json";
@@ -28,7 +32,7 @@ function seed() {
   return a;
 }
 function finding(a: Adventure, content = "Mira and Seth discovered the ward's hidden key.") {
-  return { title: "The ward key discovery", storyCardType: "lore", content, suggestedTriggers: ["hidden key"],
+  return { memoryMode: "historical", eventStatus: "completed", title: "The ward key discovery", storyCardType: "lore", content, suggestedTriggers: ["hidden key"],
     rationale: "A significant completed discovery", evidenceMessageIds: ["ask", "source"],
     evidenceQuotes: a.messages.map(message => ({ messageId: message.id, quote: message.content })) };
 }
@@ -296,4 +300,108 @@ describe("original independent foundation", () => {
     expect(proposal.lore?.occurredAt?.date).toBeUndefined();
     expect(proposal.evaluationSource?.messages.map(message => message.id)).not.toContain("future");
   });
+});
+
+
+// Controlled provider replies validate software paths, NOT model detection accuracy.
+describe("interpersonal discovery reliability paths", () => {
+  const cases = [
+    { name: "explicit attempted kiss", player: "I try to kiss Hermione.", narrator: "Hermione withdraws before our lips touch and says no.",
+      fact: "Seth attempted to kiss Hermione; she withdrew before contact and declined.", candidateOnly: true, eventStatus: "completed" },
+    { name: "mutual first kiss", player: "May I kiss you?", narrator: "Hermione says yes, and they share their first mutual kiss.",
+      fact: "Hermione and Seth shared their first mutual kiss.", candidateOnly: false, eventStatus: "completed" },
+    { name: "ambiguous significant advance", player: "Disarming and undermining am I? I grin as I lean in.", narrator: "Hermione leans back a precise, deliberate inch. She jokes about his flirting and invites him to walk her to Gryffindor Tower.",
+      fact: "During flirtation Seth leaned in; Hermione deliberately leaned back, then invited him to walk her to her tower. Romantic intent remains uncertain.", candidateOnly: true, eventStatus: "unresolved" },
+    { name: "accepted research dinner", player: "Will you have dinner with me to discuss the runes?", narrator: "Hermione says, I wasn't going to say no to dinner regardless. We can discuss the research there.",
+      fact: "Hermione accepted Seth's invitation to dinner to discuss rune research; the dinner has not happened.", candidateOnly: false, eventStatus: "completed" },
+  ];
+  it.each(cases)("routes $name with original evidence and protected character identity", async scene => {
+    const a = seed(); a.brains = []; fired = [];
+    a.storyCards = [makeStoryCard({ id: "hermione", type: "character", title: "Hermione", keys: ["Hermione"], content: "A scholar.", autoUpdate: false })];
+    a.messages[0].content = scene.player; a.messages[1].content = scene.narrator;
+    discoveries = [{ ...finding(a, scene.fact), title: scene.name, candidateOnly: scene.candidateOnly, eventStatus: scene.eventStatus }];
+    a.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
+    a.memoryAutoApprove.storyCard = true;
+    const result = await evaluate(a);
+    expect(result.state.storyCards.find(card => card.id === "hermione")).toEqual(a.storyCards[0]);
+    const proposal = result.state.activeState.memoryProposals.find(item => item.storyCardType === "lore")!;
+    expect(proposal).toMatchObject({ memoryMode: "historical", lore: { status: scene.eventStatus }, storyCardReview: { candidateOnly: scene.candidateOnly } });
+    if (scene.candidateOnly) expect(proposal).toMatchObject({ status: "pending", requiresReview: true });
+    expect(proposal.storyCardReview?.evidenceQuotes).toEqual(a.messages.map(message => ({ messageId: message.id, quote: message.content })));
+    if (scene.name.includes("attempt") || scene.name.includes("ambiguous")) expect(proposal.content).not.toMatch(/shared.*kiss|completed kiss|confirmed kiss attempt/i);
+    if (scene.name.includes("dinner")) expect(proposal.content).not.toContain("romantic date");
+    expect(result.logEntry.conditionsEvaluated.some(condition => condition.id === "storyCard:hermione")).toBe(false);
+    const count = result.state.activeState.memoryProposals.length;
+    expect((await evaluate(result.state)).state.activeState.memoryProposals).toHaveLength(count);
+  });
+  it("keeps ordinary book-reading negative and records semantic zero separately from identity", async () => {
+    const a = seed(); a.brains = []; fired = []; discoveries = [];
+    a.messages[1].content = "They lean closer to read the book. Hermione says they can return to Gryffindor Tower.";
+    const result = await evaluate(a);
+    expect(result.state.activeState.memoryProposals).toHaveLength(0);
+    expect(result.state.activeState.memoryDiagnostics).toContainEqual(expect.objectContaining({ outcome: "zero_candidates", candidateKinds: ["semanticLore"] }));
+    expect(result.logEntry.conditionsFired).not.toContain("storyCardDiscovery");
+    const prompt = provider.mock.calls.flatMap(([request]) => request.messages).find(message => message.content.includes("STORY CARD MEMORY CHECK"))!.content;
+    expect(prompt).toContain("Ordinary smiles, leaning to read");
+    expect(prompt).toContain('"evidenceQuotes"'); expect(prompt).toContain('"memoryMode"'); expect(prompt).toContain('"eventStatus"');
+  });
+  it("distinguishes identity-only nominations from semantic detection success", async () => {
+    const a = seed(); a.brains = []; fired = [];
+    a.messages[1].content = "Silverpeak Citadel is a hidden academy built into the mountain.";
+    const result = await evaluate(a);
+    expect(result.logEntry.conditionsFired).toContain("storyCardIdentityDiscovery");
+    expect(result.logEntry.conditionsFired).not.toContain("storyCardDiscovery");
+    expect(result.state.activeState.memoryDiagnostics).toContainEqual(expect.objectContaining({ candidateKinds: ["deterministicIdentity"] }));
+    expect(scanStoryCardExchange(a, { ...a.messages[1], content: 'Hermione says, "Walk me to Gryffindor Tower."' }).some(proposal => proposal.storyCardType === "location")).toBe(false);
+  });
+  it.each([
+    { evidenceQuotes: [{ messageId: "source", quote: "They kissed." }] },
+    { evidenceQuotes: [{ messageId: "ask", quote: "Mira, I offer to share the ward research." }] },
+    { evidenceMessageIds: ["source", "invented"] },
+    { memoryMode: undefined }, { eventStatus: "invented" },
+  ])("retains diagnosable source-contract failures: %j", async invalid => {
+    const a = seed(); a.brains = []; fired = []; discoveries = [{ ...finding(a), ...invalid }];
+    const result = await evaluate(a);
+    expect(result.state.activeState.memoryProposals).toHaveLength(0);
+    expect(result.state.messages.at(-1)?.memoryEvaluation?.status).toBe("failed");
+    expect(result.state.activeState.memoryDiagnostics).toContainEqual(expect.objectContaining({ outcome: "validation_rejected", candidateKinds: ["semanticLore"] }));
+  });
+  it("tags OOC replies and spends the evidence budget only on story exchanges, preserving correction references", async () => {
+    let a = seed(); fired = [];
+    a.messages.unshift(
+      { id: "old-ask", role: "user", content: "Earlier scene.", createdAt: "2026-07-01" },
+      { id: "old-source", role: "assistant", content: "Earlier narration.", createdAt: "2026-07-01" },
+      { id: "prior-ask", role: "user", content: "I ask about the library.", createdAt: "2026-07-01" },
+      { id: "prior-source", role: "assistant", content: "Mira points to the library.", createdAt: "2026-07-01" });
+    for (let n = 0; n < 3; n++) {
+      const turn = await runTurnPipeline({ adventure: a, text: "Correction: this dinner is research, not a date.", mode: "comms", sendChatCompletion: async () => ({ content: "Acknowledged; no story action occurred." }) });
+      a = turn.adventure;
+      expect(a.messages.at(-1)?.inputMode).toBe("comms");
+    }
+    a.messages.push({ id: "ask2", role: "user", content: "I open the book.", createdAt: "2026-07-01" }, { id: "source2", role: "assistant", content: "Hermione reads alongside him.", createdAt: "2026-07-01" });
+    const evidence = memoryEvidenceWindow(a, "source2");
+    expect(evidence.map(message => message.id)).toEqual(["prior-ask", "prior-source", "ask", "source", "ask2", "source2"]);
+    expect(memoryCanonMessages(a, "", "").some(message => message.content.includes("Explicit author/OOC reference"))).toBe(true);
+    await evaluate(a, "source2");
+    const requests = provider.mock.calls.flatMap(([request]) => request.messages);
+    expect(requests.filter(message => message.content.startsWith("Recent story evidence:")).every(message => !message.content.includes("Acknowledged"))).toBe(true);
+    const conditions = provider.mock.calls.find(([request]) => request.messages[0].content.includes("evaluation engine"))![0];
+    expect(conditions.messages.at(-1)!.content).not.toContain("Acknowledged");
+    expect(conditions.messages.at(-1)!.content).not.toContain("Correction:");
+    expect(STORY_CARD_MEMORY_CHECK).toContain("NEVER a confirmed kiss attempt");
+  });
+});
+
+it("preserves legacy assistant recovery for explicit review without scheduling or replaying it", async () => {
+  const a = seed(); a.brains = []; fired = [];
+  a.messages.unshift({ id: "legacy", role: "assistant", content: "Hermione accepted the research dinner invitation.", createdAt: "2026-07-01", memoryRecovery: { turn: 1, status: "pending" } });
+  a.messages[1].memoryEvaluation = undefined;
+  const normalized = normalizeAdventure(a);
+  expect(pendingMemoryRecovery(normalized).map(message => message.id)).toContain("legacy");
+  expect(memoryCycleSources(normalized)).toHaveLength(0);
+  expect(provider).not.toHaveBeenCalled();
+  const result = await evaluate(normalized);
+  expect(result.state.messages.find(message => message.id === "legacy")?.memoryRecovery).toEqual(a.messages[0].memoryRecovery);
+  expect(pendingMemoryRecovery(result.state).map(message => message.id)).toContain("legacy");
+  expect(provider.mock.calls.filter(([request]) => request.messages.some(message => message.content.includes("STORY CARD MEMORY CHECK")))).toHaveLength(1);
 });

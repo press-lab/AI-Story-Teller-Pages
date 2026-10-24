@@ -1323,7 +1323,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
       const stale = source.content !== action.source.content || action.dependencies.some(item => !state.messages.some(message => message.id === item.id && message.content === item.content))
         || action.targets.some(target => !memoryTargetMatches(state, target));
       const error = stale ? "Source evidence or destination changed during evaluation; result discarded." : action.error;
-      const next = error ? state : action.actions.reduce(adventureReducer, state);
+      const next = stale ? state : (error ? action.actions.filter(item => item.type === "RECORD_MEMORY_DIAGNOSTIC") : action.actions).reduce(adventureReducer, state);
       const completedGroups = [...(source.memoryEvaluation?.completedGroups ?? []), ...(!error ? [action.group] : [])];
       const complete = MEMORY_EVALUATION_GROUPS.every(group => completedGroups.includes(group));
       const updated = touchAdventure(next, { messages: next.messages.map(message => message.id === source.id

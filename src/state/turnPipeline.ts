@@ -120,7 +120,7 @@ export async function applyProviderResponse({
     type: "ADD_MESSAGE",
     role: "assistant",
     content: finalContent,
-    inputMode: undefined,
+    inputMode: mode,
     id: messageId,
     createdAt,
     usage: response.usage,
