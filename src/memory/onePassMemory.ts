@@ -13,7 +13,7 @@ export function onePassMemoryInstruction(brains: BrainEntry[], categories: strin
   return `[ONE-PASS MEMORY]
 Write the requested narrative first, preserving its quality and visible word limit. Then append exactly one hidden JSON envelope:
 <memory_updates>{"updates":[]}</memory_updates>
-An empty updates array is normal. Never invent changes to fill it. Maximum 4 small updates per turn. No other thought/memory tags.
+The envelope is mandatory on EVERY narrative response, including when nothing changed: emit <memory_updates>{"updates":[]}</memory_updates>. Stopping the visible scene does not end the response: append the envelope after that stopping point. Never invent changes to fill it. Maximum 4 small updates per turn. No other thought/memory tags.
 Each update has: kind, target, content, evidence, reason. evidence is an EXACT quote from this turn's player input or your visible story, establishing the change. reason explains why it will matter beyond this scene. Do not treat a suggestion, possibility, or plan as an accomplished fact. Do not give absent characters knowledge they did not receive.
 Allowed kinds:
 - "thought": target is an eligible character name below; content is ONE new first-person internal reaction, belief, or private plan (max 45 words). Capture only if the character participated or learned something this turn. Never repeat existing thoughts or put generic world facts here.
@@ -60,6 +60,27 @@ export function isSceneRecapForCharacter(content: string): boolean {
 /** Require explicit persistent evidence rather than a model's claim that one scene proves a habit. */
 export function hasDurableCharacterEvidence(evidence: string): boolean {
   return /\b(?:can|cannot|can't|always|never|usually|regularly|habitually|tends? to|owns|knows|loves|hates|trusts|promised|agreed to|is allergic to|are allergic to|is able to|are able to|burns|weakens|heals)\b/i.test(evidence);
+}
+
+/** Resolve only an uninterrupted, single named third-person conversational partner.
+ * Older scene summaries and model-supplied participant lists cannot establish presence. */
+export function continuousThoughtParticipant(adventure: Adventure, target: string, story: string, playerInput: string, sourceTurnId: string): boolean {
+  const index = adventure.messages.findIndex(message => message.id === sourceTurnId);
+  const history = index >= 0 ? adventure.messages.slice(0, index) : adventure.messages;
+  const previous = history.at(-1)?.role === "user" ? history.at(-2) : history.at(-1);
+  if (!previous || previous.role !== "assistant" || previous.inputMode === "comms" || history.at(-1)?.inputMode === "comms") return false;
+  // A named mention (a book, recollection, or report about an absent person) is
+  // insufficient: the immediately preceding narrator must show participation.
+  const participation = new RegExp(`(?:^| )${norm(target)} (?:says|asks|replies|answers|agrees|nods|sets|studies|taps|slides|looks|leans|explains|continues|adds|speaks)\\b`);
+  if (!participation.test(norm(previous.content))) return false;
+  const current = story + "\n" + playerInput;
+  if (!/\b(?:she|he)\s+(?:says|asks|replies|answers|agrees|nods|continues|adds|explains|pulls|taps)\b/i.test(current)) return false;
+  if (/\b(?:leaves?|left|depart(?:s|ed)?|alone|elsewhere|meanwhile|later|next morning)\b/i.test(previous.content + "\n" + current)
+    || /\b(?:someone|another (?:woman|man|person|student))\s+(?:enters|arrives|says|asks|replies)\b/i.test(previous.content + "\n" + current)) return false;
+  const names = [...new Set([...adventure.brains.map(brain => brain.characterName),
+    ...adventure.storyCards.filter(card => card.type === "character").map(card => card.title)])];
+  const mentioned = names.filter(name => (` ${norm(previous.content + "\n" + current)} `).includes(` ${norm(name)} `));
+  return mentioned.length === 1 && mentioned[0] === target;
 }
 
 /** Local structural/evidence checks, not a claim that a quote proves every inference. */
@@ -132,7 +153,8 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
       }
       if (!brain || !eligibleNames.includes(JSON.stringify(target))) { reject(`${target}: brain not eligible`); continue; }
       if (Object.keys(brain.thoughts ?? {}).length && !visibleIds.has(brain.id)) { reject(`${target}: brain context was omitted`); continue; }
-      if (!evidenceSources.some(s => s.includes(norm(target)))) { reject(`${target}: character absent from this turn`); continue; }
+      if (!evidenceSources.some(s => (` ${s} `).includes(` ${norm(target)} `))
+        && !continuousThoughtParticipant(adventure, target, story, playerInput, sourceTurnId)) { reject(`${target}: character absent from this turn`); continue; }
       if (Object.values({ ...brain.archivedThoughts, ...brain.thoughts }).some(t => norm(t).includes(norm(content)))) { suppress("Duplicate existing Brain thought."); continue; }
       const patch = { thoughts: { [`${adventure.activeState.turn}_${sourceTurnId}`]: `${adventure.activeState.turn} → ${content}` } };
       const boundary = applyAIMemoryUpdate(adventure, [{ type: "brainPatch", brainId: brain.id, patch, mode: "append", turn: adventure.activeState.turn, preview: content }]);

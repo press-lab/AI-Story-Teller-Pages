@@ -82,8 +82,8 @@ export async function runCompactMemoryFallback(
     ...(adventure.rollingSummary.content ? ["Continuity summary (may be older than the source):\n" + adventure.rollingSummary.content] : []),
   ];
   const memoryRules = instruction.replace(
-    'Write the requested narrative first, preserving its quality and visible word limit. Then append exactly one hidden JSON envelope:\n<memory_updates>{"updates":[]}</memory_updates>',
-    'The narrative is already complete. Return ONLY JSON. Do not write story prose or XML tags.',
+    /Write the requested narrative first,[\s\S]*?(?=Each update has:)/,
+    'The narrative is already complete. Return ONLY JSON. Do not write story prose or XML tags. Maximum 4 small updates per source. Never invent changes to fill an empty updates array.\n',
   ).replace("evidence is an EXACT quote from this turn's player input or your visible story, establishing the change.",
     "evidence is an EXACT quote from an explicitly referenced original message within the establishing narrator's allowed evidence window.")
     .replace("Only output changes supported by this turn", "Only output changes supported by the permitted original source window")
@@ -113,7 +113,9 @@ export async function runCompactMemoryFallback(
     return { sourceTurnId: source.id, storyDate: source.storyTime ?? null,
       playerMessageId: player?.role === "user" ? player.id : null, narratorMessageId: source.id,
       allowedEvidenceMessageIds: memoryEvidenceWindow(adventure, source.id).map(message => message.id) };
-  })) });
+  })) + (batch || useResponses
+    ? '\nReturn only {"turns":[{"sourceTurnId":"requested ID","updates":[]}]}, with one entry per requested source. Use the exact update field names above. No XML, prose, or top-level updates array.'
+    : '\nReturn only {"updates":[]}, using the exact update field names above. No XML or prose.') });
   // Keep requests bounded without cutting any source quote or adding a second call.
   if (messages.reduce((sum, message) => sum + approximateTokenCount(message.content), 0) > 12000) {
     if (sources.length > 1) return runCompactMemoryFallback(adventure, providerConfig, sources.slice(0, Math.ceil(sources.length / 2)), options);
@@ -164,8 +166,8 @@ export async function runCompactMemoryFallback(
         ? [{ sourceTurnId: sources[0].id, updates: (parsed as { updates: unknown[] }).updates }]
         : (parsed as { turns: Array<{ sourceTurnId: string; updates: unknown[] }> }).turns)
       : [{ sourceTurnId: latestStory.id, updates: (parsed as { updates: unknown[] }).updates }];
-    // Reject ambiguous/foreign attribution globally. A valid chronological prefix
-    // can commit atomically while a missing/malformed later source stays pending.
+    // Reject ambiguous/foreign attribution globally. Independent valid sources
+    // can commit atomically while missing/malformed sources stay pending.
     if (!Array.isArray(turns) || turns.some(turn => !turn || !sourceIds.has(turn.sourceTurnId))
       || new Set(turns.map(turn => turn.sourceTurnId)).size !== turns.length) {
       return { ...empty, tokenUsage, error: diagnostic("response_schema_invalid", response.finishReason) };
@@ -177,7 +179,7 @@ export async function runCompactMemoryFallback(
       if (!turn || !Array.isArray(turn.updates) || turn.updates.length > 4
         || turn.updates.some(update => !update || typeof update !== "object" || Array.isArray(update)
           || !["kind", "target", "content", "evidence", "reason"].every(field =>
-            typeof (update as Record<string, unknown>)[field] === "string" && String((update as Record<string, unknown>)[field]).trim()))) break;
+            typeof (update as Record<string, unknown>)[field] === "string" && String((update as Record<string, unknown>)[field]).trim()))) continue;
       completedSources.push(source);
     }
     if (!completedSources.length) return { ...empty, tokenUsage, error: diagnostic("response_schema_invalid", response.finishReason) };

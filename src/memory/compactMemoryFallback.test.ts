@@ -108,6 +108,8 @@ it("recovers character, relationship, Brain and historical memories across a bat
   expect(result.valid).toBe(true);
   expect(provider).toHaveBeenCalledTimes(1);
   const prompt = provider.mock.calls[0][0].messages.map(m => m.content).join("\n");
+  expect(prompt).not.toContain("<memory_updates>");
+  expect(prompt).not.toContain("envelope is mandatory");
   expect(prompt).not.toContain("UNRELATED_SCENARIO_RULES");
   expect(prompt).not.toContain("UNRELATED_ISLAND_CANON");
   expect(prompt).toContain("Lucian runs a private club.");
@@ -128,7 +130,7 @@ it("retains a batch when the response omits a source, and rejects evidence from 
   adventure = adventureReducer(adventure, { type: "ADD_MESSAGE", id: "later", role: "assistant", content: "The room falls silent." });
   const batch = adventure.messages.filter(m => m.role === "assistant");
   provider.mockResolvedValueOnce({ content: '{"turns":[{"sourceTurnId":"later","updates":[]}]}', raw: {} });
-  expect((await runCompactMemoryFallback(adventure, config, batch)).valid).toBe(false);
+  expect((await runCompactMemoryFallback(adventure, config, batch)).processedSources).toEqual([{ id: "later", content: "The room falls silent." }]);
   provider.mockResolvedValueOnce({ content: JSON.stringify({ turns: [
     { sourceTurnId: "story", updates: [] },
     { sourceTurnId: "later", updates: [{ kind: "card", target: "Lucian", content: "Lucian knows the secret mark.", evidence: "Lucian says he knows the intruder's mark: a silver cup.", reason: "Durable knowledge" }] },
@@ -198,4 +200,21 @@ describe("independent recovery source validation", () => {
     expect(result.processedSources).toBeUndefined();
     expect(provider).toHaveBeenCalledTimes(1);
   });
+});
+
+
+it.each([0, 1])("isolates malformed source schemas at index %s", async bad => {
+  provider.mockReset();
+  let a = adventureWithMissingEnvelope();
+  a = adventureReducer(a, { type: "ADD_MESSAGE", id: "later", role: "assistant", content: "The room falls silent." });
+  const batch = a.messages.filter(message => message.role === "assistant");
+  provider.mockResolvedValue({ content: JSON.stringify({ turns: batch.map((source, index) => ({
+    sourceTurnId: source.id, updates: index === bad ? [{ kind: "lore" }] : [],
+  })) }), raw: {} });
+  const result = await runCompactMemoryFallback(a, config, batch);
+  expect(result.valid).toBe(true);
+  expect(result.processedSources).toEqual(batch.filter((_, index) => index !== bad).map(({ id, content }) => ({ id, content })));
+  expect(result.actions.some(action => action.type === "ADD_MEMORY_PROPOSAL")).toBe(false);
+  expect(provider).toHaveBeenCalledTimes(1);
+  expect(provider.mock.calls[0][0].retry).toBe(false);
 });

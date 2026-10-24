@@ -139,3 +139,12 @@ it("delivers a grounded GLM low-reasoning Lore proposal through the Memory Inbox
   expect(result.processedSources).toEqual([{ id: "source", content: evidence }]);
   expect(spy).toHaveBeenCalledTimes(1);
 });
+
+
+it("does not inherit a narrator's endpoint-specific control on a different evaluator endpoint", () => {
+  const a = createDefaultAdventure();
+  a.semanticEvaluationSettings.backgroundProviderConfig = { baseUrl: "https://api.deepseek.com/v1", model: "deepseek-chat" };
+  const config = resolveBackgroundProviderConfig(a, { ...glm, memoryReasoningControl: "openRouterDisabled" });
+  expect(config.memoryReasoningControl).toBeUndefined();
+  expect(memoryReasoningFields(config)).toEqual({ thinking: { type: "disabled" } });
+});

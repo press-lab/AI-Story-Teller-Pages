@@ -28,7 +28,7 @@ export function resolveBackgroundProviderConfig(
     const baseUrl = bg.baseUrl.trim();
     return {
       ...providerConfig,
-      memoryReasoningControl: bg.memoryReasoningControl ?? providerConfig.memoryReasoningControl,
+      memoryReasoningControl: bg.memoryReasoningControl ?? (baseUrl === providerConfig.baseUrl.trim() ? providerConfig.memoryReasoningControl : undefined),
       baseUrl,
       apiKey: bg.apiKey?.trim() ? bg.apiKey : providerConfig.apiKey,
       model: bg.model?.trim() || providerConfig.model,

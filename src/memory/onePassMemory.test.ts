@@ -4,7 +4,7 @@ import { adventureReducer } from "../state/adventureReducer";
 import { createDefaultAdventure, makeBrain, makeComponent, makeStoryCard } from "../state/defaults";
 import { runTurnPipeline } from "../state/turnPipeline";
 import { evaluateStoryResponseGuard } from "../state/storyResponseGuard";
-import { ONE_PASS_MEMORY_ID, isSceneRecapForCharacter, onePassMemoryActions, parseOnePassMemory } from "./onePassMemory";
+import { ONE_PASS_MEMORY_ID, continuousThoughtParticipant, isSceneRecapForCharacter, onePassMemoryActions, parseOnePassMemory } from "./onePassMemory";
 
 function fixture() {
   const adventure = createDefaultAdventure("One-pass quality checks");
@@ -275,5 +275,34 @@ describe("one-pass memory quality boundary", () => {
     expect(next.storyCards).toEqual(adventure.storyCards);
     expect(next.activeState.memoryProposals).toHaveLength(1);
     expect(next.activeState.memoryProposals[0]).toMatchObject({ status: "pending", requiresReview: false });
+  });
+});
+
+
+describe("continuous conversation attribution", () => {
+  it.each([
+    ["Mira studies the gate. You wait for her explanation.", "She explains the improved design.", true],
+    ["Mira and Edythe study the gate.", "She explains the improved design.", false],
+    ["Mira left the library. You are alone.", "She explains the improved design.", false],
+    ["The professor studies the gate.", "She explains the improved design.", false],
+    ["Mira wrote the book on the table.", "She explains the improved design.", false],
+  ])("resolves only an unambiguous present partner: %s", (previous, current, accepted) => {
+    const a = fixture();
+    a.storyCards.push(makeStoryCard({ title: "Edythe", content: "Edythe is a scholar.", type: "character" }));
+    a.messages = [{ id: "prior", role: "assistant", content: previous, createdAt: "2001-01-01" },
+      { id: "input", role: "user", content: "I listen.", createdAt: "2001-01-01" }];
+    expect(continuousThoughtParticipant(a, "Mira", current, "I listen.", "new-source")).toBe(accepted);
+    const context = buildContext(a, { currentInput: "I listen." });
+    const actions = onePassMemoryActions(a, context, [{ kind: "thought", target: "Mira",
+      content: "I should explain my design carefully.", evidence: current, reason: "A private plan for the discussion" }], current, "new-source");
+    expect(actions.some(action => action.type === "APPLY_BRAIN_UPDATE")).toBe(accepted);
+  });
+  it("places mandatory memory output after scenario narration rules in the system payload", () => {
+    const a = fixture();
+    a.components.push(makeComponent({ title: "Rules", type: "narrationRules", content: "SCENARIO_STOP_RULE" }));
+    const context = buildContext(a, { currentInput: "Mira listens." });
+    const system = context.messages[0].content;
+    expect(system.indexOf("[ONE-PASS MEMORY]")).toBeGreaterThan(system.indexOf("SCENARIO_STOP_RULE"));
+    expect(system).toContain("envelope is mandatory on EVERY narrative response");
   });
 });

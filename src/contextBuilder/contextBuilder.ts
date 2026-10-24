@@ -440,7 +440,7 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
     return [next];
   });
   const runtimeSystemItems = [turnScopeItem, memoryItem].filter((entry): entry is ContextItem => Boolean(entry));
-  const systemSection = section("system", "A. System Shell / Global Generation Rules", 0, [systemItem, ...runtimeSystemItems, ...narrationRulesItems]);
+  const systemSection = section("system", "A. System Shell / Global Generation Rules", 0, [systemItem, ...narrationRulesItems, ...runtimeSystemItems]);
 
   // B2. AI Instructions — all active components with type === "aiInstructions"
   const aiInstructionItems = prioritySort(adventure.components).flatMap((component) => {

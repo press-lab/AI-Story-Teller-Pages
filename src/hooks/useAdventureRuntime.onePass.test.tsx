@@ -261,7 +261,7 @@ it("evaluates the corrected final story in the existing rewrite request", async 
 it("runs a dedicated evaluator only at the explicitly selected cadence", async () => {
   vi.mocked(sendOpenAICompatibleChatCompletion).mockReset().mockImplementation(async options => {
     if (!options.responseFormat) return { content: story + '<memory_updates>{"updates":[]}</memory_updates>', raw: {} };
-    const sources = JSON.parse(options.messages.at(-1)!.content.replace("Completed source exchanges and in-world dates: ", "")) as Array<{ sourceTurnId: string }>;
+    const sources = JSON.parse(options.messages.at(-1)!.content.split("\nReturn only ")[0].replace("Completed source exchanges and in-world dates: ", "")) as Array<{ sourceTurnId: string }>;
     return { content: JSON.stringify({ turns: sources.map(source => ({ sourceTurnId: source.sourceTurnId, updates: [] })) }), raw: {} };
   });
   const { result } = setup(true, false, undefined, { evaluator: "dedicated", everyNTurns: 2 });
