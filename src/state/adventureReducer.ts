@@ -1,3 +1,4 @@
+import { backgroundProviderConfigIssue } from "../providers/backgroundProvider";
 import { memoryRecoveryInterval, MEMORY_RECOVERY_MAX_FAILURES } from "../memory/memoryRecoveryBatch";
 import { MEMORY_EVALUATION_GROUPS, memoryTargetMatches } from "../memory/memoryCycleState";
 import { memoryEvidenceWindow } from "../memory/memoryEvidenceWindow";
@@ -1305,6 +1306,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
       } });
     }
     case "CLAIM_MEMORY_EVALUATION": {
+      if (backgroundProviderConfigIssue(state)) return state;
       const source = state.messages.find(message => message.id === action.sourceId);
       if (!source || source.role !== "assistant" || source.inputMode === "comms" || source.memoryEvaluation?.status === "complete"
         || (!action.manual && ((source.memoryEvaluation?.attempts ?? 0) >= 3 || (source.memoryEvaluation?.nextEligibleTurn ?? 0) > action.turn))) return state;
@@ -1334,7 +1336,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
           lastError: complete ? undefined : error ?? message.memoryEvaluation?.lastError } } : message) });
       return adventureReducer(updated, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: {
         id: createId("decision"), sourceId: source.id, createdAt: nowIso(), stage: "independent",
-        outcome: stale ? "evaluation_stale" : error ? "evaluation_failed" : "evaluation_completed",
+        outcome: stale ? "evaluation_stale" : error ? "evaluation_failed" : "evaluation_completed", group: action.group,
         reason: `${action.group}: ${error ?? "Evaluation complete; proposals and suppressions are recorded separately."}`,
       } });
     }

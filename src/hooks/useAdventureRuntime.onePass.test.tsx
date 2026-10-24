@@ -118,3 +118,23 @@ it("allows explicit bounded evaluation of a legacy source while automatic memory
   expect(provider).toHaveBeenCalledTimes(1);
   expect(hook.result.current.adventure!.messages[0].memoryEvaluation?.status).toBe("complete");
 });
+
+it("pauses invalid memory configuration before claims while narration continues, then allows explicit recovery", async () => {
+  const a = createDefaultAdventure("Invalid evaluator");
+  a.semanticEvaluationSettings = { ...a.semanticEvaluationSettings, backgroundProviderConfig: { baseUrl: "1", model: "" } };
+  const hook = setup(a);
+  for (let n = 0; n < 4; n++) {
+    await act(async () => { await hook.result.current.runtime.submitTurn("I listen."); });
+  }
+  expect(provider.mock.calls.filter(([request]) => request.memoryEvaluation)).toHaveLength(0);
+  const state = hook.result.current.adventure!;
+  const sources = state.messages.filter(message => message.role === "assistant");
+  expect(sources).toHaveLength(4);
+  expect(sources.every(message => message.memoryEvaluation?.attempts === 0 && message.memoryEvaluation.status === "pending")).toBe(true);
+  expect(state.activeState.memoryDiagnostics).toContainEqual(expect.objectContaining({ outcome: "not_attempted", failureCategory: "configuration" }));
+  await act(async () => { hook.result.current.setAdventure({ ...state, semanticEvaluationSettings: { ...state.semanticEvaluationSettings, backgroundProviderConfig: undefined } }); });
+  expect(provider.mock.calls.filter(([request]) => request.memoryEvaluation)).toHaveLength(0);
+  await act(async () => { await hook.result.current.runtime.evaluateMemorySources([sources[0].id]); });
+  expect(hook.result.current.adventure!.messages.find(message => message.id === sources[0].id)?.memoryEvaluation?.status).toBe("complete");
+  expect(hook.result.current.adventure!.messages.find(message => message.id === sources[1].id)?.memoryEvaluation?.attempts).toBe(0);
+});

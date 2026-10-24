@@ -9,6 +9,9 @@ export interface MemoryDiagnostic {
     | "proposal_approved" | "proposal_rejected" | "proposal_ignored"
     | "recovery_queued" | "recovery_attempted" | "recovery_validated" | "recovery_completed" | "recovery_failed"
     | "evaluation_queued" | "evaluation_started" | "evaluation_completed" | "evaluation_failed" | "evaluation_stale";
+  failureCategory?: "configuration" | "transport_api" | "invalid_model_output";
+  failureCode?: string;
+  group?: MemoryEvaluationGroup;
   origin?: "inline" | "recovery";
   instructionSupplied?: boolean;
   envelopeParsed?: boolean;

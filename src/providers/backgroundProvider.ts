@@ -16,7 +16,7 @@ export function backgroundProviderConfigIssue(adventure: Adventure): string | un
   if (!bg?.baseUrl?.trim()) return undefined;
   return isUsableProviderBaseUrl(bg.baseUrl)
     ? undefined
-    : `Background provider Base URL is invalid: "${bg.baseUrl}". Background AI tasks are using the active provider instead.`;
+    : "Memory Suggestions are paused. Correct Background Base URL in the background provider settings to an absolute HTTP(S) URL; no memory request was sent.";
 }
 
 export function resolveBackgroundProviderConfig(
@@ -46,8 +46,24 @@ export function resolveBackgroundProviderConfig(
 
 /** Memory evaluation must never silently replace an invalid configured endpoint. */
 export function resolveMemoryEvaluationProviderConfig(adventure: Adventure, active: ProviderConfig): ProviderConfig {
-  if (backgroundProviderConfigIssue(adventure)) throw new Error("memory_background_base_url_invalid: Background Base URL must be an absolute HTTP(S) URL; evaluation was not sent.");
+  if (backgroundProviderConfigIssue(adventure)) throw new MemoryEvaluationError("configuration", "memory_background_base_url_invalid", backgroundProviderConfigIssue(adventure)!);
   const config = resolveBackgroundProviderConfig(adventure, active);
-  if (!isUsableProviderBaseUrl(config.baseUrl)) throw new Error("memory_provider_base_url_invalid: Evaluator Base URL must be an absolute HTTP(S) URL; evaluation was not sent.");
+  if (!isUsableProviderBaseUrl(config.baseUrl)) throw new MemoryEvaluationError("configuration", "memory_provider_base_url_invalid", "Memory Suggestions are paused. Correct the active provider Base URL to an absolute HTTP(S) URL; no memory request was sent.");
+  if (!config.model?.trim()) throw new MemoryEvaluationError("configuration", "memory_provider_model_missing",
+    "Memory Suggestions are paused. Set a background evaluator Model or an active provider Model; no memory request was sent.");
   return config;
+}
+
+export class MemoryEvaluationError extends Error {
+  constructor(readonly category: "configuration" | "transport_api" | "invalid_model_output", readonly code: string, message: string) {
+    super(`${code}: ${message}`);
+  }
+}
+
+/** Never copy arbitrary provider exceptions (which may include credentials) into saves. */
+export function safeMemoryFailure(error: unknown, received = false): MemoryEvaluationError {
+  if (error instanceof MemoryEvaluationError) return error;
+  return received
+    ? new MemoryEvaluationError("invalid_model_output", "memory_model_output_invalid", "The evaluator returned invalid output; review the memory diagnostics and retry selected sources.")
+    : new MemoryEvaluationError("transport_api", "memory_provider_request_failed", "The memory provider request failed; check provider access, credentials, and availability, then retry selected sources.");
 }

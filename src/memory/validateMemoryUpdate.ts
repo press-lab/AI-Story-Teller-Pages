@@ -1,3 +1,4 @@
+import { safeMemoryFailure } from "../providers/backgroundProvider";
 import type { Adventure, ProviderConfig } from "../types/adventure";
 import { sendMemoryCompletion } from "../providers/memoryCompletion";
 import { latestMemoryTurn } from "./memoryUpdateEvidence";
@@ -36,6 +37,7 @@ export async function validateMemoryUpdate(
     : adventure.messages.filter(m => m.role === "user" || m.role === "assistant").slice(-Math.max(8, adventure.semanticEvaluationSettings.messagesIncluded));
   const latest = latestMemoryTurn(adventure);
   const evidence = messages.map(m => `[${m.id}] ${m.role}: ${m.content}`).join("\n\n");
+  let received = false;
   try {
     const response = await sendMemoryCompletion(adventure, providerConfig, [
         ...memoryCanonMessages(adventure, evidence, `Review ${title}\nPrevious: ${previous}\nProposed: ${content}`),
@@ -57,6 +59,7 @@ Every meaningful change must be supported by supplied recent message IDs. Return
       accum.promptTokens += response.usage?.promptTokens ?? 0;
       accum.completionTokens += response.usage?.completionTokens ?? 0;
     }
+    received = true;
     const raw = response.content.replace(/<think>[\s\S]*?<\/think>/gi, "").trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
     const verdict: unknown = JSON.parse(raw);
     if (!verdict || typeof verdict !== "object") throw new Error("Invalid review response.");
@@ -77,6 +80,6 @@ Every meaningful change must be supported by supplied recent message IDs. Return
     if (!v.evidenceMessageIds.some(id => latest.some(message => message.id === id))) return { changed: false, error: "Memory change lacks evidence from the establishing exchange." };
     return { changed: true, evidenceMessageIds: v.evidenceMessageIds as string[] };
   } catch (error) {
-    return { changed: false, retryable: true, error: `Memory validation failed for ${title}: Invalid review response or provider failure (details omitted).` };
+    return { changed: false, retryable: true, error: safeMemoryFailure(error, received).message };
   }
 }

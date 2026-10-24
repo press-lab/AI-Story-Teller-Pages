@@ -1,7 +1,7 @@
 import { makeStoryCardSuggestion, scanStoryCardExchange, relevantStoryCardInventory, STORY_CARD_MEMORY_CHECK } from "./storyCardSuggestions";
 import { isHistoricalLore, primaryStoryCardType } from "./storyCardArchitecture";
 import { sameEventMemory } from "./eventMemory";
-import { resolveMemoryEvaluationProviderConfig } from "../providers/backgroundProvider";
+import { resolveMemoryEvaluationProviderConfig, safeMemoryFailure } from "../providers/backgroundProvider";
 import type { Adventure, AdventureAction, MemoryDiagnostic, MemoryProposal, ProviderConfig } from "../types/adventure";
 import { memoryCanonMessages } from "./memoryCanon";
 import { storyCardContextContent } from "./storyCardPolicy";
@@ -123,6 +123,7 @@ export async function detectStoryCardProposals(adventure: Adventure, providerCon
   const cardInventory = relevantStoryCardInventory(adventure, excerpt);
   const proposalInventory = considered.filter(p => excerpt.toLowerCase().includes(p.title.toLowerCase())).slice(-8)
     .map(p => ({ title: p.title, status: p.status }));
+  let received = false;
   try {
     const response = await sendMemoryCompletion(adventure, providerConfig, [
         { role: "system", content: `${STORY_CARD_MEMORY_CHECK}
@@ -136,6 +137,7 @@ Return ONLY a JSON array, [] when nothing qualifies. Each item: {"title":"subjec
       ]);
     result.tokenUsage.promptTokens += response.usage?.promptTokens ?? 0;
     result.tokenUsage.completionTokens += response.usage?.completionTokens ?? 0;
+    received = true;
     const raw = response.content.replace(/<think>[\s\S]*?<\/think>/gi, "").trim()
       .replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
     const parsed: unknown = JSON.parse(raw);
@@ -218,8 +220,12 @@ Return ONLY a JSON array, [] when nothing qualifies. Each item: {"title":"subjec
   } catch (error) {
     // Provider exceptions may contain request data or credentials. Only expose our
     // structural errors; group failure still retains retry/quarantine semantics.
-    const reason = error instanceof Error && /^(Discovery |Invalid discovery)/.test(error.message) ? error.message : "Invalid response or provider failure (details omitted).";
-    diagnostic("validation_rejected", `Semantic discovery failed: ${reason}`);
+    const failure = safeMemoryFailure(error, received);
+    const reason = error instanceof Error && /^(Discovery |Invalid discovery)/.test(error.message) ? error.message : failure.message;
+    result.actions.push({ type: "RECORD_MEMORY_DIAGNOSTIC", entry: { id: createId("decision"), sourceId: options.sourceId ?? messages.at(-1)!.id,
+      createdAt: nowIso(), stage: "candidate", outcome: "evaluation_failed", group: "discovery", candidateKinds: ["semanticLore"],
+      failureCategory: failure.category, failureCode: failure.code, reason: failure.message } });
+    if (received) diagnostic("validation_rejected", `Semantic discovery failed: ${reason}`);
     result.errors.push(`Story Card discovery failed: ${reason}`);
   }
   return result;

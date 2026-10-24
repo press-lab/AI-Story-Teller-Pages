@@ -118,7 +118,7 @@ describe("Seattle memory quality", () => {
   it.each(["invalid JSON", '{"accepted":true,"meaningfulChange":true,"evidenceMessageIds":["invented"]}'])("fails closed on invalid review %s", async content => {
     provider.mockResolvedValueOnce({ content, raw: {} });
     const result = await validateMemoryUpdate(seattle(), config, "plotEssentials", "Plot Essentials", "Old", "Seth arrived at the Cullen home.");
-    expect(result.changed).toBe(false); expect(result.error).toContain("validation failed");
+    expect(result.changed).toBe(false); expect(result.error).toContain("memory_model_output_invalid");
   });
 
   it("keeps Priya and Ren separate despite scene overlap and previously polluted character keys", async () => {

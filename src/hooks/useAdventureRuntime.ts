@@ -13,7 +13,7 @@ import { runStoryCardAudit, type AuditRecommendation } from "../memory/storyCard
 import { runComponentAudit, type ComponentAuditRecommendation } from "../memory/componentAudit";
 import { runBrainAudit, type BrainAuditRecommendation } from "../memory/brainAudit";
 import { sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
-import { resolveBackgroundProviderConfig } from "../providers/backgroundProvider";
+import { resolveBackgroundProviderConfig, resolveMemoryEvaluationProviderConfig } from "../providers/backgroundProvider";
 import { adventureReducer } from "../state/adventureReducer";
 import {
   applyProviderResponse,
@@ -276,7 +276,20 @@ export function useAdventureRuntime(
     try {
       for (const source of selected) {
         if (adventureRef.current?.id !== snapshot.id) return;
-        snapshot = adventureReducer(mergeQueuedUpdates(adventureRef.current), { type: "CLAIM_MEMORY_EVALUATION",
+        snapshot = mergeQueuedUpdates(adventureRef.current);
+        try { resolveMemoryEvaluationProviderConfig(snapshot, mergeProviderConfig(snapshot, providerSettingsRef.current)); }
+        catch {
+          // Preflight before the durable claim: configuration never spends a source retry.
+          const result = await runMemoryCycle(snapshot, mergeProviderConfig(snapshot, providerSettingsRef.current),
+            { sourceId: source.id, manual: Boolean(sourceIds) });
+          const next = reduceActions(snapshot, result.actions);
+          adventureRef.current = next;
+          setAdventure(next);
+          setError(result.logEntry.errors.join("; "));
+          await saveAdventure(next);
+          return;
+        }
+        snapshot = adventureReducer(snapshot, { type: "CLAIM_MEMORY_EVALUATION",
           sourceId: source.id, turn: adventureRef.current.activeState.memoryRecoveryStoryTurn ?? 0, manual: Boolean(sourceIds) });
         // Persist the claim first. Reloading the app never replays a paid request.
         adventureRef.current = snapshot;

@@ -1,3 +1,4 @@
+import { resolveMemoryEvaluationProviderConfig, safeMemoryFailure } from "../providers/backgroundProvider";
 import { primaryStoryCardType, isHistoricalLore } from "../memory/storyCardArchitecture";
 import { latestMemoryTurn } from "../memory/memoryUpdateEvidence";
 import { validateMemoryUpdate } from "../memory/validateMemoryUpdate";
@@ -366,6 +367,7 @@ async function evaluateConditionIds(
   options?: { singlePick?: boolean },
 ): Promise<{ firedIds: string[]; errors: string[] }> {
   if (conditions.length === 0) return { firedIds: [], errors: [] };
+  let received = false;
   const systemPrompt = options?.singlePick ? MEMORY_EVALUATION_SYSTEM_PROMPT : EVALUATION_SYSTEM_PROMPT;
   try {
     const response = await sendMemoryCompletion(adventure, providerConfig, [
@@ -390,12 +392,13 @@ async function evaluateConditionIds(
       accum.promptTokens += response.usage.promptTokens ?? 0;
       accum.completionTokens += response.usage.completionTokens ?? 0;
     }
+    received = true;
     const parsed = parseJsonResponse<unknown>(response.content);
-    if (!Array.isArray(parsed)) return { firedIds: [], errors: ["Semantic condition response was not an array."] };
-    if (parsed.some(id => typeof id !== "string" || !conditions.some(condition => condition.id === id))) return { firedIds: [], errors: ["Semantic response contains an unknown condition ID."] };
+    if (!Array.isArray(parsed)) return { firedIds: [], errors: ["memory_model_output_invalid: Semantic condition response was not an array."] };
+    if (parsed.some(id => typeof id !== "string" || !conditions.some(condition => condition.id === id))) return { firedIds: [], errors: ["memory_model_output_invalid: Semantic response contains an unknown condition ID."] };
     return { firedIds: [...new Set(parsed as string[])], errors: [] };
   } catch (error) {
-    return { firedIds: [], errors: ["Semantic condition evaluation failed: invalid response or provider failure (details omitted)."] };
+    return { firedIds: [], errors: [safeMemoryFailure(error, received).message] };
   }
 }
 
@@ -698,7 +701,7 @@ async function generatedActionsFor(
 
     return { actions: [] };
   } catch (error) {
-    return { actions: [], error: error instanceof Error ? error.message : "Generated update failed." };
+    return { actions: [], error: safeMemoryFailure(error).message };
   }
 }
 
@@ -1932,6 +1935,16 @@ export async function runMemoryCycle(
     || (!options.manual && (!adventure.memoryDetectionSettings.enabled || adventure.memoryDetectionSettings.everyNTurns <= 0))) {
     return { actions, logEntry, tokenUsage: accum };
   }
+  try { resolveMemoryEvaluationProviderConfig(adventure, providerConfig); }
+  catch (error) {
+    const failure = safeMemoryFailure(error);
+    logEntry.errors.push(failure.message);
+    actions.push({ type: "RECORD_MEMORY_DIAGNOSTIC", entry: {
+      id: createId("decision"), sourceId: source.id, createdAt: nowIso(), stage: "independent", outcome: "not_attempted",
+      failureCategory: failure.category, failureCode: failure.code, reason: failure.message,
+    } }, { type: "LOG_EVALUATION_RESULT", entry: logEntry });
+    return { actions, logEntry, tokenUsage: accum };
+  }
   const evidence = memoryEvidenceWindow(adventure, source.id);
   if (!evidence.length) return { actions, logEntry, tokenUsage: accum };
   const dependencies = evidence.map(({ id, content }) => ({ id, content }));
@@ -2017,6 +2030,13 @@ export async function runMemoryCycle(
       routed.push({ type: "ADD_MEMORY_PROPOSAL", proposal });
     }
     const targets = routed.flatMap(action => action.type === "ADD_MEMORY_PROPOSAL" && action.proposal.evaluationSource?.target ? [action.proposal.evaluationSource.target] : []);
+    for (const error of errors) {
+      const code = error.match(/memory_[a-z_]+/)?.[0] ?? "memory_model_output_invalid";
+      routed.push({ type: "RECORD_MEMORY_DIAGNOSTIC", entry: {
+        id: createId("decision"), sourceId: source.id, createdAt: nowIso(), stage: "independent", outcome: "evaluation_failed", group,
+        failureCode: code, failureCategory: code === "memory_provider_request_failed" ? "transport_api" : "invalid_model_output", reason: error,
+      } });
+    }
     const commit: AdventureAction = { type: "COMMIT_MEMORY_EVALUATION_GROUP", source: { id: source.id, content: source.content },
       group, dependencies, targets, actions: routed, error: errors.length ? errors.join("; ") : undefined };
     actions.push(commit);

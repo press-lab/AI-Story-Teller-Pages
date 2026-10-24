@@ -308,6 +308,12 @@ describe("interpersonal discovery reliability paths", () => {
   const cases = [
     { name: "explicit attempted kiss", player: "I try to kiss Hermione.", narrator: "Hermione withdraws before our lips touch and says no.",
       fact: "Seth attempted to kiss Hermione; she withdrew before contact and declined.", candidateOnly: true, eventStatus: "completed" },
+    { name: "unresolved explicit kiss attempt", player: "I try to kiss Hermione.", narrator: "Hermione pauses before any contact. Her response remains unresolved.",
+      fact: "Seth attempted to kiss Hermione; no contact or consent was established and her response remains unresolved.", candidateOnly: true, eventStatus: "unresolved" },
+    { name: "unaccepted protective magic offer", player: "I offer Hermione a lasting protective ward for the tournament.", narrator: "Hermione says she needs to review the risks before deciding. No ward is cast.",
+      fact: "Seth offered Hermione a protective ward for the tournament. She deferred her decision pending a risk review; no agreement or casting occurred.", candidateOnly: true, eventStatus: "unresolved" },
+    { name: "research collaboration disagreement", player: "I propose testing our joint rune design on a live ward today.", narrator: "Hermione refuses live testing until they settle the instability in their shared calculations. Their collaboration continues, but the test is postponed.",
+      fact: "Hermione opposed Seth's proposed live rune test until instability in their shared calculations is resolved. Their collaboration continues; no live test occurred.", candidateOnly: false, eventStatus: "ongoing" },
     { name: "mutual first kiss", player: "May I kiss you?", narrator: "Hermione says yes, and they share their first mutual kiss.",
       fact: "Hermione and Seth shared their first mutual kiss.", candidateOnly: false, eventStatus: "completed" },
     { name: "ambiguous significant advance", player: "Disarming and undermining am I? I grin as I lean in.", narrator: "Hermione leans back a precise, deliberate inch. She jokes about his flirting and invites him to walk her to Gryffindor Tower.",
@@ -317,7 +323,7 @@ describe("interpersonal discovery reliability paths", () => {
   ];
   it.each(cases)("routes $name with original evidence and protected character identity", async scene => {
     const a = seed(); a.brains = []; fired = [];
-    a.storyCards = [makeStoryCard({ id: "hermione", type: "character", title: "Hermione", keys: ["Hermione"], content: "A scholar.", autoUpdate: false })];
+    a.storyCards = [makeStoryCard({ id: "hermione", type: "character", title: "Hermione", keys: ["Hermione"], content: "A scholar.", autoUpdate: false, protected: true, memoryMode: "static" })];
     a.messages[0].content = scene.player; a.messages[1].content = scene.narrator;
     discoveries = [{ ...finding(a, scene.fact), title: scene.name, candidateOnly: scene.candidateOnly, eventStatus: scene.eventStatus }];
     a.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
@@ -404,4 +410,67 @@ it("preserves legacy assistant recovery for explicit review without scheduling o
   expect(result.state.messages.find(message => message.id === "legacy")?.memoryRecovery).toEqual(a.messages[0].memoryRecovery);
   expect(pendingMemoryRecovery(result.state).map(message => message.id)).toContain("legacy");
   expect(provider.mock.calls.filter(([request]) => request.messages.some(message => message.content.includes("STORY CARD MEMORY CHECK")))).toHaveLength(1);
+});
+
+
+describe("memory provider configuration recovery", () => {
+  it.each(["pending", "failed", "quarantined"] as const)("preflights %s sources without consuming attempts or checkpoints", async status => {
+    const a = seed();
+    a.messages[1].memoryEvaluation = { turn: 1, status, attempts: status === "pending" ? 0 : 3, completedGroups: ["plot", "storyCards"] };
+    a.semanticEvaluationSettings.backgroundProviderConfig = { baseUrl: "1", model: "", apiKey: "secret-never-log" };
+    const before = structuredClone(a.messages);
+    const blocked = await evaluate(a);
+    expect(blocked.state.messages).toEqual(before);
+    expect(provider).not.toHaveBeenCalled();
+    expect(blocked.state.activeState.memoryDiagnostics).toContainEqual(expect.objectContaining({ outcome: "not_attempted", failureCategory: "configuration", failureCode: "memory_background_base_url_invalid" }));
+    expect(blocked.logEntry.errors.join()).toContain("Memory Suggestions are paused");
+    expect(JSON.stringify(blocked.logEntry)).not.toContain("secret-never-log");
+    expect(blocked.actions.some(action => action.type === "COMMIT_MEMORY_EVALUATION_GROUP")).toBe(false);
+    const fixed = { ...blocked.state, semanticEvaluationSettings: { ...a.semanticEvaluationSettings, backgroundProviderConfig: { baseUrl: "https://example.test/v1", model: "" } } };
+    discoveries = [finding(fixed)];
+    // Correction alone makes no paid request; failed/quarantined entries require explicit recovery.
+    expect(provider).not.toHaveBeenCalled();
+    if (status !== "pending") expect(memoryCycleSources(fixed)).toHaveLength(0);
+    const recovered = await evaluate(fixed);
+    expect(recovered.state.messages[1].memoryEvaluation).toMatchObject({ status: "complete", completedGroups: ["plot", "storyCards", "brains", "discovery"] });
+    expect(recovered.state.messages.map(message => message.content)).toEqual(before.map(message => message.content));
+    expect(recovered.state.activeState.memoryProposals.filter(proposal => proposal.storyCardType === "lore")).toHaveLength(1);
+    const calls = provider.mock.calls.length;
+    await evaluate(recovered.state);
+    expect(provider).toHaveBeenCalledTimes(calls);
+  });
+  it("rejects an invalid inherited endpoint or empty effective model before any group runs", async () => {
+    for (const override of [{ baseUrl: "1" }, { model: "" }]) {
+      const a = seed();
+      const result = await runMemoryCycle(a, { ...config, ...override }, { sourceId: "source", manual: true });
+      expect(result.actions.some(action => action.type === "COMMIT_MEMORY_EVALUATION_GROUP")).toBe(false);
+      expect(result.logEntry.errors.join()).toContain("Memory Suggestions are paused");
+    }
+    expect(provider).not.toHaveBeenCalled();
+  });
+  it("distinguishes safe transport failure from invalid output and genuine zero discovery", async () => {
+    const a = seed(); a.brains = []; fired = [];
+    provider.mockRejectedValueOnce(new Error("API failure with key secret-never-log"));
+    const transport = await evaluate(a);
+    expect(transport.state.activeState.memoryDiagnostics).toContainEqual(expect.objectContaining({ group: "discovery", failureCategory: "transport_api", failureCode: "memory_provider_request_failed" }));
+    expect(JSON.stringify(transport.logEntry)).not.toContain("secret-never-log");
+    expect(transport.state.activeState.memoryDiagnostics?.some(entry => entry.outcome === "zero_candidates")).toBe(false);
+    fail = "discovery";
+    const malformed = await evaluate(a);
+    expect(malformed.state.activeState.memoryDiagnostics).toContainEqual(expect.objectContaining({ group: "discovery", failureCategory: "invalid_model_output" }));
+    fail = undefined;
+    const zero = await evaluate(a);
+    expect(zero.state.activeState.memoryDiagnostics).toContainEqual(expect.objectContaining({ candidateKinds: ["semanticLore"], outcome: "zero_candidates" }));
+    expect(zero.logEntry.conditionsFired).not.toContain("storyCardDiscovery");
+  });
+  it("does not represent existing-card maintenance as discovery", async () => {
+    const a = seed(); a.brains = [];
+    a.storyCards = [makeStoryCard({ id: "coalition", title: "Coalition", type: "lore", memoryMode: "living", content: "The coalition formed after the siege.", keys: [], autoUpdate: true })];
+    fired = ["storyCard:coalition"]; discoveries = [];
+    const result = await evaluate(a);
+    expect(result.logEntry.conditionsFired).toContain("storyCard:coalition");
+    expect(result.logEntry.conditionsFired).not.toContain("storyCardDiscovery");
+    expect(result.logEntry.actionsExecuted).toContain("Semantic discovery: 0 proposals");
+    expect(result.state.activeState.memoryDiagnostics).toContainEqual(expect.objectContaining({ candidateKinds: ["semanticLore"], outcome: "zero_candidates" }));
+  });
 });

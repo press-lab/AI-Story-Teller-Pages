@@ -1,3 +1,4 @@
+import { backgroundProviderConfigIssue } from "../providers/backgroundProvider";
 import { useState } from "react";
 import type { Adventure, MemoryDiagnostic } from "../types/adventure";
 
@@ -48,6 +49,7 @@ export function MemoryDecisionsPage({ adventure, onSuggestions, onEvaluateMemory
   }).slice(0, 100);
   return <section className="page editor-surface" aria-label="Memory decisions" style={{ overflowWrap: "anywhere", minWidth: 0 }}>
     <h2>Memory decisions</h2>
+    {backgroundProviderConfigIssue(adventure) && <p role="alert">{backgroundProviderConfigIssue(adventure)}</p>}
     <p>Observed pipeline decisions. Zero candidates does not explain what the model considered important. Diagnostics retain the latest 600 events; older stages may be unavailable.</p>
     <p aria-label="Decision counts">{pending} pending recovery · {quarantined} quarantined recovery · {missing} missing envelopes · {rejected} recent rejected candidates · {proposals.filter(p => p.status === "pending").length} pending proposals</p>
     <div className="editor-stat-row">
@@ -103,7 +105,7 @@ export function MemoryDecisionsPage({ adventure, onSuggestions, onEvaluateMemory
         {linked.map(p => <p key={p.id}>{p.title}: {p.status === "approved" && entries.some(e => e.proposalId === p.id && e.outcome === "automatically_approved") ? "automatically approved" : p.status} <button type="button" onClick={() => onSuggestions(p.title)}>Open suggestion</button></p>)}
         {!linked.length && <p>{entries.some(e => e.outcome === "automatically_approved") ? "Automatically approved memory applied." : (inline?.outcome === "zero_candidates" && !recovery || recovery?.status === "complete" && entries.some(e => e.stage === "recovery" && e.outcome === "zero_candidates")) ? "Valid evaluation with no suggestions." : recovery?.status === "complete" ? "Recovery completed; no retained suggestion linked to this source." : "No linked suggestion. Evaluation may be unresolved, suppressed, or unavailable; inspect recorded stages above."}</p>}
         <details><summary>Existing evaluation logs and technical classifications</summary>
-          {entries.map(e => <p key={e.id}>{e.stage}: {e.outcome} {e.reason}</p>)}
+          {entries.map(e => <p key={e.id}>{e.stage}: {e.outcome} {e.group} {e.failureCategory} {e.failureCode} {e.reason}</p>)}
           {logs.map(log => <div key={log.id}><p>{log.actionsExecuted.join(" · ")}</p><p>{log.errors.join(" · ")}</p></div>)}
         </details>
       </details>;
