@@ -39,7 +39,8 @@ export async function runLegacyCandidateFixture(options: RunTurnPipelineOptions)
     // is exercised through validateStoryCardProposal in placement/pipeline tests.
     const identity = target && /\b(died|dies|dead|killed|destroyed)\b/i.test(p.content)
       && !/\b(kin|parents|relatives|years|1997)\b/i.test(p.content);
-    const routed = target && ["character", "location"].includes(target.type) && !identity
+    const profile = identity || p.content === "Silver burns Mira's skin.";
+    const routed = target && ["character", "location"].includes(target.type) && !profile
       ? makeStoryCardSuggestion(result.adventure, source.id, source.content, { title: p.title, content: p.content, type: "lore", evidence: p.sourceText,
         reason: p.rationale, candidateOnly: p.storyCardReview?.candidateOnly, triggers: p.suggestedTriggers }) : p;
     const reviewed = reviewedProposal(result.adventure, routed);

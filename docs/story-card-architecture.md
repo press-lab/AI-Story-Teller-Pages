@@ -3,7 +3,7 @@
 ## Structure and responsibilities
 
 `StoryCardType` has four values: `character`, `location`, `lore`, `custom`.
-All four types can accumulate supported new facts. Automatic memory appends a factual delta to a relevant existing subject, or creates a focused new card when no subject fits. Content is the single editable body. Type describes the subject, not its mutability. Plot Components and private Brain state remain separate.
+Lore is the default for events, shared developments, agreements, research and discoveries, even when a participant has a Character card. Append to existing Lore about that topic or create focused Lore. Character updates are exceptional: a specific enduring identity, capability, role/status, relationship or correction must change the profile beyond the scene, with a reason and exact supporting source quotes. Scene participation, dialogue, offers and tests do not justify a biography append. Location/Custom updates concern the enduring subject itself. All four types retain append/create support for eligible facts. Content is the single editable body. Type describes the subject, not its mutability. Plot Components and private Brain state remain separate.
 
 Lore metadata (`StoryCard.lore`) holds `occurredAt`, `lastChangedAt`, `status`
 (`completed`, `ongoing`, `unresolved`, `superseded`), Chronicle `sourceMessageIds`,
@@ -29,7 +29,7 @@ All automatic card writes use the shared append/create proposal pipeline. Every 
 
 Generated updates contain only new facts. The reducer appends them, retains existing content byte-for-byte, preserves type and authored controls, merges source IDs and relevant triggers, and records revision snapshots. It never silently replaces a biography, changes the voice contract or archives facts for a context budget. Manual editing remains available. Later corrections are dated additions; historical text is not an instruction to replay an event.
 
-Version 2 placement reviews bind the append/create operation, exact draft, source evidence and destination snapshot. Edits invalidate automatic approval. Old pending reviews require revalidation when processed, never a provider call on load. A mixed or exaggerated draft can be corrected once and separately reviewed; final review freezes the corrected text instead of chasing stylistic rewrites. Exact evidence IDs and quotes remain mandatory, with one bounded model repair for invalid discovery evidence. The application never fabricates or silently fixes evidence.
+Version 3 placement reviews bind the append/create operation, exact draft, source evidence and destination snapshot. Character appends also bind the explicit profile-change exception and exact quotes; missing or fabricated support fails closed. A reviewer can reroute a Character draft into Lore, which receives a separate review with the corrected type and destination. Edits invalidate automatic approval. Old pending reviews require revalidation when processed, never a provider call on load. A mixed or exaggerated draft can be corrected once and separately reviewed; final review freezes the corrected text instead of chasing stylistic rewrites. Exact evidence IDs and quotes remain mandatory, with one bounded model repair for invalid discovery evidence. The application never fabricates or silently fixes evidence.
 
 Lore updates preserve earlier Content, earliest occurrence, source IDs and revision
 snapshots. Known dates label appended developments. Recovering older evidence does

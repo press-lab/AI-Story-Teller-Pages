@@ -10,7 +10,7 @@ import { generatedStoryCardTriggers } from "./resolveMemoryTarget";
 export const STORY_CARD_MEMORY_CHECK = `STORY CARD MEMORY CHECK
 Find NEW MEANINGFUL durable developments, judging context, not keywords. Include significant first romantic advances, explicit attempted kisses, mutual first kisses, accepted/declined invitations, confessions, boundaries, commitments, betrayals, discoveries, deaths and permanent changes.
 Separate completed interactions from intended outcomes: an accepted invitation happened before dinner; a declined kiss attempt happened without a kiss. Research dinner need not be romantic. Significant flirtation with a lean-in/lean-back may warrant candidateOnly=true describing observations and uncertainty, NEVER a confirmed kiss attempt. Ordinary smiles, leaning to read, jokes, movement and meals alone do not qualify. Attempts require review; uncertain interpretations require candidateOnly=true,eventStatus=unresolved. Never infer consent or relationship status.
-Append supported new facts to any relevant existing card, regardless of type, legacy mode or autoUpdate. Create focused Lore for a new shared event, business or technique when no existing subject fits. Brains hold supported private changes. Preserve private knowledge and source quotes. Never invent outcomes, duplicate memories or suggest Plot Component updates.
+Default to Lore for events and shared developments; append existing topical Lore or create focused Lore. Character updates require an evidenced enduring profile change beyond scene participation. Brains hold supported private changes. Preserve private knowledge and source quotes. Never invent outcomes, duplicate memories or suggest Plot Component updates.
 Return suggestions or an empty array.
 END STORY CARD MEMORY CHECK`;
 
@@ -80,8 +80,8 @@ export function suggestionSourceValid(adventure: Adventure, proposal: MemoryProp
 /** A bounded local search. Participants alone never establish a shared continuing subject. */
 export function storyCardTargets(adventure: Adventure, finding: { title: string; content: string; participants?: string[]; targetId?: string; type?: StoryCardType }): string[] {
   const explicit = finding.targetId ? adventure.storyCards.find(card => card.id === finding.targetId) : undefined;
-  if (explicit) return [explicit.id];
-  const exact = adventure.storyCards.filter(card => normalizeMemoryText(card.title) === normalizeMemoryText(finding.title));
+  if (explicit && (!finding.type || explicit.type === finding.type)) return [explicit.id];
+  const exact = adventure.storyCards.filter(card => normalizeMemoryText(card.title) === normalizeMemoryText(finding.title) && (!finding.type || card.type === finding.type));
   if (exact.length) return exact.map(card => card.id);
   const text = finding.title + " " + finding.content;
   const rule = subjectPatterns.find(rule => rule.pattern.test(text));

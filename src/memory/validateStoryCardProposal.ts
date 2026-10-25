@@ -19,15 +19,15 @@ export async function validateStoryCardProposal(a: Adventure, config: ProviderCo
       accum, true, current.storyCardReview?.candidateOnly ?? false,
       { id: target?.id, type: target?.type ?? current.storyCardType ?? "lore", finalReview: pass === 1 });
     const p = verdict.placement;
-    if (!p || (!verdict.changed && (pass === 1 || p.content === current.content))) return verdict;
+    if (!p || (!verdict.changed && pass === 1)) return verdict;
     if (!verdict.evidenceMessageIds?.includes(draft.sourceTurnId)) return { changed: false, retryable: true,
       failureCode: "memory_placement_source_invalid", error: "Placement lacks the establishing narrator source." };
     if (p.kind === "brain" || p.kind === "none") return verdict;
     const correctedTarget = p.targetId ? snapshot.storyCards.find(c => c.id === p.targetId) : undefined;
     if (p.targetId && !correctedTarget) return { changed: false, error: "Unknown reviewed destination.", failureCode: "memory_placement_target_invalid" };
-    const legacyLoreRepair = !verdict.changed && ["historicalLore", "ongoingLore", "referenceLore"].includes(p.kind);
+    const legacyLoreRepair = ["historicalLore", "ongoingLore", "referenceLore"].includes(p.kind);
     const nextTarget = legacyLoreRepair || p.kind === "create" ? undefined : correctedTarget ?? target;
-    const type = nextTarget?.type ?? (legacyLoreRepair ? "lore" : primaryStoryCardType(current.storyCardType ?? "lore"));
+    const type = nextTarget?.type ?? (legacyLoreRepair ? "lore" : p.kind === "create" ? p.cardType ?? "lore" : primaryStoryCardType(current.storyCardType ?? "lore"));
     const suggestion = makeStoryCardSuggestion(snapshot, current.sourceTurnId, snapshot.messages.at(-1)!.content, {
       title: nextTarget?.title ?? p.title, content: pass === 1 ? current.content : p.content, type,
       targetId: nextTarget?.id, evidence: current.sourceText, reason: current.rationale, evidenceReviewed: true,
@@ -48,12 +48,13 @@ export async function validateStoryCardProposal(a: Adventure, config: ProviderCo
       evaluationSource: current.evaluationSource ? { ...current.evaluationSource, target: undefined } : undefined,
     };
     const changedDraft = next.content !== current.content || next.targetId !== current.targetId || next.storyCardType !== (current.storyCardType ?? target?.type ?? "lore");
+    if (!verdict.changed && !changedDraft) return verdict;
     if (changedDraft || !verdict.changed) {
       if (pass === 1) return { changed: false, retryable: true, failureCode: "memory_placement_unstable", error: "Final review changed the destination; retry required." };
       current = next;
       continue;
     }
-    next = bindPlacement(snapshot, next, { kind: chosen ? "append" : "create", newFact: p.newFact, reason: p.reason }, verdict.evidenceMessageIds);
+    next = bindPlacement(snapshot, next, { kind: chosen ? "append" : "create", newFact: p.newFact, reason: p.reason, identityChange: p.identityChange }, verdict.evidenceMessageIds);
     const error = placementValidationError(snapshot, next);
     if (error) return { changed: false, retryable: true, failureCode: "memory_placement_invalid", error };
     return { ...verdict, proposal: next };

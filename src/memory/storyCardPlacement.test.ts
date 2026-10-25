@@ -11,8 +11,8 @@ import type { StoryCardType, StoryCardMemoryMode } from "../types/adventure";
 vi.mock("../providers/memoryCompletion", () => ({ sendMemoryCompletion: vi.fn() }));
 const provider = vi.mocked(sendMemoryCompletion);
 const config = { ...defaultModelConfig, apiKey: "offline" };
-const fact = "Seth demonstrated a lie-detecting rune on Ron's forearm.";
-function seed(type: StoryCardType = "character", mode: StoryCardMemoryMode = "static") {
+const fact = "Seth can inscribe lie-detecting runes on skin.";
+function seed(type: StoryCardType = "lore", mode: StoryCardMemoryMode = "static") {
   const a = createDefaultAdventure(); a.components = []; a.brains = [];
   a.storyCards = [makeStoryCard({ id: "subject", title: "Seth's runecraft", type, memoryMode: mode, autoUpdate: false,
     active: false, content: "  Original authored facts.\n\nVOICE CONTRACT\nDry and precise.  ", keys: ["runecraft"], tokenBudget: 10, priority: 2 })];
@@ -24,13 +24,14 @@ function draft(a = seed(), content = fact) { return makeStoryCardSuggestion(a, "
 function response(value: unknown) { return { content: JSON.stringify(value), raw: {} }; }
 function verdict(content = fact, targetId: string | undefined = "subject") { return { accepted: true, meaningfulChange: true,
   evidenceMessageIds: ["source"], identityMatchesTarget: true, reason: "Supported new fact attributed to this subject.",
-  placement: { kind: targetId ? "append" : "create", targetId, title: "Seth's runecraft", content, newFact: content, reason: "Same durable subject." } }; }
+  placement: { kind: targetId ? "append" : "create", targetId, title: "Seth's runecraft", content, newFact: content, reason: "Same durable subject.", identityChange: { targetId: "subject", kind: "profile", fact,
+    reason: "A lasting magical capability newly established for this character.", evidenceQuotes: [{ messageId: "source", quote: fact }] } } }; }
 beforeEach(() => { provider.mockReset(); });
 const cases = (["character", "location", "lore", "custom"] as const).flatMap(type => (["static", "living", "historical"] as const).map(mode => ({ type, mode })));
 it.each(cases)("appends to a legacy $mode $type card without opt-in, archiving or replacement", async ({ type, mode }) => {
   const a = seed(type, mode), original = a.storyCards[0]; provider.mockResolvedValue(response(verdict()));
   const p = (await validateStoryCardProposal(a, config, { ...draft(a), appendContent: false })).proposal!;
-  expect(p).toMatchObject({ targetId: "subject", storyCardType: type, cardOperation: "append", appendContent: true, placementValidation: { version: 2, kind: "append" } });
+  expect(p).toMatchObject({ targetId: "subject", storyCardType: type, cardOperation: "append", appendContent: true, placementValidation: { version: 3, kind: "append" } });
   expect(placementValidationError(a, p)).toBeUndefined();
   let next = reduce(a, { type: "ADD_MEMORY_PROPOSAL", proposal: p });
   next = reduce(next, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: p.id });
@@ -100,7 +101,7 @@ it("loads old pending proposals without approving them or making provider reques
 
 it("regenerates an append without requiring a legacy memory mode", async () => {
   const a = seed();
-  provider.mockResolvedValueOnce(response({ title: a.storyCards[0].title, content: fact, storyCardType: "character" }))
+  provider.mockResolvedValueOnce(response({ title: a.storyCards[0].title, content: fact, storyCardType: "lore" }))
     .mockResolvedValueOnce(response(verdict()));
   const p = await regenerateProposalContent(draft(a), a, config);
   expect(p).toMatchObject({ cardOperation: "append", targetId: "subject", appendContent: true, content: fact });

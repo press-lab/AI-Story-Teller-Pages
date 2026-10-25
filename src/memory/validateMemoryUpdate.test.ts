@@ -52,7 +52,7 @@ it("accepts a reviewer that follows the first requested Story Card envelope, wit
     expect(answer.placement).toMatchObject({ newFact: expect.any(String), reason: expect.any(String), title: expect.any(String), content: expect.any(String) });
     answer.evidenceMessageIds = ["source"];
     answer.reason = "Ron expressed interest; no sale was agreed.";
-    answer.placement = { ...answer.placement, kind: "create", targetId: null, newFact: "Ron expressed interest.",
+    answer.placement = { ...answer.placement, kind: "create", cardType: "lore", targetId: null, newFact: "Ron expressed interest.",
       reason: "Observable interest.", title: "Product interest", content: "Ron expressed interest; no sale was agreed." };
     return { content: JSON.stringify(answer), raw: {} };
   });

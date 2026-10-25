@@ -22,7 +22,7 @@ export const PLOT_ESSENTIALS_BEST_PRACTICES = `Plot Essentials best practices:
 - Put situational lore, character identity, relationships, secrets, recurring objects, locations, factions, and completed past events in Story Cards instead.`;
 
 export const STORY_CARD_BEST_PRACTICES = `Story Card best practices:
-- Use Character, Location, Lore or Custom to describe the subject. All types accept new supported facts by append; create a focused subject when no existing card fits. No identity transformation or supporting Lore is required.
+- Use Character, Location, Lore or Custom to describe the subject. Default to Lore for events, agreements, research and shared developments; reuse existing Lore about that topic before creating a new card. Append to Character only for an evidenced enduring profile change (identity, lasting capability, role/status, explicit enduring relationship or correction) with a specific reason beyond scene participation.
 - A Story Card is durable triggered memory for one subject: a character, location, faction, object, relationship, secret, rule, or completed event.
 - The entry must be self-contained. Repeat the subject name in the body; do not rely on the title alone.
 - Keep entries concise, concrete, and unambiguous. Avoid temporary scene state and excessive appearance details unless they matter.

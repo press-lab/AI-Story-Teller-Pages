@@ -666,9 +666,9 @@ it("retains a Moody lesson from the existing Character check as focused Lore wit
   });
   const result = await evaluate(a);
   expect(result.logEntry.errors).toEqual([]);
-  const proposal = result.state.activeState.memoryProposals.find(p => p.targetId === "moody")!;
-  expect(proposal).toMatchObject({ content: moodyPlacement.lore, placementValidation: { kind: "append" } });
+  const proposal = result.state.activeState.memoryProposals.find(p => p.storyCardType === "lore")!;
+  expect(proposal).toMatchObject({ content: moodyPlacement.lore, targetId: undefined, placementValidation: { kind: "create" } });
   const approved = adventureReducer(result.state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id });
-  expect(approved.storyCards[0].content).toContain(a.storyCards[0].content);
-  expect(approved.storyCards[0].content).toContain(moodyPlacement.lore);
+  expect(approved.storyCards[0]).toEqual(a.storyCards[0]);
+  expect(approved.storyCards.find(c => c.type === "lore")?.content).toContain(moodyPlacement.lore);
 });

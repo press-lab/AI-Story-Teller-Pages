@@ -148,7 +148,8 @@ function storyCardPrompt(card: StoryCard): string {
   return `Append new durable facts about "${card.title}" (${card.type}).
 Existing content (retained unchanged):
 ${storyCardContextContent(card)}
-Return ONLY the new factual delta, at most 70 words, or NONE. Never repeat or replace existing content or its VOICE CONTRACT. Character, Location, Lore and Custom all accept updates. Record plans as plans, claims as attributed claims, and demonstrated outcomes only when shown. Preserve knowledge boundaries. Exclude trivial scenery and unsupported private reactions.`;
+${STORY_CARD_PLACEMENT_POLICY}
+Return ONLY the new factual delta, at most 70 words, or NONE. For a development belonging in Lore instead of this reference card, return JSON {title,content,storyCardType:"lore"} with a focused topic title. Never repeat or replace existing content or its VOICE CONTRACT. Record plans as plans, claims as attributed claims, and demonstrated outcomes only when shown. Preserve knowledge boundaries. Exclude trivial scenery and unsupported private reactions.`;
 }
 
 function componentPrompt(component: ComponentEntry): string {
@@ -309,7 +310,9 @@ function storyCardUpdateConditions(adventure: Adventure): SemanticCondition[] {
   return eligible.map((target) => ({
     id: `storyCard:${target.id}`,
     label: `Story Card: ${target.title}`,
-    condition: `when the latest exchange establishes a meaningful new durable fact about "${target.title}" that is not already recorded. All card types accept appends. Include supported capabilities, agreements and developments; exclude trivial repetition and unsupported private interpretations.`,
+    condition: target.type === "character"
+      ? `Only when the latest exchange establishes a specific enduring profile change for "${target.title}": identity, lasting capability, role/status, explicit enduring relationship or a correction. Require evidence and a reason it changes the profile beyond this scene. Appearance, speech, an offer, a test, learning a fact or participation in an event is insufficient. Events and shared developments belong in Lore discovery, not this Character update.`
+      : `when the latest exchange establishes a meaningful new durable fact about the ${target.type} subject "${target.title}" that is not already recorded. Lore holds events and shared developments. Location/Custom updates must concern the enduring subject itself, not merely an event involving it. Exclude trivial repetition and unsupported private interpretations.`,
     sourceType: "storyCard" as const,
     actionFactory: () => [{ type: "updateStoryCard" as const, storyCardId: target.id }],
   }));
@@ -343,7 +346,7 @@ async function evaluateConditionIds(
               storyExcerpt: recentExcerpt(adventure),
               latestTurn: latestMemoryTurn(adventure),
               currentPlot: adventure.components.filter(c => c.active && ["plotEssentials", "activePressure", "currentArc"].includes(c.type)).map(c => ({ id: c.id, type: c.type, content: c.content, premise: c.arcPremise })),
-              currentCards: adventure.storyCards.filter(c => conditions.some(condition => condition.id === `storyCard:${c.id}`)).map(c => ({ id: c.id, content: storyCardContextContent(c) })),
+              currentCards: adventure.storyCards.filter(c => conditions.some(condition => condition.id === `storyCard:${c.id}`)).map(c => ({ id: c.id, title: c.title, type: c.type, content: storyCardContextContent(c) })),
               currentBrains: adventure.brains.filter(b => conditions.some(condition => condition.id === `brain:${b.id}`)).map(b => ({ id: b.id, name: b.characterName, thoughts: b.thoughts, currentState: b.currentState, relationshipPressure: b.relationshipPressure })),
               conditions: conditions.map(({ id, condition }) => ({ id, condition })),
             },

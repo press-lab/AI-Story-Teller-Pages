@@ -593,14 +593,14 @@ export type MemoryPlacementKind = "append" | "create" | "identity" | "historical
 
 /** A semantic review, bound to the exact draft and evidence. Never part of narrator context. */
 export interface MemoryPlacementValidation {
-  version: 1 | 2;
+  version: 1 | 2 | 3;
   kind: MemoryPlacementKind;
   reason: string;
   newFact: string;
   fingerprint: string;
   sources: Array<{ id: string; content: string }>;
   target?: MemoryTargetSnapshot;
-  identityChange?: { targetId: string; kind: "correction" | "transformation"; fact: string;
+  identityChange?: { targetId: string; kind: "correction" | "transformation" | "profile"; fact: string; reason?: string;
     evidenceQuotes: Array<{ messageId: string; quote: string }>; supportingLore?: string };
 }
 

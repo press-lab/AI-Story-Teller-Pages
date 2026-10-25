@@ -12,7 +12,9 @@ export function reviewedProposal(a: Adventure, p: MemoryProposal): MemoryProposa
   const next: MemoryProposal = { ...p, storyCardType: target?.type ?? p.storyCardType ?? "lore", userInitiated: false,
     cardOperation: target ? "append" : "create", appendContent: target ? true : undefined,
     memoryMode: p.memoryMode ?? target?.memoryMode ?? "historical" };
-  return bindPlacement(a, next, { kind: target ? "append" : "create", newFact: p.content, reason: "Explicit synthetic semantic review." }, [source.id]);
+  return bindPlacement(a, next, { kind: target ? "append" : "create", newFact: p.content, reason: "Explicit synthetic semantic review.",
+    identityChange: target?.type === "character" ? { targetId: target.id, kind: "profile", fact: p.content,
+      reason: "Explicit synthetic enduring profile change for this transport fixture.", evidenceQuotes: [{ messageId: source.id, quote: source.content }] } : undefined }, [source.id]);
 }
 export function offlinePlacementReview(request: { messages: Array<{ content: string }> }) {
   if (!request.messages.some(m => m.content.includes("MEMORY UPDATE VALIDATION"))) return undefined;

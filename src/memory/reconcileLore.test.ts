@@ -58,7 +58,7 @@ it("extracts both saved profile rewrites into one revalidated Lore finding and p
   expect(saved.storyCards.filter(card => card.type === "character")).toEqual(a.storyCards);
   expect(saved.storyCards.filter(card => card.type === "lore").map(card => card.content)).toEqual([corridor.lore]);
   expect(generate.mock.calls[0][0].messages[0].content).toContain("append a factual delta");
-  expect(review.mock.calls[0][2].some(message => message.content.includes("All Story Cards can grow"))).toBe(true);
+  expect(review.mock.calls[0][2].some(message => message.content.includes("Lore is the default destination"))).toBe(true);
 });
 
 it.each(["malformed placement", "unsupported facts", "failed final attribution"])("records %s in Decisions instead of publishing the original Character draft", async failure => {
