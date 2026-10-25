@@ -1322,21 +1322,26 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
     case "COMMIT_MEMORY_EVALUATION_GROUP": {
       const source = state.messages.find(message => message.id === action.source.id);
       if (!source || source.memoryEvaluation?.completedGroups.includes(action.group)) return state;
-      const stale = source.content !== action.source.content || action.dependencies.some(item => !state.messages.some(message => message.id === item.id && message.content === item.content))
+      const stale = source.memoryEvaluation?.revision !== action.revision || source.content !== action.source.content || action.dependencies.some(item => !state.messages.some(message => message.id === item.id && message.content === item.content))
         || action.targets.some(target => !memoryTargetMatches(state, target));
-      const error = stale ? "Source evidence or destination changed during evaluation; result discarded." : action.error;
-      const next = stale ? state : (error ? action.actions.filter(item => item.type === "RECORD_MEMORY_DIAGNOSTIC") : action.actions).reduce(adventureReducer, state);
+      if (stale) return adventureReducer(state, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: {
+        id: createId("decision"), sourceId: source.id, createdAt: nowIso(), stage: "independent",
+        outcome: "evaluation_stale", group: action.group, reason: "Source evidence or destination changed during evaluation; result discarded.",
+      } });
+      const error = action.error;
+      const next = (error ? action.actions.filter(item => item.type === "RECORD_MEMORY_DIAGNOSTIC") : action.actions).reduce(adventureReducer, state);
       const completedGroups = [...(source.memoryEvaluation?.completedGroups ?? []), ...(!error ? [action.group] : [])];
       const complete = MEMORY_EVALUATION_GROUPS.every(group => completedGroups.includes(group));
       const updated = touchAdventure(next, { messages: next.messages.map(message => message.id === source.id
         ? { ...message, memoryEvaluation: { ...message.memoryEvaluation, turn: source.memoryEvaluation?.turn ?? state.activeState.turn,
           attempts: source.memoryEvaluation?.attempts ?? 0, completedGroups,
+          ...(action.group === "discovery" ? { discoveryCheckpoint: error ? action.discoveryCheckpoint : undefined } : {}),
           status: complete ? "complete" as const : error ? (source.memoryEvaluation?.attempts ?? 0) >= 3 ? "quarantined" as const : "failed" as const
             : message.memoryEvaluation?.status === "quarantined" ? "quarantined" as const : message.memoryEvaluation?.status === "failed" ? "failed" as const : "pending" as const,
           lastError: complete ? undefined : error ?? message.memoryEvaluation?.lastError } } : message) });
       return adventureReducer(updated, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: {
         id: createId("decision"), sourceId: source.id, createdAt: nowIso(), stage: "independent",
-        outcome: stale ? "evaluation_stale" : error ? "evaluation_failed" : "evaluation_completed", group: action.group,
+        outcome: error ? "evaluation_failed" : "evaluation_completed", group: action.group,
         reason: `${action.group}: ${error ?? "Evaluation complete; proposals and suppressions are recorded separately."}`,
       } });
     }
@@ -1394,13 +1399,21 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
     case "UPDATE_MESSAGE": {
       const existing = state.messages.find((message) => message.id === action.messageId);
       if (!existing || existing.content === action.content) return state;
+      // Old exports may have lost the marker after an edit. Only explicit prior
+      // independent-evaluation records qualify; never nominate untracked history.
+      const trackedIds = new Set((state.activeState.memoryDiagnostics ?? []).filter(entry => entry.stage === "independent"
+        && ["evaluation_queued", "evaluation_started", "evaluation_completed", "evaluation_failed"].includes(entry.outcome)).map(entry => entry.sourceId));
+      const tracked = (message: Message) => message.role === "assistant" && message.inputMode !== "comms"
+        && Boolean(message.memoryEvaluation || trackedIds.has(message.id));
       return withStoryHistory(
         state,
         {
           messages: state.messages.map((message) =>
-            message.id === action.messageId ? { ...message, content: action.content, memoryEvaluation: undefined }
-              : message.memoryEvaluation && memoryEvidenceWindow(state, message.id).some(evidence => evidence.id === action.messageId)
-                ? { ...message, memoryEvaluation: undefined } : message,
+            message.id === action.messageId || tracked(message) && memoryEvidenceWindow(state, message.id).some(evidence => evidence.id === action.messageId)
+              ? { ...message, ...(message.id === action.messageId ? { content: action.content } : {}),
+                memoryEvaluation: tracked(message) ? { turn: message.memoryEvaluation?.turn ?? state.activeState.turn, revision: createId("memoryRevision"),
+                  status: "pending" as const, attempts: 0, completedGroups: [] } : undefined }
+              : message,
           ),
         },
         storyHistoryEntry(

@@ -99,3 +99,49 @@ it("bounds diagnostics and preserves them through export/import and IndexedDB re
   await saveAdventure(imported);
   expect((await getAdventure(imported.id))?.activeState.memoryDiagnostics).toEqual(adventure.activeState.memoryDiagnostics);
 });
+
+
+it("shows candidate counts per attempt and preserves failed history when a later attempt is empty", () => {
+  const a = seed();
+  a.messages = [{ id: "source", role: "assistant", content: story, createdAt: "2026-01-01",
+    memoryEvaluation: { turn: 1, attempts: 2, status: "complete", completedGroups: ["plot", "storyCards", "brains", "discovery"] } }];
+  a.activeState.memoryDiagnostics = [
+    { id: "first", sourceId: "source", createdAt: "2026-01-01", stage: "candidate", outcome: "discovery_summary", evaluationAttempt: 1,
+      counts: { returned: 3, accepted: 0, rejected: 3, suppressed: 0, retryPending: 0 } },
+    { id: "second", sourceId: "source", createdAt: "2026-01-01", stage: "candidate", outcome: "discovery_summary", evaluationAttempt: 2,
+      counts: { returned: 0, accepted: 0, rejected: 0, suppressed: 0, retryPending: 0 } },
+  ];
+  render(<MemoryDecisionsPage adventure={a} onSuggestions={vi.fn()} />);
+  expect(screen.getByText(/Discovery attempt 1: 3 returned · 0 accepted · 3 rejected/)).toBeDefined();
+  expect(screen.getByText(/Discovery attempt 2: 0 returned/)).toBeDefined();
+  expect(screen.getByText(/Discovery completed with zero candidates; earlier attempts remain recorded/)).toBeDefined();
+});
+
+it("keeps quarantined drafts visible and retryable without presenting them as active memories", () => {
+  const a = seed(), retry = vi.fn();
+  a.messages = [{ id: "source", role: "assistant", content: story, createdAt: "2026-01-01",
+    memoryEvaluation: { turn: 1, attempts: 3, status: "quarantined", completedGroups: ["plot", "storyCards", "brains"],
+      discoveryCheckpoint: { version: 1, dependencies: [{ id: "source", content: story }], referenceFingerprint: "offline",
+        candidates: [{ candidate: { title: "Victory", content: story, storyCardType: "lore", evidenceMessageIds: ["source"] }, status: "awaiting_retry", reason: "Provider unavailable." }] } } }];
+  render(<MemoryDecisionsPage adventure={a} onSuggestions={vi.fn()} onEvaluateMemory={retry} />);
+  expect(screen.getByText(/Saved discovery drafts \(1\)/)).toBeDefined();
+  expect(screen.getByText(/not active memories or narration context/)).toBeDefined();
+  fireEvent.click(screen.getByRole("button", { name: "Evaluate this source independently" }));
+  expect(retry).toHaveBeenCalledWith(["source"]);
+});
+
+
+it("preserves noncanonical retry drafts through IndexedDB reload and keeps them out of provider context", async () => {
+  Object.defineProperty(globalThis, "indexedDB", { value: new IDBFactory(), configurable: true });
+  Object.defineProperty(globalThis, "IDBKeyRange", { value: IDBKeyRange, configurable: true });
+  const a = seed();
+  a.messages = [{ id: "source", role: "assistant", content: story, createdAt: "2026-01-01",
+    memoryEvaluation: { turn: 1, attempts: 1, status: "failed", completedGroups: ["plot", "storyCards", "brains"],
+      discoveryCheckpoint: { version: 1, dependencies: [{ id: "source", content: story }], referenceFingerprint: "offline",
+        candidates: [{ candidate: { title: "Saved review draft", content: "private-checkpoint-marker", storyCardType: "lore", evidenceMessageIds: ["source"] }, status: "awaiting_retry" }] } } }];
+  await saveAdventure(a);
+  const loaded = (await getAdventure(a.id))!;
+  expect(loaded.messages[0].memoryEvaluation?.discoveryCheckpoint).toEqual(a.messages[0].memoryEvaluation?.discoveryCheckpoint);
+  expect(loaded.activeState.memoryProposals).toHaveLength(0);
+  expect(JSON.stringify(buildContext(loaded).messages)).not.toContain("private-checkpoint-marker");
+});

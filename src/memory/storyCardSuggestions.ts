@@ -189,7 +189,8 @@ export function equivalentStoryCardSuggestions(a: MemoryProposal, b: MemoryPropo
   if (ar.eventKind && br.eventKind && ar.eventKind !== br.eventKind) return false;
   const left = titleWords(a.content), right = titleWords(b.content);
   const overlap = [...left].filter(word => right.has(word)).length / Math.max(1, Math.min(left.size, right.size));
-  return Boolean(sameEvidence && ((ar.eventKind && ar.eventKind === br.eventKind) || overlap >= 0.4)) || Boolean(people && ar.eventKind && ar.eventKind === br.eventKind && overlap >= 0.4);
+  // A shared exchange/category is not enough: unrelated findings can cite the same narrator.
+  return Boolean(sameEvidence && overlap >= 0.4) || Boolean(people && ar.eventKind && ar.eventKind === br.eventKind && overlap >= 0.4);
 }
 
 export function mergeStoryCardSuggestions(existing: MemoryProposal, incoming: MemoryProposal): MemoryProposal {

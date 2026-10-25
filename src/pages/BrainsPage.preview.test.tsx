@@ -17,7 +17,7 @@ const newest = "30 → I need to inspect the recovered ward myself.";
 beforeEach(() => {
   provider.mockReset();
   provider.mockImplementation(async request => ({ raw: {}, content: request.messages.some(message => message.content.includes("MEMORY UPDATE VALIDATION"))
-    ? JSON.stringify({ accepted: true, meaningfulChange: true, evidenceMessageIds: ["evidence"], identityMatchesTarget: true })
+    ? JSON.stringify({ accepted: true, meaningfulChange: true, reason: "The supplied source supports this private reaction.", evidenceMessageIds: ["evidence"], identityMatchesTarget: true })
     : JSON.stringify({ thoughts: { alpha: newest } }) }));
 });
 afterEach(cleanup);

@@ -3,6 +3,8 @@ import { useState } from "react";
 import type { Adventure, MemoryDiagnostic } from "../types/adventure";
 
 const labels: Record<string, string> = {
+  discovery_summary: "Discovery outcomes", candidate_awaiting_retry: "Candidate awaiting validation retry",
+  checkpoint_invalidated: "Saved discovery drafts invalidated",
   proposal_approved: "Suggestion approved", proposal_rejected: "Suggestion rejected", proposal_ignored: "Suggestion ignored",
   not_attempted: "No memory evaluation attempted", instruction_omitted: "Memory instruction omitted",
   envelope_missing: "Memory envelope missing", envelope_malformed: "Memory envelope malformed",
@@ -66,11 +68,14 @@ export function MemoryDecisionsPage({ adventure, onSuggestions, onEvaluateMemory
       const entries = records(message.id);
       const inline = entries.find(d => d.stage === "inline");
       const candidates = entries.filter(d => d.stage === "candidate");
+      const summaries = entries.filter(entry => entry.outcome === "discovery_summary" && entry.counts);
+      const checkpoint = message.memoryEvaluation?.discoveryCheckpoint;
+      const latestCounts = summaries.at(-1)?.counts;
       const linked = proposals.filter(p => p.sourceTurnId === message.id || entries.some(e => e.proposalId === p.id));
       const logs = adventure.activeState.evaluationLog.filter(e => e.actionsExecuted.includes(`Memory source: ${message.id}`));
       const recovery = message.memoryRecovery;
       return <details key={message.id} style={{ borderBottom: "1px solid var(--border-color, #888)", padding: "0.75rem 0" }}>
-        <summary>Message {position} · {message.memoryEvaluation ? `Independent evaluation ${message.memoryEvaluation.status}` : inline ? label(inline.outcome) : "Diagnostics unavailable for older turns"} · {candidates.length} recorded candidates · recovery {recovery?.status ?? "not recorded"} · {linked.length} suggestions</summary>
+        <summary>Message {position} · {message.memoryEvaluation ? `Independent evaluation ${message.memoryEvaluation.status}` : inline ? label(inline.outcome) : "Diagnostics unavailable for older turns"} · {latestCounts ? `${latestCounts.returned} returned / ${latestCounts.accepted} accepted drafts / ${latestCounts.rejected} rejected / ${latestCounts.suppressed} suppressed / ${latestCounts.retryPending} awaiting retry` : `${candidates.length} candidate diagnostic records (candidate count unavailable)`} · recovery {recovery?.status ?? "not recorded"} · {linked.length} suggestions</summary>
         <p><strong>Source:</strong> {message.id} · <time>{message.createdAt}</time></p>
         <p>{message.content.slice(0, 240)}{message.content.length > 240 ? "…" : ""}</p>
         <h3>Independent evaluation</h3>
@@ -88,6 +93,14 @@ export function MemoryDecisionsPage({ adventure, onSuggestions, onEvaluateMemory
         {inline && ["envelope_missing", "envelope_malformed", "instruction_omitted", "draft_discarded"].includes(inline.outcome) && <p>Memory evaluation failed; no decision is available.</p>}
         {inline && <p>Memory instruction supplied: {inline.instructionSupplied ? "yes" : "no"}. Envelope parsed: {inline.envelopeParsed ? "yes" : "no"}. Returned candidate kinds: {inline.candidateKinds?.join(", ") || "none"}. {inline.model && `Configured narrator model: ${inline.model}`}</p>}
         <h3>B. Candidate evaluation</h3>
+        {summaries.map(entry => <p key={entry.id}>Discovery attempt {entry.evaluationAttempt ?? "unknown"}: {entry.counts!.returned} returned · {entry.counts!.accepted} accepted · {entry.counts!.rejected} rejected · {entry.counts!.suppressed} suppressed · {entry.counts!.retryPending} awaiting retry. {entry.reason}</p>)}
+        {checkpoint && <details><summary>Saved discovery drafts ({checkpoint.candidates.length})</summary>
+          <p>These drafts are held for an atomic evaluation commit. They are not active memories or narration context. Exhausted retries preserve drafts for explicit retry.</p>
+          {checkpoint.candidates.map((draft, index) => <article key={index}><h4>{draft.candidate.title}: {draft.status}</h4>
+            <p>{draft.candidate.content}</p><p>{draft.reason}</p>
+            {draft.candidate.evidenceQuotes?.map((quote, i) => <blockquote key={i}>[{quote.messageId}] {quote.quote}</blockquote>)}
+          </article>)}
+        </details>}
         {!candidates.length && <p>No candidate diagnostics recorded.</p>}
         {entries.filter(d => d.candidate).map(entry => <Candidate key={entry.id} entry={entry} />)}
         <h3>C. Background recovery</h3>
@@ -103,9 +116,14 @@ export function MemoryDecisionsPage({ adventure, onSuggestions, onEvaluateMemory
         {message.usage && <p>Narration usage for this message: {message.usage.promptTokens} input / {message.usage.completionTokens} output tokens.</p>}
         <h3>D. Final disposition</h3>
         {linked.map(p => <p key={p.id}>{p.title}: {p.status === "approved" && entries.some(e => e.proposalId === p.id && e.outcome === "automatically_approved") ? "automatically approved" : p.status} <button type="button" onClick={() => onSuggestions(p.title)}>Open suggestion</button></p>)}
-        {!linked.length && <p>{entries.some(e => e.outcome === "automatically_approved") ? "Automatically approved memory applied." : (inline?.outcome === "zero_candidates" && !recovery || recovery?.status === "complete" && entries.some(e => e.stage === "recovery" && e.outcome === "zero_candidates")) ? "Valid evaluation with no suggestions." : recovery?.status === "complete" ? "Recovery completed; no retained suggestion linked to this source." : "No linked suggestion. Evaluation may be unresolved, suppressed, or unavailable; inspect recorded stages above."}</p>}
+        {!linked.length && <p>{message.memoryEvaluation?.status === "complete" && latestCounts
+          ? latestCounts.returned === 0 ? "Discovery completed with zero candidates; earlier attempts remain recorded above."
+            : latestCounts.rejected === latestCounts.returned ? "Discovery completed with all candidates rejected; no suggestion queued."
+              : latestCounts.suppressed === latestCounts.returned ? "Discovery completed with all candidates suppressed; no suggestion queued."
+                : "Discovery completed; inspect candidate outcomes and final suggestion dispositions."
+          : entries.some(e => e.outcome === "automatically_approved") ? "Automatically approved memory applied." : (inline?.outcome === "zero_candidates" && !recovery || recovery?.status === "complete" && entries.some(e => e.stage === "recovery" && e.outcome === "zero_candidates")) ? "Valid evaluation with no suggestions." : recovery?.status === "complete" ? "Recovery completed; no retained suggestion linked to this source." : "No linked suggestion. Evaluation may be unresolved, suppressed, or unavailable; inspect recorded stages above."}</p>}
         <details><summary>Existing evaluation logs and technical classifications</summary>
-          {entries.map(e => <p key={e.id}>{e.stage}: {e.outcome} {e.group} {e.failureCategory} {e.failureCode} {e.reason}</p>)}
+          {entries.map(e => <p key={e.id}>{e.stage}: {e.outcome} {e.group} {e.failureCategory} {e.failureCode} {e.providerCode} {e.httpStatus ? `HTTP ${e.httpStatus}` : ""} {e.reason}</p>)}
           {logs.map(log => <div key={log.id}><p>{log.actionsExecuted.join(" · ")}</p><p>{log.errors.join(" · ")}</p></div>)}
         </details>
       </details>;

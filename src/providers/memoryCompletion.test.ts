@@ -26,3 +26,19 @@ it("uses a task-specific strict Responses envelope while preserving the original
   expect(sendOpenAIMemoryResponse).toHaveBeenCalledWith(expect.objectContaining({ schema: expect.objectContaining({ required: ["content"] }) }));
   expect(sendOpenAICompatibleChatCompletion).not.toHaveBeenCalled();
 });
+
+
+it.each([
+  ["memory_provider_http_429_unknown_parameter: Provider rejected the memory request.", "memory_provider_http_429_unknown_parameter", 429],
+  ["provider_request_failed_http_503", "provider_request_failed_http_503", 503],
+  ["provider_request_failed_network", "provider_request_failed_network", undefined],
+])("retains allowlisted transport classifications without copying provider text: %s", async (message, providerCode, httpStatus) => {
+  vi.mocked(sendOpenAICompatibleChatCompletion).mockRejectedValueOnce(new Error(String(message)));
+  await expect(sendMemoryCompletion(createDefaultAdventure(), defaultModelConfig, []))
+    .rejects.toMatchObject({ code: "memory_provider_request_failed", providerCode, httpStatus });
+});
+it("never persists arbitrary provider exception text", async () => {
+  vi.mocked(sendOpenAICompatibleChatCompletion).mockRejectedValueOnce(new Error("https://private.invalid?api_key=secret-never-log"));
+  await expect(sendMemoryCompletion(createDefaultAdventure(), defaultModelConfig, []))
+    .rejects.toThrow(/^memory_provider_request_failed: The memory provider request failed/);
+});

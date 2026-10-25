@@ -280,7 +280,7 @@ async function sendOpenAIRequestOnce(
   }
 
   if (!response.ok) {
-    if (config.memoryReasoningControl) {
+    if (config.memoryReasoningControl || purpose === "memoryEvaluation") {
       // Only persist fixed classifications. Never propagate provider text or URLs
       // into recovery diagnostics, and do not infer a cause from HTTP status alone.
       const error = raw.error as { param?: unknown; message?: unknown } | undefined;

@@ -527,7 +527,7 @@ async function generatedActionsFor(
         return { actions: [], error: `Brain update returned no recognized keys for ${brain.characterName}.` };
       }
       const validation = await validateMemoryUpdate(adventure, providerConfig, "brain", brain.characterName,
-        JSON.stringify({ thoughts: brain.thoughts, currentState: brain.currentState }), JSON.stringify(patch), accum);
+        JSON.stringify({ thoughts: brain.thoughts, currentState: brain.currentState }), JSON.stringify(patch), accum, false, false, { id: brain.id, type: "brain" });
       if (!validation.changed) return { actions: [], error: independent && !validation.retryable ? undefined : validation.error, rejected: validation.error };
       if (requireApproval) {
         const thoughts = { ...brain.thoughts };
@@ -586,7 +586,7 @@ async function generatedActionsFor(
       if (storyCardNote && brain.linkedStoryCardId) {
         const card = adventure.storyCards.find((c) => c.id === brain.linkedStoryCardId);
         const noteValidation = card ? await validateMemoryUpdate(adventure, providerConfig, "storyCard", card.title,
-          storyCardContextContent(card), storyCardContextContent(card) + "\n" + storyCardNote, accum) : undefined;
+          storyCardContextContent(card), storyCardContextContent(card) + "\n" + storyCardNote, accum, false, false, { id: card.id, type: card.type, memoryMode: card.memoryMode }) : undefined;
         if (card && noteValidation?.changed) {
           const scProposal = makeProposal(
             {
@@ -617,7 +617,7 @@ async function generatedActionsFor(
       const addition = independent && card.type === "lore";
       const prompt = addition ? `Maintain the evolving Lore subject "${card.title}". Existing content:\n${storyCardContextContent(card)}\nReturn ONLY genuinely new durable facts established in the latest exchange (max 70 words), or NONE. This is an addition: all existing facts remain stored unchanged. Never repeat existing facts, overwrite history, invent outcomes or include private Brain reactions.` : storyCardPrompt(card);
       const content = await sendTargetedUpdate(adventure, providerConfig, rule?.updatePrompt || prompt, accum);
-      const validation = await validateMemoryUpdate(adventure, providerConfig, "storyCard", card.title, storyCardContextContent(card), content, accum, addition);
+      const validation = await validateMemoryUpdate(adventure, providerConfig, "storyCard", card.title, storyCardContextContent(card), content, accum, addition, false, { id: card.id, type: card.type, memoryMode: card.memoryMode });
       if (!validation.changed) return { actions: [], error: independent && !validation.retryable ? undefined : validation.error, rejected: validation.error };
       if (requireApproval) {
         const proposal = makeProposal(
@@ -1960,6 +1960,7 @@ export async function runMemoryCycle(
     const snapshot = working;
     const forcePropose = { ...snapshot, semanticEvaluationSettings: { ...snapshot.semanticEvaluationSettings, requireApprovalForAutoUpdates: true } };
     const groupActions: AdventureAction[] = [];
+    let discoveryCheckpoint: import("../types/adventure").MemoryDiscoveryCheckpoint | undefined;
     const errors: string[] = [];
     const conditions = group === "plot" ? buildPlotMemoryConditions(snapshot)
       : group === "storyCards" ? buildStoryCardMemoryConditions(snapshot)
@@ -1986,6 +1987,7 @@ export async function runMemoryCycle(
     if (group === "discovery") {
       logEntry.conditionsEvaluated.push({ id: "storyCardDiscovery", label: "New durable subjects and historical events", condition: "Meaningful new memory established in this source", sourceType: "storyCard" });
       const discovery = await detectStoryCardProposals(snapshot, providerConfig, { sourceId: source.id });
+      discoveryCheckpoint = discovery.checkpoint;
       groupActions.push(...discovery.actions);
       errors.push(...discovery.errors);
       accum.promptTokens += discovery.tokenUsage.promptTokens;
@@ -2034,11 +2036,15 @@ export async function runMemoryCycle(
       const code = error.match(/memory_[a-z_]+/)?.[0] ?? "memory_model_output_invalid";
       routed.push({ type: "RECORD_MEMORY_DIAGNOSTIC", entry: {
         id: createId("decision"), sourceId: source.id, createdAt: nowIso(), stage: "independent", outcome: "evaluation_failed", group,
+        providerCode: error.match(/\[(memory_provider_http_\d{3}_(?:reasoning_control|response_format|unknown_parameter)|provider_request_failed_http_\d{3}|provider_request_failed_network|provider_api_key_missing)\]/)?.[1],
+        httpStatus: /(?:memory_provider_http_|provider_request_failed_http_)(\d{3})/.test(error)
+          ? Number(error.match(/(?:memory_provider_http_|provider_request_failed_http_)(\d{3})/)![1]) : undefined,
         failureCode: code, failureCategory: code === "memory_provider_request_failed" ? "transport_api" : "invalid_model_output", reason: error,
       } });
     }
     const commit: AdventureAction = { type: "COMMIT_MEMORY_EVALUATION_GROUP", source: { id: source.id, content: source.content },
-      group, dependencies, targets, actions: routed, error: errors.length ? errors.join("; ") : undefined };
+      group, dependencies, targets, actions: routed, error: errors.length ? errors.join("; ") : undefined,
+      revision: source.memoryEvaluation?.revision, discoveryCheckpoint };
     actions.push(commit);
     working = adventureReducer(working, commit);
     logEntry.actionsExecuted.push(`${group}: ${errors.length ? "failed; successful groups retained" : fired.length ? fired.map(item => item.label).join(", ") : "evaluated"}`);

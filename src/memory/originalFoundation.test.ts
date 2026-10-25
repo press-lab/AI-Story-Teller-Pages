@@ -474,3 +474,173 @@ describe("memory provider configuration recovery", () => {
     expect(result.state.activeState.memoryDiagnostics).toContainEqual(expect.objectContaining({ candidateKinds: ["semanticLore"], outcome: "zero_candidates" }));
   });
 });
+
+
+describe("discovery transactions and edited sources", () => {
+  it.each([true, false])("retains a valid synthetic sibling regardless of malformed candidate order: %s", async badFirst => {
+    const a = seed(); a.brains = []; fired = [];
+    const good = finding(a);
+    const bad = { ...finding(a), title: "Unsupported finding", content: "An unsupported different event happened.", evidenceMessageIds: ["invented"] };
+    discoveries = badFirst ? [bad, good] : [good, bad];
+    const result = await evaluate(a);
+    expect(result.state.activeState.memoryProposals.map(p => p.title)).toEqual([good.title]);
+    expect(result.state.activeState.memoryDiagnostics).toContainEqual(expect.objectContaining({
+      outcome: "validation_rejected", failureCode: "discovery_foreign_evidence_ids" }));
+    expect(result.state.messages.at(-1)?.memoryEvaluation?.status).toBe("complete");
+    expect(result.actions.reduce(adventureReducer, result.state).activeState.memoryProposals).toHaveLength(1);
+  });
+
+  it("requeues edited tracked sources and their dependent evaluations without scanning untracked history", async () => {
+    const a = seed(); a.brains = []; fired = [];
+    const first = await evaluate(a);
+    first.state.messages.push({ id: "next-user", role: "user", content: "What next?", createdAt: "2026-07-01" },
+      { id: "next-source", role: "assistant", content: "They inspect the ward.", createdAt: "2026-07-01",
+        memoryEvaluation: { turn: 2, status: "complete", attempts: 1, completedGroups: ["plot", "storyCards", "brains", "discovery"] } },
+      { id: "legacy", role: "assistant", content: "Legacy history.", createdAt: "2026-07-01" });
+    const edited = adventureReducer(first.state, { type: "UPDATE_MESSAGE", messageId: "ask", content: "Mira, keep the key private." });
+    expect(edited.messages.find(m => m.id === "source")?.memoryEvaluation).toMatchObject({ status: "pending", attempts: 0, completedGroups: [] });
+    expect(edited.messages.find(m => m.id === "next-source")?.memoryEvaluation?.status).toBe("pending");
+    expect(memoryCycleSources(edited).map(m => m.id)).toEqual(["source", "next-source"]);
+    expect(edited.messages.find(m => m.id === "legacy")?.memoryEvaluation).toBeUndefined();
+    expect(adventureReducer(edited, { type: "UPDATE_MESSAGE", messageId: "ask", content: "Mira, keep the key private." })).toBe(edited);
+  });
+
+  it("persists validated drafts and retries only unfinished validation before an atomic commit", async () => {
+    const a = normalizeAdventure(seed()); a.brains = []; fired = [];
+    a.messages.at(-1)!.content += " A storm permanently destroyed the harbor gate.";
+    discoveries = [finding(a), { ...finding(a, "A storm permanently destroyed the harbor gate."), title: "Harbor gate collapse", suggestedTriggers: ["harbor gate collapse"] }];
+    const implementation = provider.getMockImplementation()!;
+    let failSecond = true;
+    provider.mockImplementation(async request => {
+      if (request.messages.some(m => m.content.includes("MEMORY UPDATE VALIDATION"))) {
+        const body = JSON.parse(request.messages.at(-1)!.content);
+        if (body.title === "Harbor gate collapse" && failSecond) { failSecond = false; throw new Error("temporary failure with secret-never-log"); }
+      }
+      return implementation(request);
+    });
+    const first = await evaluate(a);
+    expect(first.state.activeState.memoryProposals).toHaveLength(0);
+    expect(first.state.messages.at(-1)?.memoryEvaluation?.discoveryCheckpoint?.candidates.map(c => c.status)).toEqual(["accepted", "awaiting_retry"]);
+    expect(JSON.stringify(first.state)).not.toContain("secret-never-log");
+    const reloaded = importAdventureJson(exportAdventureJson(first.state));
+    expect(reloaded.messages.at(-1)?.memoryEvaluation?.discoveryCheckpoint).toEqual(first.state.messages.at(-1)?.memoryEvaluation?.discoveryCheckpoint);
+    provider.mockClear();
+    const second = await evaluate(reloaded);
+    expect(provider).toHaveBeenCalledTimes(1);
+    expect(second.state.activeState.memoryProposals).toHaveLength(2);
+    expect(second.state.messages.at(-1)?.memoryEvaluation?.status).toBe("complete");
+    expect(second.state.messages.at(-1)?.memoryEvaluation?.discoveryCheckpoint).toBeUndefined();
+    expect(second.actions.reduce(adventureReducer, second.state).activeState.memoryProposals).toHaveLength(2);
+  });
+});
+
+
+describe("Hogwarts read-only source regressions", () => {
+  it("retains invalid-attempt history when a later evaluation legitimately returns zero", async () => {
+    const fixture = await import("./fixtures/hogwarts-memory-reliability.json");
+    expect(fixture.provenance.rejectedDiscoveryPayloadsAvailable).toBe(false);
+    const recorded = fixture.cases[0];
+    expect(recorded.diagnostics.some(d => d.reason.includes("returned 3 candidates"))).toBe(true);
+    const a = seed(); a.brains = []; fired = [];
+    a.messages = (recorded.messages as Adventure["messages"]).map(({ memoryEvaluation: _evaluation, ...message }) => message) as Adventure["messages"];
+    // Synthetic malformed output: the original rejected payload was not exported.
+    discoveries = [{ ...finding(a), evidenceMessageIds: ["invented"] }];
+    const first = await evaluate(a, recorded.sourceId);
+    expect(first.state.messages.at(-1)?.memoryEvaluation?.status).toBe("failed");
+    discoveries = [];
+    const second = await evaluate(first.state, recorded.sourceId);
+    expect(second.state.messages.at(-1)?.memoryEvaluation?.status).toBe("complete");
+    expect(second.state.activeState.memoryProposals).toHaveLength(0);
+    expect(second.state.activeState.memoryDiagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ outcome: "validation_rejected", failureCode: "discovery_foreign_evidence_ids" }),
+      expect.objectContaining({ outcome: "zero_candidates" }),
+    ]));
+  });
+
+  it("keeps the Ron attribution rejection separate from the subsequent edit and queues corrected evidence", async () => {
+    const fixture = await import("./fixtures/hogwarts-memory-reliability.json");
+    const recorded = fixture.cases[1], a = seed(); a.brains = []; fired = [];
+    a.messages = recorded.messages as Adventure["messages"];
+    const actual = recorded.diagnostics.find(d => "candidate" in d)! as unknown as { candidate: { title: string; content: string } };
+    discoveries = [{ ...finding(a, actual.candidate.content), title: actual.candidate.title,
+      evidenceMessageIds: a.messages.map(m => m.id) }];
+    const implementation = provider.getMockImplementation()!;
+    provider.mockImplementation(async request => {
+      if (request.messages.some(m => m.content.includes("MEMORY UPDATE VALIDATION"))) {
+        const body = JSON.parse(request.messages.at(-1)!.content);
+        return { content: JSON.stringify({ accepted: true, meaningfulChange: true, evidenceMessageIds: body.latestTurnMessageIds,
+          identityMatchesTarget: false, reason: "Attribution needs review." }), raw: {} };
+      }
+      return implementation(request);
+    });
+    const first = await evaluate(a, recorded.sourceId);
+    expect(first.state.activeState.memoryDiagnostics).toContainEqual(expect.objectContaining({ failureCode: "memory_identity_rejected", reason: expect.stringContaining("Attribution needs review") }));
+    const edited = adventureReducer(first.state, { type: "UPDATE_MESSAGE", messageId: recorded.sourceId, content: a.messages.at(-1)!.content + "\nRon clarifies that he has not bought anything." });
+    expect(memoryCycleSources(edited).map(m => m.id)).toContain(recorded.sourceId);
+    expect(edited.activeState.memoryProposals).toEqual(first.state.activeState.memoryProposals);
+  });
+
+  it("retains completed plot/card groups when the latest source has independent Brain and discovery failures", async () => {
+    const fixture = await import("./fixtures/hogwarts-memory-reliability.json");
+    const recorded = fixture.cases[2], a = seed();
+    a.messages = (recorded.messages as Adventure["messages"]).map(({ memoryEvaluation: _evaluation, ...message }) => message) as Adventure["messages"];
+    a.brains = [makeBrain({ id: "draco", characterName: "Draco", active: true })];
+    fired = []; fail = "brain";
+    discoveries = [{ ...finding(a), evidenceMessageIds: ["invented"] }];
+    const result = await evaluate(a, recorded.sourceId);
+    expect(result.state.messages.at(-1)?.memoryEvaluation).toMatchObject({ status: "failed", completedGroups: ["plot", "storyCards"] });
+    expect(result.state.activeState.memoryDiagnostics).toContainEqual(expect.objectContaining({ group: "brains", failureCode: "memory_provider_request_failed" }));
+    expect(result.state.activeState.memoryDiagnostics).toContainEqual(expect.objectContaining({ group: "discovery", failureCode: "discovery_foreign_evidence_ids" }));
+  });
+
+  it("invalidates saved drafts on evidence edits and rejects an old transaction even after the text is restored", async () => {
+    const a = seed(); a.brains = []; fired = []; discoveries = [finding(a)]; fail = "validation";
+    const first = await evaluate(a);
+    const original = first.state.messages.at(-1)!.content;
+    const edited = adventureReducer(first.state, { type: "UPDATE_MESSAGE", messageId: "source", content: "The key was never found." });
+    expect(edited.messages.at(-1)?.memoryEvaluation?.discoveryCheckpoint).toBeUndefined();
+    const restored = adventureReducer(edited, { type: "UPDATE_MESSAGE", messageId: "source", content: original });
+    const stale = first.actions.reduce(adventureReducer, restored);
+    expect(stale.activeState.memoryProposals).toHaveLength(0);
+    expect(stale.messages.at(-1)?.memoryEvaluation).toMatchObject({ status: "pending", attempts: 0 });
+    expect(stale.messages.at(-1)?.memoryEvaluation?.discoveryCheckpoint).toBeUndefined();
+    expect(stale.activeState.memoryDiagnostics).toContainEqual(expect.objectContaining({ outcome: "evaluation_stale" }));
+  });
+
+  it("invalidates cached reviews when canon or destination controls change", async () => {
+    const a = normalizeAdventure(seed()); a.brains = []; fired = []; discoveries = [finding(a)]; fail = "validation";
+    const first = await evaluate(a);
+    first.state.storyCards = [makeStoryCard({ title: "New canon", content: "Mira must verify the key.", autoUpdate: false })];
+    fail = undefined; provider.mockClear();
+    const second = await evaluate(first.state);
+    expect(provider.mock.calls.some(([request]) => request.messages[0].content.includes("STORY CARD MEMORY CHECK"))).toBe(true);
+    expect(second.state.activeState.memoryDiagnostics).toContainEqual(expect.objectContaining({ outcome: "checkpoint_invalidated" }));
+  });
+
+  it("retains noncanonical drafts after three failed attempts and allows bounded explicit recovery", async () => {
+    const a = normalizeAdventure(seed()); a.brains = []; fired = []; discoveries = [finding(a)]; fail = "validation";
+    let state = a;
+    for (let attempt = 0; attempt < 3; attempt++) state = (await evaluate(state)).state;
+    expect(state.messages.at(-1)?.memoryEvaluation).toMatchObject({ status: "quarantined", attempts: 3 });
+    expect(state.messages.at(-1)?.memoryEvaluation?.discoveryCheckpoint?.candidates[0].status).toBe("awaiting_retry");
+    expect(state.activeState.memoryProposals).toHaveLength(0);
+    expect(memoryCycleSources(state)).toHaveLength(0);
+    expect(JSON.stringify(buildContext(state).messages)).not.toContain("referenceFingerprint");
+    fail = undefined; provider.mockClear();
+    const recovered = await evaluate(state);
+    expect(provider).toHaveBeenCalledTimes(1);
+    expect(recovered.state.activeState.memoryProposals).toHaveLength(1);
+    expect(recovered.state.messages.at(-1)?.memoryEvaluation?.status).toBe("complete");
+  });
+});
+
+
+it("repairs an edited old source whose evaluation marker was lost but whose diagnostics prove it was tracked", async () => {
+  const fixture = await import("./fixtures/hogwarts-memory-reliability.json");
+  const recorded = fixture.cases[1], a = seed();
+  a.messages = recorded.messages as Adventure["messages"];
+  a.activeState.memoryDiagnostics = [{ id: "tracked", sourceId: recorded.sourceId, createdAt: "2026-10-24", stage: "independent", outcome: "evaluation_queued" }];
+  expect(a.messages.at(-1)?.memoryEvaluation).toBeUndefined();
+  const edited = adventureReducer(a, { type: "UPDATE_MESSAGE", messageId: recorded.sourceId, content: a.messages.at(-1)!.content + " Corrected wording." });
+  expect(memoryCycleSources(edited).map(m => m.id)).toContain(recorded.sourceId);
+});

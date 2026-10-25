@@ -1,0 +1,266 @@
+{
+  "provenance": {
+    "title": "Hogwarts University — Goblet of Fire (Canon-Deep Edition)",
+    "sha256": "9fa15c1b4dee4a83af8c4d5f20a6ecbd1147e223f51b9e5a5a85c055ef14ab16",
+    "rejectedDiscoveryPayloadsAvailable": false
+  },
+  "cases": [
+    {
+      "sourceId": "message_mvn21hfm_yf2oq231",
+      "messages": [
+        {
+          "id": "msg_mvn21esk_cygprwx1",
+          "role": "user",
+          "content": "You “ Slytherin’s are in that class with us aren’t they? the Malfoy twins?“",
+          "inputMode": "do",
+          "createdAt": "2026-10-24T23:53:29.636Z",
+          "storyTime": {
+            "text": "2001-09-02",
+            "date": "2001-09-02",
+            "precision": "day"
+          }
+        },
+        {
+          "id": "message_mvn21hfm_yf2oq231",
+          "role": "assistant",
+          "content": "\"The Malfoys?\" Hermione’s gaze flickers toward the main corridor, though she doesn't pause her walk. \n\n\"Everyone in this cohort is,\" she says simply. \"Draco and Draconia are Slytherins, they are here for Defence just like us, even if their particular version of 'Defence' involves considerably more rivalry than mine.\"",
+          "inputMode": "do",
+          "usage": {
+            "promptTokens": 11575,
+            "completionTokens": 134,
+            "totalTokens": 11709,
+            "cacheReadTokens": 0,
+            "cacheCreationTokens": 0
+          },
+          "createdAt": "2026-10-24T23:53:33.058Z",
+          "storyTime": {
+            "text": "2001-09-02",
+            "date": "2001-09-02",
+            "precision": "day"
+          },
+          "memoryEvaluation": {
+            "turn": 167,
+            "status": "complete",
+            "attempts": 3,
+            "completedGroups": [
+              "plot",
+              "storyCards",
+              "brains",
+              "discovery"
+            ],
+            "nextEligibleTurn": 158
+          }
+        }
+      ],
+      "diagnostics": [
+        {
+          "id": "decision_mvn2257x_y247u5fr",
+          "sourceId": "message_mvn21hfm_yf2oq231",
+          "createdAt": "2026-10-24T23:54:03.885Z",
+          "stage": "candidate",
+          "outcome": "candidates_produced",
+          "candidateKinds": [
+            "semanticLore"
+          ],
+          "reason": "Semantic discovery returned 3 candidates (before validation)."
+        },
+        {
+          "id": "decision_mvn22587_5v56c9wm",
+          "sourceId": "message_mvn21hfm_yf2oq231",
+          "createdAt": "2026-10-24T23:54:03.895Z",
+          "stage": "candidate",
+          "outcome": "validation_rejected",
+          "candidateKinds": [
+            "semanticLore"
+          ],
+          "reason": "Semantic discovery failed: Discovery lacks valid establishing source evidence."
+        },
+        {
+          "id": "decision_mvn23cxm_zl9btf06",
+          "sourceId": "message_mvn21hfm_yf2oq231",
+          "createdAt": "2026-10-24T23:55:00.538Z",
+          "stage": "candidate",
+          "outcome": "candidates_produced",
+          "candidateKinds": [
+            "semanticLore"
+          ],
+          "reason": "Semantic discovery returned 2 candidates (before validation)."
+        },
+        {
+          "id": "decision_mvn23cxy_twpcu880",
+          "sourceId": "message_mvn21hfm_yf2oq231",
+          "createdAt": "2026-10-24T23:55:00.550Z",
+          "stage": "candidate",
+          "outcome": "validation_rejected",
+          "candidateKinds": [
+            "semanticLore"
+          ],
+          "reason": "Semantic discovery failed: Discovery lacks valid establishing source evidence."
+        },
+        {
+          "id": "decision_mvn295qj_a3da54ex",
+          "sourceId": "message_mvn21hfm_yf2oq231",
+          "createdAt": "2026-10-24T23:59:31.147Z",
+          "stage": "candidate",
+          "outcome": "zero_candidates",
+          "candidateKinds": [
+            "semanticLore"
+          ],
+          "reason": "Semantic discovery returned 0 candidates (before validation)."
+        }
+      ]
+    },
+    {
+      "sourceId": "message_mvn294vd_jlch3yr9",
+      "messages": [
+        {
+          "id": "msg_mvn2907e_uk5t6r9u",
+          "role": "user",
+          "content": "I shrug “guess I’m special” joke. I find a seat, assuming she’ll follow me",
+          "inputMode": "do",
+          "createdAt": "2026-10-24T23:59:23.978Z",
+          "storyTime": {
+            "text": "2001-09-02",
+            "date": "2001-09-02",
+            "precision": "day"
+          }
+        },
+        {
+          "id": "message_mvn294vd_jlch3yr9",
+          "role": "assistant",
+          "content": "\"'Special.'\" Hermione delivers the word flatly, sliding into the seat to your left and stacking her books with neat precision. \"Draconia would agree with you, which should worry you. In my experience, being told you're special by a Malfoy is usually the preamble to being *used* for something.\"\n\nThe classroom is steep, tiered like an amphitheatre, desks bolted in curving rows facing a cleared pit of floor at the front — clearly designed for demonstrations that occasionally go wrong. Your seat sits in the middle band, close enough to see, far enough to be safe.\n\nThe Slytherins file in across the aisle. Draco claims a front-row perch with Crabbe and Goyle flanking him like architecture, already looking critically at the demonstration pit. Draconia sits slightly apart from Pansy's cluster, quill and ink laid out with surgical exactness, and doesn't look over at all — which is its own kind of statement.\n\n\"Press.\" Ron drops into the seat on your right, leaning across. \"Still doing temporary tattoo charms at lunch? Fred's involved? Because if you're selling, I want first refusal on whatever it is before the Slytherins corner the market.\"\n\nThe door bangs open. Moody limps in, thud-drag, thud-drag, his magical eye swiveling in slow arcs across the class while his real eye fixes on nothing. He drops his trunk on the front desk with a heavy clunk.\n\n\"Put those away,\" he growls, before anyone's opened anything. \"Today, I teach you about curses. And then I show you one.\"",
+          "inputMode": "do",
+          "usage": {
+            "promptTokens": 12377,
+            "completionTokens": 794,
+            "totalTokens": 13171,
+            "cacheReadTokens": 0,
+            "cacheCreationTokens": 0
+          },
+          "createdAt": "2026-10-24T23:59:30.025Z",
+          "storyTime": {
+            "text": "2001-09-02",
+            "date": "2001-09-02",
+            "precision": "day"
+          }
+        }
+      ],
+      "diagnostics": [
+        {
+          "id": "decision_mvn298z9_j5ps940x",
+          "sourceId": "message_mvn294vd_jlch3yr9",
+          "createdAt": "2026-10-24T23:59:35.349Z",
+          "stage": "candidate",
+          "outcome": "candidates_produced",
+          "candidateKinds": [
+            "semanticLore"
+          ],
+          "reason": "Semantic discovery returned 1 candidates (before validation)."
+        },
+        {
+          "id": "decision_mvn29b6u_im3gpct4",
+          "sourceId": "message_mvn294vd_jlch3yr9",
+          "createdAt": "2026-10-24T23:59:38.214Z",
+          "stage": "candidate",
+          "outcome": "validation_rejected",
+          "candidateKinds": [
+            "semanticLore"
+          ],
+          "reason": "Memory validation rejected Fred & George Partnership: target identity was not verified.",
+          "candidate": {
+            "kind": "storyCard",
+            "title": "Fred & George Partnership",
+            "content": "In Moody's first Defence class, Ron told Seth that Harry had mentioned Seth's temporary tattoo charms planned with Fred at lunch, and asked for first refusal on buying whatever product results before Slytherins corner the market. No deal was agreed; only Ron's stated interest.",
+            "evidence": "[message_mvn294vd_jlch3yr9] \"'Special.'\" Hermione delivers the word flatly, sliding into the seat to your left and stacking her books with neat precision. \"Draconia would agree with you, which should worry you. In my experience, being told you're special by a Malfoy is usually the preamble to being *used* for something.\"\n\nThe classroom is steep, tiered like an amphitheatre, desks bolted in curving rows facing a cleared pit of floor at the front — clearly designed for demonstrations that occasionally go wrong. Your seat sits in the middle band, close enough to see, far enough to be safe.\n\nThe Slytherins file in across the aisle. Draco claims a front-row perch with Crabbe and Goyle flanking him like architecture, already looking critically at the demonstration pit. Draconia sits slightly apart from Pansy's cluster, quill and ink laid out with surgical exactness, and doesn't look over at all — which is its own kind of statement.\n\n\"Press.\" Ron drops into the seat on your right, leaning across. \"Harry said you're doing temporary tattoo charms at lunch? Fred's involved? Because if you're selling, I want first refusal on whatever it is before the Slytherins corner the market.\"\n\nThe door bangs open. Moody limps in, thud-drag, thud-drag, his magical eye swiveling in slow arcs across the class while his real eye fixes on nothing. He drops his trunk on the front desk with a heavy clunk.\n\n\"Put those away,\" he growls, before anyone's opened anything. \"Today, I teach you about curses. And then I show you one.\"",
+            "rationale": "Establishes word spreading about the partnership's first product and Ron's commercial interest, which may affect later sales and product design."
+          }
+        }
+      ]
+    },
+    {
+      "sourceId": "message_mvn2hnpt_c5rn63pu",
+      "messages": [
+        {
+          "id": "msg_mvn2hcrs_nlc6x9yf",
+          "role": "user",
+          "content": "You “You forced the spider to do what you wanted. Against its will” I say confident and loud enough to be heard but not excitedly.",
+          "inputMode": "do",
+          "createdAt": "2026-10-25T00:05:53.512Z",
+          "storyTime": {
+            "text": "2001-09-02",
+            "date": "2001-09-02",
+            "precision": "day"
+          }
+        },
+        {
+          "id": "message_mvn2hnpt_c5rn63pu",
+          "role": "assistant",
+          "content": "Moody's real eye turns on you; the magical one keeps rolling.\n\n\"Against its will,\" he repeats. \"Good. Now watch what that means.\"\n\nHe walks the spider through the air — a pirouette, a stiff-legged march — then flings it back onto the desk. \"That's control. Some people like it. Gives them a sense of power.\" His voice drops. \"It's comfortable, mind control. It feels *good*. That's what makes it dangerous.\"\n\nThe eye swivels across the rows, deliberate. \"Anyone here ever been under something like it? Confundus, love potions, compulsion charms?\" A pause. \"Happens more than you'd think. Even in a school like this.\"\n\nHe picks the spider back up. \"Second curse.\" His voice flattens into something old and cold. \"Crucio.\"\n\nThe spider begins to shudder. Its legs contract, tremble, curl. It doesn't cry out — spiders can't — but something about the violent, rigid twitching is worse than screaming. Moody lets it go on a few seconds too long before lifting the curse.\n\n\"No taste for it, I see,\" he says, watching the class rather than the spider. Draco's jaw is set; a Hufflepuff girl looks faint. Draconia's expression is carefully, precisely blank — a whole lesson in itself.\n\nThe spider rolls weakly on the desk, legs twitching. \"Now,\" Moody says softly, \"the third one. Avada Kedavra.\"\n\nThere's absolute silence. He raises a hand.\n\nA flash of green light — and the spider drops dead, instantly, with a single unremarkable thud. No suffering. Just *gone*.\n\n\"Painful?\" Moody rasps. \"No. That's the thing people get wrong. It's quick and clean. No pain, no fear, no struggle. It simply *stops* you.\" His eye fixes on the middle rows, on your group. \"That's the curse that killed Harry Potter's parents. And plenty of others.\"\n\nHermione's hands have gone white on her quill. Moody limps back to the trunk.",
+          "inputMode": "do",
+          "usage": {
+            "promptTokens": 12146,
+            "completionTokens": 1114,
+            "totalTokens": 13260,
+            "cacheReadTokens": 0,
+            "cacheCreationTokens": 0
+          },
+          "createdAt": "2026-10-25T00:06:07.697Z",
+          "storyTime": {
+            "text": "2001-09-02",
+            "date": "2001-09-02",
+            "precision": "day"
+          },
+          "memoryEvaluation": {
+            "turn": 173,
+            "status": "failed",
+            "attempts": 1,
+            "completedGroups": [
+              "plot",
+              "storyCards"
+            ],
+            "nextEligibleTurn": 157,
+            "lastError": "Story Card discovery failed: Discovery lacks valid establishing source evidence."
+          }
+        }
+      ],
+      "diagnostics": [
+        {
+          "id": "decision_mvn2inpo_dec9wiws",
+          "sourceId": "message_mvn2hnpt_c5rn63pu",
+          "createdAt": "2026-10-25T00:06:54.348Z",
+          "stage": "candidate",
+          "outcome": "candidates_produced",
+          "candidateKinds": [
+            "semanticLore"
+          ],
+          "reason": "Semantic discovery returned 3 candidates (before validation)."
+        },
+        {
+          "id": "decision_mvn2inpw_tfyrrpir",
+          "sourceId": "message_mvn2hnpt_c5rn63pu",
+          "createdAt": "2026-10-25T00:06:54.356Z",
+          "stage": "candidate",
+          "outcome": "evaluation_failed",
+          "group": "discovery",
+          "candidateKinds": [
+            "semanticLore"
+          ],
+          "failureCategory": "invalid_model_output",
+          "failureCode": "memory_model_output_invalid",
+          "reason": "memory_model_output_invalid: The evaluator returned invalid output; review the memory diagnostics and retry selected sources."
+        },
+        {
+          "id": "decision_mvn2inpw_oufoi5fs",
+          "sourceId": "message_mvn2hnpt_c5rn63pu",
+          "createdAt": "2026-10-25T00:06:54.356Z",
+          "stage": "candidate",
+          "outcome": "validation_rejected",
+          "candidateKinds": [
+            "semanticLore"
+          ],
+          "reason": "Semantic discovery failed: Discovery lacks valid establishing source evidence."
+        }
+      ]
+    }
+  ]
+}

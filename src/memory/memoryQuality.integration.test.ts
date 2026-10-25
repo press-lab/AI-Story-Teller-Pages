@@ -104,7 +104,7 @@ describe("Seattle memory quality", () => {
   it("blocks plausible-looking but unsupported replacements using the evidence verdict", async () => {
     const a = seattle(); a.components = a.components.filter(c => c.type === "plotEssentials");
     provider.mockResolvedValueOnce({ content: "Seth believes Edythe's explanation and remains in the car.", raw: {} })
-      .mockResolvedValueOnce({ content: JSON.stringify({ accepted: false, meaningfulChange: true, reason: "Contradicts skepticism and completed exit from the car." }), raw: {} });
+      .mockResolvedValueOnce({ content: JSON.stringify({ accepted: false, meaningfulChange: true, evidenceMessageIds: [], reason: "Contradicts skepticism and completed exit from the car." }), raw: {} });
     const result = await runManualPEComponentUpdate(a, config, "pe");
     expect(result.actions.some(a => a.type === "ADD_MEMORY_PROPOSAL")).toBe(false);
     expect(result.logEntry.errors.join(" ")).toContain("Contradicts skepticism");
@@ -160,7 +160,7 @@ describe("Seattle memory quality", () => {
   it("grounds validation in characters named only by a proposed replacement", async () => {
     const a = seattle();
     a.storyCards = [makeStoryCard({ title: "Mira", type: "character", content: "Mira cannot read minds." })];
-    provider.mockResolvedValueOnce({ content: JSON.stringify({ accepted: false, reason: "Mira cannot read minds." }), raw: {} });
+    provider.mockResolvedValueOnce({ content: JSON.stringify({ accepted: false, meaningfulChange: true, evidenceMessageIds: [], identityMatchesTarget: false, reason: "Mira cannot read minds." }), raw: {} });
     const result = await validateMemoryUpdate(a, config, "storyCard", "Seth", "Seth arrived.", "Mira read Seth's thoughts.");
     expect(result.changed).toBe(false);
     expect(provider.mock.calls[0][0].messages.map(m => m.content).join("\n")).toContain("Mira cannot read minds");
@@ -172,7 +172,7 @@ describe("Seattle pressure and identity regressions", () => {
   it.each(["same route", "shower", "typing indicator"])("rejects %s churn in the manual pressure tool", async detail => {
     const a = seattle();
     provider.mockResolvedValueOnce({ content: `Watchers remain while Seth continues the ${detail}.`, raw: {} })
-      .mockResolvedValueOnce({ content: JSON.stringify({ accepted: true, meaningfulChange: true, evidenceMessageIds: ["arrival"], pressureChange: "none" }), raw: {} });
+      .mockResolvedValueOnce({ content: JSON.stringify({ accepted: true, meaningfulChange: true, reason: "Grounded pressure assessment", evidenceMessageIds: ["arrival"], pressureChange: "none" }), raw: {} });
     const result = await runManualPEComponentUpdate(a, config, "pressure");
     expect(result.actions.some(action => action.type === "ADD_MEMORY_PROPOSAL" || action.type === "MARK_COMPONENT_UPDATED")).toBe(false);
     expect(result.actions.reduce(adventureReducer, a).components).toEqual(a.components);
@@ -180,7 +180,7 @@ describe("Seattle pressure and identity regressions", () => {
   });
 
   it("cannot recycle an old threat as a latest-turn pressure change", async () => {
-    provider.mockResolvedValueOnce({ content: JSON.stringify({ accepted: true, meaningfulChange: true, evidenceMessageIds: ["correction"], pressureChange: "new_threat" }), raw: {} });
+    provider.mockResolvedValueOnce({ content: JSON.stringify({ accepted: true, meaningfulChange: true, reason: "Grounded pressure assessment", evidenceMessageIds: ["correction"], pressureChange: "new_threat" }), raw: {} });
     const result = await validateMemoryUpdate(seattle(), config, "activePressure", "Pressure", "Old pressure", "A watcher threatens Seth.");
     expect(result.changed).toBe(false);
     expect(result.error).toContain("latest turn");
@@ -188,7 +188,7 @@ describe("Seattle pressure and identity regressions", () => {
 
   it("allows pressure resolution without inventing a replacement threat", async () => {
     const a = seattle(); a.messages.at(-1)!.content = "The watchers abandon the pursuit and release me without conditions.";
-    provider.mockResolvedValueOnce({ content: JSON.stringify({ accepted: true, meaningfulChange: true, evidenceMessageIds: ["arrival"], pressureChange: "resolved" }), raw: {} });
+    provider.mockResolvedValueOnce({ content: JSON.stringify({ accepted: true, meaningfulChange: true, reason: "Grounded pressure assessment", evidenceMessageIds: ["arrival"], pressureChange: "resolved" }), raw: {} });
     expect(await validateMemoryUpdate(a, config, "activePressure", "Pressure", "Watchers pursue Seth.", "There is no immediate external pressure.")).toMatchObject({ changed: true });
   });
 });

@@ -55,15 +55,24 @@ export function resolveMemoryEvaluationProviderConfig(adventure: Adventure, acti
 }
 
 export class MemoryEvaluationError extends Error {
-  constructor(readonly category: "configuration" | "transport_api" | "invalid_model_output", readonly code: string, message: string) {
-    super(`${code}: ${message}`);
+  constructor(readonly category: "configuration" | "transport_api" | "invalid_model_output", readonly code: string, message: string,
+    readonly providerCode?: string, readonly httpStatus?: number) {
+    super(`${code}: ${message}${providerCode ? ` [${providerCode}]` : ""}`);
   }
 }
 
 /** Never copy arbitrary provider exceptions (which may include credentials) into saves. */
 export function safeMemoryFailure(error: unknown, received = false): MemoryEvaluationError {
   if (error instanceof MemoryEvaluationError) return error;
+  // Read only allowlisted classifications, never arbitrary provider text, URLs or bodies.
+  const message = error instanceof Error ? error.message : "";
+  const chat = /^memory_provider_http_(\d{3})_(reasoning_control|response_format|unknown_parameter):/.exec(message);
+  const http = /^provider_request_failed_http_(\d{3})$/.exec(message);
+  const responseCode = /^(provider_request_failed_network|provider_api_key_missing|responses_provider_configuration_invalid|provider_invalid_json|provider_response_schema_invalid|provider_response_incomplete|provider_refused|provider_empty_response|provider_request_failed_http_400_unsupported_parameter)$/.exec(message)?.[1];
+  const responses400 = message.startsWith("provider_configuration_rejected_http_400:");
+  const providerCode = responses400 ? "provider_configuration_rejected_http_400" : chat ? `memory_provider_http_${chat[1]}_${chat[2]}` : http ? `provider_request_failed_http_${http[1]}` : responseCode;
+  const httpStatus = responses400 ? 400 : chat ? Number(chat[1]) : http ? Number(http[1]) : responseCode === "provider_request_failed_http_400_unsupported_parameter" ? 400 : undefined;
   return received
     ? new MemoryEvaluationError("invalid_model_output", "memory_model_output_invalid", "The evaluator returned invalid output; review the memory diagnostics and retry selected sources.")
-    : new MemoryEvaluationError("transport_api", "memory_provider_request_failed", "The memory provider request failed; check provider access, credentials, and availability, then retry selected sources.");
+    : new MemoryEvaluationError("transport_api", "memory_provider_request_failed", "The memory provider request failed; check provider access, credentials, and availability, then retry selected sources.", providerCode, httpStatus);
 }

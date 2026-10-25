@@ -8,9 +8,15 @@ export interface MemoryDiagnostic {
     | "candidate_suppressed" | "candidate_merged" | "proposal_accepted" | "automatically_approved"
     | "proposal_approved" | "proposal_rejected" | "proposal_ignored"
     | "recovery_queued" | "recovery_attempted" | "recovery_validated" | "recovery_completed" | "recovery_failed"
-    | "evaluation_queued" | "evaluation_started" | "evaluation_completed" | "evaluation_failed" | "evaluation_stale";
+    | "evaluation_queued" | "evaluation_started" | "evaluation_completed" | "evaluation_failed" | "evaluation_stale"
+    | "discovery_summary" | "candidate_awaiting_retry" | "checkpoint_invalidated";
   failureCategory?: "configuration" | "transport_api" | "invalid_model_output";
   failureCode?: string;
+  providerCode?: string;
+  httpStatus?: number;
+  candidateIndex?: number;
+  evaluationAttempt?: number;
+  counts?: { returned: number; accepted: number; rejected: number; suppressed: number; retryPending: number };
   group?: MemoryEvaluationGroup;
   origin?: "inline" | "recovery";
   instructionSupplied?: boolean;
@@ -35,7 +41,38 @@ export type ContextInclusionPolicy = "always" | "triggered" | "manual" | "system
 export type InputMode = "do" | "story" | "comms";
 
 export type MemoryEvaluationGroup = "plot" | "storyCards" | "brains" | "discovery";
+export interface MemoryDiscoveryCandidate {
+  title: string;
+  content: string;
+  storyCardType: StoryCardType | "event";
+  targetId?: string;
+  rationale?: string;
+  evidenceMessageIds: string[];
+  evidenceQuotes?: Array<{ messageId: string; quote: string }>;
+  suggestedTriggers?: string[];
+  memoryMode?: StoryCardMemoryMode;
+  eventStatus?: "completed" | "ongoing" | "unresolved";
+  candidateOnly?: boolean;
+  eventMemory?: { participants?: string[]; recallCues?: string[]; kind?: string };
+}
+
+/** At most three drafts. This is retry metadata, never active memory or narrator context. */
+export interface MemoryDiscoveryCheckpoint {
+  version: 1;
+  dependencies: Array<{ id: string; content: string }>;
+  referenceFingerprint: string;
+  candidates: Array<{
+    candidate: MemoryDiscoveryCandidate;
+    status: "accepted" | "rejected" | "suppressed" | "awaiting_retry";
+    proposal?: MemoryProposal;
+    reason?: string;
+    failureCode?: string;
+  }>;
+}
+
 export interface MemoryEvaluationState {
+  revision?: string;
+  discoveryCheckpoint?: MemoryDiscoveryCheckpoint;
   turn: number;
   status: "pending" | "running" | "complete" | "failed" | "quarantined";
   attempts: number;
@@ -916,7 +953,7 @@ export type AdventureAction =
   | { type: "RECORD_MEMORY_DIAGNOSTIC"; entry: MemoryDiagnostic }
   | { type: "QUEUE_MEMORY_EVALUATION"; sourceId: string; turn: number }
   | { type: "CLAIM_MEMORY_EVALUATION"; sourceId: string; turn: number; manual?: boolean }
-  | { type: "COMMIT_MEMORY_EVALUATION_GROUP"; source: { id: string; content: string }; group: MemoryEvaluationGroup; dependencies: Array<{ id: string; content: string }>; targets: MemoryTargetSnapshot[]; actions: AdventureAction[]; error?: string }
+  | { type: "COMMIT_MEMORY_EVALUATION_GROUP"; source: { id: string; content: string }; group: MemoryEvaluationGroup; dependencies: Array<{ id: string; content: string }>; targets: MemoryTargetSnapshot[]; actions: AdventureAction[]; error?: string; revision?: string; discoveryCheckpoint?: MemoryDiscoveryCheckpoint }
   | { type: "SCAN_STORY_CARD_EXCHANGE"; sourceMessageId: string; manual?: boolean }
   | { type: "SET_STORY_CLOCK"; clock: StoryClock }
   | { type: "SET_TITLE"; title: string }

@@ -175,3 +175,29 @@ negative decision without an invented rationale. Ambiguous/stale proposals can
 require another explicit evaluation. The runtime keeps generation controls busy
 while the scheduled bounded memory work finishes, protecting source ordering.
 Historical manual tools remain available for deliberate larger reconciliation.
+
+
+## Discovery reliability and edited sources
+
+Discovery candidates now have separate accepted, rejected, suppressed and awaiting-retry outcomes. Bad original evidence IDs, missing establishing-source evidence and inexact quotes reject that candidate without discarding unrelated accepted candidates. An entirely invalid nonempty batch remains a failed evaluation, distinct from a successful empty array. Accepted candidates commit together through the existing source/destination snapshot transaction.
+
+Temporary validation failures retain at most three allowlisted drafts in optional `Message.memoryEvaluation.discoveryCheckpoint` metadata. Successfully validated drafts are not regenerated on retry. Evidence dependencies and a SHA-256 digest of card/component references, controls and author corrections invalidate cached reviews when their inputs change. Drafts are noncanonical, excluded from narrator context and the Inbox, and inspectable in Decisions even after quarantine. No checkpoint can apply memory outside the reducer transaction. Old saves need no database migration.
+
+Editing previously tracked evidence resets the affected source and tracked dependent sources to pending, clears their checkpoints, and changes their evaluation revision so in-flight results cannot apply after an edit/revert. Untracked history stays untracked. Editing and loading issue no memory requests; the next normal post-story cadence or an explicit bounded evaluation processes pending work. Approved memories and source-validity checks remain in place.
+
+Validation requires typed verdict fields, including identity attribution for Story Cards and Brains. Missing/malformed fields are retryable invalid output; explicit negative attribution is a semantic rejection retaining its explanation. Lore target metadata distinguishes observable topic history from a character's knowledge. Decisions shows per-attempt returned/accepted/rejected/suppressed/retry-pending counts. Earlier failures remain recorded when a later valid empty result completes a source. Provider diagnostics retain only allowlisted codes/statuses, never arbitrary provider error text.
+
+The read-only Hogwarts fixture records original message IDs and observed diagnostics with a source SHA-256. Its original rejected discovery payloads were not exported; mixed-validity replies and provider responses in tests are synthetic. Offline tests establish routing, persistence and recovery behavior, not improved real-model recall.
+
+
+The shared suggestion router also requires overlapping facts before merging findings that cite the same exchange and event category; a shared source alone cannot replace one unrelated finding with another.
+
+| Hogwarts source | Exported observation | Verified offline behavior after the patch |
+| --- | --- | --- |
+| `message_mvn21hfm_yf2oq231` | Three candidates rejected, two rejected on retry, final empty result marked complete. | Synthetic bad-ID candidates get specific diagnostics; a later empty result remains complete with prior failures retained. Separate synthetic mixed-validity batches keep the valid sibling in either order. |
+| `message_mvn294vd_jlch3yr9` | Product-interest candidate rejected for identity; later edits left no evaluation marker. | Explicit identity rejection retains its reason. Editing a tracked source requeues it, including old sources whose retained diagnostics establish tracking despite a missing marker. |
+| `message_mvn2hnpt_c5rn63pu` | Brain transport failure and discovery source-evidence failure; plot/card groups completed. | Synthetic independent failures preserve the completed groups and remain separately classified/retryable. |
+
+These are controlled provider-response regressions, not a paid replay of the adventure or a claim that its unseen rejected candidates were valid.
+
+Validation for this scoped patch: 789 tests passed; TypeScript/production build and production smoke passed; git diff --check passed. The original uploaded JSON SHA-256 was verified unchanged. No live model requests were made. The existing Vite bundle-size warning remains.
