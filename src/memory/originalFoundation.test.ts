@@ -235,7 +235,7 @@ describe("original independent foundation", () => {
     expect(second.state.activeState.memoryProposals).toHaveLength(1);
     await evaluate(second.state); expect(provider).toHaveBeenCalledTimes(1);
   });
-  it("discards stale source and destination transactions and blocks approval after an edit", async () => {
+  it("discards stale transactions while allowing manual approval of a retained draft after an edit", async () => {
     const a = seed(), result = await evaluate(a);
     const edited = adventureReducer(result.claimed, { type: "UPDATE_MESSAGE", messageId: "ask", content: "A different offer." });
     const stale = result.actions.reduce(adventureReducer, edited);
@@ -244,7 +244,10 @@ describe("original independent foundation", () => {
     expect(result.actions.reduce(adventureReducer, targetEdited).activeState.memoryProposals).toHaveLength(0);
     const pending = result.state.activeState.memoryProposals[0];
     const changed = adventureReducer(result.state, { type: "UPDATE_MESSAGE", messageId: "source", content: "It was a dream." });
-    expect(adventureReducer(changed, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: pending.id })).toBe(changed);
+    expect(adventureReducer(changed, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: pending.id, automatic: true })).toBe(changed);
+    const approved = adventureReducer(changed, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: pending.id });
+    expect(approved.activeState.memoryProposals.find(p => p.id === pending.id)?.status).toBe("approved");
+    expect(approved.brains).not.toEqual(changed.brains);
   });
   it("keeps rejection and manual edits effective and cannot apply a successful transaction twice", async () => {
     const a = seed(), result = await evaluate(a);

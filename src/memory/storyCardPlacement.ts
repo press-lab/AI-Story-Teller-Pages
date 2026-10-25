@@ -26,10 +26,10 @@ export function placementValidationError(a: Adventure, p: MemoryProposal): strin
   const v = p.placementValidation;
   if (!v || v.version !== PLACEMENT_VERSION || typeof v.fingerprint !== "string" || typeof v.reason !== "string" || typeof v.newFact !== "string"
     || !["identity", "historicalLore", "ongoingLore", "referenceLore", "brain", "none"].includes(v.kind)
-    || !Array.isArray(v.sources) || v.sources.some(s => !s || typeof s.id !== "string" || typeof s.content !== "string")) return "Placement needs validation. Regenerate or convert this suggestion before approval.";
-  if (v.fingerprint !== placementFingerprint(p)) return "The draft or destination changed. Revalidate placement before approval.";
-  if (!v.sources.length || v.sources.some(s => !a.messages.some(m => m.id === s.id && m.content === s.content))) return "Placement evidence changed. Reevaluate the source.";
-  if (v.target && !memoryTargetMatches(a, v.target)) return "The reviewed destination changed. Revalidate placement.";
+    || !Array.isArray(v.sources) || v.sources.some(s => !s || typeof s.id !== "string" || typeof s.content !== "string")) return "Placement needs validation against the current draft.";
+  if (v.fingerprint !== placementFingerprint(p)) return "The draft or destination changed since placement was validated.";
+  if (!v.sources.length || v.sources.some(s => !a.messages.some(m => m.id === s.id && m.content === s.content))) return "The source evidence changed since placement was validated.";
+  if (v.target && !memoryTargetMatches(a, v.target)) return "The reviewed destination changed since placement was validated.";
   const target = p.targetId ? a.storyCards.find(c => c.id === p.targetId) : undefined;
   if (p.targetId && (!target || target.type !== p.storyCardType)) return "The destination type does not match this suggestion.";
   if (v.kind === "none" || v.kind === "brain") return "This finding is not a Story Card update.";
@@ -57,7 +57,7 @@ export function bindPlacement(a: Adventure, p: MemoryProposal, review: Omit<NonN
 export function proposalDestinationLabel(a: Adventure, p: MemoryProposal): string {
   if (p.proposedType !== "storyCard") return p.proposedType;
   const target = a.storyCards.find(c => c.id === p.targetId);
-  const type = p.storyCardType ?? target?.type ?? "lore";
+  const type = target?.type ?? p.storyCardType ?? "lore";
   const mode = p.memoryMode ?? target?.memoryMode ?? "static";
   return `${target ? "Update" : "Create"} ${type.charAt(0).toUpperCase() + type.slice(1)} · ${target?.title ?? (mode === "historical" ? "Historical" : mode === "living" ? "Ongoing" : "Reference")}`;
 }

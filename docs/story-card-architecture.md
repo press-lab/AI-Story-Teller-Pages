@@ -32,12 +32,13 @@ Ordinary automatic Character/Location content writes are blocked at the AI bound
 and reducer. Suggestions targeting identity with ordinary developments become Lore.
 Exceptional death/alive confirmation, permanent transformation/capability change
 or explicit identity correction requires review. Approval can update the identity
-and creates focused supporting historical Lore. Identity writes require a typed
+and creates focused supporting historical Lore. Generated identity writes require a typed
 semantic placement review with the exact target, changed fact and exact evidence
 quotes; whole-paragraph words such as "killed" or "permanent" cannot authorize them.
 The review is bound to the exact draft, evidence and destination snapshot. Content
-or target edits invalidate it. Approval applies the displayed reviewed destination;
-it never silently reroutes a draft. Mixed biography/event drafts are extracted and
+or target edits invalidate it for automatic approval. Manual approval applies the
+displayed destination and preserves its current card type; it never silently
+reroutes a draft. Mixed biography/event drafts are extracted and
 revalidated once; unstable repairs retain bounded retry behavior. Explicit card editing remains available, as
 does reviewed AI-assisted authoring; model envelopes cannot set its user-initiated flag.
 
@@ -160,10 +161,15 @@ independent discovery call. Candidate isolation, atomic group commits, source an
 destination guards and `autoUpdate` permissions still apply.
 
 Memory Inbox shows Create/Update plus the card type and destination. Older generated
-pending suggestions remain inspectable but need explicit Revalidate / Regenerate or
-Convert to Lore before approval. Conversion extracts the new facts and validates
-the resulting Lore draft; it does not just relabel a biography. Loading an adventure
-sends no requests and modifies no approved cards. Placement metadata is optional in
+pending suggestions can always be approved manually. Changed or missing source
+evidence, destination edits and missing placement validation appear as advisory
+messages; they do not disable Approve or require another AI request. Regenerate
+and Convert to Lore remain optional. Conversion extracts the new facts and validates
+the resulting Lore draft; it does not just relabel a biography. Automatic approval
+still requires valid evidence and placement. Manual approval can update inactive
+or historical destinations; a deleted destination creates a new card. Unrecognized
+Gregorian dates stay as text with unknown precision and do not prevent approval.
+Loading an adventure sends no requests and modifies no approved cards. Placement metadata is optional in
 saves and never enters narrator context. Explicit card editing and deliberate card
 builder authoring remain available.
 

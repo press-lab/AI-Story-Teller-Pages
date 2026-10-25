@@ -44,7 +44,7 @@ it("completes an explicit evaluation with one generation and a placement review,
   expect(next.activeState.memoryProposals).toContainEqual(expect.objectContaining({ proposedType: "storyCard", status: "pending", storyCardReview: expect.objectContaining({ origin: "model" }) }));
 });
 
-it("cannot apply a model finding after the source changes during evaluation", async () => {
+it("keeps a finding reviewable after the source changes during evaluation and prevents automatic approval", async () => {
   let finish!: (response: { raw: object; content: string }) => void;
   vi.mocked(sendOpenAICompatibleChatCompletion).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
   const hook = setup();
@@ -59,7 +59,10 @@ it("cannot apply a model finding after the source changes during evaluation", as
   const stale = next.activeState.memoryProposals.find(p => p.storyCardReview?.origin === "model")!;
   expect(stale).toBeDefined();
   expect(suggestionSourceValid(next, stale)).toBe(false);
-  expect(adventureReducer(next, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: stale.id }).storyCards).toEqual(next.storyCards);
+  expect(adventureReducer(next, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: stale.id, automatic: true }).storyCards).toEqual(next.storyCards);
+  const approved = adventureReducer(next, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: stale.id });
+  expect(approved.storyCards.at(-1)?.content).toBe(stale.content);
+  expect(approved.activeState.memoryProposals.find(p => p.id === stale.id)?.status).toBe("approved");
 });
 
 // These legacy transport fixtures supply an explicit synthetic placement reviewer.

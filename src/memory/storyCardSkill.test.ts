@@ -318,6 +318,9 @@ describe("deterministic entity discovery precision", () => {
     expect(proposal.storyCardReview?.additionalSources).toEqual([{ id: "intro", content: state.messages[0].content }]);
     state.activeState.memoryProposals = [proposal];
     state.messages[0].content = "No companion was introduced.";
-    expect(reduce(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id }).storyCards).toEqual(state.storyCards);
+    expect(reduce(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id, automatic: true }).storyCards).toEqual(state.storyCards);
+    const approved = reduce(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id });
+    expect(approved.storyCards.at(-1)?.title).toBe("Fenchurch");
+    expect(approved.activeState.memoryProposals[0].storyCardReview?.additionalSources).toEqual(proposal.storyCardReview?.additionalSources);
   });
 });

@@ -221,14 +221,17 @@ describe("Moody placement regressions", () => {
     ["character", "Alastor Moody", "Moody explained that the Killing Curse killed Harry Potter's parents."],
     ["character", "Alastor Moody", "Moody is permanently scarred. He demonstrated three curses today."],
     ["location", "Defence Classroom", "Moody described how a distant castle was destroyed."],
-  ] as const)("does not authorize an unvalidated %s identity write: %s", (type, title, content) => {
+  ] as const)("requires manual approval for an unvalidated %s identity write: %s", (type, title, content) => {
     let state = createDefaultAdventure();
     const card = makeStoryCard({ id: "identity", title, type, content: "Authored identity." });
     state.storyCards = [card];
     state = dated(state, "moody", content);
     state = reduce(state, { type: "ADD_MEMORY_PROPOSAL", proposal: makeMemoryProposal({ id: "misplaced", userInitiated: false, title, targetId: card.id, sourceTurnId: "moody", proposedType: "storyCard", content }) });
-    state = reduce(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: "misplaced" });
+    state = reduce(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: "misplaced", automatic: true });
     expect(state.storyCards.find(c => c.id === card.id)).toEqual(card);
     expect(state.activeState.memoryProposals.find(p => p.id === "misplaced")?.status).toBe("pending");
+    state = reduce(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: "misplaced" });
+    expect(state.storyCards.find(c => c.id === card.id)?.content).toBe(content);
+    expect(state.activeState.memoryProposals.find(p => p.id === "misplaced")?.status).toBe("approved");
   });
 });

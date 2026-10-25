@@ -16,7 +16,7 @@ import { ChroniclePage } from "./ChroniclePage";
 
 afterEach(cleanup);
 
-function Review({ stale = false, extraTarget = false }) {
+function Review({ stale = false, extraTarget = false, regenerateDraft = false }) {
   const initial = createDefaultAdventure();
   initial.messages = [{ id: "source", role: "assistant", content: "Draconia accepts Seth's proposal.", createdAt: "2026-01-01" }];
   initial.storyCards = ["one", "two"].map(id => makeStoryCard({ id, title: `Seth and Draconia Relationship ${id}`, type: "lore", memoryMode: "living", content: "Seth and Draconia are close." }));
@@ -27,7 +27,7 @@ function Review({ stale = false, extraTarget = false }) {
   initial.activeState.memoryProposals = initial.activeState.memoryProposals.map(p => reviewedProposal(initial, p));
   if (stale) initial.messages[0].content += " This was only a dream.";
   const [adventure, dispatch] = useReducer(adventureReducer, initial);
-  return <><MemoryInboxPage adventure={adventure} dispatch={dispatch} onRegenerateProposal={async id => { const p = adventure.activeState.memoryProposals.find(p => p.id === id)!; dispatch({ type: "UPDATE_MEMORY_PROPOSAL", proposalId: id, patch: reviewedProposal(adventure, p) }); }} /><output data-testid="saved">{JSON.stringify(adventure)}</output></>;
+  return <><MemoryInboxPage adventure={adventure} dispatch={dispatch} onRegenerateProposal={async id => { const p = adventure.activeState.memoryProposals.find(p => p.id === id)!; dispatch({ type: "UPDATE_MEMORY_PROPOSAL", proposalId: id, patch: regenerateDraft ? { content: "Draconia accepts the revised commitment.", placementValidation: undefined } : reviewedProposal(adventure, p) }); }} /><output data-testid="saved">{JSON.stringify(adventure)}</output></>;
 }
 
 it("lets the reviewer choose an ambiguous update destination before approval", async () => {
@@ -35,8 +35,7 @@ it("lets the reviewer choose an ambiguous update destination before approval", a
   const user = userEvent.setup();
   expect(screen.getByText(/Several continuing subjects may fit/)).toBeInTheDocument();
   await user.selectOptions(screen.getByLabelText("Story Card destination"), "two");
-  expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
-  await user.click(screen.getByRole("button", { name: "Revalidate / Regenerate" }));
+  expect(screen.getByRole("button", { name: "Approve" })).toBeEnabled();
   await user.click(screen.getByRole("button", { name: "Approve" }));
   const saved = JSON.parse(screen.getByTestId("saved").textContent!);
   expect(saved.storyCards).toHaveLength(2);
@@ -44,10 +43,37 @@ it("lets the reviewer choose an ambiguous update destination before approval", a
   expect(saved.storyCards[1].content).toContain("accepts Seth's proposal");
 });
 
-it("blocks stale source approval even when the revised entry retains the old text", () => {
+it("allows manual approval after the source entry changes", async () => {
   render(<Review stale />);
-  expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
-  expect(screen.getByText(/This suggestion cannot be approved/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Approve" })).toBeEnabled();
+  expect(screen.getByText(/The source evidence or destination changed/)).toBeInTheDocument();
+  await userEvent.setup().click(screen.getByRole("button", { name: "Approve" }));
+  expect(savedReview().activeState.memoryProposals[0].status).toBe("approved");
+  expect(savedReview().storyCards.at(-1)?.content).toBe("Draconia accepts Seth's proposal.");
+});
+
+it("approves edited title and content without an AI revalidation request", async () => {
+  render(<Review />);
+  const user = userEvent.setup();
+  const title = screen.getByDisplayValue("Engagement");
+  await user.clear(title);
+  await user.type(title, "A reviewed commitment");
+  const content = screen.getByPlaceholderText("Proposed content...");
+  await user.clear(content);
+  await user.type(content, "Draconia accepts a lasting commitment to Seth.");
+  expect(screen.getByRole("button", { name: "Approve" })).toBeEnabled();
+  await user.click(screen.getByRole("button", { name: "Approve" }));
+  expect(savedReview().storyCards.at(-1)).toMatchObject({ title: "A reviewed commitment", content: "Draconia accepts a lasting commitment to Seth." });
+});
+
+it("keeps approval available after regenerating the draft without placement validation", async () => {
+  render(<Review regenerateDraft />);
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "Regenerate" }));
+  expect(screen.getByPlaceholderText("Proposed content...")).toHaveValue("Draconia accepts the revised commitment.");
+  expect(screen.getByRole("button", { name: "Approve" })).toBeEnabled();
+  await user.click(screen.getByRole("button", { name: "Approve" }));
+  expect(savedReview().storyCards.at(-1)?.content).toBe("Draconia accepts the revised commitment.");
 });
 
 it("evaluates a Chronicle entry or selected range without opening the entry editor", async () => {
@@ -73,8 +99,7 @@ it("lets the reviewer redirect to a compatible target outside the ranked candida
   render(<Review extraTarget />);
   const user = userEvent.setup();
   await user.selectOptions(screen.getByLabelText("Story Card destination"), "other");
-  expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
-  await user.click(screen.getByRole("button", { name: "Revalidate / Regenerate" }));
+  expect(screen.getByRole("button", { name: "Approve" })).toBeEnabled();
   await user.click(screen.getByRole("button", { name: "Approve" }));
   const saved = JSON.parse(screen.getByTestId("saved").textContent!);
   expect(saved.storyCards).toHaveLength(3);
@@ -86,11 +111,9 @@ it("can change an UPDATE into a separate CREATE without touching the former targ
   render(<Review />);
   const user = userEvent.setup();
   await user.selectOptions(screen.getByLabelText("Story Card destination"), "two");
-  expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
-  await user.click(screen.getByRole("button", { name: "Revalidate / Regenerate" }));
+  expect(screen.getByRole("button", { name: "Approve" })).toBeEnabled();
   await user.selectOptions(screen.getByLabelText("Story Card destination"), "");
-  expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
-  await user.click(screen.getByRole("button", { name: "Revalidate / Regenerate" }));
+  expect(screen.getByRole("button", { name: "Approve" })).toBeEnabled();
   await user.click(screen.getByRole("button", { name: "Approve" }));
   const saved = JSON.parse(screen.getByTestId("saved").textContent!);
   expect(saved.storyCards).toHaveLength(3);
@@ -159,21 +182,19 @@ it.each([
   expect(saved.storyClock?.current?.date).toBe("2019-02-01");
 });
 
-it.each(["2019-02-30", "February 30, 2019", "2023-02-29"])("rejects invalid exact Event Date %s without normalization or approval", async text => {
+it.each(["2019-02-30", "February 30, 2019", "2023-02-29"])("keeps unrecognized Event Date %s as text and allows approval", async text => {
   render(<DatedReview />);
   const user = userEvent.setup();
   await user.clear(screen.getByLabelText("Event Date"));
   await user.type(screen.getByLabelText("Event Date"), text);
   expect(screen.getByLabelText("Event Date")).toHaveAttribute("aria-invalid", "true");
-  expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
-  expect(savedReview().activeState.memoryProposals[0].lore?.occurredAt?.date).toBeUndefined();
+  expect(screen.getByRole("button", { name: "Approve" })).toBeEnabled();
+  expect(savedReview().activeState.memoryProposals[0].lore?.occurredAt).toEqual({ text, precision: "unknown" });
   expect(savedReview().storyCards).toHaveLength(0);
   expect(savedReview().storyClock?.current?.date).toBe("2019-02-01");
-  await user.clear(screen.getByLabelText("Event Date"));
-  await user.type(screen.getByLabelText("Event Date"), "2024-02-29");
-  expect(screen.getByRole("button", { name: "Approve" })).toBeEnabled();
   await user.click(screen.getByRole("button", { name: "Approve" }));
-  expect(savedReview().storyCards[0].lore?.occurredAt?.date).toBe("2024-02-29");
+  expect(savedReview().storyCards[0].lore?.occurredAt).toEqual({ text, precision: "unknown" });
+  expect(normalizeAdventure(savedReview()).storyCards[0].lore?.occurredAt).toEqual({ text, precision: "unknown" });
 });
 
 it("shows the actual card type and converts a legacy identity draft into reviewed Lore before approval", async () => {
@@ -194,7 +215,7 @@ it("shows the actual card type and converts a legacy identity draft into reviewe
   }
   render(<ConversionReview />); const user = userEvent.setup();
   expect(screen.getAllByText("Update Character · Alastor Moody").length).toBeGreaterThan(0);
-  expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Approve" })).toBeEnabled();
   await user.click(screen.getByRole("button", { name: "Convert to Lore" }));
   expect(convert).toHaveBeenCalledWith(expect.any(String), true);
   expect(screen.getAllByText("Create Lore · Historical").length).toBeGreaterThan(0);

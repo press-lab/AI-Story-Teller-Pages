@@ -1,6 +1,6 @@
 import { placementValidationError, proposalDestinationLabel } from "../memory/storyCardPlacement";
 import { MemoryDecisionsPage } from "./MemoryDecisionsPage";
-import { isHistoricalLore, proposalLore } from "../memory/storyCardArchitecture";
+import { proposalLore } from "../memory/storyCardArchitecture";
 import { suggestionSourceValid } from "../memory/storyCardSuggestions";
 import { memoryTargetSnapshot } from "../memory/memoryCycleState";
 import { formatStoryTime } from "../memory/storyTime";
@@ -263,7 +263,6 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
   const destinationLabel = proposalDestinationLabel(adventure, proposal);
   const [regenerationError, setRegenerationError] = useState<string>();
   const [regenerating, setRegenerating] = useState(false);
-  const [eventDateValid, setEventDateValid] = useState(true);
   const isLore = proposal.proposedType === "storyCard" && (proposal.storyCardType === "lore" || adventure.storyCards.some(card => card.id === proposal.targetId && card.type === "lore"));
   const lore = isLore ? proposalLore(adventure, proposal) : undefined;
 
@@ -307,7 +306,7 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
         <div className="row">
           <button
             type="button"
-            disabled={proposal.status === "approved" || !sourceValid || Boolean(placementError) || (isLore && !eventDateValid)}
+            disabled={proposal.status === "approved"}
             onClick={() => dispatch({ type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id })}
           >
             Approve
@@ -316,7 +315,7 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
             <>
               {onRegenerate && (
                 <button type="button" disabled={regenerating} onClick={() => handleRegenerate()}>
-                  {regenerating ? "…" : placementError ? "Revalidate / Regenerate" : "Regenerate"}
+                  {regenerating ? "…" : "Regenerate"}
                 </button>
               )}
               {onRegenerate && proposal.proposedType === "storyCard" && !isLore && <button type="button" disabled={regenerating} onClick={() => handleRegenerate(true)}>Convert to Lore</button>}
@@ -338,20 +337,19 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
         </div>
       </div>
 
-      {isPending && placementError && <p role="status">{placementError}</p>}
+      {isPending && placementError && <p role="status">{placementError} You can still approve this draft manually.</p>}
+      {isPending && !sourceValid && <p role="status">The source evidence or destination changed. Review the current draft; you can still approve it.</p>}
       {proposal.placementValidation && <p>{proposal.placementValidation.reason}</p>}
       {regenerationError && <p role="alert">{regenerationError}</p>}
       {proposal.evaluationSource && <details><summary>Independent evaluation evidence</summary>
         <p>Destination: {proposal.targetId ?? "new Story Card"}</p>
         {proposal.evaluationSource.messages.map(source => <div key={source.id}><code>{source.id}</code><blockquote>{source.content}</blockquote></div>)}
-        {!sourceValid && !proposal.storyCardReview && <p role="alert">The source evidence or destination changed. Reevaluate this source before approval.</p>}
       </details>}
       {proposal.storyCardReview && <div className="panel">
         <p>{proposal.storyCardReview.candidateOnly ? "Unconfirmed candidate — verify the interpretation against the source." : "Evidence-based suggestion — review before applying."} Detection: {proposal.storyCardReview.origin}.</p>
         {Boolean(proposal.storyCardReview.evidenceQuotes?.length) && <details><summary>Supporting source quotes</summary>
           <ul>{proposal.storyCardReview.evidenceQuotes!.map((item, index) => <li key={`${item.messageId}-${index}`}><code>{item.messageId}</code><blockquote>{item.quote}</blockquote></li>)}</ul>
         </details>}
-        {!sourceValid && <p role="alert">The source evidence or destination changed. This suggestion cannot be approved; reevaluate the revised entry.</p>}
         {proposal.lore && <p>Occurred: {formatStoryTime(proposal.lore.occurredAt)} · {proposal.lore.status} · Sources: {proposal.lore.sourceMessageIds.join(", ")}</p>}
         <Field label="Story Card destination"><select value={proposal.targetId ?? ""} disabled={!isPending}
           onChange={event => {
@@ -365,12 +363,11 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
               storyCardReview: { ...proposal.storyCardReview!, operation: card ? "update" : "create" } });
           }}>
           <option value="">CREATE — new Story Card</option>
-          {adventure.storyCards.filter(card => card.active && !isHistoricalLore(card) && card.type === proposal.storyCardType).map(card => <option key={card.id} value={card.id}>UPDATE — {card.title}{proposal.storyCardReview!.targetCandidates.includes(card.id) ? " (suggested)" : ""}</option>)}
+          {adventure.storyCards.filter(card => card.type === proposal.storyCardType || card.id === proposal.targetId).map(card => <option key={card.id} value={card.id}>UPDATE — {card.title}{proposal.storyCardReview!.targetCandidates.includes(card.id) ? " (suggested)" : ""}</option>)}
         </select></Field>
         {proposal.storyCardReview.targetCandidates.length > 1 && !proposal.targetId && <p>Several continuing subjects may fit. Choose an update target or keep this as a separate card.</p>}
       </div>}
       {isPending && lore && <ProposalEventDate value={proposal.targetId ? lore.lastChangedAt ?? lore.occurredAt : lore.occurredAt}
-        onValidityChange={setEventDateValid}
         onChange={time => onUpdate(proposal, { lore: { ...lore, occurredAt: time, lastChangedAt: time } })} />}
       <textarea
         rows={5}
@@ -402,7 +399,7 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
         <div className="grid three">
           <Field label="Type">
             <select
-              value={destinationLabel}
+              value={proposal.proposedType}
               onChange={(event) => onUpdate(proposal, { proposedType: event.target.value as MemoryProposalType })}
               disabled={!isPending}
             >

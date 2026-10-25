@@ -140,8 +140,9 @@ describe("merged Story Card suggestions", () => {
     state = reduce(state, { type: "UPDATE_MESSAGE", messageId: "final-source", content: old.storyCardReview!.sourceContent + " This was only a dream." });
     state = reduce(state, { type: "SCAN_STORY_CARD_EXCHANGE", sourceMessageId: "final-source", manual: true });
     const before = state.storyCards;
-    state = reduce(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: old.id });
+    state = reduce(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: old.id, automatic: true });
     expect(state.storyCards).toEqual(before);
+    expect(state.activeState.memoryProposals.find(p => p.id === old.id)?.storyCardReview?.sourceContent).toBe(old.storyCardReview?.sourceContent);
   });
   it("rejects an invented model target ID even when its title matches a real card", async () => {
     const initial = seed();
@@ -163,12 +164,14 @@ describe("merged Story Card suggestions", () => {
     expect(proposal.targetId).toBeUndefined();
     expect(proposal.storyCardReview?.targetCandidates).toHaveLength(2);
   });
-  it("rejects stale regenerated evidence but allows a fresh interpretation of revised text", async () => {
+  it("lets the reviewer approve retained suggestions after regeneration and evaluate revised text", async () => {
     let state = await play("Seth and Draconia shared their first kiss.", [finding("Seth and Draconia shared their first kiss.")]);
     const stale = lore(state)[0];
     state = reduce(state, { type: "DELETE_MESSAGE", messageId: "final-source" });
+    expect(reduce(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: stale.id, automatic: true }).storyCards).toHaveLength(3);
     state = reduce(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: stale.id });
-    expect(state.storyCards).toHaveLength(3);
+    expect(state.storyCards).toHaveLength(4);
+    expect(state.activeState.memoryProposals.find(p => p.id === stale.id)?.status).toBe("approved");
     state = reduce(state, { type: "ADD_MESSAGE", id: "revised-source", role: "assistant", content: "Draconia kisses Seth for the first time." });
     state = reduce(state, { type: "ADD_MEMORY_PROPOSAL", proposal: makeStoryCardSuggestion(state, "revised-source", state.messages.at(-1)!.content, { title: "Their first kiss", content: state.messages.at(-1)!.content, evidence: state.messages.at(-1)!.content, reason: "Fresh model finding" }) });
     expect(lore(state).some(proposal => proposal.sourceTurnId === "revised-source")).toBe(true);

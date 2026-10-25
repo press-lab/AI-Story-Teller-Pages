@@ -113,7 +113,8 @@ it("binds one accurate historical partnership proposal to offer, acceptance and 
   for (const id of [offerSourceId, acceptanceId, partnershipSourceId]) {
     const edited = { ...next, messages: next.messages.map(source => source.id === id ? { ...source, content: "Edited" } : source) };
     expect(suggestionSourceValid(edited, proposal)).toBe(false);
-    expect(reduce(edited, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id }).storyCards).toEqual(edited.storyCards);
+    expect(reduce(edited, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id, automatic: true }).storyCards).toEqual(edited.storyCards);
+    expect(reduce(edited, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id }).activeState.memoryProposals[0].status).toBe("approved");
   }
   expect(JSON.stringify(JSON.parse(spy.mock.calls[0][1]!.body as string).messages)).not.toContain(partnership().target);
   const score = scoreMemoryCase(syntheticCases.find(test => test.id === "partnership")!, result, next.activeState.memoryProposals);

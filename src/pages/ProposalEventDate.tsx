@@ -11,23 +11,24 @@ function parseDate(text: string) {
 }
 
 /** Proposal chronology only: this control never dispatches a story-clock action. */
-export function ProposalEventDate({ value, onChange, onValidityChange }: {
+export function ProposalEventDate({ value, onChange }: {
   value?: StoryTime;
   onChange: (time: StoryTime) => void;
-  onValidityChange: (valid: boolean) => void;
 }) {
   const [text, setText] = useState(value?.text ?? "");
   const [precision, setPrecision] = useState<StoryTime["precision"]>(value?.precision ?? "unknown");
   useEffect(() => { setText(value?.text ?? ""); setPrecision(value?.precision ?? "unknown"); }, [value?.text, value?.precision]);
 
   const { invalid } = parseDate(text);
-  useEffect(() => onValidityChange(!invalid), [invalid, onValidityChange]);
 
   function update(nextText: string, nextPrecision: StoryTime["precision"]) {
     setText(nextText);
     setPrecision(nextPrecision);
     const { time: next, invalid } = parseDate(nextText);
-    if (invalid) return;
+    if (invalid) {
+      onChange({ text: nextText, precision: "unknown" });
+      return;
+    }
     onChange({ text: nextText, precision: nextPrecision,
       ...(next?.date && (nextPrecision === "day" || nextPrecision === "time") ? { date: next.date } : {}) });
   }
@@ -44,7 +45,7 @@ export function ProposalEventDate({ value, onChange, onValidityChange }: {
         {STORY_TIME_PRECISIONS.map(p => <option key={p} value={p}>{p}</option>)}
       </select></Field>
     </div>
-    {invalid && <p role="alert">Enter a valid Gregorian date. This date cannot be approved.</p>}
+    {invalid && <p role="alert">This is not a valid Gregorian date. It will be kept as text with unknown precision; you can still approve the card.</p>}
     <p className="muted">Dates this development only; the current story clock stays unchanged. For UPDATE, earlier occurrence dates and history are preserved.</p>
   </fieldset>;
 }

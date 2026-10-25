@@ -1,3 +1,5 @@
+import { reviewedProposal } from "../test/memoryPlacement";
+import { memoryTargetSnapshot } from "./memoryCycleState";
 import { beforeEach, expect, it, vi } from "vitest";
 import { createDefaultAdventure, defaultModelConfig, makeStoryCard } from "../state/defaults";
 import { adventureReducer } from "../state/adventureReducer";
@@ -74,8 +76,11 @@ it.each(["content", "destination", "source", "card"])("invalidates reviewed plac
     next = adventureReducer(next, { type: "UPSERT_STORY_CARD", storyCard: { ...a.storyCards[0], content: "Changed identity." } });
   }
   const before = next.storyCards;
-  next = adventureReducer(next, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: p.id });
+  next = adventureReducer(next, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: p.id, automatic: true });
   expect(next.storyCards).toEqual(before); expect(next.activeState.memoryProposals[0].status).toBe("pending");
+  next = adventureReducer(next, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: p.id });
+  expect(next.storyCards).not.toEqual(before);
+  expect(next.activeState.memoryProposals[0].status).toBe("approved");
 });
 it("reviews a genuine identity transformation and records only its supporting event as Lore", async () => {
   const a = seed(), content = "Alastor Moody permanently lost his magical eye."; a.messages[0].content = content;
@@ -128,4 +133,42 @@ it("loads older pending drafts without inventing placement approval", () => {
   expect(provider).not.toHaveBeenCalled();
   expect(loaded.activeState.memoryProposals[0].placementValidation).toBeUndefined();
   expect(placementValidationError(loaded, loaded.activeState.memoryProposals[0])).toContain("needs validation");
+});
+
+it.each(["legacy", "deleted source", "regenerated source", "inactive target", "historical target", "deleted target", "changed target type", "rejected", "ignored"] as const)("allows manual approval with %s while automatic approval remains guarded", scenario => {
+  let a = seed();
+  a.storyCards.push(makeStoryCard({ id: "lesson-history", title: "Moody lessons", type: "lore", memoryMode: "living", content: "Earlier lessons remain recorded." }));
+  const content = "Moody demonstrated three curses to the class.";
+  const p = reviewedProposal(a, makeStoryCardSuggestion(a, "source", moody.source, {
+    title: "Moody lessons", type: "lore", targetId: "lesson-history", content, evidence: moody.source, reason: "A reviewed lesson", evidenceReviewed: true,
+  }));
+  p.evaluationSource = { messages: [{ id: "source", content: moody.source }], target: memoryTargetSnapshot(a, "storyCard", "lesson-history") };
+  a.activeState.memoryProposals = [p];
+  if (scenario === "legacy") a = adventureReducer(a, { type: "UPDATE_MEMORY_PROPOSAL", proposalId: p.id, patch: { placementValidation: undefined } });
+  if (scenario === "deleted source" || scenario === "regenerated source") {
+    a = adventureReducer(a, { type: "DELETE_MESSAGE", messageId: "source" });
+    if (scenario === "regenerated source") a = adventureReducer(a, { type: "ADD_MESSAGE", id: "replacement", role: "assistant", content: "A regenerated classroom scene." });
+  }
+  const target = a.storyCards[1];
+  if (scenario === "inactive target") a = adventureReducer(a, { type: "DEACTIVATE_STORY_CARD", storyCardId: target.id });
+  if (scenario === "historical target") a = adventureReducer(a, { type: "UPDATE_STORY_CARD", storyCardId: target.id, patch: { memoryMode: "historical" } });
+  if (scenario === "deleted target") a = adventureReducer(a, { type: "DELETE_STORY_CARD", storyCardId: target.id });
+  if (scenario === "changed target type") a = adventureReducer(a, { type: "UPDATE_STORY_CARD", storyCardId: target.id, patch: { type: "custom" } });
+  if (scenario === "rejected") a = adventureReducer(a, { type: "REJECT_MEMORY_PROPOSAL", proposalId: p.id });
+  if (scenario === "ignored") a = adventureReducer(a, { type: "IGNORE_MEMORY_PROPOSAL", proposalId: p.id });
+  if (scenario !== "rejected" && scenario !== "ignored") {
+    const automatic = adventureReducer(a, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: p.id, automatic: true });
+    expect(automatic.storyCards).toEqual(a.storyCards);
+    expect(automatic.activeState.memoryProposals[0].status).toBe("pending");
+  }
+  const approved = adventureReducer(a, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: p.id });
+  expect(approved.activeState.memoryProposals[0].status).toBe("approved");
+  const card = approved.storyCards.find(c => scenario === "deleted target" ? c.title === "Moody lessons" : c.id === target.id)!;
+  expect(card.content).toContain(content);
+  expect(approved.storyCards[0]).toEqual(a.storyCards[0]);
+  if (scenario !== "deleted target") expect(card.content).toContain("Earlier lessons remain recorded.");
+  if (scenario === "changed target type") expect(card.type).toBe("custom");
+  if (scenario === "inactive target") expect(card.active).toBe(false);
+  if (scenario === "historical target") expect(card.memoryMode).toBe("historical");
+  expect(adventureReducer(approved, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: p.id })).toBe(approved);
 });

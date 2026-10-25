@@ -862,7 +862,7 @@ function outgoingBrainFieldProposalsForReplacement(
   return results;
 }
 
-function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal): Partial<Adventure> {
+function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal, manualApproval = false): Partial<Adventure> {
   const proposalMemoryMeta = (operation: MemoryUpdateOperation): MemoryUpdateMeta => ({
     source: "memoryProposal",
     operation,
@@ -878,11 +878,15 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal)
     const existing = state.storyCards.find(
       (card) => proposal.targetId ? card.id === proposal.targetId : !proposal.storyCardReview && normalizeProposalTitle(card.title) === normalizeProposalTitle(proposal.title),
     );
+    // A manual approval updates the chosen card without undoing a later type change.
+    if (manualApproval && existing) proposal = { ...proposal, storyCardType: existing.type };
     proposal = { ...proposal, suggestedTriggers: generatedStoryCardTriggers(state, cardTitle, safeContent, proposal.suggestedTriggers,
       existing?.id, proposal.memoryMode ?? existing?.memoryMode, proposal.storyCardType ? primaryStoryCardType(proposal.storyCardType) : existing?.type) };
-    if (existing && proposal.storyCardType && existing.type !== primaryStoryCardType(proposal.storyCardType)) return {};
-    if (proposal.eventMemory && existing) return {};
-    if (existing && isHistoricalLore(existing)) return {};
+    if (!manualApproval) {
+      if (existing && proposal.storyCardType && existing.type !== primaryStoryCardType(proposal.storyCardType)) return {};
+      if (proposal.eventMemory && existing) return {};
+      if (existing && isHistoricalLore(existing)) return {};
+    }
     const changeTime = proposal.lore?.lastChangedAt;
     const datedContent = existing?.type === "lore" && changeTime?.text && !safeContent.includes(changeTime.text)
       ? `[${formatStoryTime(changeTime)}] ${safeContent}` : safeContent;
@@ -1878,19 +1882,22 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
     }
     case "APPROVE_MEMORY_PROPOSAL": {
       const existing = state.activeState.memoryProposals.find((proposal) => proposal.id === action.proposalId);
-      if (!existing || existing.status === "approved" || !suggestionSourceValid(state, existing)) return state;
+      if (!existing || existing.status === "approved") return state;
+      // Reviewers can approve the displayed draft after edits or regeneration.
+      // Background approvals still require matching source evidence and placement.
+      if (action.automatic && !suggestionSourceValid(state, existing)) return state;
       const proposal = sanitizeProposal(proposalWithEdits(existing, action.editedProposal));
       if (!proposal) return state;
       const placementError = placementValidationError(state, proposal);
-      if (placementError) return adventureReducer(state, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: { id: createId("decision"), sourceId: proposal.sourceTurnId,
+      if (action.automatic && placementError) return adventureReducer(state, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: { id: createId("decision"), sourceId: proposal.sourceTurnId,
         createdAt: nowIso(), stage: "reducer", outcome: "validation_rejected", reason: placementError, proposalId: proposal.id, failureCode: "memory_placement_required" } });
-      if (proposal.storyCardReview && proposal.targetId) {
+      if (action.automatic && proposal.storyCardReview && proposal.targetId) {
         const target = state.storyCards.find(card => card.id === proposal.targetId && card.active);
         if (!target || isHistoricalLore(target) || (proposal.storyCardType && target.type !== primaryStoryCardType(proposal.storyCardType))) return state;
 
       }
       const approved = updateMemoryProposal(proposal, { status: "approved" });
-      const applied = applyApprovedMemoryProposal(state, approved);
+      const applied = applyApprovedMemoryProposal(state, approved, !action.automatic);
       return touchAdventure(state, {
         ...applied,
         activeState: {
