@@ -363,6 +363,9 @@ export default function App() {
           <MemoryInboxPage
             {...common}
             loading={runtime.loading}
+            memoryWork={runtime.memoryWork}
+            onRetryMemory={runtime.retryMemory}
+            onContinueWithExistingMemory={runtime.continueWithExistingMemory}
             onRegenerateProposal={runtime.regenerateMemoryProposal}
             onFindEventMemories={runtime.findEventMemories}
             onReconcileMemory={runtime.reconcileMemory}
@@ -495,8 +498,6 @@ export default function App() {
             contextResult={contextResult}
             loading={runtime.loading}
             memoryWork={runtime.memoryWork}
-            onRetryMemory={runtime.retryMemory}
-            onContinueWithExistingMemory={runtime.continueWithExistingMemory}
             error={runtime.error}
             onDismissError={runtime.clearError}
             saveStatus={saveStatus}

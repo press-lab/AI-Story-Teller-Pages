@@ -10,7 +10,7 @@ import { classifyMemory } from "../memory/classificationPolicy";
 import { resolveMemoryTarget } from "../memory/resolveMemoryTarget";
 import type { MemoryAutoApproveSettings, MemoryProposal, MemoryProposalType, MemoryReconcileRequest, StoryCardType } from "../types/adventure";
 import { createId, nowIso } from "../utils/id";
-import type { AdventurePageProps } from "./pageTypes";
+import type { AdventurePageProps, MemoryWorkStatus } from "./pageTypes";
 import { CheckboxField, Field, JsonTextarea, NumberInput, commaList, fromCommaList } from "./shared";
 
 const proposalTypes: MemoryProposalType[] = [
@@ -27,6 +27,9 @@ const proposalTypes: MemoryProposalType[] = [
 const storyCardTypes: StoryCardType[] = ["character", "location", "lore", "custom"];
 
 interface MemoryInboxPageProps extends AdventurePageProps {
+  memoryWork?: MemoryWorkStatus;
+  onRetryMemory?: () => Promise<void>;
+  onContinueWithExistingMemory?: () => void;
   onEvaluateMemory?: (sourceIds: string[]) => Promise<void>;
   onFindEventMemories?: (onProgress: (message: string) => void, signal: AbortSignal) => Promise<void>;
   onRegenerateProposal?: (proposalId: string, convertToLore?: boolean) => Promise<void>;
@@ -35,9 +38,23 @@ interface MemoryInboxPageProps extends AdventurePageProps {
 }
 
 export function MemoryInboxPage(props: MemoryInboxPageProps) {
+  const { memoryWork, loading, onRetryMemory, onContinueWithExistingMemory } = props;
   const [proposalSearch, setProposalSearch] = useState("");
   const [view, setView] = useState<"suggestions" | "decisions">("suggestions");
   return <>
+    {memoryWork && (
+      <div className="memory-work-notice" role="status" aria-live="polite">
+        {memoryWork.status === "running" ? (
+          <p>Updating memory{memoryWork.group ? ": " + ({ plot: "Plot", storyCards: "Story Cards", brains: "Brains", discovery: "Discovery" }[memoryWork.group]) : ""} — {memoryWork.remaining} {memoryWork.remaining === 1 ? "entry" : "entries"} remaining. You can write your next turn while this finishes.</p>
+        ) : memoryWork.status === "failed" ? (
+          <>
+            <p>{memoryWork.error ?? "Memory has unfinished evaluations."} Retry unfinished work or continue with existing memory.</p>
+            <button type="button" disabled={loading} onClick={() => void onRetryMemory?.()}>Retry memory</button>
+            <button type="button" disabled={loading} onClick={onContinueWithExistingMemory}>Continue with existing memory</button>
+          </>
+        ) : <p>The next turn will use existing memory. Unfinished evaluations remain saved.</p>}
+      </div>
+    )}
     <nav aria-label="Memory views" className="editor-stat-row">
       <button type="button" aria-pressed={view === "suggestions"} onClick={() => setView("suggestions")}>Suggestions</button>
       <button type="button" aria-pressed={view === "decisions"} onClick={() => setView("decisions")}>Decisions</button>

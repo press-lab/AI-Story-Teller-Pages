@@ -67,8 +67,6 @@ export interface PlayRuntimeProps extends AdventurePageProps {
   contextResult?: ContextBuildResult;
   loading: boolean;
   memoryWork?: MemoryWorkStatus;
-  onRetryMemory?: () => Promise<void>;
-  onContinueWithExistingMemory?: () => void;
   error?: string;
   onDismissError?: () => void;
   saveStatus: string;

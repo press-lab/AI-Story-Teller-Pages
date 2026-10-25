@@ -145,3 +145,22 @@ it("preserves noncanonical retry drafts through IndexedDB reload and keeps them 
   expect(loaded.activeState.memoryProposals).toHaveLength(0);
   expect(JSON.stringify(buildContext(loaded).messages)).not.toContain("private-checkpoint-marker");
 });
+
+
+it("shows memory progress and recovery choices only inside the Memory submenu", () => {
+  const adventure = createDefaultAdventure("Memory progress");
+  const retry = vi.fn(async () => undefined), bypass = vi.fn();
+  const props = { adventure, dispatch: vi.fn(), onRetryMemory: retry, onContinueWithExistingMemory: bypass };
+  const { rerender } = render(<MemoryInboxPage {...props}
+    memoryWork={{ adventureId: adventure.id, status: "running", sourceIds: ["source"], remaining: 1, group: "brains" }} />);
+  expect(screen.getByRole("status").textContent).toContain("Updating memory: Brains");
+  fireEvent.click(screen.getByRole("button", { name: "Decisions" }));
+  expect(screen.getByRole("status").textContent).toContain("Updating memory: Brains");
+  rerender(<MemoryInboxPage {...props}
+    memoryWork={{ adventureId: adventure.id, status: "failed", sourceIds: ["source"], remaining: 1,
+      error: "Completed groups are saved. A retry may incur API costs." }} />);
+  fireEvent.click(screen.getByRole("button", { name: "Retry memory" }));
+  fireEvent.click(screen.getByRole("button", { name: "Continue with existing memory" }));
+  expect(retry).toHaveBeenCalledTimes(1);
+  expect(bypass).toHaveBeenCalledTimes(1);
+});
