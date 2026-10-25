@@ -50,18 +50,31 @@ describe("actual HTTP call accounting", () => {
 
   it("persists independent failures without replaying calls on reload", async () => {
     let evaluations = 0;
+    let finishDiscovery!: () => void;
+    const discoveryResponse = new Promise<Response>(resolve => { finishDiscovery = () => resolve(reply("[]")); });
     vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
       const body = JSON.parse(init!.body as string);
       if (body.model === "arbitrary-evaluator") {
         evaluations++;
         if (evaluations === 1) throw new Error("Disconnected");
+        if (evaluations === 2) return discoveryResponse;
         return reply("[]");
       }
       return reply("Mira waits beside the gate.");
     });
     let hook = setup();
     await act(async () => { await hook.result.current.runtime.continueTurn(); });
-    const saved = normalizeAdventure(JSON.parse(JSON.stringify(hook.result.current.adventure)));
+    try {
+      await waitFor(() => expect(evaluations).toBe(2));
+      // One failed group is persisted while discovery is still in flight.
+      // continueTurn completes narration without waiting for this background work.
+      expect(hook.result.current.adventure!.messages.at(-1)?.memoryEvaluation?.status).toBe("failed");
+      expect(hook.result.current.runtime.memoryWork?.status).toBe("running");
+    } finally {
+      await act(async () => { finishDiscovery(); });
+    }
+    await waitFor(() => expect(hook.result.current.runtime.memoryWork?.status).toBe("failed"));
+    const saved = normalizeAdventure(JSON.parse(JSON.stringify(vi.mocked(saveAdventure).mock.calls.at(-1)![0])));
     expect(saved.messages.at(-1)?.memoryEvaluation?.status).toBe("failed");
     expect(saved.activeState.apiCallTotals!.memoryEvaluation).toMatchObject({ requests: 2, failedRequests: 1, unreportedUsage: 1 });
     hook.unmount(); hook = setup(saved); await act(async () => {});
