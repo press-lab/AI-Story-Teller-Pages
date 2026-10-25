@@ -9,7 +9,8 @@ export interface MemoryDiagnostic {
     | "proposal_approved" | "proposal_rejected" | "proposal_ignored"
     | "recovery_queued" | "recovery_attempted" | "recovery_validated" | "recovery_completed" | "recovery_failed"
     | "evaluation_queued" | "evaluation_started" | "evaluation_completed" | "evaluation_failed" | "evaluation_stale"
-    | "discovery_summary" | "candidate_awaiting_retry" | "checkpoint_invalidated";
+    | "discovery_summary" | "candidate_awaiting_retry" | "checkpoint_invalidated" | "checkpoint_reused" | "work_skipped";
+  retryable?: boolean;
   failureCategory?: "configuration" | "transport_api" | "invalid_model_output";
   failureCode?: string;
   providerCode?: string;
@@ -65,6 +66,7 @@ export interface MemoryDiscoveryCheckpoint {
   referenceFingerprint: string;
   candidates: Array<{
     candidate: MemoryDiscoveryCandidate;
+    validationCache?: Record<string, string>;
     status: "accepted" | "rejected" | "suppressed" | "awaiting_retry";
     proposal?: MemoryProposal;
     reason?: string;
@@ -72,7 +74,37 @@ export interface MemoryDiscoveryCheckpoint {
   }>;
 }
 
+export interface MemoryAssessmentDecision {
+  targets: Array<{ id: string; delta: string; evidenceMessageIds: string[] }>;
+  reason: string;
+}
+export interface MemoryAssessmentCheckpoint {
+  version: 1;
+  fingerprints: Record<MemoryEvaluationGroup, string>;
+  plot: MemoryAssessmentDecision;
+  storyCards: MemoryAssessmentDecision;
+  brains: MemoryAssessmentDecision;
+  discovery: { needed: boolean; reason: string; evidenceMessageIds: string[] };
+}
+export interface MemoryWorkFailure {
+  category: "configuration" | "transport_api" | "invalid_model_output";
+  code: string;
+  retryable: boolean;
+  providerCode?: string;
+  httpStatus?: number;
+}
+export interface MemoryWorkDraft {
+  validationCache?: Record<string, string>;
+  raw?: string;
+  result?: { actions: AdventureAction[]; generated?: GeneratedContentPreview; rejected?: string; error?: string; failure?: MemoryWorkFailure };
+}
+export interface MemoryGroupWork {
+  fingerprint: string;
+  drafts: Record<string, MemoryWorkDraft>;
+}
 export interface MemoryEvaluationState {
+  assessment?: MemoryAssessmentCheckpoint;
+  groupWork?: Partial<Record<MemoryEvaluationGroup, MemoryGroupWork>>;
   revision?: string;
   discoveryCheckpoint?: MemoryDiscoveryCheckpoint;
   turn: number;
@@ -437,7 +469,15 @@ export interface TokenBudgetSettings {
   summaryEnabled: boolean;
 }
 
+export interface MemoryRequestAttribution {
+  sourceId: string;
+  group?: MemoryEvaluationGroup;
+  stage: "assessment" | "generation" | "discovery" | "validation" | "repair" | "brainMaintenance";
+  attempt: number;
+}
 export interface ProviderConfig {
+  /** Runtime only; never credentials or prompt text. */
+  memoryRequest?: MemoryRequestAttribution;
   memoryReasoningControl?: import("../providers/memoryReasoning").MemoryReasoningControl;
   name: string;
   baseUrl: string;
@@ -736,6 +776,7 @@ export interface StoryEditHistoryEntry {
 
 export type ApiCallPurpose = "narration" | "correction" | "memoryEvaluation" | "memoryRecovery" | "otherBackground";
 export interface ApiCallRecord {
+  memoryRequest?: MemoryRequestAttribution;
   id: string;
   sessionId?: string;
   purpose: ApiCallPurpose;
@@ -974,7 +1015,7 @@ export type AdventureAction =
   | { type: "RECORD_MEMORY_DIAGNOSTIC"; entry: MemoryDiagnostic }
   | { type: "QUEUE_MEMORY_EVALUATION"; sourceId: string; turn: number }
   | { type: "CLAIM_MEMORY_EVALUATION"; sourceId: string; turn: number; manual?: boolean }
-  | { type: "COMMIT_MEMORY_EVALUATION_GROUP"; source: { id: string; content: string }; group: MemoryEvaluationGroup; dependencies: Array<{ id: string; content: string }>; targets: MemoryTargetSnapshot[]; actions: AdventureAction[]; error?: string; revision?: string; discoveryCheckpoint?: MemoryDiscoveryCheckpoint }
+  | { type: "COMMIT_MEMORY_EVALUATION_GROUP"; source: { id: string; content: string }; group: MemoryEvaluationGroup; dependencies: Array<{ id: string; content: string }>; targets: MemoryTargetSnapshot[]; actions: AdventureAction[]; error?: string; revision?: string; discoveryCheckpoint?: MemoryDiscoveryCheckpoint; assessment?: MemoryAssessmentCheckpoint; groupWork?: MemoryGroupWork; decisionState?: string }
   | { type: "SCAN_STORY_CARD_EXCHANGE"; sourceMessageId: string; manual?: boolean }
   | { type: "SET_STORY_CLOCK"; clock: StoryClock }
   | { type: "SET_TITLE"; title: string }

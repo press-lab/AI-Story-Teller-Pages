@@ -4,6 +4,18 @@ Source: local, read-only `C:\Users\sethp\Documents\GitHub\AI Story Teller - Orig
 Destination baseline: Pages `97c5669` (October 24, 2026). The user selected
 `-Orig` after comparison showed major differences between the two possible sources.
 
+## Current automatic memory orchestration (October 25, 2026)
+
+The independent *transaction groups* remain authoritative, but their initial
+semantic decisions now share one structured assessment. The historical sections
+below describe the earlier migration and its measurements; the current contract
+and offline before/after results are in [memory-request-orchestration.md](memory-request-orchestration.md).
+
+Finalized source → one shared Plot / Story Cards / Brains / additional-discovery
+assessment → required targeted generation → conditional semantic discovery →
+evidence/placement validation → four separate atomic commits → Inbox / approval.
+No narrator generation rule, model setting, cadence or context budget changed.
+
 ## Architectural assessment
 
 | Area | Classification | Decision |

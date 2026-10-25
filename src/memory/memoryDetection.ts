@@ -1,3 +1,5 @@
+import { memoryTargetSnapshot } from "./memoryCycleState";
+import { factsCovered, proposalCoverage, relevantProposalCoverage } from "./factCoverage";
 import { makeStoryCardSuggestion, scanStoryCardExchange, relevantStoryCardInventory, STORY_CARD_MEMORY_CHECK } from "./storyCardSuggestions";
 import { isHistoricalLore, primaryStoryCardType } from "./storyCardArchitecture";
 import { sameEventMemory } from "./eventMemory";
@@ -87,20 +89,8 @@ Respond with ONLY the content: no JSON, no preamble, no labels.`;
 }
 
 
-function normalizedFacts(content: string): string[] {
-  return content.split(/\n+/).map(line => line.toLocaleLowerCase()
-    .replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim()).filter(Boolean);
-}
-
-/** Exact fact coverage only: similar subjects can still have distinct new facts. */
-function alreadyCaptured(content: string, existing: string[]): boolean {
-  const facts = normalizedFacts(content);
-  const known = new Set(existing.flatMap(normalizedFacts));
-  return facts.length > 0 && facts.every(fact => known.has(fact));
-}
-
 /** Catch up across the configured interval without replacing existing-card updates. */
-export async function detectStoryCardProposals(adventure: Adventure, providerConfig: ProviderConfig, options: { messages?: Adventure["messages"]; eventsOnly?: boolean; sourceId?: string } = {}) {
+export async function detectStoryCardProposals(adventure: Adventure, providerConfig: ProviderConfig, options: { messages?: Adventure["messages"]; eventsOnly?: boolean; sourceId?: string; skipSemantic?: string } = {}) {
   const result = {
     actions: [] as AdventureAction[], errors: [] as string[], evaluated: false,
     checkpoint: undefined as MemoryDiscoveryCheckpoint | undefined,
@@ -128,6 +118,7 @@ export async function detectStoryCardProposals(adventure: Adventure, providerCon
       diagnostic("candidates_produced", "Deterministic identity nomination; not a semantic Lore finding.", "deterministicIdentity");
     }
   }
+  if (options.skipSemantic) { diagnostic("work_skipped", options.skipSemantic); return result; }
   const considered = adventure.activeState.memoryProposals.filter(p => p.proposedType === "storyCard");
   const capturedContent = [
     ...adventure.storyCards.flatMap(c => [c.content, storyCardContextContent(c)]),
@@ -135,8 +126,7 @@ export async function detectStoryCardProposals(adventure: Adventure, providerCon
   ];
   // All duplicate checks stay local. Only bounded relevant targets reach the model.
   const cardInventory = relevantStoryCardInventory(adventure, excerpt);
-  const proposalInventory = considered.filter(p => excerpt.toLowerCase().includes(p.title.toLowerCase())).slice(-8)
-    .map(p => ({ title: p.title, status: p.status }));
+  const proposalInventory = relevantProposalCoverage(adventure, excerpt, cardInventory.map(c => c.id), messages.map(m => m.id));
   const sourceId = options.sourceId ?? messages.filter(message => message.role === "assistant").at(-1)!.id;
   const attempt = adventure.messages.find(message => message.id === sourceId)?.memoryEvaluation?.attempts ?? 0;
   let activeIndex: number | undefined;
@@ -150,9 +140,12 @@ export async function detectStoryCardProposals(adventure: Adventure, providerCon
   try {
     // The digest protects cached reviews from changes to canon, target controls and
     // author corrections, without duplicating the whole card archive in each save.
-    const references = JSON.stringify({ placementVersion: PLACEMENT_VERSION, cards: adventure.storyCards, components: adventure.components,
+    const relevantIds = new Set([...cardInventory.map(c => c.id), ...(adventure.messages.find(m => m.id === sourceId)?.memoryEvaluation?.discoveryCheckpoint?.candidates.flatMap(d => d.candidate.targetId ? [d.candidate.targetId] : []) ?? [])]);
+    const references = JSON.stringify({ placementVersion: PLACEMENT_VERSION,
+      canon: memoryCanonMessages(adventure, excerpt, "Discover missing Story Cards", true),
+      cards: adventure.storyCards.filter(c => relevantIds.has(c.id)).map(({ id, title, type, content, protected: protectedTarget, keys, lore }) => ({ id, title, type, content, protectedTarget, keys, lore })),
       corrections: adventure.messages.filter(message => message.role === "user" && message.inputMode === "comms").slice(-4),
-      settings: adventure.memoryDetectionSettings });
+      settings: adventure.memoryDetectionSettings, proposalInventory });
     const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(references));
     const referenceFingerprint = Array.from(new Uint8Array(digest), value => value.toString(16).padStart(2, "0")).join("");
     const prior = options.sourceId ? adventure.messages.find(message => message.id === sourceId)?.memoryEvaluation?.discoveryCheckpoint : undefined;
@@ -161,7 +154,9 @@ export async function detectStoryCardProposals(adventure: Adventure, providerCon
     if (prior && !reusable) record("checkpoint_invalidated", "Evidence, canon or destination controls changed; cached discovery reviews were discarded.");
     let candidates: MemoryDiscoveryCheckpoint["candidates"];
     if (reusable) {
-      candidates = prior.candidates.map(draft => ({ ...draft }));
+      candidates = prior.candidates.map(draft => ({ ...draft, proposal: draft.proposal?.placementValidation?.target ? {
+        ...draft.proposal, placementValidation: { ...draft.proposal.placementValidation,
+          target: memoryTargetSnapshot(adventure, "storyCard", draft.proposal.targetId!) } } : draft.proposal }));
     } else {
       const response = await sendMemoryCompletion(adventure, providerConfig, [
           { role: "system", content: `${STORY_CARD_MEMORY_CHECK}
@@ -173,7 +168,7 @@ ${STORY_CARD_PLACEMENT_POLICY}
           { role: "user", content: "Relevant existing cards: " + JSON.stringify(cardInventory) },
           { role: "user", content: "Previously considered Story Card proposals (including dismissed; omit duplicates): " + JSON.stringify(proposalInventory) },
           { role: "user", content: (options.sourceId ? `Establishing narrator ID: ${options.sourceId}\nAllowed evidence message IDs: ${messages.map(message => message.id).join(", ")}\n` : "") + "Recent story evidence:\n" + excerpt },
-        ]);
+        ], "discovery");
 
       result.tokenUsage.promptTokens += response.usage?.promptTokens ?? 0;
       result.tokenUsage.completionTokens += response.usage?.completionTokens ?? 0;
@@ -196,7 +191,10 @@ ${STORY_CARD_PLACEMENT_POLICY}
     }
     for (const [index, draft] of candidates.entries()) {
       activeIndex = index;
-      if (draft.status !== "awaiting_retry") continue;
+      if (draft.status !== "awaiting_retry") {
+        if (draft.status === "accepted" && draft.proposal) capturedContent.push(draft.proposal.content);
+        continue;
+      }
       let item = draft.candidate;
       const title = item.title;
       const reject = (reason: string, code: string) => {
@@ -211,6 +209,13 @@ ${STORY_CARD_PLACEMENT_POLICY}
           candidate: { kind: item.storyCardType, title: item.title, content: item.content,
             evidence: JSON.stringify(item.evidenceQuotes), rationale: item.rationale ?? "", targetId: item.targetId } });
       };
+      const earlyDraft = makeStoryCardSuggestion(adventure, sourceId, messages.at(-1)!.content, {
+        title: item.title, content: item.content, type: item.storyCardType === "event" ? "lore" : item.storyCardType,
+        targetId: item.targetId, evidence: excerpt, reason: item.rationale ?? "", evidenceReviewed: true,
+      });
+      if (proposalCoverage(adventure, earlyDraft) || (item.storyCardType !== "event" && factsCovered(item.content, capturedContent))) {
+        suppress("Factual delta already recorded or considered; no repair or review request needed."); continue;
+      }
       let error = discoveryEvidenceError(item, messages, options.sourceId);
       if (error && options.sourceId) {
         record("validation_rejected", error.reason, { failureCode: error.code, targetId: item.targetId,
@@ -223,7 +228,7 @@ ${STORY_CARD_PLACEMENT_POLICY}
 ${STORY_CARD_PLACEMENT_POLICY}
 Repair this single discovery candidate using only the supplied original messages. Return ONLY one candidate object with title, content (new supported facts only), storyCardType, targetId when relevant, evidenceMessageIds, evidenceQuotes:[{messageId,quote}], eventStatus and candidateOnly. Include the establishing narrator ID and its exact unmodified supporting quote. Do not invent evidence, concatenate noncontiguous quotes or assert planned work is complete. Return null if unsupported.` },
             { role: "user", content: JSON.stringify({ candidate: item, failure: error, establishingSourceId: sourceId, allowedEvidence: dependencies }) },
-          ]);
+          ], "repair");
           repairReceived = true;
           result.tokenUsage.promptTokens += repair.usage?.promptTokens ?? 0;
           result.tokenUsage.completionTokens += repair.usage?.completionTokens ?? 0;
@@ -243,7 +248,7 @@ Repair this single discovery candidate using only the supplied original messages
       }
       if (error) { reject(error.reason, error.code); continue; }
       const evidence = messages.filter(message => item.evidenceMessageIds.includes(message.id));
-      if (item.storyCardType !== "event" && alreadyCaptured(item.content, capturedContent)) {
+      if (item.storyCardType !== "event" && factsCovered(item.content, capturedContent)) {
         suppress("Semantic candidate duplicates already captured facts."); continue;
       }
       const isEvent = item.storyCardType === "event" || Boolean(item.eventMemory);
@@ -278,7 +283,7 @@ Repair this single discovery candidate using only the supplied original messages
       if (item.memoryMode) proposal.memoryMode = item.memoryMode;
       if (item.eventStatus && proposal.lore) proposal.lore.status = item.eventStatus;
       {
-        const validation = await validateStoryCardProposal(adventure, providerConfig, proposal, result.tokenUsage);
+        const validation = await validateStoryCardProposal(adventure, providerConfig, proposal, result.tokenUsage, draft.validationCache ??= {});
         if (!validation.changed) {
           draft.status = validation.retryable ? "awaiting_retry" : "rejected";
           draft.reason = validation.error ?? "No new durable change.";

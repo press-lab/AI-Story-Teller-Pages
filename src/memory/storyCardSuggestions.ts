@@ -1,3 +1,4 @@
+import { factsCovered } from "./factCoverage";
 import type { Adventure, MemoryProposal, Message, StoryCardType } from "../types/adventure";
 import { createId, nowIso } from "../utils/id";
 import { isHistoricalLore } from "./storyCardArchitecture";
@@ -172,17 +173,16 @@ export function equivalentStoryCardSuggestions(a: MemoryProposal, b: MemoryPropo
   if (a.proposedType !== "storyCard" || b.proposedType !== "storyCard" || (a.storyCardType ?? "lore") !== (b.storyCardType ?? "lore")) return false;
   const ar = a.storyCardReview, br = b.storyCardReview;
   if (["character", "location", "custom"].includes(a.storyCardType ?? "lore") && !a.targetId && !b.targetId && normalizeMemoryText(a.title) === normalizeMemoryText(b.title)) return true;
-  const exact = normalizeMemoryText(a.content) === normalizeMemoryText(b.content);
+  const exact = factsCovered(a.content, [b.content]) && factsCovered(b.content, [a.content]);
   if (exact && (normalizeMemoryText(a.title) === normalizeMemoryText(b.title) || Boolean(a.targetId && a.targetId === b.targetId) || Boolean(ar?.eventKind && ar.eventKind === br?.eventKind && ar.participants.length && ar.participants.every(name => br.participants.includes(name))))) return true;
   if (!ar || !br || ar.sourceMessageId !== br.sourceMessageId) return false;
   const people = ar.participants.length > 0 && ar.participants.length === br.participants.length && ar.participants.every(name => br.participants.includes(name));
   const leftEvidence = normalizeMemoryText(a.sourceText), rightEvidence = normalizeMemoryText(b.sourceText);
   const sameEvidence = Math.min(leftEvidence.length, rightEvidence.length) >= 12 && (leftEvidence.includes(rightEvidence) || rightEvidence.includes(leftEvidence));
   if (ar.eventKind && br.eventKind && ar.eventKind !== br.eventKind) return false;
-  const left = titleWords(a.content), right = titleWords(b.content);
-  const overlap = [...left].filter(word => right.has(word)).length / Math.max(1, Math.min(left.size, right.size));
-  // A shared exchange/category is not enough: unrelated findings can cite the same narrator.
-  return Boolean(sameEvidence && overlap >= 0.4) || Boolean(people && ar.eventKind && ar.eventKind === br.eventKind && overlap >= 0.4);
+  // Shared participants/evidence never suffice to merge different developments.
+  // Use the same conservative fact comparison as generation and application.
+  return Boolean((sameEvidence || people) && factsCovered(a.content, [b.content]) && factsCovered(b.content, [a.content]));
 }
 
 export function mergeStoryCardSuggestions(existing: MemoryProposal, incoming: MemoryProposal): MemoryProposal {

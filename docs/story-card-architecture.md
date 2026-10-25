@@ -72,3 +72,22 @@ Other Brain migrations are intentionally retained.
 The Memory Mode selector, ongoing filter and per-card auto-update opt-in have been removed. Legacy memoryMode, autoUpdate, archivedFacts and eventMemory fields remain readable and round-trip without bulk rewriting saves. Dates and completed/ongoing/unresolved status describe facts independently of update eligibility. Existing source-completion and bounded retry/quarantine rules remain; loading an adventure does not replay history or send memory requests.
 
 `storyCardPlacement.test.ts` covers every card type across all three legacy modes, disabled opt-in, inactive/protected targets, preserved bodies and controls, stale evidence, bounded repair and import/export. `hogwartsTattooAppend.test.ts` uses original source excerpts to verify partnership creation, a described paper-transfer technique, Ron's successful test, branding and future production agreements. Provider responses are explicitly mocked; these tests establish pipeline correctness, not live-model semantic accuracy.
+
+## Shared assessment, coverage and retry work
+
+Automatic memory uses one source-bound assessment for Plot, existing Story Cards,
+Brains and whether additional discovery is needed, preserving four independent
+transaction commits. See [memory-request-orchestration.md](memory-request-orchestration.md).
+Relevant Inbox coverage includes proposed factual deltas, validated newFact,
+status, target, participants and source IDs, selected newest first after relevance.
+It is explicitly noncanonical duplicate coverage. Existing-card results become
+coverage for discovery in the same source; they never exclude an entire topic.
+
+Shared pure fact coverage uses narrow paraphrase normalization, retaining actor,
+negation and outcome. It runs before repair/review, at Inbox insertion and at
+approval against the current destination. It does not use a similarity threshold.
+A fully covered approval retains the approved review decision and records an
+inspectable no-op without adding another card revision. Partial overlap preserves
+the reviewed draft pending edit/revalidation instead of silently changing claims.
+Second placement review remains mandatory for corrected content or destinations;
+completed reviews are reusable only with matching evidence, content and controls.

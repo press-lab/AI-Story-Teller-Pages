@@ -1,3 +1,4 @@
+import { mockAssessment, isAssessment } from "../test/memoryAssessment";
 import moodyPlacement from "./fixtures/moody-placement.json";
 import { mockPlacementVerdict } from "../test/memoryPlacement";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -22,7 +23,7 @@ vi.mock("../providers/openAICompatible", () => ({ isNativeDeepSeekProvider: () =
 import { sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
 const provider = vi.mocked(sendOpenAICompatibleChatCompletion);
 const config = { ...defaultModelConfig, apiKey: "offline-test" };
-let fired: string[], discoveries: unknown[], fail: string | undefined, reject: boolean;
+let fired: string[], discoveries: unknown[], fail: string | undefined, reject: boolean, discoveryNeeded: boolean;
 const reaction = (name: string) => `I trust ${name === "Mira" ? "Seth's offer" : "the evidence"} after what we established; I will check the ward myself.`;
 function seed() {
   const a = createDefaultAdventure("Original foundation regression");
@@ -44,12 +45,13 @@ async function evaluate(a: Adventure, sourceId = "source") {
   return { ...result, state: result.actions.reduce(adventureReducer, claimed), claimed };
 }
 beforeEach(() => {
-  fired = ["brain:mira"]; discoveries = []; fail = undefined; reject = false;
+  fired = ["brain:mira"]; discoveries = []; fail = undefined; reject = false; discoveryNeeded = true;
   provider.mockReset();
   provider.mockImplementation(async request => {
     const text = request.messages.map(message => message.content).join("\n");
     let content = "[]";
-    if (text.includes("MEMORY UPDATE VALIDATION")) {
+    if (isAssessment(request.messages)) { content = mockAssessment(request.messages, fired, discoveryNeeded);
+    } else if (text.includes("MEMORY UPDATE VALIDATION")) {
       if (fail === "validation") throw new Error("offline validation failure");
       const body = JSON.parse(request.messages.at(-1)!.content);
       content = JSON.stringify({ accepted: !reject, meaningfulChange: !reject, reason: "Supported change in the supplied establishing exchange",
@@ -62,6 +64,7 @@ beforeEach(() => {
       if (fail === "discovery") return { content: "malformed", raw: {}, usage: { promptTokens: 5, completionTokens: 1, totalTokens: 6 } };
       content = JSON.stringify(discoveries);
     } else if (text.includes("recording one new thought")) {
+      if (fail === "brain" || fail === "brain:mira") throw new Error("offline Brain generation failure");
       const name = /private plan for ([^.]+) based on/.exec(text)?.[1] ?? "Mira";
       content = JSON.stringify({ thoughts: { ward_research: `1 → ${reaction(name)}` } });
     } else if (text.includes("pruning")) {
@@ -90,6 +93,7 @@ describe("original independent foundation", () => {
       if (name === "shared-discovery") { a.brains.push(makeBrain({ id: "vi", characterName: "Vi", active: true })); a.messages.at(-1)!.content += " Vi confirms the finding."; fired.push("brain:vi"); discoveries = [finding(a)]; }
       const expected = name === "brain" ? ["brainUpdate:mira"] : name === "event" ? ["storyCard:The ward key discovery"]
         : name === "shared-discovery" ? ["brainUpdate:mira", "brainUpdate:vi", "storyCard:The ward key discovery"] : [];
+      discoveryNeeded = discoveries.length > 0;
       provider.mockClear(); const result = await evaluate(a);
       const actual = result.state.activeState.memoryProposals.map(proposal => `${proposal.proposedType}:${proposal.targetId ?? proposal.title}`);
       metrics.truePositives += expected.filter(destination => actual.includes(destination)).length;
@@ -98,7 +102,7 @@ describe("original independent foundation", () => {
       metrics.duplicates += actual.length - new Set(actual).size;
       metrics.providerCalls += provider.mock.calls.length;
     }
-    expect(metrics).toEqual({ truePositives: 5, falseNegatives: 0, falsePositives: 0, duplicates: 0, providerCalls: 17 });
+    expect(metrics).toEqual({ truePositives: 5, falseNegatives: 0, falsePositives: 0, duplicates: 0, providerCalls: 16 });
     console.log("FOUNDATION_OFFLINE_ROUTING", JSON.stringify(metrics));
   });
   it("captures a first-person Brain change from plain narration, preserves history and keeps pending memory out of canon", async () => {
@@ -122,7 +126,7 @@ describe("original independent foundation", () => {
     const source = a.messages.at(-1)!;
     const result = await evaluate(a, source.id);
     expect(result.state.activeState.memoryProposals.some(proposal => proposal.targetId === "draconia")).toBe(true);
-    const evaluation = provider.mock.calls.find(([request]) => request.messages[0].content.includes("evaluation engine"))![0];
+    const evaluation = provider.mock.calls.find(([request]) => isAssessment(request.messages))![0];
     expect(evaluation.messages.at(-1)!.content).toContain("Draconia");
     expect(result.logEntry.conditionsEvaluated.map(condition => condition.id)).toContain("brain:draconia");
   });
@@ -214,13 +218,14 @@ describe("original independent foundation", () => {
     expect(approved.storyCards[0].content).toContain("formed after the siege");
     expect(approved.storyCards[0].content).toContain("signed a binding charter");
   });
-  it("leaves ordinary dialogue unwritten and measures the three relevant condition checks plus discovery", async () => {
+  it("leaves ordinary dialogue unwritten with one shared assessment", async () => {
     const a = seed(); fired = []; a.components = [makeComponent({ id: "pressure", title: "Active Pressure", type: "activePressure", content: "No threat" })];
     a.storyCards = [makeStoryCard({ title: "Ward", content: "A sealed ward", type: "lore", memoryMode: "living", keys: [], autoUpdate: true })];
+    discoveryNeeded = false;
     const result = await evaluate(a);
     expect(result.state.activeState.memoryProposals).toHaveLength(0);
-    expect(provider).toHaveBeenCalledTimes(4);
-    expect(result.tokenUsage).toEqual({ promptTokens: 20, completionTokens: 4 });
+    expect(provider).toHaveBeenCalledTimes(1);
+    expect(result.tokenUsage).toEqual({ promptTokens: 5, completionTokens: 1 });
   });
   it("retries only a failed group; never stamps failed discovery as successful", async () => {
     const a = seed(); fail = "discovery";
@@ -352,7 +357,7 @@ describe("interpersonal discovery reliability paths", () => {
     expect(result.state.activeState.memoryProposals).toHaveLength(0);
     expect(result.state.activeState.memoryDiagnostics).toContainEqual(expect.objectContaining({ outcome: "zero_candidates", candidateKinds: ["semanticLore"] }));
     expect(result.logEntry.conditionsFired).not.toContain("storyCardDiscovery");
-    const prompt = provider.mock.calls.flatMap(([request]) => request.messages).find(message => message.content.includes("STORY CARD MEMORY CHECK"))!.content;
+    const prompt = provider.mock.calls.flatMap(([request]) => request.messages).find(message => message.content.startsWith("STORY CARD MEMORY CHECK"))!.content;
     expect(prompt).toContain("Ordinary smiles, leaning to read");
     expect(prompt).toContain('"evidenceQuotes"'); expect(prompt).not.toContain('"memoryMode"'); expect(prompt).toContain('"eventStatus"');
   });
@@ -396,7 +401,7 @@ describe("interpersonal discovery reliability paths", () => {
     await evaluate(a, "source2");
     const requests = provider.mock.calls.flatMap(([request]) => request.messages);
     expect(requests.filter(message => message.content.startsWith("Recent story evidence:")).every(message => !message.content.includes("Acknowledged"))).toBe(true);
-    const conditions = provider.mock.calls.find(([request]) => request.messages[0].content.includes("evaluation engine"))![0];
+    const conditions = provider.mock.calls.find(([request]) => isAssessment(request.messages))![0];
     expect(conditions.messages.at(-1)!.content).not.toContain("Acknowledged");
     expect(conditions.messages.at(-1)!.content).not.toContain("Correction:");
     expect(STORY_CARD_MEMORY_CHECK).toContain("NEVER a confirmed kiss attempt");
@@ -414,7 +419,7 @@ it("preserves legacy assistant recovery for explicit review without scheduling o
   const result = await evaluate(normalized);
   expect(result.state.messages.find(message => message.id === "legacy")?.memoryRecovery).toEqual(a.messages[0].memoryRecovery);
   expect(pendingMemoryRecovery(result.state).map(message => message.id)).toContain("legacy");
-  expect(provider.mock.calls.filter(([request]) => request.messages.some(message => message.content.includes("STORY CARD MEMORY CHECK")))).toHaveLength(1);
+  expect(provider.mock.calls.filter(([request]) => request.messages.some(message => message.content.startsWith("STORY CARD MEMORY CHECK")))).toHaveLength(1);
 });
 
 
@@ -590,7 +595,7 @@ describe("Hogwarts read-only source regressions", () => {
     const recorded = fixture.cases[2], a = seed();
     a.messages = (recorded.messages as Adventure["messages"]).map(({ memoryEvaluation: _evaluation, ...message }) => message) as Adventure["messages"];
     a.brains = [makeBrain({ id: "draco", characterName: "Draco", active: true })];
-    fired = []; fail = "brain";
+    fired = ["brain:draco"]; fail = "brain";
     discoveries = [{ ...finding(a), evidenceMessageIds: ["invented"] }];
     const result = await evaluate(a, recorded.sourceId);
     expect(result.state.messages.at(-1)?.memoryEvaluation).toMatchObject({ status: "failed", completedGroups: ["plot", "storyCards"] });
@@ -615,10 +620,10 @@ describe("Hogwarts read-only source regressions", () => {
   it("invalidates cached reviews when canon or destination controls change", async () => {
     const a = normalizeAdventure(seed()); a.brains = []; fired = []; discoveries = [finding(a)]; fail = "validation";
     const first = await evaluate(a);
-    first.state.storyCards = [makeStoryCard({ title: "New canon", content: "Mira must verify the key.", autoUpdate: false })];
+    first.state.storyCards = [makeStoryCard({ title: "New canon", content: "Mira must verify the key.", keys: ["Mira"], autoUpdate: false })];
     fail = undefined; provider.mockClear();
     const second = await evaluate(first.state);
-    expect(provider.mock.calls.some(([request]) => request.messages[0].content.includes("STORY CARD MEMORY CHECK"))).toBe(true);
+    expect(provider.mock.calls.some(([request]) => request.messages.some(m => m.content.startsWith("STORY CARD MEMORY CHECK")))).toBe(true);
     expect(second.state.activeState.memoryDiagnostics).toContainEqual(expect.objectContaining({ outcome: "checkpoint_invalidated" }));
   });
 
@@ -661,7 +666,7 @@ it("retains a Moody lesson from the existing Character check as focused Lore wit
       return { content: JSON.stringify({ accepted: true, meaningfulChange: true, identityMatchesTarget: true, evidenceMessageIds: body.latestTurnMessageIds, reason: "Supported classroom event.",
         placement: { kind: "historicalLore", title: "Moody’s Unforgivable Curses Demonstration", content: moodyPlacement.lore, newFact: moodyPlacement.lore, reason: "Completed lesson, no identity change." } }), raw: {} };
     }
-    if (text.includes("Append new durable facts about")) return { content: moodyPlacement.proposal, raw: {} };
+    if (!isAssessment(request.messages) && text.includes("Append new durable facts about")) return { content: moodyPlacement.proposal, raw: {} };
     return previous(request);
   });
   const result = await evaluate(a);

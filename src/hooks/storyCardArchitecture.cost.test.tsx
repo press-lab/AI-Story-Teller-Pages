@@ -1,3 +1,4 @@
+import { mockAssessment, isAssessment } from "../test/memoryAssessment";
 /** @vitest-environment jsdom */
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { useState } from "react";
@@ -17,7 +18,7 @@ it.each(["plain", "legacy-envelope", "large-archive"])("reports independent offl
     a.storyCards = Array.from({ length: 200 }, (_, i) => makeStoryCard({ title: `Distant history ${i}`, content: `Unrelated archived subject ${i}.`, type: "lore", memoryMode: "historical", keys: [`distant-${i}`] }));
   }
   const provider = vi.mocked(sendOpenAICompatibleChatCompletion); provider.mockReset();
-  provider.mockImplementation(async request => ({ content: request.memoryEvaluation ? "[]" : "Mira waits at the gate." + (kind === "legacy-envelope" ? '<memory_updates>{"updates":[]}</memory_updates>' : ""), raw: {} }));
+  provider.mockImplementation(async request => ({ content: request.memoryEvaluation ? mockAssessment(request.messages) : "Mira waits at the gate." + (kind === "legacy-envelope" ? '<memory_updates>{"updates":[]}</memory_updates>' : ""), raw: {} }));
   const hook = renderHook(() => {
     const [adventure, setAdventure] = useState<Adventure | undefined>(a);
     return useAdventureRuntime(adventure, setAdventure, { ...defaultModelConfig, apiKey: "offline-test" }, vi.fn(), vi.fn(), vi.fn(), async () => undefined, { enabled: true, generateContent: true, everyNTurns: 1 });
@@ -27,7 +28,7 @@ it.each(["plain", "legacy-envelope", "large-archive"])("reports independent offl
   const calls = provider.mock.calls.map(([request]) => request);
   const narration = calls.filter(request => !request.memoryEvaluation), evaluation = calls.filter(request => request.memoryEvaluation);
   expect(narration).toHaveLength(20);
-  expect(evaluation).toHaveLength(kind === "large-archive" ? 40 : 20);
+  expect(evaluation).toHaveLength(20);
   expect(narration.every(request => !request.messages.some(message => message.content.includes("[ONE-PASS MEMORY]")))).toBe(true);
   expect(calls.every(request => !request.messages.some(message => message.content.includes("Unrelated archived subject")))).toBe(true);
   console.log("FOUNDATION_OFFLINE_COST", kind, JSON.stringify({ narration: narration.length, evaluation: evaluation.length,

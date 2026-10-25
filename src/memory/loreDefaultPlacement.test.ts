@@ -8,7 +8,7 @@ import { placementValidationError, STORY_CARD_PLACEMENT_POLICY } from "./storyCa
 import { storyCardTargets } from "./storyCardSuggestions";
 import { sendMemoryCompletion } from "../providers/memoryCompletion";
 import type { Adventure, MemoryProposal, StoryCard } from "../types/adventure";
-vi.mock("../providers/memoryCompletion", () => ({ sendMemoryCompletion: vi.fn() }));
+vi.mock("../providers/memoryCompletion", async original => ({ ...await original<typeof import("../providers/memoryCompletion")>(), sendMemoryCompletion: vi.fn() }));
 const provider = vi.mocked(sendMemoryCompletion);
 const config = { ...defaultModelConfig, apiKey: "offline" };
 const title = "Flemish binding theory: library test";
@@ -35,7 +35,7 @@ it("checks Character only for an enduring profile change and includes Lore-first
   await runMemoryCycle(claimed, config, { sourceId: fixture.proposal.sourceTurnId });
   const request = provider.mock.calls.find(([, , messages]) => messages.at(-1)!.content.includes('"conditions"'))!;
   const body = JSON.parse(request[2].at(-1)!.content);
-  const condition = body.conditions.find((c: { id: string }) => c.id === `storyCard:${fixture.card.id}`)!;
+  const condition = body.conditions.storyCards.find((c: { id: string }) => c.id === `storyCard:${fixture.card.id}`)!;
   expect(condition.condition).toContain("specific enduring profile change");
   expect(condition.condition).toContain("Events and shared developments belong in Lore");
   provider.mockClear(); provider.mockResolvedValue(response(verdict()));

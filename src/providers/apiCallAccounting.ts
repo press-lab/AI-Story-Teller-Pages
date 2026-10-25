@@ -52,7 +52,7 @@ export async function fetchWithAccounting(url: string, init: RequestInit, config
     || JSON.stringify(body.system ?? "").includes("[ONE-PASS MEMORY]"));
   let provider: string | undefined;
   try { provider = new URL(url).hostname; } catch { /* No URL or credentials are logged. */ }
-  const record: ApiCallRecord = { provider, outputTokenLimit: Number(body.max_tokens ?? body.max_output_tokens) || undefined,
+  const record: ApiCallRecord = { memoryRequest: config.memoryRequest, provider, outputTokenLimit: Number(body.max_tokens ?? body.max_output_tokens) || undefined,
     memoryInstructionPresent, id: createId("api"), sessionId: config.sessionId,
     purpose, model: config.model, startedAt: nowIso(), status: "started" };
   publish(record);

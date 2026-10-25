@@ -1,4 +1,5 @@
-import { STORY_CARD_PLACEMENT_POLICY, characterProfileChangeError } from "./storyCardPlacement";
+import { fingerprint } from "./memoryAssessment";
+import { PLACEMENT_VERSION, STORY_CARD_PLACEMENT_POLICY, characterProfileChangeError } from "./storyCardPlacement";
 import type { MemoryPlacementKind, MemoryPlacementValidation } from "../types/adventure";
 import { safeMemoryFailure } from "../providers/backgroundProvider";
 import type { Adventure, ProviderConfig } from "../types/adventure";
@@ -32,7 +33,7 @@ export function memoryUpdateShapeError(surface: ValidatedMemorySurface, content:
 }
 
 /** Fail closed before proposals/direct writes. Semantic review is model-based, not a factual guarantee. */
-export async function validateMemoryUpdate(
+async function validateMemoryUpdateUncached(
   adventure: Adventure, providerConfig: ProviderConfig,
   surface: ValidatedMemorySurface, title: string, previous: string, content: string,
   accum?: { promptTokens: number; completionTokens: number },
@@ -70,7 +71,7 @@ For storyCard preserve the exact draft content when supported. On rejection you 
 ${STORY_CARD_PLACEMENT_POLICY}
 Every meaningful change must be supported by supplied recent message IDs. Return accepted=false for unsupported certainty or invalid output, meaningfulChange=false for an unnecessary rewrite.` },
         { role: "user", content: JSON.stringify({ surface, title, targetInfo: targetInfo ?? { type: surface === "brain" ? "brain" : surface }, previous, proposed: content, reviewOnly, operation: appendOnly ? "append new facts; previous facts are retained unchanged" : "replacement or Brain patch", recentEvidence: evidence, latestTurnMessageIds: latest.map(m => m.id) }) },
-      ]);
+      ], "validation");
     if (accum) {
       accum.promptTokens += response.usage?.promptTokens ?? 0;
       accum.completionTokens += response.usage?.completionTokens ?? 0;
@@ -80,6 +81,11 @@ Every meaningful change must be supported by supplied recent message IDs. Return
     const verdict: unknown = JSON.parse(raw);
     if (!verdict || typeof verdict !== "object" || Array.isArray(verdict)) throw new Error("Invalid review response.");
     const v = verdict as Record<string, unknown>;
+    if (typeof v.accepted === "boolean" && v.meaningfulChange === false && typeof v.reason === "string" && v.reason.trim()) return { changed: false, ...(v.accepted === false ? { error: `Memory validation rejected ${title}: ${v.reason}` } : {}) };
+    if (surface === "storyCard" && typeof v.accepted === "boolean" && typeof v.meaningfulChange === "boolean"
+      && v.placement && typeof v.placement === "object" && (v.placement as Record<string, unknown>).kind === "none"
+      && typeof (v.placement as Record<string, unknown>).reason === "string" && String((v.placement as Record<string, unknown>).reason).trim()) return { changed: false };
+
     if (typeof v.accepted !== "boolean" || typeof v.meaningfulChange !== "boolean"
       || typeof v.reason !== "string" || !v.reason.trim() || !Array.isArray(v.evidenceMessageIds)
       || v.evidenceMessageIds.some(id => typeof id !== "string")
@@ -133,4 +139,25 @@ Every meaningful change must be supported by supplied recent message IDs. Return
     return { changed: false, retryable: true, error: failure.message, failureCode: failure.code,
       providerCode: failure.providerCode, httpStatus: failure.httpStatus };
   }
+}
+
+/** Cache only completed parsed reviews. Caller checkpoints bind this cache to
+ * actual source/reference/destination dependencies, not provider prompt caching. */
+export async function validateMemoryUpdate(
+  adventure: Adventure, providerConfig: ProviderConfig, surface: ValidatedMemorySurface,
+  title: string, previous: string, content: string,
+  accum?: { promptTokens: number; completionTokens: number }, appendOnly = false, reviewOnly = false,
+  targetInfo?: { id?: string; type: string; memoryMode?: string; finalReview?: boolean },
+  cache?: Record<string, string>,
+): Promise<MemoryValidationResult> {
+  const key = cache ? await fingerprint({ version: 1, placementVersion: PLACEMENT_VERSION, policy: STORY_CARD_PLACEMENT_POLICY, surface, title, previous, content, appendOnly, reviewOnly, targetInfo,
+    evidence: memoryEvidenceWindow(adventure, adventure.messages.at(-1)?.id ?? "").map(({ id, content }) => ({ id, content })),
+    references: memoryCanonMessages(adventure, memoryEvidenceWindow(adventure, adventure.messages.at(-1)?.id ?? "").map(m => m.content).join("\n"), `Review ${title}\nPrevious: ${previous}\nProposed: ${content}`),
+  }) : undefined;
+  if (key && cache?.[key]) {
+    try { return JSON.parse(cache[key]) as MemoryValidationResult; } catch { /* Corrupt saved cache is unfinished work. */ }
+  }
+  const result = await validateMemoryUpdateUncached(adventure, providerConfig, surface, title, previous, content, accum, appendOnly, reviewOnly, targetInfo);
+  if (key && cache && !result.retryable) cache[key] = JSON.stringify(result);
+  return result;
 }

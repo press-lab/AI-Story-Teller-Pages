@@ -1,3 +1,4 @@
+import { proposalCoverage } from "./factCoverage";
 import { primaryStoryCardType } from "./storyCardArchitecture";
 import type { Adventure, MemoryProposal, ProviderConfig } from "../types/adventure";
 import { validateMemoryUpdate, type MemoryValidationResult } from "./validateMemoryUpdate";
@@ -6,7 +7,8 @@ import { makeStoryCardSuggestion } from "./storyCardSuggestions";
 
 /** One correction and a final review of a frozen factual delta. */
 export async function validateStoryCardProposal(a: Adventure, config: ProviderConfig, draft: MemoryProposal,
-  accum?: { promptTokens: number; completionTokens: number }): Promise<MemoryValidationResult & { proposal?: MemoryProposal }> {
+  accum?: { promptTokens: number; completionTokens: number }, cache?: Record<string, string>): Promise<MemoryValidationResult & { proposal?: MemoryProposal }> {
+  if (proposalCoverage(a, draft)) return { changed: false, failureCode: "memory_fact_covered", error: "Factual delta already recorded or considered." };
   const sourceIndex = a.messages.findIndex(m => m.id === draft.sourceTurnId && m.role === "assistant");
   if (sourceIndex < 0) return { changed: false, error: "Placement requires an existing narrator source.", failureCode: "memory_placement_source_invalid" };
   const snapshot = { ...a, messages: a.messages.slice(0, sourceIndex + 1) };
@@ -17,7 +19,7 @@ export async function validateStoryCardProposal(a: Adventure, config: ProviderCo
     const target = snapshot.storyCards.find(c => c.id === current.targetId);
     const verdict = await validateMemoryUpdate(snapshot, config, "storyCard", current.title, target?.content ?? "", current.content,
       accum, true, current.storyCardReview?.candidateOnly ?? false,
-      { id: target?.id, type: target?.type ?? current.storyCardType ?? "lore", finalReview: pass === 1 });
+      { id: target?.id, type: target?.type ?? current.storyCardType ?? "lore", finalReview: pass === 1 }, cache);
     const p = verdict.placement;
     if (!p || (!verdict.changed && pass === 1)) return verdict;
     if (!verdict.evidenceMessageIds?.includes(draft.sourceTurnId)) return { changed: false, retryable: true,

@@ -1,0 +1,113 @@
+import { PLACEMENT_VERSION, STORY_CARD_PLACEMENT_POLICY } from "./storyCardPlacement";
+import { matchPatterns } from "../triggers/matching";
+import type { Adventure, MemoryAssessmentCheckpoint, MemoryAssessmentDecision, MemoryEvaluationGroup, ProviderConfig } from "../types/adventure";
+import { sendMemoryCompletion } from "../providers/memoryCompletion";
+import { safeMemoryFailure } from "../providers/backgroundProvider";
+import { memoryCanonMessages } from "./memoryCanon";
+import { relevantProposalCoverage } from "./factCoverage";
+import { relevantStoryCardInventory, STORY_CARD_MEMORY_CHECK } from "./storyCardSuggestions";
+import { storyCardContextContent } from "./storyCardPolicy";
+import { memoryEvidenceWindow } from "./memoryEvidenceWindow";
+import { latestMemoryTurn } from "./memoryUpdateEvidence";
+
+type Condition = { id: string; condition: string };
+export type AssessmentConditions = Record<Exclude<MemoryEvaluationGroup, "discovery">, Condition[]>;
+export async function fingerprint(value: unknown): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(value)));
+  return Array.from(new Uint8Array(digest), v => v.toString(16).padStart(2, "0")).join("");
+}
+/** Actual prompt dependencies, excluding timestamps, UI metadata and unrelated archives. */
+export async function assessmentInputs(a: Adventure, sourceId: string, conditions: AssessmentConditions) {
+  const evidence = memoryEvidenceWindow(a, sourceId).map(({ id, role, content }) => ({ id, role, content }));
+  const excerpt = evidence.map(m => `[${m.id}] ${m.role}: ${m.content}`).join("\n\n");
+  const inventory = relevantStoryCardInventory(a, excerpt);
+  const currentCards = a.storyCards.filter(c => inventory.some(i => i.id === c.id) || conditions.storyCards.some(i => i.id === `storyCard:${c.id}`))
+    .map(c => ({ id: c.id, title: c.title, type: c.type, content: storyCardContextContent(c), protected: c.protected, keys: c.keys, lore: c.lore, memoryMode: c.memoryMode }));
+  const currentPlot = a.components.filter(c => c.active && ["plotEssentials", "activePressure", "currentArc"].includes(c.type))
+    .map(c => ({ id: c.id, type: c.type, content: c.content, premise: c.arcPremise, autoUpdate: c.autoUpdate, protected: c.protected }));
+  const currentBrains = a.brains.filter(b => conditions.brains.some(i => i.id === `brain:${b.id}`)).map(b => ({ id: b.id, name: b.characterName,
+    thoughts: b.thoughts, currentState: b.currentState, relationshipPressure: b.relationshipPressure, emotionalInterpretation: b.emotionalInterpretation,
+    recentDevelopments: b.recentDevelopments, notes: b.notes, updatePrompt: b.updatePrompt, updateMode: b.updateMode, condenseThreshold: b.condenseThreshold, protected: b.protected }));
+  const coverage = relevantProposalCoverage(a, excerpt, currentCards.map(c => c.id), evidence.map(m => m.id));
+  const canon = memoryCanonMessages(a, excerpt, "Assess memory", true);
+  const common = { version: 1, placementVersion: PLACEMENT_VERSION, policy: STORY_CARD_PLACEMENT_POLICY + STORY_CARD_MEMORY_CHECK, evidence, canon, currentCards, currentPlot, coverage };
+  const fingerprints = {} as Record<MemoryEvaluationGroup, string>;
+  for (const group of ["plot", "storyCards", "brains", "discovery"] as const) fingerprints[group] = await fingerprint({ ...common,
+    conditions: group === "discovery" ? [] : conditions[group], ...(group === "brains" ? { currentBrains } : {}) });
+  return { evidence, excerpt, currentCards, currentPlot, currentBrains, coverage, canon, fingerprints };
+}
+export async function assessMemory(a: Adventure, provider: ProviderConfig, sourceId: string, conditions: AssessmentConditions,
+  accum: { promptTokens: number; completionTokens: number }) {
+  const inputs = await assessmentInputs(a, sourceId, conditions);
+  const saved = a.messages.find(m => m.id === sourceId)?.memoryEvaluation?.assessment;
+  const prior = saved?.version === 1 && saved.fingerprints && ["plot", "storyCards", "brains", "discovery"].every(g => typeof saved.fingerprints[g as MemoryEvaluationGroup] === "string")
+    && (["plot", "storyCards", "brains"] as const).every(g => saved[g] && Array.isArray(saved[g].targets) && typeof saved[g].reason === "string"
+      && saved[g].targets.every(t => t && typeof t.id === "string" && typeof t.delta === "string" && Array.isArray(t.evidenceMessageIds)))
+    && saved.discovery && typeof saved.discovery.needed === "boolean" && typeof saved.discovery.reason === "string" && Array.isArray(saved.discovery.evidenceMessageIds)
+    ? saved : undefined;
+  const completed = a.messages.find(m => m.id === sourceId)?.memoryEvaluation?.completedGroups ?? [];
+  const needed = (["plot", "storyCards", "brains", "discovery"] as const).filter(g => !completed.includes(g)
+    && (!prior || prior.version !== 1 || prior.fingerprints[g] !== inputs.fingerprints[g]));
+  if (!needed.length && prior) return { assessment: prior, reused: true, inputs };
+  let received = false;
+  try {
+    const response = await sendMemoryCompletion(a, provider, [
+      ...inputs.canon,
+      { role: "system", content: `SHARED MEMORY ASSESSMENT. One assessment of the latest player/narrator exchange. Return ALL qualifying targets, not a single winner.
+Return ONLY a JSON object with this shape: {"plot":{"targets":[],"reason":"explanation"},"storyCards":{"targets":[],"reason":"explanation"},"brains":{"targets":[],"reason":"explanation"},"discovery":{"needed":false,"reason":"explanation","evidenceMessageIds":[]}}. A qualifying target is {"id":"supplied condition ID","delta":"supported new fact","evidenceMessageIds":["supplied source ID"]}. Every field is required, including explicit negative reasons. IDs must be supplied eligible condition IDs. Every delta must cite the establishing narrator source and any necessary contextual evidence. Return empty targets for groups not requested.
+Latest exchange establishes changes; earlier exchanges resolve participants, pronouns, short answers (Yes, tomorrow), messages, off-screen disclosures and continuity. A prior name alone is not a new Brain change. Mentioning an absent character never grants knowledge. Respect authored conditions and private attribution. Consecutive meaningful private changes are eligible without a default cooldown or quota.
+Plot Essentials: premise/constraints. Active Pressure: external threat/obligation. Current Arc: established arc progress, never Director phases. Brains: supported private interpretations, distinct for each character. Do not expose private Brain content as public facts or give it to another character.
+Story Cards: enduring profiles; Lore: observable events/shared developments. Coverage marked pending/rejected/ignored prevents duplicate suggestions but is NOT canon or proof of knowledge. Account for established and considered facts. Discovery means ADDITIONAL durable developments beyond qualifying existing-card deltas. Do not skip a whole subject because one fact is covered. Invitation acceptance and a separate research agreement can both qualify. Set needed=false only with a supported reason.
+${STORY_CARD_MEMORY_CHECK}` },
+      { role: "user", content: JSON.stringify({ sourceId, requestedGroups: needed, latestTurn: latestMemoryTurn(a), storyExcerpt: inputs.evidence,
+        conditions: Object.fromEntries(Object.entries(conditions).map(([g, cs]) => [g, needed.includes(g as MemoryEvaluationGroup) ? cs : []])),
+        currentPlot: inputs.currentPlot, currentCards: inputs.currentCards, currentBrains: inputs.currentBrains,
+        consideredSuggestionsNotCanon: inputs.coverage }) },
+    ], "assessment");
+    received = true;
+    accum.promptTokens += response.usage?.promptTokens ?? 0; accum.completionTokens += response.usage?.completionTokens ?? 0;
+    const raw: unknown = JSON.parse(response.content.replace(/<think>[\s\S]*?<\/think>/gi, "").trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, ""));
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw Error();
+    const value = raw as Record<string, unknown>;
+    const validEvidence = (ids: unknown, change: boolean) => Array.isArray(ids) && ids.every(id => typeof id === "string" && inputs.evidence.some(e => e.id === id)) && (!change || ids.includes(sourceId));
+    for (const g of ["plot", "storyCards", "brains"] as const) {
+      const d = value[g] as MemoryAssessmentDecision | undefined;
+      if (!d || !Array.isArray(d.targets) || typeof d.reason !== "string" || !d.reason.trim() || d.reason.length > 1200 || d.targets.length > conditions[g].length
+        || d.targets.some(t => !t || typeof t.id !== "string" || !conditions[g].some(c => c.id === t.id)
+          || !needed.includes(g) || typeof t.delta !== "string" || !t.delta.trim() || t.delta.length > 2400 || !validEvidence(t.evidenceMessageIds, true))
+        || new Set(d.targets.map(t => t.id)).size !== d.targets.length) throw Error();
+    }
+    const d = value.discovery as MemoryAssessmentCheckpoint["discovery"] | undefined;
+    if (!d || typeof d.needed !== "boolean" || typeof d.reason !== "string" || !d.reason.trim() || d.reason.length > 1200 || !validEvidence(d.evidenceMessageIds, d.needed)) throw Error();
+    const decision = (g: "plot" | "storyCards" | "brains"): MemoryAssessmentDecision => {
+      const d = value[g] as MemoryAssessmentDecision;
+      return { reason: d.reason, targets: d.targets.map(t => ({ id: t.id, delta: t.delta, evidenceMessageIds: [...t.evidenceMessageIds] })) };
+    };
+    const assessment: MemoryAssessmentCheckpoint = { version: 1, fingerprints: { ...prior?.fingerprints, ...Object.fromEntries(needed.map(g => [g, inputs.fingerprints[g]])) } as MemoryAssessmentCheckpoint["fingerprints"],
+      plot: needed.includes("plot") ? decision("plot") : prior?.plot ?? { targets: [], reason: "Previously completed transaction." },
+      storyCards: needed.includes("storyCards") ? decision("storyCards") : prior?.storyCards ?? { targets: [], reason: "Previously completed transaction." },
+      brains: needed.includes("brains") ? decision("brains") : prior?.brains ?? { targets: [], reason: "Previously completed transaction." },
+      discovery: needed.includes("discovery") ? { needed: d.needed, reason: d.reason, evidenceMessageIds: [...d.evidenceMessageIds] } : prior?.discovery ?? { needed: true, reason: "Legacy unfinished discovery.", evidenceMessageIds: [sourceId] } };
+    return { assessment, reused: false, inputs };
+  } catch (error) { return { error: safeMemoryFailure(error, received), reused: false, inputs }; }
+}
+
+/** Synchronous transaction guard, including negative decisions with no generated
+ * destinations. Compare actual inputs again when a result reaches the reducer. */
+export function memoryDecisionState(adventure: Adventure, sourceId: string): string {
+  const index = adventure.messages.findIndex(m => m.id === sourceId);
+  const a = { ...adventure, messages: adventure.messages.slice(0, index + 1) };
+  const evidence = memoryEvidenceWindow(a, sourceId).map(({ id, role, content }) => ({ id, role, content }));
+  const excerpt = evidence.map(m => `[${m.id}] ${m.role}: ${m.content}`).join("\n\n");
+  const relevant = new Set(relevantStoryCardInventory(a, excerpt).map(c => c.id));
+  const cards = [...a.storyCards.filter(c => relevant.has(c.id)), ...a.storyCards.filter(c => !relevant.has(c.id) && !c.keys.length)].slice(0, 8);
+  const meaningful = (entry: object) => Object.fromEntries(Object.entries(entry).filter(([key]) =>
+    !["createdAt", "updatedAt", "lastMemoryUpdatedAt", "memoryUpdateHistory", "usageCount", "lastUsedTurn", "lastTriggeredTurn"].includes(key)));
+  return JSON.stringify({ version: 1, evidence,
+    canon: memoryCanonMessages(a, excerpt, "Assess memory", true), cards: cards.map(meaningful),
+    brains: a.brains.filter(b => b.active && matchPatterns(excerpt, [b.characterName, ...b.triggers].filter(Boolean), "phrase").matched).map(meaningful),
+    plot: a.components.filter(c => c.active && ["plotEssentials", "activePressure", "currentArc"].includes(c.type)).map(meaningful),
+    coverage: relevantProposalCoverage(a, excerpt, cards.map(c => c.id), evidence.map(m => m.id)),
+    controls: { autoApprove: a.memoryAutoApprove, detection: a.memoryDetectionSettings, review: a.semanticEvaluationSettings.requireApprovalForAutoUpdates },
+  });
+}

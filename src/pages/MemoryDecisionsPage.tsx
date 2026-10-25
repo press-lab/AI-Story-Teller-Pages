@@ -5,7 +5,7 @@ import type { Adventure, MemoryDiagnostic } from "../types/adventure";
 
 const labels: Record<string, string> = {
   discovery_summary: "Discovery outcomes", candidate_awaiting_retry: "Candidate awaiting validation retry",
-  checkpoint_invalidated: "Saved discovery drafts invalidated",
+  checkpoint_invalidated: "Saved drafts invalidated", checkpoint_reused: "Saved work reused (no request)", work_skipped: "Work skipped by assessment",
   proposal_approved: "Suggestion approved", proposal_rejected: "Suggestion rejected", proposal_ignored: "Suggestion ignored",
   not_attempted: "No memory evaluation attempted", instruction_omitted: "Memory instruction omitted",
   envelope_missing: "Memory envelope missing", envelope_malformed: "Memory envelope malformed",
@@ -82,10 +82,22 @@ export function MemoryDecisionsPage({ adventure, onSuggestions, onEvaluateMemory
         {linked.filter(p => p.proposedType === "storyCard").map(p => <p key={p.id}>{proposalDestinationLabel(adventure, p)} · {p.status === "pending" ? placementValidationError(adventure, p) ?? p.placementValidation?.reason : p.placementValidation?.reason}</p>)}
         <h3>Independent evaluation</h3>
         <p>Status: {message.memoryEvaluation?.status ?? "not recorded; older sources are evaluated only on request"}. Attempts: {message.memoryEvaluation?.attempts ?? 0}. Completed groups: {message.memoryEvaluation?.completedGroups.join(", ") || "none"}.</p>
+        {message.memoryEvaluation?.assessment && <details><summary>Shared assessment decisions</summary>
+          {(["plot", "storyCards", "brains"] as const).map(group => <div key={group}>
+            <h4>{group}</h4><p>{message.memoryEvaluation!.assessment![group].reason}</p>
+            {message.memoryEvaluation!.assessment![group].targets.map(target => <p key={target.id}>{target.id}: {target.delta} · Evidence: {target.evidenceMessageIds.join(", ")}</p>)}
+          </div>)}
+          <h4>discovery</h4><p>{message.memoryEvaluation.assessment.discovery.needed ? "Additional discovery required" : "Semantic discovery skipped"}: {message.memoryEvaluation.assessment.discovery.reason}</p>
+        </details>}
+        {message.memoryEvaluation?.groupWork && Object.entries(message.memoryEvaluation.groupWork).filter(([, work]) => work).map(([group, work]) => <details key={group}>
+          <summary>Saved {group} target work ({Object.keys(work!.drafts).length})</summary>
+          <p>Held for an atomic group commit; excluded from active memory. Retry resumes unfinished work while dependencies match.</p>
+          {Object.entries(work!.drafts).map(([id, draft]) => <p key={id}>{id}: {draft.result ? "completed target work" : draft.raw ? "generated draft awaiting review" : "awaiting generation"}; {Object.keys(draft.validationCache ?? {}).length} completed reviews</p>)}
+        </details>)}
         {message.memoryEvaluation?.lastError && <p>{message.memoryEvaluation.lastError}</p>}
         {entries.filter(entry => entry.stage === "independent").map(entry => <p key={entry.id}>{label(entry.outcome)} · {entry.reason}</p>)}
         {logs.map(log => <details key={log.id}><summary>Conditions and generated destinations</summary>
-          <ul>{log.conditionsEvaluated.map(condition => <li key={condition.id}><strong>{condition.label}</strong> ({condition.sourceType}) — {log.conditionsFired.includes(condition.id) ? "condition fired" : "condition did not fire; no model rationale supplied"}<p>{condition.condition}</p></li>)}</ul>
+          <ul>{log.conditionsEvaluated.map(condition => <li key={condition.id}><strong>{condition.label}</strong> ({condition.sourceType}) — {log.conditionsFired.includes(condition.id) ? "condition fired" : "condition did not fire; see shared assessment when available"}<p>{condition.condition}</p></li>)}</ul>
           {log.generatedContent.map((item, index) => <p key={index}>{item.targetType}: {item.title} ({item.targetId ?? "new destination"}) — {item.preview}</p>)}
           {log.errors.map((error, index) => <p key={index}>{error}</p>)}
         </details>)}
@@ -116,6 +128,12 @@ export function MemoryDecisionsPage({ adventure, onSuggestions, onEvaluateMemory
           </details>}
         </div>)}
         {message.usage && <p>Narration usage for this message: {message.usage.promptTokens} input / {message.usage.completionTokens} output tokens.</p>}
+        <details><summary>Actual memory requests for this source</summary>
+          {(adventure.activeState.apiCalls ?? []).filter(call => call.memoryRequest?.sourceId === message.id).map(call => <p key={call.id}>
+            {call.memoryRequest!.stage} · {call.memoryRequest!.group ?? "shared"} · attempt {call.memoryRequest!.attempt} · {call.status}
+          </p>)}
+          <p>Saved-work reuse, skips and suppressions are decisions, not requests. Provider prompt-cache usage remains separate in API accounting.</p>
+        </details>
         <h3>D. Final disposition</h3>
         {linked.map(p => <p key={p.id}>{p.title}: {p.status === "approved" && entries.some(e => e.proposalId === p.id && e.outcome === "automatically_approved") ? "automatically approved" : p.status} <button type="button" onClick={() => onSuggestions(p.title)}>Open suggestion</button></p>)}
         {!linked.length && <p>{message.memoryEvaluation?.status === "complete" && latestCounts

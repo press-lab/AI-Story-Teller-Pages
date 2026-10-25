@@ -18,7 +18,7 @@ beforeEach(() => {
   provider.mockReset();
   provider.mockImplementation(async request => ({ raw: {}, content: request.messages.some(message => message.content.includes("MEMORY UPDATE VALIDATION"))
     ? JSON.stringify({ accepted: true, meaningfulChange: true, reason: "The supplied source supports this private reaction.", evidenceMessageIds: ["evidence"], identityMatchesTarget: true })
-    : JSON.stringify({ thoughts: { alpha: newest } }) }));
+    : JSON.stringify({ thoughts: { alpha: newest, ...(request.messages.some(m => m.content.includes("exceed 1 characters")) ? { zzz: null } : {}) } }) }));
 });
 afterEach(cleanup);
 
@@ -84,5 +84,5 @@ it("preserves the new thought preview when Update Now also condenses the thought
   await screen.findByTitle(newest);
   await user.click(summary);
   expect(document.querySelector(".brain-summary-thought")).toHaveTextContent(newest);
-  expect(provider).toHaveBeenCalledTimes(3);
+  expect(provider).toHaveBeenCalledTimes(2);
 });

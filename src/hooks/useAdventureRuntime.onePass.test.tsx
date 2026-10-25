@@ -1,3 +1,4 @@
+import { mockAssessment, isAssessment } from "../test/memoryAssessment";
 /** @vitest-environment jsdom */
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { useState } from "react";
@@ -24,7 +25,7 @@ function setup(saved?: Adventure, overrides: Partial<MemoryDetectionSettings> = 
 afterEach(cleanup);
 beforeEach(() => {
   vi.clearAllMocks(); provider.mockReset();
-  provider.mockImplementation(async request => ({ content: request.memoryEvaluation ? "[]" : story, raw: {} }));
+  provider.mockImplementation(async request => ({ content: request.memoryEvaluation ? mockAssessment(request.messages) : story, raw: {} }));
 });
 it("evaluates finalized submit, continue and regenerated sources independently", async () => {
   const hook = setup();
@@ -50,7 +51,7 @@ it("honors global OFF and manual-only cadence over saved ON settings", async () 
   }
 });
 it.each([story, story + '<memory_updates>{invalid}', story + '<memory_updates>{"updates":[]}</memory_updates>'])("preserves prose and evaluates independently of legacy tail %s", async content => {
-  provider.mockImplementation(async request => ({ content: request.memoryEvaluation ? "[]" : content, raw: {} }));
+  provider.mockImplementation(async request => ({ content: request.memoryEvaluation ? mockAssessment(request.messages) : content, raw: {} }));
   const hook = setup(); await act(async () => { await hook.result.current.runtime.submitTurn("I listen."); });
   await waitFor(() => expect(hook.result.current.runtime.memoryWork?.status).not.toBe("running"));
   expect(hook.result.current.adventure!.messages.at(-1)?.content).toBe(story);
@@ -64,14 +65,14 @@ it("saves and claims final narration before sending any independent request", as
       expect(saved.messages.at(-1)?.content).toBe(story);
       expect(saved.messages.at(-1)?.memoryEvaluation?.attempts).toBeGreaterThan(0);
     }
-    return { content: request.memoryEvaluation ? "[]" : story, raw: {} };
+    return { content: request.memoryEvaluation ? mockAssessment(request.messages) : story, raw: {} };
   });
   const hook = setup(); await act(async () => { await hook.result.current.runtime.submitTurn("I listen."); });
   await waitFor(() => expect(hook.result.current.runtime.memoryWork?.status).not.toBe("running"));
 });
 it("keeps agency correction and evaluates only the corrected final story", async () => {
   let narration = 0;
-  provider.mockImplementation(async request => ({ content: request.memoryEvaluation ? "[]" : ++narration === 1 ? "You agree to the duke's terms." : story, raw: {} }));
+  provider.mockImplementation(async request => ({ content: request.memoryEvaluation ? mockAssessment(request.messages) : ++narration === 1 ? "You agree to the duke's terms." : story, raw: {} }));
   const hook = setup(); await act(async () => { await hook.result.current.runtime.submitTurn("I listen."); });
   await waitFor(() => expect(hook.result.current.runtime.memoryWork?.status).not.toBe("running"));
   expect(provider).toHaveBeenCalledTimes(3);
@@ -89,7 +90,7 @@ it("does not replay legacy or new pending memory on load", async () => {
 });
 it("retains failed groups and saved narration, then retries only unfinished work on a later turn", async () => {
   let fail = true;
-  provider.mockImplementation(async request => ({ content: request.memoryEvaluation ? fail ? "malformed" : "[]" : story, raw: {} }));
+  provider.mockImplementation(async request => ({ content: request.memoryEvaluation ? fail ? "malformed" : mockAssessment(request.messages) : story, raw: {} }));
   let hook = setup(); await act(async () => { await hook.result.current.runtime.continueTurn(); });
   await waitFor(() => expect(hook.result.current.runtime.memoryWork?.status).not.toBe("running"));
   expect(hook.result.current.adventure!.messages.at(-1)?.memoryEvaluation?.status).toBe("failed");

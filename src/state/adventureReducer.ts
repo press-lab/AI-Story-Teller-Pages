@@ -1,3 +1,5 @@
+import { memoryDecisionState } from "../memory/memoryAssessment";
+import { factsCovered, hasFactOverlap, proposalCoverage } from "../memory/factCoverage";
 import { placementValidationError, placementFingerprint } from "../memory/storyCardPlacement";
 import { backgroundProviderConfigIssue } from "../providers/backgroundProvider";
 import { memoryRecoveryInterval, MEMORY_RECOVERY_MAX_FAILURES } from "../memory/memoryRecoveryBatch";
@@ -369,6 +371,7 @@ const DEFAULT_THOUGHT_BUDGET = 1600;
 /** Card bodies preserve history; budgets apply during context assembly. */
 
 function appendCardContent(existingContent: string, newContent: string): string {
+  if (factsCovered(newContent, [existingContent])) return existingContent;
   const factKey = (line: string) => normalizedReplacementContent(line.replace(/^\[[^\]]+\]\s*/, ""));
   const seen = new Set(existingContent.split("\n").map(factKey));
   const incoming = newContent.split("\n").map(line => line.trim()).filter(line => {
@@ -1166,7 +1169,8 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
       const source = state.messages.find(message => message.id === action.source.id);
       if (!source || source.memoryEvaluation?.completedGroups.includes(action.group)) return state;
       const stale = source.memoryEvaluation?.revision !== action.revision || source.content !== action.source.content || action.dependencies.some(item => !state.messages.some(message => message.id === item.id && message.content === item.content))
-        || action.targets.some(target => !memoryTargetMatches(state, target));
+        || action.targets.some(target => !memoryTargetMatches(state, target))
+        || (action.decisionState !== undefined && action.decisionState !== memoryDecisionState(state, source.id));
       if (stale) return adventureReducer(source.memoryEvaluation ? touchAdventure(state, { messages: state.messages.map(message => message.id === source.id
         ? { ...message, memoryEvaluation: { ...message.memoryEvaluation!, status: "pending" as const } } : message) }) : state, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: {
         id: createId("decision"), sourceId: source.id, createdAt: nowIso(), stage: "independent",
@@ -1179,6 +1183,8 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
       const updated = touchAdventure(next, { messages: next.messages.map(message => message.id === source.id
         ? { ...message, memoryEvaluation: { ...message.memoryEvaluation, turn: source.memoryEvaluation?.turn ?? state.activeState.turn,
           attempts: source.memoryEvaluation?.attempts ?? 0, completedGroups,
+          assessment: action.assessment ?? message.memoryEvaluation?.assessment,
+          groupWork: { ...message.memoryEvaluation?.groupWork, [action.group]: error ? action.groupWork : undefined },
           ...(action.group === "discovery" ? { discoveryCheckpoint: error ? action.discoveryCheckpoint : undefined } : {}),
           status: complete ? "complete" as const : error ? (source.memoryEvaluation?.attempts ?? 0) >= 3 ? "quarantined" as const : "failed" as const
             : message.memoryEvaluation?.status === "quarantined" ? "quarantined" as const : message.memoryEvaluation?.status === "failed" ? "failed" as const : "pending" as const,
@@ -1623,6 +1629,8 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
         }
       }
       if (Boolean(clean.eventMemory) && !clean.targetId && [...state.storyCards.filter(isHistoricalLore), ...state.activeState.memoryProposals.filter(p => Boolean(p.eventMemory))].some(c => sameEventMemory(c, clean))) return suppressed("Duplicate historical event already recorded.");
+      if (proposalCoverage(state, clean)) return suppressed("Factual delta already recorded or considered.");
+
       // Dedup: drop a proposal that duplicates one already pending, one the user already
       // dismissed (rejected/ignored), or a NEW story card whose title already exists as a card.
       // Without this, the model re-suggesting the same entity each turn spawns a fresh duplicate —
@@ -1729,6 +1737,23 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
         || state.storyCards.some(card => card.id === existing.targetId && card.protected))) return state;
       const proposal = sanitizeProposal(proposalWithEdits(existing, action.editedProposal));
       if (!proposal) return state;
+      if (proposalCoverage(state, proposal, false)) {
+        const next = touchAdventure(state, { activeState: { ...state.activeState,
+          memoryProposals: state.activeState.memoryProposals.map(p => p.id === proposal.id ? updateMemoryProposal(proposal, { status: "approved" }) : p) } });
+        return adventureReducer(next, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: { id: createId("decision"), sourceId: proposal.sourceTurnId,
+          createdAt: nowIso(), stage: "reducer", outcome: "candidate_suppressed", proposalId: proposal.id,
+          reason: "Approval retained as a no-op: the latest destination already contains the complete reviewed factual delta." } });
+      }
+      if (proposal.proposedType === "storyCard" && proposal.targetId && !proposal.storyCardPatch) {
+        const target = state.storyCards.find(c => c.id === proposal.targetId);
+        if (target && hasFactOverlap(proposal.content, target.content)) {
+          const next = touchAdventure(state, { activeState: { ...state.activeState, memoryProposals: state.activeState.memoryProposals.map(p =>
+            p.id === proposal.id ? { ...proposal, requiresReview: true, placementValidation: undefined } : p) } });
+          return adventureReducer(next, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: { id: createId("decision"), sourceId: proposal.sourceTurnId,
+            createdAt: nowIso(), stage: "reducer", outcome: "validation_rejected", proposalId: proposal.id, failureCode: "memory_overlap_review_required",
+            reason: "The destination now overlaps part of this draft. Edit/regenerate and revalidate the remaining claim before approval; the reviewed draft was preserved." } });
+        }
+      }
       const placementError = placementValidationError(state, proposal);
       if (action.automatic && placementError) return adventureReducer(state, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: { id: createId("decision"), sourceId: proposal.sourceTurnId,
         createdAt: nowIso(), stage: "reducer", outcome: "validation_rejected", reason: placementError, proposalId: proposal.id, failureCode: "memory_placement_required" } });

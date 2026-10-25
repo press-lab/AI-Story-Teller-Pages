@@ -5,16 +5,25 @@ import { sendOpenAIMemoryResponse } from "./openAIMemoryResponses";
 
 // Runtime guards are tied to the exact per-run config, never persisted in a save.
 const requestGuards = new WeakMap<ProviderConfig, () => boolean>();
+export function memoryGroupProvider(provider: ProviderConfig, sourceId: string, group: import("../types/adventure").MemoryEvaluationGroup, attempt: number): ProviderConfig {
+  const config = { ...provider, memoryRequest: { sourceId, group, attempt, stage: "generation" as const } };
+  const guard = requestGuards.get(provider);
+  if (guard) requestGuards.set(config, guard);
+  return config;
+}
 export function guardMemoryRequests(config: ProviderConfig, shouldSend: () => boolean): ProviderConfig {
   requestGuards.set(config, shouldSend);
   return config;
 }
 
 /** Same provider capability/reasoning checks as October 24 recovery, for original targeted tasks. */
-export async function sendMemoryCompletion(adventure: Adventure, provider: ProviderConfig, messages: ChatMessage[]) {
+export async function sendMemoryCompletion(adventure: Adventure, provider: ProviderConfig, messages: ChatMessage[], stage?: import("../types/adventure").MemoryRequestAttribution["stage"]) {
   const shouldSend = requestGuards.get(provider);
   if (shouldSend && !shouldSend()) throw new Error("memory_work_cancelled");
   const config = resolveMemoryEvaluationProviderConfig(adventure, provider);
+  const source = adventure.messages.at(-1);
+  config.memoryRequest = { sourceId: source?.id ?? "manual", attempt: source?.memoryEvaluation?.attempts ?? 0,
+    ...provider.memoryRequest, stage: stage ?? provider.memoryRequest?.stage ?? "generation" };
   let received = false;
   try {
     if (adventure.semanticEvaluationSettings.memoryEvaluationApi !== "openaiResponses") {
