@@ -160,7 +160,7 @@ it("shows memory progress and recovery choices only inside the Memory submenu", 
     memoryWork={{ adventureId: adventure.id, status: "failed", sourceIds: ["source"], remaining: 1,
       error: "Completed groups are saved. A retry may incur API costs." }} />);
   fireEvent.click(screen.getByRole("button", { name: "Retry memory" }));
-  fireEvent.click(screen.getByRole("button", { name: "Continue with existing memory" }));
+  fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
   expect(retry).toHaveBeenCalledTimes(1);
   expect(bypass).toHaveBeenCalledTimes(1);
 });

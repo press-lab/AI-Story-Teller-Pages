@@ -182,15 +182,9 @@ export function useAdventureRuntime(
   globalMemorySettings: MemoryDetectionSettings,
 ) {
   const [loading, setLoading] = useState(false);
-  const [memoryWorkState, setMemoryWorkState] = useState<MemoryWorkStatus>();
-  const memoryWorkRef = useRef<MemoryWorkStatus | undefined>(undefined);
-  const setMemoryWork = useCallback((status: MemoryWorkStatus | undefined) => {
-    memoryWorkRef.current = status;
-    setMemoryWorkState(status);
-  }, []);
+  const [memoryWorkState, setMemoryWork] = useState<MemoryWorkStatus>();
   const memoryWorkerRef = useRef<{ adventureId: string; promise: Promise<void> } | undefined>(undefined);
   const memoryEpochRef = useRef(0);
-  const allowExistingMemoryRef = useRef<string | undefined>(undefined);
   const isNarratingRef = useRef(false);
   const [error, setError] = useState<string | undefined>();
   const adventureRef = useRef<Adventure | undefined>(adventure);
@@ -209,7 +203,6 @@ export function useAdventureRuntime(
   useEffect(() => {
     memoryEpochRef.current += 1;
     memoryWorkerRef.current = undefined;
-    allowExistingMemoryRef.current = undefined;
     setMemoryWork(undefined);
     return () => { memoryEpochRef.current += 1; };
   }, [adventure?.id]);
@@ -290,17 +283,12 @@ export function useAdventureRuntime(
         || message.memoryEvaluation.status === "pending" && message.memoryEvaluation.attempts > 0));
   }
 
-  const memoryWork = memoryWorkState?.adventureId === adventure?.id ? memoryWorkState
-    : adventure && globalMemorySettings.enabled && memoryFailures(adventure).length ? {
-      adventureId: adventure.id, status: "failed" as const,
-      sourceIds: memoryFailures(adventure).map(message => message.id), remaining: memoryFailures(adventure).length,
-      error: "Memory has unfinished evaluations. Retry them or continue with existing memory.",
-    } : undefined;
+  // Historical failures remain inspectable in Decisions, never a new load-time demand.
+  const memoryWork = memoryWorkState?.adventureId === adventure?.id ? memoryWorkState : undefined;
 
   function continueWithExistingMemory() {
     if (!adventureRef.current || memoryWorkerRef.current) return;
-    allowExistingMemoryRef.current = adventureRef.current.id;
-    setMemoryWork({ adventureId: adventureRef.current.id, status: "paused", sourceIds: [], remaining: 0 });
+    setMemoryWork(undefined);
   }
 
   async function prepareNarration() {
@@ -310,12 +298,7 @@ export function useAdventureRuntime(
     if (memoryWorkerRef.current?.adventureId === current.id) await memoryWorkerRef.current.promise;
     const latest = adventureRef.current;
     if (!latest || latest.id !== current.id) return;
-    if (globalMemorySettingsRef.current.enabled && (memoryFailures(latest).length || memoryWorkRef.current?.status === "failed")
-      && allowExistingMemoryRef.current !== latest.id) {
-      openTab("memoryInbox");
-      return;
-    }
-    allowExistingMemoryRef.current = undefined;
+    // Use successful commits even if another group failed. Retry is a Memory action, not a prerequisite for Play.
     return flushPendingBeforeContext(latest);
   }
 
@@ -385,7 +368,7 @@ export function useAdventureRuntime(
         const unfinished = ids.filter(id => adventureRef.current!.messages.some(message => message.id === id
           && message.memoryEvaluation?.status !== "complete"));
         setMemoryWork(unfinished.length ? { adventureId: initial.id, status: "failed", sourceIds: unfinished,
-          remaining: unfinished.length, error: "Memory could not finish. Completed groups are saved. A retry may incur API costs." } : undefined);
+          remaining: unfinished.length, error: "Some memory checks could not finish. Completed groups are saved and Play can continue. A retry may incur API costs." } : undefined);
       } catch (error) {
         if (currentJob()) setMemoryWork({ adventureId: initial.id, status: "failed", sourceIds: ids, remaining: ids.length,
           error: error instanceof Error ? error.message : "Memory evaluation failed; story saved." });

@@ -11,7 +11,7 @@ function seed() {
   return a;
 }
 const verdict = () => ({ accepted: true, meaningfulChange: true, evidenceMessageIds: ["source"], reason: "Ron expressed interest; the makers do not acquire off-screen knowledge.", identityMatchesTarget: true, placement: { kind: "historicalLore", newFact: "Ron expressed interest.", reason: "Observable interest.", title: "Product interest", content: "Ron expressed interest; no sale was agreed." } });
-beforeEach(() => provider.mockReset());
+beforeEach(() => { provider.mockReset(); });
 it.each([undefined, null, "true", 1])("retries a missing or incorrectly typed required identity verdict: %s", async identityMatchesTarget => {
   provider.mockResolvedValue({ content: JSON.stringify({ ...verdict(), identityMatchesTarget }), raw: {} });
   expect(await validateMemoryUpdate(seed(), defaultModelConfig, "storyCard", "Fred & George Partnership", "", "Ron expressed interest."))
@@ -41,4 +41,30 @@ it.each([{}, { ...verdict(), accepted: "false" }, { ...verdict(), meaningfulChan
   provider.mockResolvedValue({ content: JSON.stringify(result), raw: {} });
   expect(await validateMemoryUpdate(seed(), defaultModelConfig, "storyCard", "Product", "", "Ron expressed interest."))
     .toMatchObject({ changed: false, retryable: true, failureCode: "memory_validation_schema_invalid" });
+});
+
+
+it("accepts a reviewer that follows the first requested Story Card envelope, with no repair call", async () => {
+  provider.mockImplementation(async (_adventure, _config, messages) => {
+    const prompt = messages.find(message => message.content.includes("MEMORY UPDATE VALIDATION"))!.content;
+    const shape = /Return ONLY one JSON object: (\{[^\n]+\})\. Include every verdict field\./.exec(prompt)![1];
+    const answer = JSON.parse(shape.replaceAll(":boolean", ":true"));
+    expect(answer.placement).toMatchObject({ newFact: expect.any(String), reason: expect.any(String), title: expect.any(String), content: expect.any(String) });
+    answer.evidenceMessageIds = ["source"];
+    answer.reason = "Ron expressed interest; no sale was agreed.";
+    answer.placement = { ...answer.placement, kind: "create", targetId: null, newFact: "Ron expressed interest.",
+      reason: "Observable interest.", title: "Product interest", content: "Ron expressed interest; no sale was agreed." };
+    return { content: JSON.stringify(answer), raw: {} };
+  });
+  expect(await validateMemoryUpdate(seed(), defaultModelConfig, "storyCard", "Product interest", "", "Ron expressed interest; no sale was agreed."))
+    .toMatchObject({ changed: true, placement: { kind: "create" } });
+  expect(provider).toHaveBeenCalledTimes(1);
+});
+
+it("still rejects an accepted Story Card verdict missing its required placement", async () => {
+  const { placement: _placement, ...answer } = verdict();
+  provider.mockResolvedValue({ content: JSON.stringify(answer), raw: {} });
+  expect(await validateMemoryUpdate(seed(), defaultModelConfig, "storyCard", "Product interest", "", "Ron expressed interest."))
+    .toMatchObject({ changed: false, retryable: true, failureCode: "memory_placement_schema_invalid" });
+  expect(provider).toHaveBeenCalledTimes(1);
 });

@@ -95,7 +95,6 @@ it("retains failed groups and saved narration, then retries only unfinished work
   expect(hook.result.current.adventure!.messages.at(-1)?.memoryEvaluation?.status).toBe("failed");
   const saved = normalizeAdventure(JSON.parse(JSON.stringify(hook.result.current.adventure))); hook.unmount();
   provider.mockClear(); hook = setup(saved); await act(async () => {}); expect(provider).not.toHaveBeenCalled();
-  act(() => hook.result.current.runtime.continueWithExistingMemory());
   fail = false; await act(async () => { await hook.result.current.runtime.continueTurn(); });
   await waitFor(() => expect(hook.result.current.runtime.memoryWork?.status).not.toBe("running"));
   await waitFor(() => expect(hook.result.current.runtime.memoryWork?.status).not.toBe("running"));
@@ -141,9 +140,8 @@ it("pauses invalid memory configuration before claims while narration continues,
   a.semanticEvaluationSettings = { ...a.semanticEvaluationSettings, backgroundProviderConfig: { baseUrl: "1", model: "" } };
   const hook = setup(a);
   for (let n = 0; n < 4; n++) {
-    act(() => hook.result.current.runtime.continueWithExistingMemory());
     await act(async () => { await hook.result.current.runtime.submitTurn("I listen."); });
-  await waitFor(() => expect(hook.result.current.runtime.memoryWork?.status).not.toBe("running"));
+    await waitFor(() => expect(hook.result.current.runtime.memoryWork?.status).not.toBe("running"));
   }
   expect(provider.mock.calls.filter(([request]) => request.memoryEvaluation)).toHaveLength(0);
   const state = hook.result.current.adventure!;

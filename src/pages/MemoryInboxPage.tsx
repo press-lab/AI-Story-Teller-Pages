@@ -48,9 +48,9 @@ export function MemoryInboxPage(props: MemoryInboxPageProps) {
           <p>Updating memory{memoryWork.group ? ": " + ({ plot: "Plot", storyCards: "Story Cards", brains: "Brains", discovery: "Discovery" }[memoryWork.group]) : ""} — {memoryWork.remaining} {memoryWork.remaining === 1 ? "entry" : "entries"} remaining. You can write your next turn while this finishes.</p>
         ) : memoryWork.status === "failed" ? (
           <>
-            <p>{memoryWork.error ?? "Memory has unfinished evaluations."} Retry unfinished work or continue with existing memory.</p>
+            <p>{memoryWork.error ?? "Memory has unfinished evaluations."} Play can continue using saved memory. Retry unfinished checks when ready.</p>
             <button type="button" disabled={loading} onClick={() => void onRetryMemory?.()}>Retry memory</button>
-            <button type="button" disabled={loading} onClick={onContinueWithExistingMemory}>Continue with existing memory</button>
+            <button type="button" disabled={loading} onClick={onContinueWithExistingMemory}>Dismiss</button>
           </>
         ) : <p>The next turn will use existing memory. Unfinished evaluations remain saved.</p>}
       </div>

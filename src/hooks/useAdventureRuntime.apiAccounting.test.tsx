@@ -66,7 +66,6 @@ describe("actual HTTP call accounting", () => {
     expect(saved.activeState.apiCallTotals!.memoryEvaluation).toMatchObject({ requests: 2, failedRequests: 1, unreportedUsage: 1 });
     hook.unmount(); hook = setup(saved); await act(async () => {});
     expect(evaluations).toBe(2);
-    act(() => hook.result.current.runtime.continueWithExistingMemory());
     await act(async () => { await hook.result.current.runtime.continueTurn(); });
     await waitFor(() => expect(hook.result.current.runtime.memoryWork?.status).not.toBe("running"));
     expect(hook.result.current.adventure!.messages.filter(message => message.role === "assistant").every(message => message.memoryEvaluation?.status === "complete")).toBe(true);

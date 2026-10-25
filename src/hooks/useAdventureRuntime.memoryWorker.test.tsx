@@ -68,16 +68,13 @@ it("builds the next prompt only after the existing worker commits and blocks dup
   expect(provider).toHaveBeenCalledTimes(4);
 });
 
-it("does not silently retry failed memory; explicit retry spends only one unfinished discovery request", async () => {
+it("keeps failed memory advisory while explicit retry spends only one unfinished request", async () => {
   let fail = true;
   provider.mockImplementation(async request => response(request.memoryEvaluation ? fail ? "invalid" : "[]" : story));
   const hook = setup(); await act(async () => { await hook.result.current.runtime.continueTurn(); });
-  await waitFor(() => expect(provider.mock.calls.some(([request]) => request.memoryEvaluation)).toBe(true));
+  await waitFor(() => expect(hook.result.current.runtime.memoryWork?.status).toBe("failed"));
   expect(hook.result.current.runtime.loading).toBe(false);
-  expect(hook.result.current.runtime.memoryWork?.status).toBe("failed");
-  await act(async () => { expect(await hook.result.current.runtime.submitTurn("Blocked until choice.")).toBe(false); });
-  expect(hook.result.current.openTab).toHaveBeenCalledWith("memoryInbox");
-  await waitFor(() => expect(provider.mock.calls.some(([request]) => request.memoryEvaluation)).toBe(true));
+  expect(hook.result.current.openTab).not.toHaveBeenCalled();
   expect(provider).toHaveBeenCalledTimes(2);
   fail = false; await act(async () => { await hook.result.current.runtime.retryMemory(); });
   expect(provider).toHaveBeenCalledTimes(3);
@@ -85,17 +82,17 @@ it("does not silently retry failed memory; explicit retry spends only one unfini
   expect(hook.result.current.runtime.memoryWork).toBeUndefined();
 });
 
-it("allows an explicit next turn with existing memory and retains unfinished sources", async () => {
+it("allows successive turns after memory failures without a choice and retains unfinished sources", async () => {
   provider.mockImplementation(async request => response(request.memoryEvaluation ? "invalid" : story));
   const hook = setup(); await act(async () => { await hook.result.current.runtime.continueTurn(); });
   await waitFor(() => expect(provider.mock.calls.some(([request]) => request.memoryEvaluation)).toBe(true));
   const sourceId = hook.result.current.adventure!.messages.at(-1)!.id;
-  act(() => hook.result.current.runtime.continueWithExistingMemory());
-  await act(async () => { await hook.result.current.runtime.continueTurn(); });
+  await act(async () => { expect(await hook.result.current.runtime.submitTurn("I keep playing.")).toBe(true); });
   await waitFor(() => expect(provider.mock.calls.some(([request]) => request.memoryEvaluation)).toBe(true));
   expect(provider.mock.calls.filter(([request]) => !request.memoryEvaluation)).toHaveLength(2);
   await waitFor(() => expect(hook.result.current.runtime.memoryWork?.status).not.toBe("running"));
   expect(hook.result.current.adventure!.messages.find(message => message.id === sourceId)?.memoryEvaluation?.status).toBe("failed");
+  expect(hook.result.current.openTab).not.toHaveBeenCalled();
 });
 
 it("retains an edit made during a paid evaluation, rejects the stale group and adds no automatic retry", async () => {
@@ -140,7 +137,7 @@ it("does not write an old result into a switched adventure or replay pending wor
   expect(vi.mocked(saveAdventure).mock.calls).toHaveLength(savesBeforeFinish);
   act(() => hook.result.current.setAdventure(original));
   expect(provider).toHaveBeenCalledTimes(2);
-  expect(hook.result.current.runtime.memoryWork?.status).toBe("failed");
+  expect(hook.result.current.runtime.memoryWork).toBeUndefined();
 });
 
 it("shares an outstanding worker with manual evaluation instead of issuing duplicate calls", async () => {
@@ -211,4 +208,42 @@ it("rejects a destination edited while validation is outstanding and retains the
   expect(hook.result.current.adventure!.messages.at(-1)?.memoryEvaluation?.status).toBe("pending");
   expect(hook.result.current.runtime.memoryWork?.status).toBe("failed");
   expect(provider).toHaveBeenCalledTimes(4); // Stops before discovery; no immediate reevaluation.
+});
+
+
+it("opens and reopens a save with the reported historical failure counts without requests, notices or redirects", async () => {
+  const saved = createDefaultAdventure("Historical retry regression");
+  saved.activeState.turn = 192; saved.activeState.memoryRecoveryStoryTurn = 175;
+  const statuses = [...Array(24).fill("quarantined"), "running", "failed", "failed"] as const;
+  saved.messages = statuses.map((status, index) => ({ id: "old-source-" + index, role: "assistant", content: "An earlier saved exchange.", createdAt: "2026-01-01",
+    memoryEvaluation: { turn: index + 1, status, attempts: status === "running" ? 6 : 3,
+      completedGroups: ["plot", "storyCards"], lastError: "memory_model_output_invalid: Placement verdict is missing or malformed." } }));
+  let hook = setup(saved); await act(async () => {});
+  expect(provider).not.toHaveBeenCalled(); expect(hook.result.current.runtime.memoryWork).toBeUndefined();
+  expect(hook.result.current.openTab).not.toHaveBeenCalled();
+  await act(async () => { expect(await hook.result.current.runtime.submitTurn("A new turn.")).toBe(true); });
+  await waitFor(() => expect(hook.result.current.runtime.memoryWork?.status).not.toBe("running"));
+  expect(hook.result.current.openTab).not.toHaveBeenCalled();
+  expect(provider).toHaveBeenCalledTimes(2); // One narration and one new-source discovery; no historical replay.
+  expect(hook.result.current.adventure!.messages.slice(0, statuses.length)).toEqual(saved.messages);
+  const reopened = normalizeAdventure(JSON.parse(JSON.stringify(hook.result.current.adventure))); hook.unmount(); provider.mockClear();
+  hook = setup(reopened); await act(async () => {});
+  expect(provider).not.toHaveBeenCalled(); expect(hook.result.current.runtime.memoryWork).toBeUndefined();
+  expect(hook.result.current.openTab).not.toHaveBeenCalled();
+});
+
+it("continues a queued submission after a worker failure with unchanged bounded-retry accounting", async () => {
+  const pending = deferred(); let first = true;
+  provider.mockImplementation(request => request.memoryEvaluation && first ? (first = false, pending.promise)
+    : Promise.resolve(response(request.memoryEvaluation ? "[]" : story)));
+  const hook = setup(); await act(async () => { await hook.result.current.runtime.submitTurn("First turn."); });
+  await waitFor(() => expect(provider).toHaveBeenCalledTimes(2));
+  let next!: Promise<boolean>; await act(async () => { next = hook.result.current.runtime.submitTurn("Second turn."); });
+  await act(async () => { pending.resolve(response("malformed")); expect(await next).toBe(true); });
+  await waitFor(() => expect(hook.result.current.runtime.memoryWork?.status).not.toBe("running"));
+  expect(hook.result.current.adventure!.messages.map(message => message.content)).toEqual(["First turn.", story, "Second turn.", story]);
+  expect(hook.result.current.adventure!.messages[1].memoryEvaluation).toMatchObject({ status: "complete", attempts: 2 });
+  expect(hook.result.current.adventure!.activeState.memoryDiagnostics).toContainEqual(expect.objectContaining({ outcome: "evaluation_failed", group: "discovery" }));
+  expect(provider).toHaveBeenCalledTimes(5); // Existing one-group backoff retry plus the new source; no completed-group replay.
+  expect(hook.result.current.openTab).not.toHaveBeenCalled();
 });

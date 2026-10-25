@@ -538,7 +538,7 @@ export function PlayPage({
               aria-label="Send"
               disabled={loading || !input.trim()}
               onClick={submit}
-              title={loading ? "Generating…" : memoryWork?.status === "running" ? "Send after memory finishes" : memoryWork?.status === "failed" ? "Review unfinished memory before sending" : "Send"}
+              title={loading ? "Generating…" : memoryWork?.status === "running" ? "Send after memory finishes" : memoryWork?.status === "failed" ? "Send using saved memory" : "Send"}
             >
               {loading ? "…" : "↑"}
             </button>

@@ -209,8 +209,9 @@ Narration loading ends once the finalized story is saved. A single ordered worke
 per active adventure evaluates the same bounded cadence window, with separate
 Plot / Story Cards / Brains / Discovery progress. Reading and composing stay
 available; generation waits for the worker so the next context includes committed
-automatic memory. A failed or interrupted evaluation offers explicit retry or
-continue with existing memory. Opening an adventure still sends no memory requests.
+automatic memory. Failed or interrupted evaluations are advisory in the Memory submenu; they never
+redirect or block Play. Opening an adventure sends no requests and creates no retry
+notice from historical failures. Explicit per-source retry remains in Decisions.
 
 Group commits persist independently through the existing evidence, revision,
 destination and approval checks. Stale groups remain pending for reevaluation,
@@ -221,8 +222,12 @@ Each HTTP attempt has a three-minute deadline including the response body. Timeo
 adds no automatic HTTP retry, retains completed groups/checkpoints and records a
 safe failure classification. Provider billing can continue after client abort;
 an explicit later retry may therefore incur another charge for unfinished work.
+Historical failures and quarantined sources remain unchanged and inspectable.
 
-Expected normal cost change: 0%. Models, prompts, token limits, condition checks,
-cadence and update parallelism are unchanged. The offline accounting regression
+No additional requests or review rounds are introduced. Models, token limits,
+condition checks, cadence and update parallelism are unchanged. The Story Card
+reviewer response envelope explicitly includes its required nested placement,
+without relaxing evidence validation. This small prompt clarification has minimal
+token overhead. Existing bounded group backoff/retry behavior is preserved. The offline accounting regression
 continues to require exactly 20 narration plus 40 independent HTTP requests for
 20 turns. No paid API calls are needed for validation.
