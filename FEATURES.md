@@ -1,3 +1,7 @@
+## Current Story Card update contract (October 25, 2026)
+
+Every Character, Location, Lore and Custom card can grow through validated factual appends. Automatic memory appends to the matching subject or creates a new card; it preserves the original body, voice, controls, chronology and provenance. Legacy modes and per-card opt-in do not restrict updates. The Memory Mode selector and single-card auto-update controls have been removed. Global memory cadence, approvals, protected-target review, source snapshots and context budgets remain. See `docs/story-card-architecture.md`; older mode-specific notes below describe the previous implementation.
+
 # AI Story Teller — Feature Map
 
 System architecture, feature inventory, and interaction map. Updated after each major change.

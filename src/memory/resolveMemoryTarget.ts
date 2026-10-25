@@ -1,5 +1,4 @@
 import type { Adventure, MemoryProposalType, StoryCard, StoryCardMemoryMode, StoryCardType } from "../types/adventure";
-import { isGuardedStoryCardMemory } from "./storyCardPolicy";
 
 export interface MemoryTargetDraft {
   proposedType: MemoryProposalType;
@@ -46,89 +45,19 @@ function normalize(value: string): string {
   return value.toLocaleLowerCase().replace(/[^\p{L}\p{N}\s']/gu, " ").replace(/\s+/g, " ").trim();
 }
 
-export function isLivingStoryCard(card: Pick<StoryCard, "memoryMode" | "state">): boolean {
-  return card.memoryMode === "living" || (card.state ?? "").split(/\s+/).includes("living");
-}
-
-function isHistoricalStoryCard(card: Pick<StoryCard, "memoryMode">): boolean {
-  return card.memoryMode === "historical";
-}
-
+/** Legacy import metadata only; all cards accept appends regardless of this value. */
 export function inferStoryCardMemoryMode(draft: Pick<MemoryTargetDraft, "title" | "content" | "sourceText" | "category" | "memoryMode">): StoryCardMemoryMode {
-  if (draft.memoryMode) return draft.memoryMode;
-  const text = normalize([draft.title, draft.content, draft.sourceText].filter(Boolean).join(" "));
-  if (isGuardedStoryCardMemory({ title: draft.title, content: [draft.content, draft.sourceText].filter(Boolean).join("\n"), memoryMode: "living" })) {
-    return "living";
-  }
-  if (draft.category === "plot_beat") return "historical";
-  if (draft.category === "relationship" || draft.category === "status_change") return "living";
-  if (draft.category === "character_reveal" || draft.category === "world_fact") return "static";
-  if (/\b(currently|right now|actively|ongoing|periodic|maintenance|retainer|requires?|mandated|monitoring|searching|hunting)\b/.test(text)) {
-    return "living";
-  }
-  if (/\b(escaped|stole|sold|agreed|revealed|confirmed|completed|defeated|rescued|sealed|concluded|first worked|first time)\b/.test(text)) {
-    return "historical";
-  }
-  return "static";
+  return draft.memoryMode ?? "static";
 }
 
-function targetAcceptsMode(card: StoryCard, inferredMode: StoryCardMemoryMode, type?: StoryCardType): boolean {
-  if (type && card.type !== type) return false;
-  if (isLivingStoryCard(card)) return inferredMode === "living";
-  if (isHistoricalStoryCard(card)) return inferredMode === "historical";
-  return inferredMode === "static";
-}
-
-function guardedExactTitleTarget(card: StoryCard, draft: MemoryTargetDraft): boolean {
-  return card.type !== "character" &&
-    normalize(card.title) === normalize(draft.title) &&
-    isGuardedStoryCardMemory(
-      {
-        ...card,
-        content: [card.content, draft.content, draft.sourceText].filter(Boolean).join("\n"),
-      },
-    );
-}
-
-function exactStoryCardTarget(adventure: Adventure, draft: MemoryTargetDraft, inferredMode: StoryCardMemoryMode): StoryCard | undefined {
-  if (draft.targetId) {
-    const target = adventure.storyCards.find((card) => card.id === draft.targetId);
-    if (target && (!draft.storyCardType || target.type === draft.storyCardType) && guardedExactTitleTarget(target, draft)) return target;
-    if (target && targetAcceptsMode(target, inferredMode, draft.storyCardType)) return target;
-    return undefined;
-  }
-  const titleNorm = normalize(draft.title);
-  const exactTitle = adventure.storyCards.find((card) => card.active && normalize(card.title) === titleNorm);
-  if (exactTitle && (!draft.storyCardType || exactTitle.type === draft.storyCardType) && guardedExactTitleTarget(exactTitle, draft)) return exactTitle;
-  if (
-    exactTitle &&
-    targetAcceptsMode(exactTitle, inferredMode, draft.storyCardType)
-  ) {
-    return exactTitle;
-  }
-  return adventure.storyCards.find((card) =>
-    card.active &&
-    card.type !== "character" &&
-    targetAcceptsMode(card, inferredMode, draft.storyCardType) &&
-    card.keys.some((key) => normalize(key) === titleNorm)
-  );
-}
-
-function incompatibleTarget(adventure: Adventure, draft: MemoryTargetDraft, inferredMode: StoryCardMemoryMode): StoryCard | undefined {
-  const target = draft.targetId ? adventure.storyCards.find((card) => card.id === draft.targetId) : undefined;
-  if (target && (!draft.storyCardType || target.type === draft.storyCardType) && guardedExactTitleTarget(target, draft)) return undefined;
-  if (target && !targetAcceptsMode(target, inferredMode, draft.storyCardType)) return target;
-  const exactTitle = adventure.storyCards.find((card) => card.active && normalize(card.title) === normalize(draft.title));
-  if (exactTitle && (!draft.storyCardType || exactTitle.type === draft.storyCardType) && guardedExactTitleTarget(exactTitle, draft)) return undefined;
-  return exactTitle && !targetAcceptsMode(exactTitle, inferredMode, draft.storyCardType) ? exactTitle : undefined;
-}
-
-function childTitleFor(target: StoryCard, draft: MemoryTargetDraft, inferredMode: StoryCardMemoryMode): string {
-  const draftTitle = draft.title.trim();
-  if (draftTitle && normalize(draftTitle) !== normalize(target.title)) return draftTitle;
-  if (inferredMode === "historical") return `${target.title}: History`;
-  if (draft.category === "relationship") return `${target.title}: Relationship Status`;
-  return `${target.title}: Current Status`;
+function exactStoryCardTarget(adventure: Adventure, draft: MemoryTargetDraft): StoryCard | undefined {
+  if (draft.targetId) return adventure.storyCards.find(card => card.id === draft.targetId);
+  const title = normalize(draft.title);
+  const exact = adventure.storyCards.filter(card => normalize(card.title) === title);
+  if (exact.length === 1) return exact[0];
+  if (exact.length > 1) return undefined;
+  const aliases = adventure.storyCards.filter(card => card.type !== "character" && card.keys.some(key => normalize(key) === title));
+  return aliases.length === 1 ? aliases[0] : undefined;
 }
 
 type TriggerContext = { storyCards: Array<Pick<StoryCard, "id" | "title" | "type" | "keys">> };
@@ -169,7 +98,7 @@ export function sanitizeStoryCardTriggers(
       && !TOKEN_STOPWORDS.has(norm) && !GENERIC_TRIGGER_WORDS.has(norm);
     if (isWeakTrigger(norm) && !shortName) continue;
     if (norm.split(/\s+/).length > 6) continue;
-    if ((memoryMode === "living" || memoryMode === "historical") && triggerBelongsToCharacterCard(adventure, norm, targetId)
+    if (triggerBelongsToCharacterCard(adventure, norm, targetId)
       && !(norm.includes(" ") && normalize(content).includes(norm))) continue;
     seen.add(norm);
     result.push(clean);
@@ -235,22 +164,20 @@ export function resolveMemoryTarget(adventure: Adventure, draft: MemoryTargetDra
 
   const requestedTarget = draft.targetId ? adventure.storyCards.find((card) => card.id === draft.targetId) : undefined;
   const inferredMode = draft.memoryMode ?? requestedTarget?.memoryMode ?? inferStoryCardMemoryMode(draft);
-  const blockedTarget = incompatibleTarget(adventure, draft, inferredMode);
-  const target = exactStoryCardTarget(adventure, draft, inferredMode);
-  const targetMode = target ? (isLivingStoryCard(target) ? "living" : target.memoryMode) : undefined;
+  const target = exactStoryCardTarget(adventure, draft);
+  const targetMode = target?.memoryMode;
   const memoryMode = target ? (targetMode ?? inferredMode) : inferredMode;
-  const appendContent = target ? (draft.appendContent ?? true) : undefined;
-  const title = target?.title ?? (blockedTarget ? childTitleFor(blockedTarget, draft, inferredMode) : draft.title);
+  const appendContent = target ? true : undefined;
+  const title = target?.title ?? draft.title;
   const suggestedTriggers = generatedStoryCardTriggers(adventure, title, draft.content, draft.suggestedTriggers, target?.id, memoryMode);
   const rationale = [
     draft.rationale,
-    target && !draft.targetId ? `Routed to existing ${memoryMode} Story Card "${target.title}".` : undefined,
-    blockedTarget ? `Created a separate ${memoryMode} Story Card instead of appending ${memoryMode} facts to static "${blockedTarget.title}".` : undefined,
+    target && !draft.targetId ? `Append to existing Story Card "${target.title}".` : undefined,
   ].filter(Boolean).join(" ") || undefined;
 
   return {
     proposedType: "storyCard",
-    storyCardType: draft.storyCardType,
+    storyCardType: target?.type ?? draft.storyCardType,
     title,
     content: draft.content,
     suggestedTriggers,

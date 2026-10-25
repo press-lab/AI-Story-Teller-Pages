@@ -72,7 +72,7 @@ beforeEach(() => {
       content = "The council requires the signed charter by dawn.";
     } else if (text.includes("appending to a running log")) {
       content = "Mira confirmed the key and opened the sealed ward.";
-    } else if (text.includes("Maintain the evolving Lore subject")) {
+    } else if (text.includes("Append new durable facts about")) {
       content = "The coalition signed a binding charter.";
     }
     return { content, raw: {}, usage: { promptTokens: 5, completionTokens: 1, totalTokens: 6 } };
@@ -98,7 +98,7 @@ describe("original independent foundation", () => {
       metrics.duplicates += actual.length - new Set(actual).size;
       metrics.providerCalls += provider.mock.calls.length;
     }
-    expect(metrics).toEqual({ truePositives: 5, falseNegatives: 0, falsePositives: 0, duplicates: 0, providerCalls: 16 });
+    expect(metrics).toEqual({ truePositives: 5, falseNegatives: 0, falsePositives: 0, duplicates: 0, providerCalls: 17 });
     console.log("FOUNDATION_OFFLINE_ROUTING", JSON.stringify(metrics));
   });
   it("captures a first-person Brain change from plain narration, preserves history and keeps pending memory out of canon", async () => {
@@ -341,7 +341,7 @@ describe("interpersonal discovery reliability paths", () => {
     expect(proposal.storyCardReview?.evidenceQuotes).toEqual(a.messages.map(message => ({ messageId: message.id, quote: message.content })));
     if (scene.name.includes("attempt") || scene.name.includes("ambiguous")) expect(proposal.content).not.toMatch(/shared.*kiss|completed kiss|confirmed kiss attempt/i);
     if (scene.name.includes("dinner")) expect(proposal.content).not.toContain("romantic date");
-    expect(result.logEntry.conditionsEvaluated.some(condition => condition.id === "storyCard:hermione")).toBe(false);
+    expect(result.logEntry.conditionsEvaluated.some(condition => condition.id === "storyCard:hermione")).toBe(true);
     const count = result.state.activeState.memoryProposals.length;
     expect((await evaluate(result.state)).state.activeState.memoryProposals).toHaveLength(count);
   });
@@ -354,7 +354,7 @@ describe("interpersonal discovery reliability paths", () => {
     expect(result.logEntry.conditionsFired).not.toContain("storyCardDiscovery");
     const prompt = provider.mock.calls.flatMap(([request]) => request.messages).find(message => message.content.includes("STORY CARD MEMORY CHECK"))!.content;
     expect(prompt).toContain("Ordinary smiles, leaning to read");
-    expect(prompt).toContain('"evidenceQuotes"'); expect(prompt).toContain('"memoryMode"'); expect(prompt).toContain('"eventStatus"');
+    expect(prompt).toContain('"evidenceQuotes"'); expect(prompt).not.toContain('"memoryMode"'); expect(prompt).toContain('"eventStatus"');
   });
   it("distinguishes identity-only nominations from semantic detection success", async () => {
     const a = seed(); a.brains = []; fired = [];
@@ -369,7 +369,7 @@ describe("interpersonal discovery reliability paths", () => {
     { evidenceQuotes: [{ messageId: "source", quote: "They kissed." }] },
     { evidenceQuotes: [{ messageId: "ask", quote: "Mira, I offer to share the ward research." }] },
     { evidenceMessageIds: ["source", "invented"] },
-    { memoryMode: undefined }, { eventStatus: "invented" },
+    { eventStatus: undefined }, { eventStatus: "invented" },
   ])("retains diagnosable source-contract failures: %j", async invalid => {
     const a = seed(); a.brains = []; fired = []; discoveries = [{ ...finding(a), ...invalid }];
     const result = await evaluate(a);
@@ -661,14 +661,14 @@ it("retains a Moody lesson from the existing Character check as focused Lore wit
       return { content: JSON.stringify({ accepted: true, meaningfulChange: true, identityMatchesTarget: true, evidenceMessageIds: body.latestTurnMessageIds, reason: "Supported classroom event.",
         placement: { kind: "historicalLore", title: "Moody’s Unforgivable Curses Demonstration", content: moodyPlacement.lore, newFact: moodyPlacement.lore, reason: "Completed lesson, no identity change." } }), raw: {} };
     }
-    if (text.includes("persistent world fact card")) return { content: moodyPlacement.proposal, raw: {} };
+    if (text.includes("Append new durable facts about")) return { content: moodyPlacement.proposal, raw: {} };
     return previous(request);
   });
   const result = await evaluate(a);
   expect(result.logEntry.errors).toEqual([]);
-  const proposal = result.state.activeState.memoryProposals.find(p => p.storyCardType === "lore")!;
-  expect(proposal).toMatchObject({ content: moodyPlacement.lore, placementValidation: { kind: "historicalLore" } });
+  const proposal = result.state.activeState.memoryProposals.find(p => p.targetId === "moody")!;
+  expect(proposal).toMatchObject({ content: moodyPlacement.lore, placementValidation: { kind: "append" } });
   const approved = adventureReducer(result.state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id });
-  expect(approved.storyCards[0]).toEqual(a.storyCards[0]);
-  expect(approved.storyCards.find(c => c.type === "lore")?.content).toBe(moodyPlacement.lore);
+  expect(approved.storyCards[0].content).toContain(a.storyCards[0].content);
+  expect(approved.storyCards[0].content).toContain(moodyPlacement.lore);
 });

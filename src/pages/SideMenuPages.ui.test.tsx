@@ -211,11 +211,8 @@ describe("side menu page smoke coverage", () => {
     expect(onBuildStoryCardMemory).toHaveBeenCalledWith({
       description,
       intent: "relationship",
-      memoryMode: "living",
       recentMessageCount: 8,
       targetCardId: undefined,
-      autoUpdate: true,
-      autoUpdateCooldownTurns: 3,
     });
   });
 
@@ -238,7 +235,8 @@ describe("side menu page smoke coverage", () => {
     expect(screen.getByText("Clean up existing cards")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Clean Up Cards" })).toBeInTheDocument();
     expect(screen.getByLabelText("Include AI semantic pass")).not.toBeChecked();
-    expect(screen.getByText("Automatic Card Updates")).toBeInTheDocument();
+    expect(screen.getByText(/Automatic memory can append new facts to any card/)).toBeInTheDocument();
+    expect(screen.queryByLabelText("Memory Mode")).not.toBeInTheDocument();
     expect(screen.getByText("Story Card JSON")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Clean Up Cards" }));
@@ -312,7 +310,7 @@ describe("side menu page smoke coverage", () => {
     expect(screen.getByText("2 shown")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Active" }));
-    await user.click(screen.getByRole("button", { name: "Ongoing" }));
+    expect(screen.queryByRole("button", { name: "Ongoing" })).not.toBeInTheDocument();
 
     const visibleCards = document.querySelectorAll(".story-card-editor-item");
     expect(visibleCards).toHaveLength(1);
@@ -324,11 +322,11 @@ describe("side menu page smoke coverage", () => {
     await user.selectOptions(typeFilter, "character");
     expect(screen.getByText("No story cards match the current search and filters.")).toBeInTheDocument();
     await user.selectOptions(typeFilter, "all");
-    expect(document.querySelectorAll(".story-card-editor-item")).toHaveLength(1);
+    expect(document.querySelectorAll(".story-card-editor-item")).toHaveLength(2);
     await user.type(screen.getByPlaceholderText("Search cards…"), "unmatched");
     expect(document.querySelectorAll(".story-card-editor-item")).toHaveLength(0);
     await user.clear(screen.getByPlaceholderText("Search cards…"));
-    expect(document.querySelectorAll(".story-card-editor-item")).toHaveLength(1);
+    expect(document.querySelectorAll(".story-card-editor-item")).toHaveLength(2);
   });
 
   it("filters Story Cards by pinned and protected flags", async () => {

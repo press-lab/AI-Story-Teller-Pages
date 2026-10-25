@@ -232,7 +232,7 @@ describe("runRememberThis", () => {
       memoryMode: "historical", content: "Margo promised to return the ward plans.", keys: ["ward plans"] }], rationale: "A completed promise." }), raw: {} });
     const result = await runRememberThis(a, providerConfig, "Margo promised to return the ward plans.");
     const added = result.actions.find(action => action.type === "ADD_MEMORY_PROPOSAL");
-    expect(added).toMatchObject({ proposal: { storyCardType: "lore", targetId: undefined, memoryMode: "historical" } });
+    expect(added).toMatchObject({ proposal: { storyCardType: "character", targetId: "margo", appendContent: true } });
     expect(result.actions.reduce(adventureReducer, a).storyCards).toEqual(a.storyCards);
   });
   it("turns a description into a pending Story Card proposal", async () => {
@@ -369,23 +369,14 @@ describe("AI memory builders", () => {
       "card-ambessa",
     ]);
     const ambessaProposal = proposals.find((action) => action.proposal.targetId === "card-ambessa")?.proposal;
-    expect(ambessaProposal?.storyCardPatch).toMatchObject({
-      pinned: false,
-      protected: false,
-      inclusionPolicy: "triggered",
-      compactStatus: "resolved",
-    });
+    expect(ambessaProposal?.storyCardPatch).toBeUndefined();
 
     let reduced = result.actions.reduce((next, action) => adventureReducer(next, action), adventure);
     expect(reduced.storyCards).toEqual(adventure.storyCards);
     reduced = adventureReducer(reduced, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: ambessaProposal!.id });
     const updatedCard = reduced.storyCards.find((card) => card.id === "card-ambessa");
-    expect(updatedCard).toMatchObject({
-      pinned: false,
-      protected: false,
-      inclusionPolicy: "triggered",
-      compactStatus: "resolved",
-    });
+    expect(updatedCard).toMatchObject({ pinned: adventure.storyCards[0].pinned,
+      protected: adventure.storyCards[0].protected, inclusionPolicy: adventure.storyCards[0].inclusionPolicy });
     expect(updatedCard ? storyCardContextContent(updatedCard) : "").toContain("defeated");
     expect(reduced.components.find((component) => component.id === "component-pressure")?.content)
       .toContain("Caitlyn's fury");

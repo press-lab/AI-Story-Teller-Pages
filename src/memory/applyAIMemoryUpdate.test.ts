@@ -66,7 +66,7 @@ describe("applyAIMemoryUpdate", () => {
     expect(result.appliedUpdates.find((entry) => entry.targetId === "card-joke")?.actionTypes).toEqual(["ADD_MEMORY_PROPOSAL"]);
     expect(next.brains[0].currentState).toBe("new");
     expect(next.storyCards[0].content).toContain("new card");
-    expect(next.storyCards[0]).toMatchObject({ keys: expect.arrayContaining(["silver cup"]), state: expect.stringContaining("ai-updated") });
+    expect(next.storyCards[0]).toMatchObject({ keys: expect.arrayContaining(["silver cup"]), state: "" });
     expect(next.storyCards[0].lastMemoryUpdatedAt).toEqual(expect.any(String));
     expect(next.storyCards[0].memoryUpdateHistory?.[0]).toMatchObject({
       source: "memoryProposal", operation: "append", previous: { content: "old", keys: ["old"] },

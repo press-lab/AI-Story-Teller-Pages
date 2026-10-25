@@ -79,9 +79,10 @@ describe("Story Card detection responsibilities", () => {
     const text = "Lucius died defending the bridge during the battle.";
     const next = await narrate(text, [finding("Lucius Malfoy died defending the bridge.", text, { kind: "card", target: "Lucius Malfoy", targetId: "Lucius Malfoy" })], state);
     const identity = inbox(next).find(p => p.storyCardType === "character")!;
-    expect(identity).toMatchObject({ targetId: "Lucius Malfoy", status: "pending", requiresReview: true, storyCardReview: { origin: "model" } });
+    expect(identity).toMatchObject({ targetId: "Lucius Malfoy", status: autoApprove ? "approved" : "pending", requiresReview: false, storyCardReview: { origin: "model" } });
     expect(inbox(next).filter(p => p.storyCardType === "lore")).toHaveLength(1);
-    expect(next.storyCards.filter(card => card.type === "character")).toEqual(state.storyCards);
+    if (!autoApprove) expect(next.storyCards.filter(card => card.type === "character")).toEqual(state.storyCards);
+    else expect(next.storyCards.find(c => c.id === "Lucius Malfoy")?.content).toContain("died defending the bridge");
     const approved = adventureReducer(next, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: identity.id });
     expect(approved.storyCards.find(c => c.id === "Lucius Malfoy")?.content).toContain("died defending the bridge");
   });

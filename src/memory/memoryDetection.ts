@@ -21,25 +21,9 @@ import {
 
 function proposalFormatInstruction(proposal: MemoryProposal): string {
   if (proposal.proposedType === "storyCard") {
-    const mode = proposal.memoryMode ?? "static";
-    const tense =
-      mode === "historical"
-        ? "Write completed past events in past tense. Do not make resolved events sound current."
-        : mode === "living"
-          ? "Write the current state of an evolving subject in present tense. Remove or rewrite obsolete current-state facts."
-          : "Write always-true facts in present tense.";
-    return `Format: bullet points, one per line, no title in the body. This is a ${mode} Story Card. ${tense}
-${storyCardCreationGuidance(mode)}
+    return `Format: concise new factual bullet points only. ${STORY_CARD_PLACEMENT_POLICY}
 ${STORY_CARD_BEST_PRACTICES}
-${TRIGGER_BEST_PRACTICES}
-If this card has category event, preserve the completed occurrence and its concrete details; do not rewrite it as current relationship state or add a voice contract.
-If this card is a character (a person the story will voice), append a VOICE CONTRACT block after the bullets, written in their actual voice:
-VOICE CONTRACT
-Rhythm: <pace, sentence structure>
-Default move: <what they reach for under pressure>
-Emotional defense: <how they deflect or armor up>
-Never sounds like: <what to avoid: generic, "I feel...", offering choices>
-Example lines: "<line>" / "<line>"`;
+${TRIGGER_BEST_PRACTICES}`;
   }
   if (proposal.proposedType === "plotEssentialsUpdate") {
     return `Format: rewrite the FULL Plot Essentials replacement block as the story's current operating truth. Keep it compact, current, and non-redundant. Remove resolved or stale facts. Do not append a small update note.
@@ -72,15 +56,15 @@ export async function regenerateProposalContent(
     const response = await sendMemoryCompletion(adventure, providerConfig, [
       ...memoryCanonMessages(adventure, proposal.sourceText, proposal.title),
       { role: "system", content: `${STORY_CARD_PLACEMENT_POLICY}
-Regenerate a focused suggestion from evidence. Return ONLY JSON {title,content,storyCardType,memoryMode}. ${convertToLore ? "Extract significant observable history as Lore only. Omit biography, voice and private interpretations." : "Choose the correct placement for the new facts."}` },
+Regenerate a focused suggestion from evidence. Return ONLY JSON {title,content,storyCardType}. ${convertToLore ? "Extract significant observable history as Lore only. Omit biography, voice and private interpretations." : "Choose the correct placement for the new facts."}` },
       { role: "user", content: JSON.stringify({ title: proposal.title, previousDraft: proposal.content, source: proposal.sourceText,
         evidence: proposal.storyCardReview, target: adventure.storyCards.find(c => c.id === proposal.targetId) }) },
     ]);
     const raw = JSON.parse(response.content.replace(/<think>[\s\S]*?<\/think>/gi, "").trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, ""));
     if (!raw || typeof raw.title !== "string" || typeof raw.content !== "string" || !["character", "location", "lore", "custom"].includes(raw.storyCardType)
-      || !["static", "living", "historical"].includes(raw.memoryMode) || (convertToLore && raw.storyCardType !== "lore")) throw new Error("Invalid regenerated placement draft.");
+      || (convertToLore && raw.storyCardType !== "lore")) throw new Error("Invalid regenerated placement draft.");
     const result = await validateStoryCardProposal(adventure, providerConfig, { ...proposal, title: raw.title, content: raw.content,
-      storyCardType: raw.storyCardType, memoryMode: raw.memoryMode, targetId: raw.storyCardType === proposal.storyCardType ? proposal.targetId : undefined,
+      storyCardType: raw.storyCardType, targetId: raw.storyCardType === proposal.storyCardType ? proposal.targetId : undefined,
       appendContent: raw.storyCardType === proposal.storyCardType ? proposal.appendContent : undefined });
     if (!result.proposal) throw new Error(result.error ?? "No supported new memory was found.");
     if (convertToLore && result.proposal.storyCardType !== "lore") throw new Error("The evidence does not support this conversion to Lore.");
@@ -182,8 +166,8 @@ export async function detectStoryCardProposals(adventure: Adventure, providerCon
       const response = await sendMemoryCompletion(adventure, providerConfig, [
           { role: "system", content: `${STORY_CARD_MEMORY_CHECK}
   ${options.eventsOnly ? "Evaluate completed history as Lore only." : "Evaluate the supplied completed exchanges."}
-  ${options.sourceId ? `The latest establishing exchange ends at narrator source ${options.sourceId}; the immediately preceding player action belongs to that exchange. Earlier exchanges are supporting context. Every finding must include the literal ID ${options.sourceId} in evidenceMessageIds and an exact quote from that message. Cite the player action too when needed to establish who acted. Do not substitute a numeric turn, card ID or invented ID. Only propose developments established in source ${options.sourceId}. Earlier exchanges supply attribution and continuity, not events happening again now. Cite that establishing source and all necessary earlier evidence. Include evidenceQuotes:[{messageId,quote}] with exact unmodified quotes from the supplied original messages. Also provide memoryMode: historical|living|static and eventStatus: completed|ongoing|unresolved. A confirmed agreement is completed history even when the agreed future work remains unfinished. A discovery can have separate historical Lore and character-private Brain reactions; do not put private thoughts into this public record. Propose at most three findings.` : ""}
-  Return ONLY a JSON array, [] when nothing qualifies. Each item: {"title":"subject or existing title","targetId":"existing ID for an update, otherwise omit","content":"NEW fact only; max 70 words","storyCardType":"lore|character|location|custom","suggestedTriggers":["3-6 short reusable topic phrases covering the card content; use ordinary future wording, not exact scene sentences or just the full title; never empty"],"rationale":"why durable","evidenceMessageIds":["supplied source IDs"],"evidenceQuotes":[{"messageId":"supplied source ID","quote":"exact unmodified supporting quote"}],"memoryMode":"historical|living|static","eventStatus":"completed|ongoing|unresolved","candidateOnly":false}. Set candidateOnly=true for uncertain interpretations and explicit attempts requiring review. An uncertain interpretation must use eventStatus=unresolved. A completed attempt can use memoryMode=historical,eventStatus=completed while its intended outcome remains uncompleted. Never assert a confirmed kiss attempt from an ambiguous lean. Routine hospitality and scene filler do not qualify. Do not repeat dismissed or already captured facts. This legacy catch-up response is adapted into the shared Story Card pipeline.` },
+  ${options.sourceId ? `The latest establishing exchange ends at narrator source ${options.sourceId}; the immediately preceding player action belongs to that exchange. Earlier exchanges are supporting context. Every finding must include the literal ID ${options.sourceId} in evidenceMessageIds and an exact quote from that message. Cite the player action too when needed to establish who acted. Do not substitute a numeric turn, card ID or invented ID. Only propose developments established in source ${options.sourceId}. Earlier exchanges supply attribution and continuity, not events happening again now. Cite that establishing source and all necessary earlier evidence. Include evidenceQuotes:[{messageId,quote}] with exact unmodified quotes from the supplied original messages. Also provide eventStatus: completed|ongoing|unresolved. A confirmed agreement is completed history even when the agreed future work remains unfinished. A discovery can have separate historical Lore and character-private Brain reactions; do not put private thoughts into this public record. Propose at most three findings.` : ""}
+  Return ONLY a JSON array, [] when nothing qualifies. Each item: {"title":"subject or existing title","targetId":"existing ID for an update, otherwise omit","content":"NEW fact only; max 70 words","storyCardType":"lore|character|location|custom","suggestedTriggers":["3-6 short reusable topic phrases covering the card content; use ordinary future wording, not exact scene sentences or just the full title; never empty"],"rationale":"why durable","evidenceMessageIds":["supplied source IDs"],"evidenceQuotes":[{"messageId":"supplied source ID","quote":"exact unmodified supporting quote"}],"eventStatus":"completed|ongoing|unresolved","candidateOnly":false}. Set candidateOnly=true for uncertain interpretations and explicit attempts requiring review. An uncertain interpretation must use eventStatus=unresolved. A completed attempt can use eventStatus=completed while its intended outcome remains uncompleted. Never assert a confirmed kiss attempt from an ambiguous lean. Routine hospitality and scene filler do not qualify. Do not repeat dismissed or already captured facts. This legacy catch-up response is adapted into the shared Story Card pipeline.` },
           ...memoryCanonMessages(adventure, excerpt, "Discover missing Story Cards", true),
           { role: "user", content: "Relevant existing cards: " + JSON.stringify(cardInventory) },
           { role: "user", content: "Previously considered Story Card proposals (including dismissed; omit duplicates): " + JSON.stringify(proposalInventory) },
@@ -197,7 +181,7 @@ export async function detectStoryCardProposals(adventure: Adventure, providerCon
         .replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
       const parsed: unknown = JSON.parse(raw);
       if (!Array.isArray(parsed)) throw new Error("Discovery response was not an array.");
-      if (options.sourceId && parsed.length > 3) throw new Error("Discovery exceeded its three-finding limit.");
+      if (options.sourceId && parsed.length > 3) record("candidate_suppressed", "Only the first three findings are processed; additional findings exceed this evaluation bound.");
       record(parsed.length ? "candidates_produced" : "zero_candidates", `Semantic discovery returned ${parsed.length} candidates (before validation).`);
       candidates = parsed.slice(0, options.sourceId ? 3 : 12).map((raw, index) => {
         activeIndex = index;
@@ -212,16 +196,49 @@ export async function detectStoryCardProposals(adventure: Adventure, providerCon
     for (const [index, draft] of candidates.entries()) {
       activeIndex = index;
       if (draft.status !== "awaiting_retry") continue;
-      const item = draft.candidate, title = item.title;
+      let item = draft.candidate;
+      const title = item.title;
       const reject = (reason: string, code: string) => {
         draft.status = "rejected"; draft.reason = reason; draft.failureCode = code;
-        record("validation_rejected", reason, { failureCode: code, failureCategory: "invalid_model_output" });
+        record("validation_rejected", reason, { failureCode: code, failureCategory: "invalid_model_output",
+          targetId: item.targetId, candidate: { kind: item.storyCardType, title: item.title, content: item.content,
+            evidence: JSON.stringify(item.evidenceQuotes), rationale: item.rationale ?? "", targetId: item.targetId } });
       };
       const suppress = (reason: string) => {
         draft.status = "suppressed"; draft.reason = reason;
-        record("candidate_suppressed", reason);
+        record("candidate_suppressed", reason, { targetId: item.targetId,
+          candidate: { kind: item.storyCardType, title: item.title, content: item.content,
+            evidence: JSON.stringify(item.evidenceQuotes), rationale: item.rationale ?? "", targetId: item.targetId } });
       };
-      const error = discoveryEvidenceError(item, messages, options.sourceId);
+      let error = discoveryEvidenceError(item, messages, options.sourceId);
+      if (error && options.sourceId) {
+        record("validation_rejected", error.reason, { failureCode: error.code, targetId: item.targetId,
+          candidate: { kind: item.storyCardType, title: item.title, content: item.content,
+            evidence: JSON.stringify(item.evidenceQuotes), rationale: item.rationale ?? "", targetId: item.targetId } });
+        let repairReceived = false;
+        try {
+          const repair = await sendMemoryCompletion(adventure, providerConfig, [
+            { role: "system", content: `${STORY_CARD_MEMORY_CHECK}
+Repair this single discovery candidate using only the supplied original messages. Return ONLY one candidate object with title, content (new supported facts only), storyCardType, targetId when relevant, evidenceMessageIds, evidenceQuotes:[{messageId,quote}], eventStatus and candidateOnly. Include the establishing narrator ID and its exact unmodified supporting quote. Do not invent evidence, concatenate noncontiguous quotes or assert planned work is complete. Return null if unsupported.` },
+            { role: "user", content: JSON.stringify({ candidate: item, failure: error, establishingSourceId: sourceId, allowedEvidence: dependencies }) },
+          ]);
+          repairReceived = true;
+          result.tokenUsage.promptTokens += repair.usage?.promptTokens ?? 0;
+          result.tokenUsage.completionTokens += repair.usage?.completionTokens ?? 0;
+          const raw = JSON.parse(repair.content.replace(/<think>[\s\S]*?<\/think>/gi, "").trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, ""));
+          if (raw === null) { reject("Evidence repair found no supported durable fact.", "memory_no_supported_fact"); continue; }
+          const repaired = parseDiscoveryCandidate(raw);
+          const repairError = repaired.error ?? discoveryEvidenceError(repaired.candidate, messages, options.sourceId);
+          if (!repairError) { item = repaired.candidate; draft.candidate = item; error = undefined; }
+          else error = repairError;
+        } catch (cause) {
+          const failure = safeMemoryFailure(cause, repairReceived);
+          draft.status = "awaiting_retry"; draft.reason = failure.message; draft.failureCode = failure.code;
+          record("candidate_awaiting_retry", failure.message, { failureCode: failure.code,
+            candidate: { kind: item.storyCardType, title, content: item.content, evidence: JSON.stringify(item.evidenceQuotes), rationale: item.rationale ?? "", targetId: item.targetId } });
+          result.errors.push(failure.message); continue;
+        }
+      }
       if (error) { reject(error.reason, error.code); continue; }
       const evidence = messages.filter(message => item.evidenceMessageIds.includes(message.id));
       if (item.storyCardType !== "event" && alreadyCaptured(item.content, capturedContent)) {
@@ -238,7 +255,7 @@ export async function detectStoryCardProposals(adventure: Adventure, providerCon
       if (isEvent && (!eventMemory?.participants.length || !eventMemory.recallCues.length)) {
         reject("Event discovery requires participants and recall cues.", "discovery_event_schema_invalid"); continue;
       }
-      if (isEvent && [...adventure.storyCards.filter(isHistoricalLore), ...considered.filter(proposal => Boolean(proposal.eventMemory))]
+      if (isEvent && !item.targetId && [...adventure.storyCards.filter(isHistoricalLore), ...considered.filter(proposal => Boolean(proposal.eventMemory))]
         .some(existing => sameEventMemory(existing, { content: item.content, eventMemory }))) {
         suppress("Historical event is already recorded."); continue;
       }
@@ -267,16 +284,12 @@ export async function detectStoryCardProposals(adventure: Adventure, providerCon
           record(validation.retryable ? "candidate_awaiting_retry" : "validation_rejected", draft.reason, {
             failureCode: validation.failureCode, providerCode: validation.providerCode, httpStatus: validation.httpStatus,
             failureCategory: validation.retryable ? validation.failureCode === "memory_provider_request_failed" ? "transport_api" : "invalid_model_output" : undefined,
-            candidate: { kind: "storyCard", title, content: item.content, evidence: evidence.map(message => `[${message.id}] ${message.content}`).join("\n"), rationale: item.rationale ?? "" },
+            candidate: { kind: "storyCard", title, content: item.content, evidence: evidence.map(message => `[${message.id}] ${message.content}`).join("\n"), rationale: item.rationale ?? "", targetId: proposal.targetId },
           });
           if (validation.retryable) result.errors.push(draft.reason);
           continue;
         }
         proposal = validation.proposal!;
-      }
-      const destination = adventure.storyCards.find(card => card.id === proposal.targetId);
-      if (destination?.autoUpdate === false) {
-        suppress("Existing-card autoUpdate=false; independent new Lore remains eligible."); continue;
       }
       proposal.storyCardReview = { ...proposal.storyCardReview!, additionalSources: evidence.filter(message => message.id !== source.id).map(({ id, content }) => ({ id, content })) };
       if (options.sourceId) proposal.storyCardReview.evidenceQuotes = item.evidenceQuotes;
@@ -287,7 +300,7 @@ export async function detectStoryCardProposals(adventure: Adventure, providerCon
       if (proposal.placementValidation) proposal.placementValidation.fingerprint = placementFingerprint(proposal);
       draft.status = "accepted"; draft.proposal = proposal; draft.reason = undefined; draft.failureCode = undefined;
       capturedContent.push(item.content);
-      record("validation_accepted", `Placement: ${proposal.placementValidation?.kind}; destination: ${proposal.storyCardType} ${proposal.targetId ?? "CREATE"}. ${proposal.placementValidation?.reason ?? "Candidate passed evidence validation."}`);
+      record("validation_accepted", `Placement: ${proposal.placementValidation?.kind}; destination: ${proposal.storyCardType} ${proposal.targetId ?? "CREATE"}. ${proposal.placementValidation?.reason ?? "Candidate passed evidence validation."}`, { targetId: proposal.targetId, cardOperation: proposal.cardOperation, candidate: { kind: proposal.storyCardType ?? "lore", title: proposal.title, content: proposal.content, evidence: proposal.sourceText, rationale: proposal.rationale, targetId: proposal.targetId } });
     }
     activeIndex = undefined;
     const counts = { returned: candidates.length, accepted: 0, rejected: 0, suppressed: 0, retryPending: 0 };

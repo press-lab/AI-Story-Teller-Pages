@@ -214,11 +214,11 @@ it("shows the actual card type and converts a legacy identity draft into reviewe
     }} /><output data-testid="saved">{JSON.stringify(a)}</output></>;
   }
   render(<ConversionReview />); const user = userEvent.setup();
-  expect(screen.getAllByText("Update Character · Alastor Moody").length).toBeGreaterThan(0);
+  expect(screen.getAllByText("Append to Character · Alastor Moody").length).toBeGreaterThan(0);
   expect(screen.getByRole("button", { name: "Approve" })).toBeEnabled();
   await user.click(screen.getByRole("button", { name: "Convert to Lore" }));
   expect(convert).toHaveBeenCalledWith(expect.any(String), true);
-  expect(screen.getAllByText("Create Lore · Historical").length).toBeGreaterThan(0);
+  expect(screen.getAllByText("Create Lore · Moody’s lesson").length).toBeGreaterThan(0);
   await user.click(screen.getByRole("button", { name: "Approve" }));
   const saved = savedReview();
   expect(saved.storyCards[0].content).toBe("Moody is a veteran Auror. VOICE: Blunt.");

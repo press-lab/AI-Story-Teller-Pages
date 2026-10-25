@@ -130,7 +130,7 @@ describe("merged Story Card suggestions", () => {
     const initial = seed();
     initial.storyCards.push(makeStoryCard({ id: "castle", title: "Blackrock Castle", type: "location", content: "An inhabited fortress.", keys: ["Blackrock Castle"] }));
     const state = await play("Blackrock Castle was destroyed permanently.", [finding("Blackrock Castle was destroyed permanently.", undefined, { kind: "card", target: "Blackrock Castle", targetId: "castle" })], initial);
-    expect(cards(state)).toContainEqual(expect.objectContaining({ storyCardType: "location", targetId: "castle", requiresReview: true }));
+    expect(cards(state)).toContainEqual(expect.objectContaining({ storyCardType: "location", targetId: "castle", requiresReview: false }));
     expect(lore(state)).toHaveLength(1);
     expect(state.storyCards.at(-1)?.content).toBe("An inhabited fortress.");
   });

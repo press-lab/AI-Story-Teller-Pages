@@ -359,11 +359,11 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
               ? `${suggestedTitle}: ${proposal.content.slice(0, 60)}` : suggestedTitle;
             onUpdate(proposal, { targetId: card?.id, title: card?.title ?? createTitle,
               ...(proposal.evaluationSource ? { evaluationSource: { ...proposal.evaluationSource, target: card ? memoryTargetSnapshot(adventure, "storyCard", card.id) : undefined } } : {}),
-              appendContent: card ? true : undefined, memoryMode: card?.memoryMode ?? proposal.memoryMode,
+              cardOperation: card ? "append" : "create", storyCardType: card?.type ?? proposal.storyCardType, appendContent: card ? true : undefined, memoryMode: card?.memoryMode ?? proposal.memoryMode,
               storyCardReview: { ...proposal.storyCardReview!, operation: card ? "update" : "create" } });
           }}>
           <option value="">CREATE — new Story Card</option>
-          {adventure.storyCards.filter(card => card.type === proposal.storyCardType || card.id === proposal.targetId).map(card => <option key={card.id} value={card.id}>UPDATE — {card.title}{proposal.storyCardReview!.targetCandidates.includes(card.id) ? " (suggested)" : ""}</option>)}
+          {adventure.storyCards.map(card => <option key={card.id} value={card.id}>APPEND — {card.title}{proposal.storyCardReview!.targetCandidates.includes(card.id) ? " (suggested)" : ""}</option>)}
         </select></Field>
         {proposal.storyCardReview.targetCandidates.length > 1 && !proposal.targetId && <p>Several continuing subjects may fit. Choose an update target or keep this as a separate card.</p>}
       </div>}
@@ -421,17 +421,7 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
                   {storyCardTypes.map((type) => <option key={type} value={type}>{type}</option>)}
                 </select>
               </Field>
-              <Field label="Memory Mode">
-                <select
-                  value={proposal.memoryMode ?? "static"}
-                  onChange={(event) => onUpdate(proposal, { memoryMode: event.target.value as MemoryProposal["memoryMode"] })}
-                  disabled={!isPending}
-                >
-                  <option value="static">static</option>
-                  <option value="living">ongoing</option>
-                  <option value="historical">historical</option>
-                </select>
-              </Field>
+
             </>
           )}
           <Field label="Triggers">
@@ -448,24 +438,6 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
             />
           </Field>
         </div>
-        {proposal.proposedType === "storyCard" && (
-          <div className="grid two">
-            <CheckboxField
-              label="Suggest updates after relevant scenes"
-              checked={proposal.autoUpdate === true}
-              disabled={!isPending}
-              onChange={(autoUpdate) => onUpdate(proposal, { autoUpdate })}
-            />
-            <Field label="Auto-update cooldown">
-              <NumberInput
-                value={proposal.autoUpdateCooldownTurns ?? 3}
-                min={0}
-                disabled={!isPending || proposal.autoUpdate !== true}
-                onChange={(value) => onUpdate(proposal, { autoUpdateCooldownTurns: value })}
-              />
-            </Field>
-          </div>
-        )}
         {(proposal.storyCardPatch || proposal.componentPatch) && (
           <div className="grid two">
             {proposal.storyCardPatch && (

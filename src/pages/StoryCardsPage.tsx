@@ -1,7 +1,7 @@
 import { StoryClockEditor, LoreChronologyEditor } from "./StoryCardChronology";
 import { PRIMARY_STORY_CARD_TYPES, primaryStoryCardType, isHistoricalLore } from "../memory/storyCardArchitecture";
 import { useEffect, useRef, useState } from "react";
-import type { ContextInclusionPolicy, StoryCard, StoryCardAIBuilderIntent, StoryCardMemoryMode, StoryCardType, TriggerMatchType, StoryCardAIBuilderRequest } from "../types/adventure";
+import type { ContextInclusionPolicy, StoryCard, StoryCardAIBuilderIntent, StoryCardType, TriggerMatchType, StoryCardAIBuilderRequest } from "../types/adventure";
 import type { AuditRecommendation } from "../memory/storyCardAudit";
 import { storyCardContextContent } from "../memory/storyCardPolicy";
 import { makeStoryCard } from "../state/defaults";
@@ -10,7 +10,6 @@ import type { AdventurePageProps } from "./pageTypes";
 import { CheckboxField, Field, Highlight, MemoryUpdateHistory, NumberInput, TokenCountBadge, UpdatedAtBadge, commaList, contentSnippet, formatCompactTimestamp, fromCommaList } from "./shared";
 
 const TYPE_ORDER: StoryCardType[] = [...PRIMARY_STORY_CARD_TYPES];
-const MEMORY_MODE_OPTIONS: StoryCardMemoryMode[] = ["static", "living", "historical"];
 const matchTypes: TriggerMatchType[] = ["keyword", "phrase", "regex"];
 const inclusionPolicies: ContextInclusionPolicy[] = ["always", "triggered", "manual", "systemSuggested"];
 
@@ -23,9 +22,7 @@ const TYPE_LABELS: Record<StoryCardType, string> = {
 
 type SortMode = "alpha" | "recent";
 type CardStatusFilter = "all" | "active" | "inactive";
-type CardMemoryFilter = "all" | "living";
 type CardFlagFilter = "all" | "flagged" | "pinned" | "protected";
-type StoryCardModeChoice = "auto" | StoryCardMemoryMode;
 
 const DEFAULT_AI_RECENT_MESSAGE_COUNT = 8;
 const MAX_AI_RECENT_MESSAGE_COUNT = 50;
@@ -46,11 +43,6 @@ const CARD_BUILDER_INTENTS: Array<{ value: StoryCardAIBuilderIntent; label: stri
 function clampAiRecentMessageCount(value: number): number {
   if (!Number.isFinite(value)) return 0;
   return Math.max(0, Math.min(MAX_AI_RECENT_MESSAGE_COUNT, Math.round(value)));
-}
-
-/** A card the memory engine manages in place (auto-appends new facts, archives old ones). */
-export function isLivingCard(card: StoryCard): boolean {
-  return card.memoryMode === "living" || (card.state ?? "").split(/\s+/).includes("living");
 }
 
 function CardSummary({ card, query }: { card: StoryCard; query: string }) {
@@ -170,16 +162,12 @@ export function StoryCardsPage({
   const [importText, setImportText] = useState("");
   const [aiDescription, setAiDescription] = useState("");
   const [aiIntent, setAiIntent] = useState<StoryCardAIBuilderIntent>("relationship");
-  const [aiMemoryMode, setAiMemoryMode] = useState<StoryCardModeChoice>("living");
   const [aiRecentMessageCount, setAiRecentMessageCount] = useState(DEFAULT_AI_RECENT_MESSAGE_COUNT);
   const [aiTargetCardId, setAiTargetCardId] = useState("");
-  const [aiAutoUpdate, setAiAutoUpdate] = useState(true);
-  const [aiAutoUpdateCooldown, setAiAutoUpdateCooldown] = useState(3);
   const [newCardId, setNewCardId] = useState<string | undefined>();
   const [sortMode, setSortMode] = useState<SortMode>("alpha");
   const [typeFilter, setTypeFilter] = useState<StoryCardType | "all">("all");
   const [statusFilter, setStatusFilter] = useState<CardStatusFilter>("all");
-  const [memoryFilter, setMemoryFilter] = useState<CardMemoryFilter>("all");
   const [flagFilter, setFlagFilter] = useState<CardFlagFilter>("all");
   const [search, setSearch] = useState("");
   const [openCardId, setOpenCardId] = useState<string | null>(null);
@@ -206,7 +194,6 @@ export function StoryCardsPage({
           content: rec.editedContent,
           keys: rec.editedKeys.split(",").map((k) => k.trim()).filter(Boolean),
           type: rec.suggestedType,
-          memoryMode: rec.suggestedMemoryMode,
         },
       });
     } else if (rec.action === "create") {
@@ -221,7 +208,6 @@ export function StoryCardsPage({
           content: rec.editedContent,
           keys: rec.editedKeys.split(",").map((k) => k.trim()).filter(Boolean),
           type,
-          memoryMode: rec.suggestedMemoryMode,
         }),
       });
     }
@@ -279,14 +265,13 @@ export function StoryCardsPage({
       statusFilter === "all" ||
       (statusFilter === "active" && card.active) ||
       (statusFilter === "inactive" && !card.active);
-    const memoryMatches = memoryFilter === "all" || isLivingCard(card);
     const flagMatches =
       flagFilter === "all" ||
       (flagFilter === "flagged" && (card.pinned || card.protected)) ||
       (flagFilter === "pinned" && card.pinned) ||
       (flagFilter === "protected" && card.protected);
     const typeMatches = typeFilter === "all" || card.type === typeFilter;
-    return typeMatches && statusMatches && memoryMatches && flagMatches;
+    return typeMatches && statusMatches && flagMatches;
   }
 
   // Group cards by type, only include types that have at least one card
@@ -295,22 +280,17 @@ export function StoryCardsPage({
     .filter((g) => g.cards.length > 0);
   const totalCards = adventure.storyCards.length;
   const activeCards = adventure.storyCards.filter((c) => c.active);
-  const autoCard = adventure.storyCards.find((c) => c.autoUpdate);
   const activeCount = activeCards.length;
   const visibleCount = groups.reduce((sum, group) => sum + group.cards.length, 0);
-  const livingCount = adventure.storyCards.filter(isLivingCard).length;
-  const filtersActive = typeFilter !== "all" || statusFilter !== "all" || memoryFilter !== "all" || flagFilter !== "all";
+  const filtersActive = typeFilter !== "all" || statusFilter !== "all" || flagFilter !== "all";
 
   async function handleBuildStoryCardMemory() {
     if (!onBuildStoryCardMemory || !aiDescription.trim()) return;
     await onBuildStoryCardMemory({
       description: aiDescription.trim(),
       intent: aiIntent,
-      memoryMode: aiMemoryMode === "auto" ? undefined : aiMemoryMode,
       recentMessageCount: aiRecentMessageCount,
       targetCardId: aiTargetCardId || undefined,
-      autoUpdate: aiAutoUpdate,
-      autoUpdateCooldownTurns: aiAutoUpdate ? aiAutoUpdateCooldown : undefined,
     });
     setAiDescription("");
   }
@@ -320,12 +300,11 @@ export function StoryCardsPage({
       <div className="editor-page-summary">
         <p className="muted">
           Triggered memory for characters, places, relationships, secrets, rules, and recurring facts.
-          Character and Location hold durable identity; Lore holds developments and history. Generated changes wait for review by default.
+          Every card can grow with new facts. Memory appends to a matching subject or creates a new card. Generated changes follow your approval settings.
         </p>
         <div className="editor-stat-row" aria-label="Story card counts">
           <span>{totalCards} total</span>
           <span>{activeCount} active</span>
-          <span>{livingCount} ongoing</span>
           {(searchLower || filtersActive) && <span>{visibleCount} shown</span>}
         </div>
       </div>
@@ -362,22 +341,7 @@ export function StoryCardsPage({
                 ))}
               </select>
             </Field>
-            <Field label="Memory mode">
-              <select
-                value={aiMemoryMode}
-                onChange={(event) => {
-                  const next = event.target.value as StoryCardModeChoice;
-                  setAiMemoryMode(next);
-                  if (next === "living") setAiAutoUpdate(true);
-                  if (next === "historical") setAiAutoUpdate(false);
-                }}
-              >
-                <option value="living">Ongoing tracker</option>
-                <option value="static">static - always-true reference</option>
-                <option value="historical">historical - completed past event</option>
-                <option value="auto">let AI choose</option>
-              </select>
-            </Field>
+
           </div>
           <div className="grid three">
             <Field label="Use last messages">
@@ -388,20 +352,7 @@ export function StoryCardsPage({
                 onChange={(recentMessageCount) => setAiRecentMessageCount(clampAiRecentMessageCount(recentMessageCount))}
               />
             </Field>
-            <CheckboxField
-              label="Let AI keep this card updated after relevant scenes"
-              checked={aiAutoUpdate}
-              disabled={aiMemoryMode === "historical"}
-              onChange={setAiAutoUpdate}
-            />
-            <Field label="Suggestion cooldown">
-              <NumberInput
-                value={aiAutoUpdateCooldown}
-                min={0}
-                disabled={!aiAutoUpdate || aiMemoryMode === "historical"}
-                onChange={setAiAutoUpdateCooldown}
-              />
-            </Field>
+
           </div>
           <Field label="Describe what to generate">
             <textarea
@@ -467,24 +418,6 @@ export function StoryCardsPage({
               onClick={() => setStatusFilter("inactive")}
             >
               Inactive
-            </button>
-          </div>
-          <div className="sort-toggle" role="group" aria-label="Memory filter">
-            <button
-              type="button"
-              className={memoryFilter === "all" ? "active" : ""}
-              aria-pressed={memoryFilter === "all"}
-              onClick={() => setMemoryFilter("all")}
-            >
-              Any
-            </button>
-            <button
-              type="button"
-              className={memoryFilter === "living" ? "active" : ""}
-              aria-pressed={memoryFilter === "living"}
-              onClick={() => setMemoryFilter("living")}
-            >
-              Ongoing
             </button>
           </div>
           <div className="sort-toggle" role="group" aria-label="Card flag filter">
@@ -560,7 +493,7 @@ export function StoryCardsPage({
                 <div className="story-card-tool-copy">
                   <h3>Clean up existing cards</h3>
                   <p className="muted">
-                    Find broad triggers, stale current facts, misplaced history, duplicate cards, and profile details that should be split into ongoing or historical cards.
+                    Find broad triggers, stale current facts, misplaced history, duplicate cards, and missing facts and duplicate subjects.
                   </p>
                 </div>
                 <div className="story-card-tool-controls">
@@ -569,7 +502,7 @@ export function StoryCardsPage({
                     className="primary-action"
                     disabled={loading || audit?.status === "running"}
                     onClick={runAudit}
-                    title="Review existing cards and get cleanup suggestions: trigger fixes, profile splits, mode changes, edits, deletes, and new child cards."
+                    title="Review existing cards and get cleanup suggestions: trigger fixes, factual corrections, duplicates and missing subjects."
                   >
                     {audit?.status === "running" ? "Cleaning..." : "Clean Up Cards"}
                   </button>
@@ -599,7 +532,7 @@ export function StoryCardsPage({
                 <div className="story-card-tool-copy">
                   <h3>Suggest updates from recent play</h3>
                   <p className="muted">
-                    Ask the AI to review recent story turns and draft Memory Suggestions for active cards. You still approve them before they become memory.
+                    Ask the AI to review recent story turns and draft Memory Suggestions for relevant cards. You still approve them before they become memory.
                   </p>
                 </div>
                 <div className="story-card-tool-controls">
@@ -607,7 +540,7 @@ export function StoryCardsPage({
                     type="button"
                     disabled={loading || activeCards.length === 0}
                     onClick={onSuggestCardUpdates}
-                    title="Ask the AI to review recent story turns and suggest updates to all active Story Cards. Results appear in Memory Suggestions."
+                    title="Ask the AI to review recent story turns and suggest updates to all relevant Story Cards. Results appear in Memory Suggestions."
                   >
                     {loading ? "Generating..." : "Suggest Card Updates"}
                   </button>
@@ -618,69 +551,7 @@ export function StoryCardsPage({
         </details>
       )}
 
-      <details className="panel editor-tools-panel story-card-automation-panel">
-        <summary>Automatic Card Updates</summary>
-        <div className="story-card-settings-grid">
-          <Field label="System-wide suggestion cooldown">
-            <span className="turn-window-field">
-              <span>Update at most once every</span>
-              <input
-                type="number"
-                min={0}
-                value={adventure.semanticEvaluationSettings.storyCardCooldownTurns ?? 0}
-                onChange={(e) => {
-                  const v = Math.max(0, Number(e.target.value));
-                  dispatch({ type: "SET_SEMANTIC_EVALUATION_SETTINGS", settings: { ...adventure.semanticEvaluationSettings, storyCardCooldownTurns: v || undefined } });
-                }}
-                className="audit-turns-input"
-              />
-              <span>turns</span>
-            </span>
-          </Field>
-          <CheckboxField
-            label="Suggest updates for one card per semantic eval"
-            checked={!!autoCard}
-            onChange={(checked) => {
-              if (!checked && autoCard) {
-                dispatch({ type: "UPDATE_STORY_CARD", storyCardId: autoCard.id, patch: { autoUpdate: false } });
-              } else if (checked && !autoCard && activeCards.length > 0) {
-                dispatch({ type: "UPDATE_STORY_CARD", storyCardId: activeCards[0].id, patch: { autoUpdate: true } });
-              }
-            }}
-          />
-          <Field label="Card to evaluate">
-            <select
-              value={autoCard?.id ?? ""}
-              disabled={!autoCard}
-              onChange={(e) => {
-                const newId = e.target.value;
-                adventure.storyCards.forEach((c) => {
-                  if (c.autoUpdate && c.id !== newId) {
-                    dispatch({ type: "UPDATE_STORY_CARD", storyCardId: c.id, patch: { autoUpdate: false } });
-                  }
-                });
-                if (newId) dispatch({ type: "UPDATE_STORY_CARD", storyCardId: newId, patch: { autoUpdate: true } });
-              }}
-            >
-              {!autoCard && <option value="">none selected</option>}
-              {activeCards.map((c) => (
-                <option key={c.id} value={c.id}>{c.title}</option>
-              ))}
-            </select>
-          </Field>
-          {autoCard && (
-            <Field label="Selected card cooldown">
-              <NumberInput
-                value={autoCard.autoUpdateCooldownTurns ?? 3}
-                min={0}
-                onChange={(autoUpdateCooldownTurns) =>
-                  dispatch({ type: "UPDATE_STORY_CARD", storyCardId: autoCard.id, patch: { autoUpdateCooldownTurns } })
-                }
-              />
-            </Field>
-          )}
-        </div>
-      </details>
+      <p className="muted">Automatic memory can append new facts to any card. Set evaluation cadence and approval in Memory Suggestions.</p>
 
       <details className="panel editor-tools-panel story-card-json-panel">
         <summary>Story Card JSON</summary>
@@ -763,17 +634,7 @@ export function StoryCardsPage({
                           ))}
                         </select>
                       </label>
-                      <label className="field">
-                        <span>Memory mode</span>
-                        <select
-                          value={rec.suggestedMemoryMode}
-                          onChange={(e) => updateRec(rec.id, { suggestedMemoryMode: e.target.value as StoryCardMemoryMode })}
-                        >
-                          {MEMORY_MODE_OPTIONS.map((mode) => (
-                            <option key={mode} value={mode}>{mode === "living" ? "Ongoing" : mode}</option>
-                          ))}
-                        </select>
-                      </label>
+
                     </div>
                   </div>
                 )}
@@ -818,7 +679,7 @@ export function StoryCardsPage({
                   <div className="panel-heading item-inspector-heading">
                     <div>
                       <p className="eyebrow">
-                        {card.active ? "active" : "inactive"} · {TYPE_LABELS[card.type]} · {card.memoryMode ?? "static"}
+                        {card.active ? "active" : "inactive"} · {TYPE_LABELS[card.type]}
                       </p>
                       <h3>{card.title || "Untitled Card"}</h3>
                       <div className="item-tag-row" aria-label="Story card triggers">
@@ -851,7 +712,7 @@ export function StoryCardsPage({
                       <select
                         value={card.type}
                         onChange={(event) =>
-                          dispatch({ type: "UPDATE_STORY_CARD", storyCardId: card.id, patch: { type: event.target.value as StoryCardType, ...(event.target.value === "character" || event.target.value === "location" ? { memoryMode: "static" } : {}) } })
+                          dispatch({ type: "UPDATE_STORY_CARD", storyCardId: card.id, patch: { type: event.target.value as StoryCardType } })
                         }
                       >
                         {Object.entries(TYPE_LABELS).map(([value, label]) => (
@@ -862,18 +723,7 @@ export function StoryCardsPage({
                   </div>
                   <details className="brain-secondary-details item-secondary-details">
                     <summary>Trigger behavior</summary>
-                  <Field label="Memory Mode">
-                    <select
-                      value={card.memoryMode ?? "static"}
-                      onChange={(event) =>
-                        dispatch({ type: "UPDATE_STORY_CARD", storyCardId: card.id, patch: { memoryMode: event.target.value as StoryCard["memoryMode"] } })
-                      }
-                    >
-                      <option value="static">static — always-true reference facts</option>
-                      <option value="living">Ongoing tracker</option>
-                      <option value="historical">historical — past event or completed arc record</option>
-                    </select>
-                  </Field>
+
                   <div className="grid two">
                     <Field label="Trigger Match Type">
                       <select

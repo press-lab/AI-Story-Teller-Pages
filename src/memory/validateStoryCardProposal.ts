@@ -1,61 +1,59 @@
+import { primaryStoryCardType } from "./storyCardArchitecture";
 import type { Adventure, MemoryProposal, ProviderConfig } from "../types/adventure";
 import { validateMemoryUpdate, type MemoryValidationResult } from "./validateMemoryUpdate";
-import { bindPlacement, placementCardType, placementMode, placementValidationError } from "./storyCardPlacement";
+import { bindPlacement, placementValidationError } from "./storyCardPlacement";
 import { makeStoryCardSuggestion } from "./storyCardSuggestions";
 
-/** At most one repair/review. Content extracted by a reviewer is never approved unreviewed. */
+/** One correction and a final review of a frozen factual delta. */
 export async function validateStoryCardProposal(a: Adventure, config: ProviderConfig, draft: MemoryProposal,
   accum?: { promptTokens: number; completionTokens: number }): Promise<MemoryValidationResult & { proposal?: MemoryProposal }> {
   const sourceIndex = a.messages.findIndex(m => m.id === draft.sourceTurnId && m.role === "assistant");
   if (sourceIndex < 0) return { changed: false, error: "Placement requires an existing narrator source.", failureCode: "memory_placement_source_invalid" };
   const snapshot = { ...a, messages: a.messages.slice(0, sourceIndex + 1) };
   let current: MemoryProposal = { ...draft, userInitiated: undefined, placementValidation: undefined };
+  if (current.targetId && !a.storyCards.some(c => c.id === current.targetId)) return { changed: false,
+    error: "Unknown Story Card destination.", failureCode: "memory_placement_target_invalid" };
   for (let pass = 0; pass < 2; pass++) {
     const target = snapshot.storyCards.find(c => c.id === current.targetId);
     const verdict = await validateMemoryUpdate(snapshot, config, "storyCard", current.title, target?.content ?? "", current.content,
-      accum, current.appendContent ?? true, current.storyCardReview?.candidateOnly ?? false,
-      { id: target?.id, type: target?.type ?? current.storyCardType ?? "lore", memoryMode: current.memoryMode });
-    const repairAttribution = verdict.failureCode === "memory_identity_rejected" && target && target.type !== "lore"
-      && ["historicalLore", "ongoingLore", "referenceLore"].includes(verdict.placement?.kind ?? "");
-    if ((!verdict.changed && !repairAttribution) || !verdict.placement) return verdict;
+      accum, true, current.storyCardReview?.candidateOnly ?? false,
+      { id: target?.id, type: target?.type ?? current.storyCardType ?? "lore", finalReview: pass === 1 });
+    const p = verdict.placement;
+    if (!p || (!verdict.changed && (pass === 1 || p.content === current.content))) return verdict;
     if (!verdict.evidenceMessageIds?.includes(draft.sourceTurnId)) return { changed: false, retryable: true,
       failureCode: "memory_placement_source_invalid", error: "Placement lacks the establishing narrator source." };
-    const p = verdict.placement;
-    const type = placementCardType(p.kind, target?.type ?? current.storyCardType);
-    const keepTarget = target?.type === type ? target : undefined;
-    const mode = p.kind === "identity" ? keepTarget?.memoryMode ?? "static" : placementMode(p.kind);
+    if (p.kind === "brain" || p.kind === "none") return verdict;
+    const correctedTarget = p.targetId ? snapshot.storyCards.find(c => c.id === p.targetId) : undefined;
+    if (p.targetId && !correctedTarget) return { changed: false, error: "Unknown reviewed destination.", failureCode: "memory_placement_target_invalid" };
+    const legacyLoreRepair = !verdict.changed && ["historicalLore", "ongoingLore", "referenceLore"].includes(p.kind);
+    const nextTarget = legacyLoreRepair || p.kind === "create" ? undefined : correctedTarget ?? target;
+    const type = nextTarget?.type ?? (legacyLoreRepair ? "lore" : primaryStoryCardType(current.storyCardType ?? "lore"));
     const suggestion = makeStoryCardSuggestion(snapshot, current.sourceTurnId, snapshot.messages.at(-1)!.content, {
-      title: keepTarget?.title ?? p.title, content: p.content, type, targetId: keepTarget?.id,
-      evidence: current.sourceText, reason: current.rationale, evidenceReviewed: true,
+      title: nextTarget?.title ?? p.title, content: pass === 1 ? current.content : p.content, type,
+      targetId: nextTarget?.id, evidence: current.sourceText, reason: current.rationale, evidenceReviewed: true,
       triggers: current.suggestedTriggers, participants: current.storyCardReview?.participants,
       candidateOnly: current.storyCardReview?.candidateOnly,
     });
+    const chosen = legacyLoreRepair || p.kind === "create" ? undefined : suggestion.targetId;
     let next: MemoryProposal = { ...current, ...suggestion, id: draft.id, createdAt: draft.createdAt,
-      storyCardPatch: keepTarget && suggestion.targetId === current.targetId ? current.storyCardPatch : undefined,
-      memoryMode: mode, appendContent: suggestion.targetId ? (type === "lore" ? true : current.appendContent ?? false) : undefined,
-      storyCardReview: { ...suggestion.storyCardReview!, additionalSources: current.storyCardReview?.additionalSources,
-        evidenceQuotes: current.storyCardReview?.evidenceQuotes },
-      lore: type === "lore" ? { ...suggestion.lore!, status: p.kind === "historicalLore" ? current.lore?.status ?? "completed" : p.kind === "ongoingLore" ? current.lore?.status ?? "ongoing" : "unresolved",
-        sourceMessageIds: [...new Set([...(current.lore?.sourceMessageIds ?? []), ...verdict.evidenceMessageIds!])] } : undefined,
-      requiresReview: current.requiresReview || suggestion.requiresReview || p.kind === "identity",
-      eventMemory: type === "lore" ? current.eventMemory : undefined,
+      targetId: chosen, storyCardType: chosen ? snapshot.storyCards.find(c => c.id === chosen)!.type : type,
+      cardOperation: chosen ? "append" : "create", appendContent: chosen ? true : undefined,
+      storyCardPatch: undefined,
+      memoryMode: current.memoryMode ?? nextTarget?.memoryMode ?? "static",
+      storyCardReview: { ...suggestion.storyCardReview!, operation: chosen ? "update" : "create",
+        additionalSources: current.storyCardReview?.additionalSources, evidenceQuotes: current.storyCardReview?.evidenceQuotes },
+      lore: type === "lore" ? { ...suggestion.lore!, ...current.lore,
+        sourceMessageIds: [...new Set([...(current.lore?.sourceMessageIds ?? []), ...verdict.evidenceMessageIds])] } : undefined,
+      requiresReview: Boolean(current.requiresReview || suggestion.requiresReview || nextTarget?.protected),
       evaluationSource: current.evaluationSource ? { ...current.evaluationSource, target: undefined } : undefined,
     };
-    const changedDraft = next.content !== current.content || next.storyCardType !== (current.storyCardType ?? target?.type ?? "lore")
-      || next.targetId !== current.targetId || next.title !== current.title;
-    if (changedDraft) {
-      if (pass === 1) return { changed: false, retryable: true, failureCode: "memory_placement_unstable", error: "memory_model_output_invalid: Placement repair changed again during final review." };
+    const changedDraft = next.content !== current.content || next.targetId !== current.targetId || next.storyCardType !== (current.storyCardType ?? target?.type ?? "lore");
+    if (changedDraft || !verdict.changed) {
+      if (pass === 1) return { changed: false, retryable: true, failureCode: "memory_placement_unstable", error: "Final review changed the destination; retry required." };
       current = next;
       continue;
     }
-    if (p.identityChange?.supportingLore && p.identityChange.supportingLore !== current.content) {
-      const history = await validateMemoryUpdate(snapshot, config, "storyCard", `${next.title}: Identity change`, "", p.identityChange.supportingLore,
-        accum, true, false, { type: "lore", memoryMode: "historical" });
-      if (!history.changed || !history.placement) return history;
-      if (history.placement.kind !== "historicalLore" || history.placement.content !== p.identityChange.supportingLore) return {
-        changed: false, retryable: true, failureCode: "memory_placement_unstable", error: "Supporting identity history did not pass its final Lore review." };
-    }
-    next = bindPlacement(snapshot, next, { kind: p.kind, newFact: p.newFact, reason: p.reason, identityChange: p.identityChange }, verdict.evidenceMessageIds!);
+    next = bindPlacement(snapshot, next, { kind: chosen ? "append" : "create", newFact: p.newFact, reason: p.reason }, verdict.evidenceMessageIds);
     const error = placementValidationError(snapshot, next);
     if (error) return { changed: false, retryable: true, failureCode: "memory_placement_invalid", error };
     return { ...verdict, proposal: next };

@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { act, cleanup, renderHook } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 import { createDefaultAdventure, defaultModelConfig, makeBrain, makeStoryCard } from "../state/defaults";
@@ -23,6 +23,7 @@ it.each(["plain", "legacy-envelope", "large-archive"])("reports independent offl
     return useAdventureRuntime(adventure, setAdventure, { ...defaultModelConfig, apiKey: "offline-test" }, vi.fn(), vi.fn(), vi.fn(), async () => undefined, { enabled: true, generateContent: true, everyNTurns: 1 });
   });
   for (let turn = 0; turn < 20; turn++) await act(async () => { await hook.result.current.submitTurn("I listen to Mira."); });
+  await waitFor(() => expect(hook.result.current.memoryWork).toBeUndefined());
   const calls = provider.mock.calls.map(([request]) => request);
   const narration = calls.filter(request => !request.memoryEvaluation), evaluation = calls.filter(request => request.memoryEvaluation);
   expect(narration).toHaveLength(20);

@@ -136,8 +136,8 @@ export function MemoryDecisionsPage({ adventure, onSuggestions, onEvaluateMemory
 function Candidate({ entry }: { entry: MemoryDiagnostic }) {
   const candidate = entry.candidate!;
   return <article><h4>{candidate.kind}: {candidate.title || "Untitled candidate"}</h4>
-    <p>{candidate.content}</p><p>Source: {entry.sourceId} · Target Story Card: {candidate.targetId ?? "none recorded"}</p>
-    <p>Submitted evidence:</p><blockquote style={{ whiteSpace: "pre-wrap" }}>{candidate.evidence || "Not recorded"}</blockquote>
+    <p>{candidate.content}</p><p>Source: {entry.sourceId} · Target Story Card: {entry.targetId ?? candidate.targetId ?? "create / none recorded"}</p>
+    <p>Operation: {entry.cardOperation ?? "see destination"}</p><p>Submitted evidence:</p><blockquote style={{ whiteSpace: "pre-wrap" }}>{candidate.evidence || "Not recorded"}</blockquote>
     <p>Model-provided rationale: {candidate.rationale || "Not supplied"}</p>
     <p>{entry.origin ? `${entry.origin} evaluation: ` : ""}{label(entry.outcome)}. {explanation(entry.reason)}</p>
     <details><summary>Technical classification</summary><p>{entry.stage}: {entry.outcome}</p><p>{entry.reason}</p></details>

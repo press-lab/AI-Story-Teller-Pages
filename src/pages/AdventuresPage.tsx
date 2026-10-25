@@ -780,16 +780,7 @@ export function AdventuresPage({
                             </select>
                           </Field>
                         </div>
-                        <Field label="Memory Mode">
-                          <select
-                            value={draft.memoryMode}
-                            onChange={(event) => updateStoryCardDraft(draft.id, { memoryMode: event.target.value as StoryCardMemoryMode })}
-                          >
-                            <option value="static">static - always-true reference facts</option>
-                            <option value="living">living - current evolving subject, updates merge/archive</option>
-                            <option value="historical">historical - completed past event or retired fact</option>
-                          </select>
-                        </Field>
+
                         <Field label="Triggers / keys">
                           <input
                             value={draft.keysText}

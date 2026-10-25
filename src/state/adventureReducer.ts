@@ -33,14 +33,9 @@ import type {
 } from "../types/adventure";
 import { cardMatchesName, defaultArcState, defaultNextTurnNote, makeComponent, makeStoryCard } from "./defaults";
 import { createId, nowIso } from "../utils/id";
-import { generatedStoryCardTriggers, isLivingStoryCard, resolveMemoryTarget, sanitizeStoryCardTriggers } from "../memory/resolveMemoryTarget";
+import { generatedStoryCardTriggers, resolveMemoryTarget, sanitizeStoryCardTriggers } from "../memory/resolveMemoryTarget";
 import {
   appendSourceTurnIds,
-  applyGuardedStoryCardPolicy,
-  isGuardedStoryCardFact,
-  isGuardedStoryCardMemory,
-  normalizeStoryCardFact,
-  restoreGuardedFactsToLiveContent,
 } from "../memory/storyCardPolicy";
 import { dedupeBrainThoughts, normalizeThoughtForDedupe } from "../memory/thoughtDedupe";
 import { orderedBrains } from "./brainOrder";
@@ -371,98 +366,23 @@ function mergeThoughts(
 /** Default character budget for a brain's live thought log before old entries get archived. */
 const DEFAULT_THOUGHT_BUDGET = 1600;
 
-/** Default character budget for a living story card's content (~200 tokens) before old facts archive. */
-const DEFAULT_CARD_CONTENT_BUDGET = 900;
-
-/** Split a card body into individual facts (one per non-empty line), preserving bullet markers. */
-function splitCardFacts(body: string): string[] {
-  return body
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-}
-
-/**
- * Living story-card merge: append the new fact(s) to the card's current content, then keep the live
- * content under budget by moving the OLDEST facts into archivedFacts (never deleted, never injected).
- * Mirrors pruneThoughtsToBudget — context stays bounded no matter how long a relationship/subject runs.
- */
-function mergeCardContentToBudget(
-  existingContent: string,
-  newContent: string,
-  archived: string,
-  budget: number,
-  guardedCard?: StoryCard,
-): { content: string; archivedFacts: string } {
-  const archivedFacts = splitCardFacts(archived);
-  const guardSource = guardedCard && isGuardedStoryCardMemory(guardedCard, newContent)
-    ? { ...guardedCard, content: [guardedCard.content, newContent].filter(Boolean).join("\n") }
-    : undefined;
-  const kept: string[] = [];
-  const seen = new Set<string>();
-  const addFact = (fact: string) => {
-    const normalized = normalizeStoryCardFact(fact);
-    if (!normalized || seen.has(normalized)) return;
-    seen.add(normalized);
-    kept.push(fact);
-  };
-
-  if (guardSource) {
-    archivedFacts
-      .filter((fact) => isGuardedStoryCardFact(guardSource, fact))
-      .forEach(addFact);
-  }
-  splitCardFacts(existingContent).forEach(addFact);
-  splitCardFacts(newContent).forEach(addFact); // newest facts last
-  const total = (facts: string[]) => facts.reduce((sum, f) => sum + f.length, 0);
-  while (kept.length > 1 && total(kept) > budget) {
-    if (guardSource) {
-      const archiveIndex = kept.findIndex((fact) => !isGuardedStoryCardFact(guardSource, fact));
-      if (archiveIndex < 0) break;
-      if (archiveIndex > 0) {
-        const [archivedFact] = kept.splice(archiveIndex, 1);
-        const normalized = normalizeStoryCardFact(archivedFact);
-        if (!archivedFacts.some((fact) => normalizeStoryCardFact(fact) === normalized)) {
-          archivedFacts.push(archivedFact);
-        }
-        continue;
-      }
-    }
-    archivedFacts.push(kept.shift()!); // oldest live fact → archive
-  }
-  return { content: kept.join("\n"), archivedFacts: archivedFacts.join("\n") };
-}
+/** Card bodies preserve history; budgets apply during context assembly. */
 
 function appendCardContent(existingContent: string, newContent: string): string {
-  const existingFacts = splitCardFacts(existingContent);
-  const seen = new Set(existingFacts.map((fact) => normalizedReplacementContent(fact)));
-  const incoming = splitCardFacts(newContent).filter((fact) => {
-    const normalized = normalizedReplacementContent(fact);
-    return normalized && !seen.has(normalized);
+  const factKey = (line: string) => normalizedReplacementContent(line.replace(/^\[[^\]]+\]\s*/, ""));
+  const seen = new Set(existingContent.split("\n").map(factKey));
+  const incoming = newContent.split("\n").map(line => line.trim()).filter(line => {
+    const key = factKey(line);
+    if (!key || seen.has(key)) return false;
+    seen.add(key); return true;
   });
-  return [...existingFacts, ...incoming].join("\n");
+  return incoming.length ? [existingContent, incoming.join("\n")].filter(Boolean).join("\n") : existingContent;
 }
 
 function guardStoryCard(card: StoryCard): StoryCard {
-  return applyGuardedStoryCardPolicy(restoreGuardedFactsToLiveContent(migrateStoryCard(card)));
+  return migrateStoryCard(card);
 }
 
-function replacementContentWithGuardedFacts(existing: StoryCard, replacementContent: string): string {
-  const archivedFacts = [existing.archivedFacts, existing.content].filter(Boolean).join("\n");
-  return restoreGuardedFactsToLiveContent({
-    ...existing,
-    content: replacementContent,
-    archivedFacts,
-  }).content;
-}
-
-/**
- * Keep a brain's accumulating thought log bounded. While the total thought text
- * exceeds the budget, move the oldest entries (insertion order) to archivedThoughts.
- * Always retains at least the most recent thought. Non-destructive — archived thoughts
- * are preserved, not deleted. Runs on every append so it bounds both the auto-update
- * path and the approval path, regardless of the semantic engine's LLM condense pass.
- */
 function pruneThoughtsToBudget(
   thoughts: Record<string, string>,
   archived: Record<string, string>,
@@ -761,6 +681,7 @@ function sanitizeProposal(proposal: MemoryProposal): MemoryProposal | null {
     content,
     title: safeTitle,
     suggestedTriggers: proposal.suggestedTriggers ?? [],
+    ...(proposal.proposedType === "storyCard" ? { cardOperation: proposal.targetId ? "append" as const : "create" as const, appendContent: proposal.targetId ? true : undefined } : {}),
     autoUpdateCooldownTurns,
   };
 }
@@ -768,12 +689,10 @@ function sanitizeProposal(proposal: MemoryProposal): MemoryProposal | null {
 function routedProposal(state: Adventure, proposal: MemoryProposal): MemoryProposal {
   if (proposal.proposedType === "storyCard") {
     const target = state.storyCards.find(c => proposal.targetId ? c.id === proposal.targetId : c.title.toLocaleLowerCase() === proposal.title.toLocaleLowerCase() || (c.type === "location" && !proposal.storyCardType && cardMatchesName(c, proposal.title)));
-    const identity = target && (target.type === "character" || target.type === "location");
-    if (identity) proposal = { ...proposal, requiresReview: true };
-    if (proposal.placementValidation || (!proposal.userInitiated && identity)) return proposal;
+    if (proposal.placementValidation) return proposal;
     const legacyEvent = proposal.storyCardType === "event";
     proposal = { ...proposal, storyCardType: proposal.storyCardType ? primaryStoryCardType(proposal.storyCardType) : undefined };
-    if (legacyEvent || proposal.eventMemory) return { ...proposal, lore: proposalLore(state, proposal), memoryMode: "historical", requiresReview: true, targetId: undefined, appendContent: undefined };
+    if (legacyEvent || proposal.eventMemory) return { ...proposal, lore: proposalLore(state, proposal), requiresReview: true, appendContent: proposal.targetId ? true : undefined, cardOperation: proposal.targetId ? "append" : "create" };
     if (proposal.storyCardType === "lore" || target?.type === "lore") proposal = { ...proposal, lore: { ...proposalLore(state, proposal), status: proposal.lore?.status ?? target?.lore?.status ?? (proposal.memoryMode === "historical" ? "completed" : "unresolved") } };
   }
   // This pipeline already verified and ranked destinations. Do not run a second fuzzy resolver
@@ -795,9 +714,11 @@ function routedProposal(state: Adventure, proposal: MemoryProposal): MemoryPropo
     ...proposal,
     title: routed.title,
     content: routed.content,
+    storyCardType: routed.storyCardType ?? proposal.storyCardType,
     suggestedTriggers: routed.suggestedTriggers,
     targetId: routed.targetId,
     appendContent: routed.appendContent,
+    cardOperation: routed.targetId ? "append" : "create",
     memoryMode: routed.memoryMode,
     rationale: routed.rationale ?? proposal.rationale,
   };
@@ -853,6 +774,7 @@ function outgoingBrainFieldProposalsForReplacement(
       status: "pending",
       targetId: routed.targetId,
       appendContent: routed.appendContent,
+    cardOperation: routed.targetId ? "append" : "create",
       memoryMode: routed.memoryMode ?? "historical",
       createdAt: now,
       updatedAt: now,
@@ -884,93 +806,20 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal,
       existing?.id, proposal.memoryMode ?? existing?.memoryMode, proposal.storyCardType ? primaryStoryCardType(proposal.storyCardType) : existing?.type) };
     if (!manualApproval) {
       if (existing && proposal.storyCardType && existing.type !== primaryStoryCardType(proposal.storyCardType)) return {};
-      if (proposal.eventMemory && existing) return {};
-      if (existing && isHistoricalLore(existing)) return {};
     }
-    const changeTime = proposal.lore?.lastChangedAt;
-    const datedContent = existing?.type === "lore" && changeTime?.text && !safeContent.includes(changeTime.text)
+    const changeTime = proposal.lore?.lastChangedAt ?? state.messages.find(m => m.id === proposal.sourceTurnId)?.storyTime;
+    const datedContent = changeTime?.text && !safeContent.includes(changeTime.text)
       ? `[${formatStoryTime(changeTime)}] ${safeContent}` : safeContent;
-    const automationPatch = (current?: StoryCard): Partial<StoryCard> => ({
-      ...(proposal.autoUpdate !== undefined ? { autoUpdate: proposal.autoUpdate } : {}),
-      ...(proposal.autoUpdateCooldownTurns !== undefined
-        ? { autoUpdateCooldownTurns: proposal.autoUpdateCooldownTurns }
-        : proposal.autoUpdate !== undefined
-          ? { autoUpdateCooldownTurns: current?.autoUpdateCooldownTurns ?? 3 }
-          : {}),
-    });
     let storyCard: StoryCard;
-    if (existing && proposal.appendContent) {
-      const shouldManageAsLiving = isLivingStoryCard(existing) && existing.type !== "lore";
-      if (shouldManageAsLiving) {
-        // Living-card update: append the new fact to existing content, archive the oldest facts beyond
-        // budget so context stays bounded and superseded facts don't read as current.
-        const preparedExisting = guardStoryCard(existing);
-        const budget = preparedExisting.tokenBudget && preparedExisting.tokenBudget > 0
-          ? preparedExisting.tokenBudget * 4
-          : DEFAULT_CARD_CONTENT_BUDGET;
-        const merged = mergeCardContentToBudget(preparedExisting.content, safeContent, preparedExisting.archivedFacts ?? "", budget, preparedExisting);
-        storyCard = recordStoryCardMemoryUpdate(
-          existing,
-          guardStoryCard({
-            ...preparedExisting,
-            content: merged.content,
-            archivedFacts: merged.archivedFacts,
-            keys: Array.from(new Set([
-              ...preparedExisting.keys,
-              ...sanitizeStoryCardTriggers(state, preparedExisting.title, proposal.suggestedTriggers, preparedExisting.id, "living", safeContent),
-            ])),
-            memoryMode: "living",
-            sourceTurnIds: appendSourceTurnIds(preparedExisting.sourceTurnIds, proposal.sourceTurnId),
-            // Tag as a living card so the UI can flag it; "living" marks an auto-managed, self-archiving card.
-            state: Array.from(new Set([...(preparedExisting.state ? preparedExisting.state.split(/\s+/) : []), "memoryProposal", "living"])).join(" "),
-            ...automationPatch(preparedExisting),
-            ...proposal.storyCardPatch,
-            ...(existing.type === "lore" ? { lore: mergeLoreMetadata(existing.lore, proposal.lore ?? proposalLore(state, proposal)) } : {}),
-          }),
-          proposalMemoryMeta("append"),
-        );
-      } else {
-        storyCard = recordStoryCardMemoryUpdate(
-          existing,
-          guardStoryCard({
-            ...existing,
-            content: appendCardContent(existing.content, datedContent),
-            keys: Array.from(new Set([
-              ...existing.keys,
-              ...sanitizeStoryCardTriggers(state, existing.title, proposal.suggestedTriggers, existing.id, existing.memoryMode ?? proposal.memoryMode, safeContent),
-            ])),
-            memoryMode: existing.memoryMode ?? proposal.memoryMode,
-            sourceTurnIds: appendSourceTurnIds(existing.sourceTurnIds, proposal.sourceTurnId),
-            state: Array.from(new Set([...(existing.state ? existing.state.split(/\s+/) : []), "memoryProposal"])).join(" "),
-            ...automationPatch(existing),
-            ...proposal.storyCardPatch,
-            ...(existing.type === "lore" ? { lore: mergeLoreMetadata(existing.lore, proposal.lore ?? proposalLore(state, proposal)) } : {}),
-          }),
-          proposalMemoryMeta("append"),
-        );
-      }
-    } else if (existing) {
-      storyCard = recordStoryCardMemoryUpdate(
-        existing,
-        guardStoryCard({
-          ...existing,
-          content: existing.type === "lore" ? appendCardContent(existing.content, datedContent) : replacementContentWithGuardedFacts(existing, safeContent),
-          // Merge, never overwrite, keys — a sparse update must not strip a card's aliases (which would
-          // break alias-matching and let the card be duplicated again later).
-          keys: Array.from(new Set([
-            ...existing.keys,
-            ...sanitizeStoryCardTriggers(state, existing.title, proposal.suggestedTriggers, existing.id, proposal.memoryMode ?? existing.memoryMode, safeContent),
-          ])),
-          memoryMode: proposal.memoryMode ?? existing.memoryMode,
-          type: proposal.storyCardType ? primaryStoryCardType(proposal.storyCardType) : existing.type,
-          ...(existing.type === "lore" ? { lore: mergeLoreMetadata(existing.lore, proposal.lore ?? proposalLore(state, proposal)) } : {}),
-          sourceTurnIds: appendSourceTurnIds(existing.sourceTurnIds, proposal.sourceTurnId),
-          state: [existing.state, "memoryProposal"].filter(Boolean).join(" "),
-          ...automationPatch(existing),
-          ...proposal.storyCardPatch,
-        }),
-        proposalMemoryMeta("replace"),
-      );
+    if (existing) {
+      storyCard = recordStoryCardMemoryUpdate(existing, guardStoryCard({
+        ...existing,
+        content: appendCardContent(existing.content, datedContent),
+        keys: Array.from(new Set([...existing.keys, ...sanitizeStoryCardTriggers(state, existing.title,
+          proposal.suggestedTriggers, existing.id, existing.memoryMode, safeContent)])),
+        sourceTurnIds: appendSourceTurnIds(existing.sourceTurnIds, proposal.sourceTurnId),
+        ...(existing.type === "lore" ? { lore: mergeLoreMetadata(existing.lore, proposal.lore ?? proposalLore(state, proposal)) } : {}),
+      }), proposalMemoryMeta("append"));
     } else {
       storyCard = recordStoryCardMemoryUpdate(
         undefined,
@@ -995,17 +844,7 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal,
     }
     if (proposal.evaluationSource) storyCard = { ...storyCard, lastAutoUpdateTurn: state.activeState.turn };
     let cards = upsertById(state.storyCards, storyCard);
-    if (existing && (existing.type === "character" || existing.type === "location") && proposal.placementValidation?.identityChange?.supportingLore) {
-      const supportingLore = proposal.placementValidation!.identityChange!.supportingLore!;
-      const title = `${existing.title}: ${supportingLore.slice(0, 64)}`;
-      if (!cards.some(c => c.type === "lore" && c.title === title && c.content === supportingLore)) {
-        const history = recordStoryCardMemoryUpdate(undefined, makeStoryCard({ title, type: "lore", content: supportingLore,
-          memoryMode: "historical", keys: proposal.suggestedTriggers ?? [], lore: { ...proposalLore(state, proposal), status: "completed" },
-          sourceTurnIds: appendSourceTurnIds(undefined, proposal.sourceTurnId),
-        }), proposalMemoryMeta("create"));
-        cards = upsertById(cards, history);
-      }
-    }
+
     return { storyCards: cards };
   }
 
@@ -1551,14 +1390,13 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
         }),
       });
     case "APPLY_STORY_CARD_UPDATE":
-      if (state.storyCards.some(card => card.id === action.storyCardId && isHistoricalLore(card))) return state;
-      if (action.content !== undefined && state.storyCards.some(card => card.id === action.storyCardId && (card.type === "character" || card.type === "location"))) return state;
+
       if (action.content === undefined && (!action.patch || Object.keys(action.patch).length === 0)) return state;
       return touchAdventure(state, {
         storyCards: updateById(state.storyCards, action.storyCardId, (item) => {
           const stripped = action.content !== undefined ? stripLeadingCardTitle(item.title, action.content) : item.content;
           const content = action.content !== undefined
-            ? item.type === "lore" ? appendCardContent(item.content, stripped) : replacementContentWithGuardedFacts(item, stripped)
+            ? appendCardContent(item.content, stripped)
             : stripped;
           const source = [...state.messages].reverse().find(message => message.role === "assistant");
           const time = source?.storyTime ?? (source ? readStoryTime(source.content).time : undefined);
@@ -1569,7 +1407,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
           return recordStoryCardMemoryUpdate(
             item,
             guardStoryCard({ ...item, ...action.patch, content, lore }),
-            { source: "aiMemoryUpdate", operation: action.content !== undefined ? "replace" : "patch", sourceTurnId: source?.id },
+            { source: "aiMemoryUpdate", operation: action.content !== undefined ? "append" : "patch", sourceTurnId: source?.id },
           );
         }),
       });
@@ -1784,7 +1622,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
             ? adventureReducer(next, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: merged.id, automatic: true }) : next;
         }
       }
-      if (Boolean(clean.eventMemory) && [...state.storyCards.filter(isHistoricalLore), ...state.activeState.memoryProposals.filter(p => Boolean(p.eventMemory))].some(c => sameEventMemory(c, clean))) return suppressed("Duplicate historical event already recorded.");
+      if (Boolean(clean.eventMemory) && !clean.targetId && [...state.storyCards.filter(isHistoricalLore), ...state.activeState.memoryProposals.filter(p => Boolean(p.eventMemory))].some(c => sameEventMemory(c, clean))) return suppressed("Duplicate historical event already recorded.");
       // Dedup: drop a proposal that duplicates one already pending, one the user already
       // dismissed (rejected/ignored), or a NEW story card whose title already exists as a card.
       // Without this, the model re-suggesting the same entity each turn spawns a fresh duplicate —
@@ -1886,15 +1724,17 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
       if (!existing || existing.status === "approved") return state;
       // Reviewers can approve the displayed draft after edits or regeneration.
       // Background approvals still require matching source evidence and placement.
-      if (action.automatic && !suggestionSourceValid(state, existing)) return state;
+      if (action.automatic && (!suggestionSourceValid(state, existing) || existing.requiresReview
+        || state.semanticEvaluationSettings.requireApprovalForAutoUpdates
+        || state.storyCards.some(card => card.id === existing.targetId && card.protected))) return state;
       const proposal = sanitizeProposal(proposalWithEdits(existing, action.editedProposal));
       if (!proposal) return state;
       const placementError = placementValidationError(state, proposal);
       if (action.automatic && placementError) return adventureReducer(state, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: { id: createId("decision"), sourceId: proposal.sourceTurnId,
         createdAt: nowIso(), stage: "reducer", outcome: "validation_rejected", reason: placementError, proposalId: proposal.id, failureCode: "memory_placement_required" } });
       if (action.automatic && proposal.storyCardReview && proposal.targetId) {
-        const target = state.storyCards.find(card => card.id === proposal.targetId && card.active);
-        if (!target || isHistoricalLore(target) || (proposal.storyCardType && target.type !== primaryStoryCardType(proposal.storyCardType))) return state;
+        const target = state.storyCards.find(card => card.id === proposal.targetId);
+        if (!target) return state;
 
       }
       const approved = updateMemoryProposal(proposal, { status: "approved" });

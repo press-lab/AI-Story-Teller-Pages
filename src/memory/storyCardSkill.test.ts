@@ -170,7 +170,7 @@ describe("Story Card skill policy", () => {
     state.storyCards.push(makeStoryCard({ id: "closed", title: "Their first kiss", type: "lore", memoryMode: "historical", content: "They kissed privately." }));
     const text = "Draconia revealed the sealed promise made during their first kiss.";
     const next = await play(text, [{ ...finding(text, "Their first kiss"), targetId: "closed" }], state);
-    expect(proposals(next).some(p => p.title.startsWith("Their first kiss:") && !p.targetId)).toBe(true);
+    expect(proposals(next).some(p => p.title === "Their first kiss" && p.targetId === "closed" && p.appendContent)).toBe(true);
     expect(next.storyCards.find(card => card.id === "closed")?.content).toBe("They kissed privately.");
   });
   it("keeps the entity nomination cooldown while leaving events to the model", async () => {

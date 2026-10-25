@@ -10,11 +10,11 @@ import { generatedStoryCardTriggers } from "./resolveMemoryTarget";
 export const STORY_CARD_MEMORY_CHECK = `STORY CARD MEMORY CHECK
 Find NEW MEANINGFUL durable developments, judging context, not keywords. Include significant first romantic advances, explicit attempted kisses, mutual first kisses, accepted/declined invitations, confessions, boundaries, commitments, betrayals, discoveries, deaths and permanent changes.
 Separate completed interactions from intended outcomes: an accepted invitation happened before dinner; a declined kiss attempt happened without a kiss. Research dinner need not be romantic. Significant flirtation with a lean-in/lean-back may warrant candidateOnly=true describing observations and uncertainty, NEVER a confirmed kiss attempt. Ordinary smiles, leaning to read, jokes, movement and meals alone do not qualify. Attempts require review; uncertain interpretations require candidateOnly=true,eventStatus=unresolved. Never infer consent or relationship status.
-Prefer Lore almost always for observable history and developments, including death; Brains hold supported private changes. Character/Location are near immutable identity references, not accounts of what happens to them. autoUpdate=false protects existing cards, not independent new Lore. Preserve private knowledge and source quotes. Never invent outcomes, duplicate memories or suggest Plot Component updates.
+Append supported new facts to any relevant existing card, regardless of type, legacy mode or autoUpdate. Create focused Lore for a new shared event, business or technique when no existing subject fits. Brains hold supported private changes. Preserve private knowledge and source quotes. Never invent outcomes, duplicate memories or suggest Plot Component updates.
 Return suggestions or an empty array.
 END STORY CARD MEMORY CHECK`;
 
-export const STORY_CARD_OUTPUT_SCHEMA = `Story Card fields: kind=lore (events/changes), newCard (missing identity/reference), card (permanent identity); cardType=lore|character|location|custom; operation=CREATE|UPDATE; target=title; targetId=existing ID for UPDATE; content=new fact, max70 words; evidence=exact quote; reason; triggers=3-6 short reusable topic phrases covering the card's subjects, activities and concepts (for example "runic research", "ward design", "government reform"). Use ordinary future wording, not exact scene sentences or only the full title; never leave triggers empty. Avoid unrelated catch-all words and bare participant names on Lore. Optional participants. Shared maximum: four updates.`;
+export const STORY_CARD_OUTPUT_SCHEMA = `Story Card fields: kind=lore (events/changes), newCard (missing subject), card (existing subject); cardType=lore|character|location|custom; operation=CREATE|APPEND; target=title; targetId=existing ID for UPDATE; content=new fact, max70 words; evidence=exact quote; reason; triggers=3-6 short reusable topic phrases covering the card's subjects, activities and concepts (for example "runic research", "ward design", "government reform"). Use ordinary future wording, not exact scene sentences or only the full title; never leave triggers empty. Avoid unrelated catch-all words and bare participant names on Lore. Optional participants. Return only new factual deltas; never a replacement body. Shared maximum: four updates.`;
 
 export const normalizeMemoryText = (text: string) => text.normalize("NFKC").toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 const stop = new Set("the a an and but then now later today tomorrow yesterday i you he she they we it his her their our my your yes no january february march april may june july august september october november december monday tuesday wednesday thursday friday saturday sunday ministry current story date flashback candidate first possible political ordinary dinner breakfast lunch evening morning night meanwhile suddenly after before nearby fuck silver".split(" "));
@@ -23,7 +23,7 @@ const mentions = (text: string, phrase: string) => Boolean(phrase.trim()) && (` 
 
 export function relevantStoryCardInventory(adventure: Adventure, text: string) {
   const words = titleWords(text);
-  return adventure.storyCards.filter(card => card.active).map(card => ({ card,
+  return adventure.storyCards.map(card => ({ card,
     score: [card.title, ...card.keys].filter(name => mentions(text, name)).length * 10
       + [...titleWords(card.title + " " + card.keys.join(" "))].filter(word => words.has(word)).length,
   })).filter(entry => entry.score >= 2).sort((a, b) => b.score - a.score || b.card.priority - a.card.priority).slice(0, 8)
@@ -79,18 +79,20 @@ export function suggestionSourceValid(adventure: Adventure, proposal: MemoryProp
 
 /** A bounded local search. Participants alone never establish a shared continuing subject. */
 export function storyCardTargets(adventure: Adventure, finding: { title: string; content: string; participants?: string[]; targetId?: string; type?: StoryCardType }): string[] {
+  const explicit = finding.targetId ? adventure.storyCards.find(card => card.id === finding.targetId) : undefined;
+  if (explicit) return [explicit.id];
+  const exact = adventure.storyCards.filter(card => normalizeMemoryText(card.title) === normalizeMemoryText(finding.title));
+  if (exact.length) return exact.map(card => card.id);
   const text = finding.title + " " + finding.content;
   const rule = subjectPatterns.find(rule => rule.pattern.test(text));
   const topic = findingKind(text) === "politicalPlan" ? "conflict" : rule?.topic;
   const participants = characterParticipants(adventure.storyCards, text, finding.participants);
   const identityTerms = new Set(participants.flatMap(name => normalizeMemoryText(name).split(" ")));
   const terms = new Set([...titleWords(text)].filter(word => !identityTerms.has(word)));
-  const ranked = adventure.storyCards.filter(card => card.active).map(card => {
+  const ranked = adventure.storyCards.map(card => {
     if (card.type === "character" || card.type === "location") {
       return { card, score: finding.type === card.type && (finding.targetId === card.id || normalizeMemoryText(finding.title) === normalizeMemoryText(card.title)) ? 200 : 0 };
     }
-    if (finding.type && finding.type !== card.type) return { card, score: 0 };
-    if (isHistoricalLore(card)) return { card, score: 0 };
     if (finding.targetId === card.id || normalizeMemoryText(finding.title) === normalizeMemoryText(card.title)) return { card, score: 200 };
     const specificCue = card.keys.some(key => !participants.some(name => normalizeMemoryText(name) === normalizeMemoryText(key)) && mentions(text, key));
     const overlap = [...titleWords(card.title + " " + card.keys.join(" "))].filter(word => terms.has(word)).length;
@@ -123,14 +125,14 @@ export function makeStoryCardSuggestion(adventure: Adventure, sourceId: string, 
   const candidateOnly = Boolean(finding.candidateOnly || uncertain || finding.origin === "deterministic");
   const eventKind = finding.eventKind ?? findingKind(finding.content + " " + finding.evidence);
   const continuing = ["politicalPlan", "promise", "agreement", "decision", "engagement"].includes(eventKind ?? "") || /\b(history|relationship|conflict|alliance|agreement|pact)\b/i.test(finding.title);
-  const review = candidateOnly || choices.length > 1 || Boolean(target?.protected) || Boolean(target && (target.type === "character" || target.type === "location"));
+  const review = candidateOnly || choices.length > 1 || Boolean(target?.protected);
   const content = uncertain && !/^Candidate|^Plan \(/.test(finding.content) ? `Candidate interpretation (unconfirmed): ${finding.content}` : finding.content;
   const closedTitle = !choices.length && adventure.storyCards.some(card => isHistoricalLore(card) && normalizeMemoryText(card.title) === normalizeMemoryText(finding.title));
   const identityTitle = type === "lore" && !target && adventure.storyCards.some(c => (c.type === "character" || c.type === "location") && normalizeMemoryText(c.title) === normalizeMemoryText(finding.title));
   const suggestedTitle = closedTitle || identityTitle ? `${finding.title}: ${finding.content.slice(0, 60)}` : finding.title;
-  const memoryMode = target?.memoryMode ?? (uncertain || continuing ? "living" : type === "lore" ? "historical" : "static");
+  const memoryMode = target?.memoryMode ?? (type === "lore" && !uncertain && !continuing ? "historical" : "static");
   return {
-    id: createId("proposal"), proposedType: "storyCard", storyCardType: type, title: target?.title ?? suggestedTitle,
+    id: createId("proposal"), proposedType: "storyCard", cardOperation: target ? "append" : "create", storyCardType: target?.type ?? type, title: target?.title ?? suggestedTitle,
     content, sourceTurnId: sourceId, sourceText: finding.evidence, rationale: finding.reason,
     suggestedTriggers: generatedStoryCardTriggers(adventure, finding.title, finding.content, finding.triggers, target?.id, memoryMode, type), requiresReview: review || closedTitle, status: "pending", confidence: candidateOnly ? 0.45 : 0.8,
     targetId: target?.id, appendContent: target ? true : undefined, memoryMode,
@@ -210,5 +212,5 @@ export function storyCardScanFingerprint(adventure: Adventure, source: Message):
 export function storyCardMustBeReviewed(adventure: Adventure, proposal: MemoryProposal): boolean {
   const target = adventure.storyCards.find(card => card.id === proposal.targetId);
   return Boolean(proposal.requiresReview || proposal.storyCardReview?.candidateOnly || (!proposal.targetId && (proposal.storyCardReview?.targetCandidates.length ?? 0) > 1)
-    || target?.protected || (target && (target.type === "character" || target.type === "location")));
+    || target?.protected);
 }

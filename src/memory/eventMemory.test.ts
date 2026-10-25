@@ -113,9 +113,11 @@ describe("Event Memories", () => {
   it("blocks autonomous rewriting while retaining explicit editing", () => {
     const a = seed(); a.storyCards.push(eventCard());
     const suggestions = applyAIMemoryUpdate(a, [{ type: "storyCardUpdate", storyCardId: "encounter", content: "They are dating now." }]).actions;
-    expect(suggestions).toContainEqual(expect.objectContaining({ type: "ADD_MEMORY_PROPOSAL", proposal: expect.objectContaining({ targetId: undefined, requiresReview: true }) }));
+    expect(suggestions).toContainEqual(expect.objectContaining({ type: "ADD_MEMORY_PROPOSAL", proposal: expect.objectContaining({ targetId: "encounter", cardOperation: "append" }) }));
     expect(suggestions.reduce(adventureReducer, a).storyCards).toEqual(a.storyCards);
-    expect(adventureReducer(a, { type: "APPLY_STORY_CARD_UPDATE", storyCardId: "encounter", content: "They are dating now." })).toBe(a);
+    const appended = adventureReducer(a, { type: "APPLY_STORY_CARD_UPDATE", storyCardId: "encounter", content: "They are dating now." });
+    expect(appended.storyCards.at(-1)?.content).toContain(a.storyCards.at(-1)!.content);
+    expect(appended.storyCards.at(-1)?.content).toContain("They are dating now.");
     const edited = adventureReducer(a, { type: "UPDATE_STORY_CARD", storyCardId: "encounter", patch: { content: "Corrected event.", autoUpdate: true, memoryMode: "living" } });
     expect(edited.storyCards.at(-1)).toMatchObject({ content: "Corrected event.", autoUpdate: false, memoryMode: "historical" });
   });

@@ -153,8 +153,8 @@ npm.cmd run test:live   # optional, uses .env.test.local`}</pre>
           and important objects.
         </p>
         <p>
-          Use <strong>Draft a Story Card with AI</strong> to choose a card focus, memory mode, optional living
-          auto-updates, and the thing that should be remembered. The AI compares the brief with existing cards
+          Use <strong>Draft a Story Card with AI</strong> to choose a card focus, an optional destination,
+          and the thing that should be remembered. The AI compares the brief with existing cards
           and creates a pending Memory Suggestion. It does not change active memory until you approve the proposal.
         </p>
         <p>
@@ -549,12 +549,12 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
           <dt>Story Cards</dt>
           <dd>
             Durable triggered records for one subject: character, location, faction, object, relationship, secret, rule,
-            or completed event. Static cards use present tense for always-true facts, living cards track current evolving
-            subjects, and historical cards use past tense for completed events.
+            or completed event. All types accept supported factual appends. Preserve dates and distinguish plans,
+            attributed claims, demonstrated results and completed events.
           </dd>
         </dl>
         <p><strong>Trigger rule:</strong> character aliases belong on character identity cards. Event, relationship, and subplot cards should use specific trigger phrases, not broad character names that already belong to other cards.</p>
-        <p><strong>Generator rule:</strong> generated cards should avoid temporary details, be concise and self-contained, repeat the subject in the body, and use the correct memory mode and tense.</p>
+        <p><strong>Generator rule:</strong> generated cards should avoid temporary details, be concise and self-contained, repeat the subject in the body, and use tense appropriate to the recorded fact.</p>
       </>
     ),
   },
@@ -651,8 +651,8 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
           <li>One-off scenery or room details that won't recur.</li>
         </ul>
         <p><strong>Format:</strong> Bullet points, one per line, using •. Each bullet is one self-contained fact. Lead with what is always true, then add specific constraints or rules.</p>
-        <p><strong>Story Card types:</strong> Character and Location preserve durable identity. Lore holds developments, relationships and history, with dates, status and source references. Custom holds explicit reference material. The current story clock is edited in Story Cards.</p>
-        <p><strong>Memory mode:</strong> Static cards are always-true facts in present tense. Living cards are current evolving subjects that updates merge/archive. Historical cards are completed events or retired PE facts in past tense.</p>
+        <p><strong>Story Card types:</strong> Character and Location describe people and places. Lore describes shared developments, relationships, techniques and history, with dates, status and source references. All types accept factual appends. Custom holds explicit reference material. The current story clock is edited in Story Cards.</p>
+        <p><strong>Updates:</strong> All card types can grow. Memory appends supported new facts to a matching card or creates a focused new subject. Existing content and voice remain stored. Global approval settings and protected-card review still apply; legacy modes do not restrict updates.</p>
         <p><strong>Trigger keys:</strong> Use specific names, places, nicknames, objects, factions, and consequences. Character aliases belong on character identity cards; avoid putting broad character names on event, relationship, or subplot cards.</p>
         <p><strong>Good card:</strong></p>
         <pre>{`• Margo uses teasing to deflect when she's afraid.

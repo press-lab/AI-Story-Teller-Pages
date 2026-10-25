@@ -1,49 +1,32 @@
-import type { Adventure, MemoryPlacementKind, MemoryProposal, StoryCardType } from "../types/adventure";
+import type { Adventure, MemoryProposal } from "../types/adventure";
 import { memoryTargetMatches, memoryTargetSnapshot } from "./memoryCycleState";
 
-export const PLACEMENT_VERSION = 1;
-export const STORY_CARD_PLACEMENT_POLICY = `Classify the NEW fact separately from the surrounding biography.
-Default to Lore for new developments, almost always instead of updating another card. Lore records the events that happen to people and places, including significant actions, lessons, relationships, agreements, discoveries, injuries and deaths. Character and Location cards are near immutable identity references, even in living mode; a person participating in an event is not a reason to rewrite their profile. Even death belongs primarily in historicalLore, preserving the person's biography and voice.
-Moody demonstrating Unforgivable Curses belongs in historicalLore, not his Character profile. Moody saying the curse killed Harry's parents does not mean Moody died. An unchanged description such as permanently scarred is not a new identity change. A classroom hosting a lesson does not change its identity; destruction elsewhere does not destroy this location.
-identity: a genuinely missing identity/reference, an explicit factual identity correction, or an exceptionally significant irreversible transformation of the exact target that cannot be represented adequately by Lore alone. Any existing identity change requires exact evidence, explicit review and focused supporting historical Lore. Prefer Lore even for major events; do not promote relationships, rivalries, achievements, new knowledge or ordinary capability use into identity changes. historicalLore: completed significant events. ongoingLore: evolving relationships/arrangements. referenceLore: established world rules/techniques. brain: supported private state of an existing Brain only. none: routine, redundant or unsupported. When in doubt between an identity update and supported Lore, choose Lore; do not record trivial events just to create memory.
-Do not infer Moody considers Seth a weapon from his eye lingering. Attribute claims to speakers. Keep Lore focused on new facts; omit biography and voice contracts.`;
+export const PLACEMENT_VERSION = 2;
+export const STORY_CARD_PLACEMENT_POLICY = `All Story Cards can grow. Record meaningful new durable facts by APPEND to an existing subject or CREATE a focused card when no existing subject fits. Character, Location, Lore and Custom are equally eligible, including old static, living, historical, inactive and autoUpdate=false cards. Modes and inclusion controls never authorize or forbid memory updates.
+Return only the new factual delta. Never rewrite the existing body, biography or voice contract. Preserve dates and distinguish an agreed plan, a described technique, a demonstrated result and completed production. A confirmed agreement is a fact even while future work remains unfinished. Attribute claims to their speakers; preserve knowledge boundaries and uncertainty. Later corrections or changed circumstances are dated additions, never deletion of history.
+Choose an exact existing destination only when the new facts concern its subject. Sharing participants alone is insufficient. Shared business ventures and technical methods may have their own Lore card. Do not force every character/location development into separate Lore or require an identity transformation. Private character reactions belong in an existing Brain. Routine, redundant or unsupported details yield none.
+placement.kind: append for an existing card; create for a new card; brain for existing private Brain state; none for no meaningful supported fact. Preserve the existing destination's type. Never invent names, actions, outcomes or off-screen knowledge.`;
 
 export function placementFingerprint(p: MemoryProposal): string {
   return JSON.stringify([p.proposedType, p.storyCardType, p.title, p.content, p.targetId, p.memoryMode,
-    p.appendContent, p.sourceTurnId, p.sourceText, p.lore?.knownTo, p.eventMemory]);
-}
-
-export function placementCardType(kind: MemoryPlacementKind, identityType?: string): StoryCardType {
-  return kind === "identity" && (identityType === "character" || identityType === "location" || identityType === "custom") ? identityType : "lore";
-}
-
-export function placementMode(kind: MemoryPlacementKind) {
-  return kind === "historicalLore" ? "historical" as const : kind === "ongoingLore" ? "living" as const : "static" as const;
+    p.cardOperation, p.appendContent, p.sourceTurnId, p.sourceText, p.lore?.knownTo, p.eventMemory]);
 }
 
 export function placementValidationError(a: Adventure, p: MemoryProposal): string | undefined {
   if (p.proposedType !== "storyCard" || p.userInitiated) return undefined;
   const v = p.placementValidation;
   if (!v || v.version !== PLACEMENT_VERSION || typeof v.fingerprint !== "string" || typeof v.reason !== "string" || typeof v.newFact !== "string"
-    || !["identity", "historicalLore", "ongoingLore", "referenceLore", "brain", "none"].includes(v.kind)
+    || !["append", "create", "brain", "none"].includes(v.kind)
     || !Array.isArray(v.sources) || v.sources.some(s => !s || typeof s.id !== "string" || typeof s.content !== "string")) return "Placement needs validation against the current draft.";
   if (v.fingerprint !== placementFingerprint(p)) return "The draft or destination changed since placement was validated.";
   if (!v.sources.length || v.sources.some(s => !a.messages.some(m => m.id === s.id && m.content === s.content))) return "The source evidence changed since placement was validated.";
   if (v.target && !memoryTargetMatches(a, v.target)) return "The reviewed destination changed since placement was validated.";
   const target = p.targetId ? a.storyCards.find(c => c.id === p.targetId) : undefined;
+  if (p.targetId && (!v.target || v.target.id !== p.targetId)) return "The reviewed destination snapshot is missing.";
   if (p.targetId && (!target || target.type !== p.storyCardType)) return "The destination type does not match this suggestion.";
   if (v.kind === "none" || v.kind === "brain") return "This finding is not a Story Card update.";
-  if (v.kind !== "identity" && (p.storyCardType !== "lore" || p.memoryMode !== placementMode(v.kind))) return "Lore placement does not match its destination or mode.";
-  if (v.kind === "identity") {
-    if (p.storyCardType === "lore") return "Identity placement cannot authorize Lore content.";
-    if (target && (target.type === "character" || target.type === "location")) {
-      const change = v.identityChange;
-      if (!change || change.targetId !== target.id || typeof change.fact !== "string" || !change.fact.trim()
-        || typeof change.supportingLore !== "string" || !change.supportingLore.trim()
-        || !["correction", "transformation"].includes(change.kind) || !Array.isArray(change.evidenceQuotes) || !change.evidenceQuotes.length
-        || !change.evidenceQuotes.every(q => q && typeof q.messageId === "string" && typeof q.quote === "string" && q.quote.trim() && v.sources.some(s => s.id === q.messageId && s.content.includes(q.quote)))) return "The identity change lacks target-specific reviewed evidence.";
-    }
-  }
+  if (p.targetId && (p.cardOperation !== "append" || p.appendContent !== true || v.kind !== "append")) return "Existing card memory must append a validated delta.";
+  if (!p.targetId && (p.cardOperation !== "create" || v.kind !== "create")) return "New card memory must use create.";
   return undefined;
 }
 
@@ -59,6 +42,5 @@ export function proposalDestinationLabel(a: Adventure, p: MemoryProposal): strin
   if (p.proposedType !== "storyCard") return p.proposedType;
   const target = a.storyCards.find(c => c.id === p.targetId);
   const type = target?.type ?? p.storyCardType ?? "lore";
-  const mode = p.memoryMode ?? target?.memoryMode ?? "static";
-  return `${target ? "Update" : "Create"} ${type.charAt(0).toUpperCase() + type.slice(1)} · ${target?.title ?? (mode === "historical" ? "Historical" : mode === "living" ? "Ongoing" : "Reference")}`;
+  return `${target ? "Append to" : "Create"} ${type.charAt(0).toUpperCase() + type.slice(1)} · ${target?.title ?? p.title}`;
 }

@@ -14,6 +14,8 @@ export interface MemoryDiagnostic {
   failureCode?: string;
   providerCode?: string;
   httpStatus?: number;
+  targetId?: string;
+  cardOperation?: "append" | "create";
   candidateIndex?: number;
   evaluationAttempt?: number;
   counts?: { returned: number; accepted: number; rejected: number; suppressed: number; retryPending: number };
@@ -252,6 +254,7 @@ export interface LoreMetadata {
   knownTo?: string[];
 }
 
+/** Legacy save metadata; no longer offered in the UI or used to gate updates. */
 export type StoryCardMemoryMode = "static" | "living" | "historical";
 export type StoryCardCompactKind =
   | "pact"
@@ -586,11 +589,11 @@ export interface StoryCardSuggestionReview {
   playerContent?: string;
 }
 
-export type MemoryPlacementKind = "identity" | "historicalLore" | "ongoingLore" | "referenceLore" | "brain" | "none";
+export type MemoryPlacementKind = "append" | "create" | "identity" | "historicalLore" | "ongoingLore" | "referenceLore" | "brain" | "none";
 
 /** A semantic review, bound to the exact draft and evidence. Never part of narrator context. */
 export interface MemoryPlacementValidation {
-  version: 1;
+  version: 1 | 2;
   kind: MemoryPlacementKind;
   reason: string;
   newFact: string;
@@ -602,6 +605,8 @@ export interface MemoryPlacementValidation {
 }
 
 export interface MemoryProposal {
+  /** Generated card memory only appends a factual delta or creates a new card. */
+  cardOperation?: "append" | "create";
   placementValidation?: MemoryPlacementValidation;
   /** Independent evaluation evidence and destination at generation time. */
   evaluationSource?: { messages: Array<{ id: string; content: string }>; target?: MemoryTargetSnapshot };

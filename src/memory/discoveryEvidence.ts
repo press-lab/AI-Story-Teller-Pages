@@ -51,7 +51,7 @@ export function discoveryEvidenceError(item: MemoryDiscoveryCandidate, messages:
   if (!item.evidenceMessageIds.includes(sourceId)) {
     return failure("missing_establishing_source", "Discovery evidence omits the establishing narrator source.");
   }
-  if (!["historical", "living", "static"].includes(item.memoryMode ?? "")
+  if ((item.memoryMode !== undefined && !["historical", "living", "static"].includes(item.memoryMode))
     || !["completed", "ongoing", "unresolved"].includes(item.eventStatus ?? "")
     || (item.candidateOnly !== undefined && typeof item.candidateOnly !== "boolean")) {
     return failure("candidate_schema_invalid", "Discovery has invalid or missing memory mode, event status or candidate-only flag.");

@@ -47,7 +47,7 @@ describe("one-pass memory quality boundary", () => {
     expect(result.adventure.storyCards).toHaveLength(1);
     expect(result.adventure.storyCards[0].content).toContain("scout");
     expect(result.adventure.storyCards[0].content).not.toContain("Silver");
-    expect(result.adventure.activeState.memoryProposals[0]).toMatchObject({ storyCardType: "lore", targetId: undefined, status: "pending" });
+    expect(result.adventure.activeState.memoryProposals[0]).toMatchObject({ storyCardType: "character", targetId: "mira-card", status: "pending" });
     expect(result.adventure.activeState.memoryProposals[0]).toMatchObject({ sourceTurnId: "new-story", sourceText: update.evidence });
     expect(result.adventure.activeState.memoryDiagnostics).toEqual(expect.arrayContaining([expect.objectContaining({ sourceId: "new-story", outcome: "automatically_approved" })]));
     expect(Object.values(result.adventure.brains[0].thoughts)).toEqual(expect.arrayContaining(["I distrust the duke.", expect.stringContaining("stop fearing")]));
@@ -99,7 +99,7 @@ describe("one-pass memory quality boundary", () => {
     adventure.storyCards[0].pinned = false;
     adventure.storyCards[0].inclusionPolicy = "manual";
     const actions = onePassMemoryActions(adventure, buildContext(adventure), [update], story, "story-id");
-    expect(actions.find(a => a.type === "ADD_MEMORY_PROPOSAL")).toMatchObject({ proposal: { storyCardType: "character", requiresReview: true, targetId: "mira-card" } });
+    expect(actions.find(a => a.type === "ADD_MEMORY_PROPOSAL")).toMatchObject({ proposal: { storyCardType: "character", requiresReview: false, targetId: "mira-card" } });
   });
 
   it("blocks automatic foundations and reviews new Lore with auto-approve disabled", () => {
@@ -188,13 +188,13 @@ describe("one-pass memory quality boundary", () => {
     }], scene, "scene-id");
     const next = actions.reduce(adventureReducer, adventure);
     expect(next.storyCards.find(card => card.id === "estate")?.content).toBe("The private estate has a training field.");
-    expect(next.activeState.memoryProposals[0]).toMatchObject({ targetId: undefined, storyCardType: "lore", status: "pending", requiresReview: true });
+    expect(next.activeState.memoryProposals[0]).toMatchObject({ targetId: "estate", storyCardType: "location", status: "pending", requiresReview: true });
     adventure.storyCards[1].inclusionPolicy = "manual";
     const manualActions = onePassMemoryActions(adventure, buildContext(adventure), [{
       kind: "lore", target: "Hercule and Buu's Estate", content: "The estate gym's east wall is gone, leaving it open to the air.",
       evidence: scene, reason: "Lasting change to a recurring place",
     }], scene, "scene-id");
-    expect(manualActions.find(action => action.type === "ADD_MEMORY_PROPOSAL")).toMatchObject({ proposal: { storyCardType: "lore", targetId: undefined, requiresReview: false } });
+    expect(manualActions.find(action => action.type === "ADD_MEMORY_PROPOSAL")).toMatchObject({ proposal: { storyCardType: "location", targetId: "estate", requiresReview: false } });
   });
 
   it("creates a narrow lore proposal instead of appending a shared scene to a character", () => {

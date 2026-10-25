@@ -352,13 +352,13 @@ describe("adventureReducer", () => {
     expect(state.storyCards.find((entry) => entry.id === storyCard.id)?.memoryUpdateHistory).toBeUndefined();
     state = reduce(state, { type: "APPLY_STORY_CARD_UPDATE", storyCardId: storyCard.id, content: "Generated story" });
     const generatedStory = state.storyCards.find((entry) => entry.id === storyCard.id);
-    expect(generatedStory?.content).toBe("Generated story");
+    expect(generatedStory?.content).toBe("C\nGenerated story");
     expect(generatedStory?.lastMemoryUpdatedAt).toEqual(expect.any(String));
     expect(generatedStory?.memoryUpdateHistory?.[0]).toMatchObject({
       source: "aiMemoryUpdate",
-      operation: "replace",
+      operation: "append",
       previous: { title: "Story Renamed", content: "C" },
-      next: { title: "Story Renamed", content: "Generated story" },
+      next: { title: "Story Renamed", content: "C\nGenerated story" },
     });
     state = reduce(state, { type: "MARK_STORY_CARD_UPDATED", storyCardId: storyCard.id, turn: 12 });
     expect(state.storyCards.find((entry) => entry.id === storyCard.id)?.lastAutoUpdateTurn).toBe(12);
@@ -611,7 +611,7 @@ describe("adventureReducer", () => {
       next: {
         title: "Promise",
         content: "Seth promised Margo he would return.",
-        compactKind: "promise",
+        compactKind: undefined,
       },
     });
 
@@ -727,55 +727,15 @@ describe("adventureReducer", () => {
     expect((updated?.state ?? "").split(/\s+/)).not.toContain("living");
   });
 
-  it("creates a living child card instead of appending current state to a static character profile", () => {
-    let state = baseAdventure();
-    state = reduce(state, {
-      type: "UPSERT_STORY_CARD",
-      storyCard: makeStoryCard({
-        id: "card-seth",
-        title: "Seth Valis",
-        content: "- Player character and Council mage.",
-        keys: ["Seth"],
-        type: "character",
-        memoryMode: "static",
-      }),
-    });
-
-    state = reduce(state, {
-      type: "ADD_MEMORY_PROPOSAL",
-      proposal: makeMemoryProposal({
-        id: "proposal-seth-current",
-        storyCardType: "lore",
-        proposedType: "storyCard",
-        targetId: "card-seth",
-        title: "Seth Valis",
-        content: "• Seth is currently managing Viktor's notification protocol while Mel handles the Council.",
-        suggestedTriggers: ["Seth", "The", "Viktor protocol", "current status"],
-        appendContent: true,
-        memoryMode: "living",
-      }),
-    });
-
-    const routed = state.activeState.memoryProposals.find((entry) => entry.id === "proposal-seth-current");
-    expect(routed).toMatchObject({
-      title: expect.stringContaining("Seth Valis:"),
-      storyCardType: "lore",
-      targetId: undefined,
-      appendContent: undefined,
-      memoryMode: "living",
-      suggestedTriggers: ["Viktor protocol"],
-    });
-
-    state = reduce(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: "proposal-seth-current" });
-
-    const profile = state.storyCards.find((card) => card.id === "card-seth");
-    const child = state.storyCards.find((card) => card.type === "lore" && card.title.startsWith("Seth Valis:"));
-    expect(profile?.content).toBe("- Player character and Council mage.");
-    expect(child).toMatchObject({
-      memoryMode: "living",
-      keys: ["Viktor protocol"],
-    });
-    expect(child?.content).toContain("notification protocol");
+  it("appends current developments to a legacy static character", () => {
+    const card = makeStoryCard({ id: "card-seth", title: "Seth Valis", type: "character", memoryMode: "static", content: "Player character and Council mage.", keys: ["Seth"] });
+    let state = { ...baseAdventure(), storyCards: [card] };
+    state = reduce(state, { type: "ADD_MEMORY_PROPOSAL", proposal: makeMemoryProposal({ id: "new-fact", proposedType: "storyCard", title: "Seth Valis", targetId: card.id,
+      content: "Seth manages Viktor's notification protocol.", appendContent: false, memoryMode: "living" }) });
+    expect(state.activeState.memoryProposals[0]).toMatchObject({ targetId: card.id, storyCardType: "character", cardOperation: "append", appendContent: true });
+    state = reduce(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: "new-fact" });
+    expect(state.storyCards).toHaveLength(1); expect(state.storyCards[0].content).toContain(card.content);
+    expect(state.storyCards[0].content).toContain("notification protocol"); expect(state.storyCards[0].memoryMode).toBe("static");
   });
 
   it("blocks repeated dismissed target updates but allows a materially new revision", () => {
@@ -1244,10 +1204,10 @@ describe("adventureReducer", () => {
     state = reduce(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: "proposal-card-update" });
 
     const merged = state.storyCards.find((c) => c.id === "card-living");
-    expect(merged?.compactKind).toBe("secret");
-    expect(merged?.compactStatus).toBe("active");
+    expect(merged?.compactKind).toBeUndefined();
+    expect(merged?.compactStatus).toBeUndefined();
     expect(merged?.content).toContain("Their bond was a court secret");
-    expect(merged?.archivedFacts).toContain("private chambers");
+    expect(merged?.content).toContain("private chambers");
     expect(merged?.content).toContain("court secret");
     expect(merged?.pinned).toBe(false);
     expect(merged?.protected).toBe(false);
@@ -1262,7 +1222,7 @@ describe("adventureReducer", () => {
     });
   });
 
-  it("living-card update: ordinary cards still archive the oldest fact over budget", () => {
+  it("legacy living cards preserve every stored fact over the context budget", () => {
     const card = makeStoryCard({
       id: "card-ordinary-living",
       title: "Setu and Nyxa Training",
@@ -1290,8 +1250,8 @@ describe("adventureReducer", () => {
 
     const merged = state.storyCards.find((c) => c.id === "card-ordinary-living");
     expect(merged?.content).toContain("private chambers");
-    expect(merged?.archivedFacts).toContain("lessons began during the market festival");
-    expect(merged?.content).not.toContain("lessons began during the market festival");
+    expect(merged?.archivedFacts).toBeUndefined();
+    expect(merged?.content).toContain("lessons began during the market festival");
     expect(merged?.pinned).toBe(false);
     expect(merged?.protected).toBe(false);
   });
@@ -1324,14 +1284,14 @@ describe("adventureReducer", () => {
     state = reduce(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: "proposal-jinx-pact-replace" });
 
     const updated = state.storyCards.find((c) => c.id === "card-jinx-pact");
-    expect(updated?.compactKind).toBe("coverStory");
+    expect(updated?.compactKind).toBeUndefined();
     expect(updated?.content).toContain("secret pact");
-    expect(updated?.content).toContain("official cover story");
+    expect(updated?.archivedFacts).toContain("official cover story");
     expect(updated?.content).toContain("Sump air filter");
     expect(updated?.pinned).toBe(false);
     expect(updated?.protected).toBe(false);
-    expect(updated?.priority).toBeGreaterThanOrEqual(80);
-    expect(updated?.tokenBudget).toBeGreaterThanOrEqual(450);
+    expect(updated?.priority).toBe(card.priority);
+    expect(updated?.tokenBudget).toBe(card.tokenBudget);
   });
 
   it("applies Story Card proposal type and auto-update settings when approving AI builder drafts", () => {
@@ -1562,7 +1522,7 @@ describe("adventureReducer", () => {
 
     // New story card proposal whose title already exists as a card → dropped.
     state = reduce(state, { type: "ADD_MEMORY_PROPOSAL", proposal: makeMemoryProposal({ id: "p3", title: "Story A", proposedType: "storyCard", status: "pending" }) });
-    expect(state.activeState.memoryProposals.some((p) => p.id === "p3")).toBe(false);
+    expect(state.activeState.memoryProposals.find((p) => p.id === "p3")).toMatchObject({ appendContent: true });
 
     // A genuinely new entity still gets through.
     state = reduce(state, { type: "ADD_MEMORY_PROPOSAL", proposal: makeMemoryProposal({ id: "p4", title: "The Masked Agent", proposedType: "storyCard", status: "pending" }) });

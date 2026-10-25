@@ -3,7 +3,7 @@ import { createDefaultAdventure, makeStoryCard } from "../state/defaults";
 import { generatedStoryCardTriggers, resolveMemoryTarget, sanitizeStoryCardTriggers } from "./resolveMemoryTarget";
 
 describe("resolveMemoryTarget", () => {
-  it("creates a living child card instead of appending current state to a static profile", () => {
+  it("appends current state to a legacy static profile", () => {
     const adventure = {
       ...createDefaultAdventure("Routing"),
       storyCards: [
@@ -30,16 +30,16 @@ describe("resolveMemoryTarget", () => {
     });
 
     expect(routed).toMatchObject({
-      title: "Seth Valis: Current Status",
-      targetId: undefined,
-      appendContent: undefined,
-      memoryMode: "living",
+      title: "Seth Valis",
+      targetId: "card-seth",
+      appendContent: true,
+      memoryMode: "static",
     });
-    expect(routed.suggestedTriggers).toEqual(["Viktor protocol"]);
-    expect(routed.rationale).toContain("separate living Story Card");
+    expect(routed.suggestedTriggers).toEqual(["Seth", "Viktor protocol"]);
+    expect(routed.title).toBe("Seth Valis");
   });
 
-  it("creates a historical child card instead of appending completed events to a static profile", () => {
+  it("appends completed events to a legacy static profile", () => {
     const adventure = {
       ...createDefaultAdventure("Routing"),
       storyCards: [
@@ -65,12 +65,12 @@ describe("resolveMemoryTarget", () => {
     });
 
     expect(routed).toMatchObject({
-      title: "Viktor: History",
-      targetId: undefined,
-      appendContent: undefined,
-      memoryMode: "historical",
+      title: "Viktor",
+      targetId: "card-viktor",
+      appendContent: true,
+      memoryMode: "static",
     });
-    expect(routed.suggestedTriggers).toEqual(["notification protocol"]);
+    expect(routed.suggestedTriggers).toEqual(["Viktor", "notification protocol"]);
   });
 
   it("keeps historical updates on matching historical cards", () => {
@@ -180,12 +180,12 @@ describe("generated Story Card topic triggers", () => {
   });
 });
 
-it.each(["character", "location"] as const)("does not route reference Lore to a same-mode %s destination", type => {
+it.each(["character", "location"] as const)("routes same-subject facts to a %s destination while preserving its type", type => {
   const adventure = createDefaultAdventure();
   adventure.storyCards = [makeStoryCard({ id: "identity", title: "Same subject", content: "Authored identity.", type, memoryMode: "static", keys: ["subject alias"] })];
   for (const targetId of [undefined, "identity"]) {
     const routed = resolveMemoryTarget(adventure, { proposedType: "storyCard", storyCardType: "lore", title: "Same subject",
       targetId, memoryMode: "static", content: "An established magical rule concerning this subject." });
-    expect(routed.targetId).toBeUndefined(); expect(routed.storyCardType).toBe("lore");
+    expect(routed.targetId).toBe("identity"); expect(routed.storyCardType).toBe(type);
   }
 });

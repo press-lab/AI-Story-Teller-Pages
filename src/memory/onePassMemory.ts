@@ -180,13 +180,11 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
         reject(`${target}: Character content copies scene dialogue instead of an identity fact`); continue;
       }
       if (kind === "card" && exact.length === 0) { reject(`${target}: unknown target ID`); continue; }
-      if (existing && !existing.active) { reject(`${target}: target is inactive`); continue; }
       const inferredHabit = existing?.type === "character" && /\b(always|never|usually|regularly|habitually|tends? to|habit|coping|stable trait|usual|treats|uses? .{0,20}as a|uses? .{0,20}to manage)\b/i.test(content) && !hasDurableCharacterEvidence(evidence);
       if (u.cardType !== undefined && !["lore", "character", "location", "custom"].includes(String(u.cardType))) { reject(`${target}: invalid Story Card type`); continue; }
-      if (u.operation !== undefined && !["create", "update"].includes(String(u.operation).toLowerCase())) { reject(`${target}: invalid operation`); continue; }
+      if (u.operation !== undefined && !["create", "update", "append"].includes(String(u.operation).toLowerCase())) { reject(`${target}: invalid operation`); continue; }
       const requested = ["character", "location", "custom"].includes(String(u.cardType)) ? u.cardType as StoryCardType : "lore";
-      const type: StoryCardType = existing && (existing.type === "lore" || existing.type === "custom") ? existing.type
-        : kind === "card" && existing ? existing.type : kind === "newCard" && !existing ? requested : "lore";
+      const type: StoryCardType = existing?.type ?? (kind === "newCard" ? requested : "lore");
       if (!existing && type !== "lore" && !adventure.systemTriggers?.enabled) { reject(`${target}: new card suggestions disabled`); continue; }
       const suggestion = makeStoryCardSuggestion(adventure, sourceTurnId, story, { title: target, content, evidence, reason: `One-pass memory: ${u.reason}`,
         type, targetId: typeof u.targetId === "string" ? u.targetId : existing?.id, candidateOnly: Boolean(inferredHabit || quote.length < 12),

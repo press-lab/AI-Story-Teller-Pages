@@ -62,8 +62,8 @@ it("builds the next prompt only after the existing worker commits and blocks dup
   expect(provider).toHaveBeenCalledTimes(2);
   await act(async () => { pending.resolve(response()); await next; });
   expect(hook.result.current.adventure!.messages.map(message => message.content)).toEqual(["First turn.", story, "Second turn.", story]);
-  expect(hook.result.current.adventure!.messages.filter(message => message.role === "assistant")
-    .every(message => message.memoryEvaluation?.status === "complete")).toBe(true);
+  await waitFor(() => expect(hook.result.current.adventure!.messages.filter(message => message.role === "assistant")
+    .every(message => message.memoryEvaluation?.status === "complete")).toBe(true));
   expect(provider).toHaveBeenCalledTimes(4);
 });
 

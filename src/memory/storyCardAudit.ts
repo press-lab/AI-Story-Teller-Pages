@@ -222,7 +222,7 @@ function buildPrompt(cards: StoryCard[], rollingSummary: string, recentStory: st
     .map((c) => `[${c.id}] "${c.title}" (${c.type}, ${c.memoryMode}) keys: ${c.keys.join(", ") || "(title trigger only)"}\n${storyCardContextContent(c).slice(0, 2200)}`)
     .join("\n\n---\n\n");
 
-  return `You are cleaning up story cards for an interactive fiction game. Structural issues (redundancy, missing keys, stale entries) have already been flagged - focus on semantic accuracy, consolidation, trigger bleed, living-card updates, profile bloat, and missing historical/living child cards.
+  return `You are cleaning up story cards for an interactive fiction game. Structural issues (redundancy, missing keys, stale entries) have already been flagged - focus on semantic accuracy, consolidation, trigger bleed, factual additions, duplicate subjects and missing cards.
 ${STORY_CARD_BEST_PRACTICES}
 ${TRIGGER_BEST_PRACTICES}
 
@@ -236,19 +236,17 @@ RECENT STORY:
 ${recentStory || "(none)"}
 
 Return ONLY a JSON array — no markdown, no prose. Each item must be one of:
-- {"action":"edit","cardId":"...","title":"...","rationale":"...","suggestedContent":"...","suggestedKeys":["..."],"suggestedType":"character"|"location"|"lore"|"custom","suggestedMemoryMode":"static"|"living"|"historical"}
+- {"action":"edit","cardId":"...","title":"...","rationale":"...","suggestedContent":"...","suggestedKeys":["..."],"suggestedType":"character"|"location"|"lore"|"custom"}
 - {"action":"delete","cardId":"...","title":"...","rationale":"..."}
-- {"action":"create","title":"...","rationale":"...","suggestedContent":"...","suggestedKeys":["..."],"suggestedType":"character"|"location"|"lore"|"custom","suggestedMemoryMode":"static"|"living"|"historical"}
+- {"action":"create","title":"...","rationale":"...","suggestedContent":"...","suggestedKeys":["..."],"suggestedType":"character"|"location"|"lore"|"custom"}
 
 Rules:
 - Edit: card content is outdated or factually wrong based on recent events
 - Delete: card covers something that no longer exists in the story
 - Create: a recurring entity or fact has no card at all
-- Static character/location/lore cards should hold durable identity/rules only. Do not leave current mission state or completed event timelines inside static profile cards.
-- If a static profile card contains current-state or completed-event bullets, return BOTH: an edit for the profile card with those dynamic/history bullets removed, and one or more create recommendations for focused living or historical child cards preserving that information.
-- Use suggestedMemoryMode "living" for current evolving subjects, relationships, investigations, arrangements, and pressure.
-- Use suggestedMemoryMode "historical" for completed decisions, votes, confrontations, deaths, promises kept/broken, discoveries, or resolved beats.
-- Prefer editing or consolidating an existing living card over creating a sibling card for the same evolving subject
+- All card types can accumulate new facts. Legacy modes do not restrict updates.
+- Preserve the existing body and voice. Suggest focused new facts for the same subject; do not split out history merely because the card is a Character or Location.
+- Prefer editing or consolidating an existing card over creating a sibling card for the same evolving subject
 - Remove broad character-name triggers from subplot/event/relationship cards when those names already belong to identity cards
 - Never use pronouns, articles, or broad words as triggers: The, This, That, She, He, His, Her, They, Any.
 - Event, relationship, and subplot cards should use event/place/object/relationship phrases instead of broad character names.

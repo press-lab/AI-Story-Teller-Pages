@@ -22,13 +22,13 @@ export const PLOT_ESSENTIALS_BEST_PRACTICES = `Plot Essentials best practices:
 - Put situational lore, character identity, relationships, secrets, recurring objects, locations, factions, and completed past events in Story Cards instead.`;
 
 export const STORY_CARD_BEST_PRACTICES = `Story Card best practices:
-- Use only Character, Location, Lore, or Custom. Default almost always to Lore for developments, relationships, events and discoveries. Lore is what happens to people and places. Character and Location cards are near immutable identity references. Even death belongs primarily in historical Lore; update identity only for an explicit factual correction or exceptionally significant irreversible transformation that Lore alone cannot adequately represent, with exact evidence, explicit review and supporting Lore.
+- Use Character, Location, Lore or Custom to describe the subject. All types accept new supported facts by append; create a focused subject when no existing card fits. No identity transformation or supporting Lore is required.
 - A Story Card is durable triggered memory for one subject: a character, location, faction, object, relationship, secret, rule, or completed event.
 - The entry must be self-contained. Repeat the subject name in the body; do not rely on the title alone.
 - Keep entries concise, concrete, and unambiguous. Avoid temporary scene state and excessive appearance details unless they matter.
-- Use present tense for static always-true facts and living current-state cards. Use past tense for historical/completed events.
-- Character cards should carry a VOICE CONTRACT with rhythm, default move, emotional defense, never-sounds-like, and example lines.
-- Living cards are for evolving current relationships, arrangements, statuses, searches, obligations, and recurring dynamic subjects. Updates merge/archive instead of creating sibling cards.
+- Use tense appropriate to the fact: plans remain plans and completed events remain history.
+- Newly created Character cards should carry a VOICE CONTRACT with rhythm, default move, emotional defense, never-sounds-like, and example lines.
+- Every card evolves by append. Preserve original content and voice; return only new facts. Record later corrections with dates instead of deleting history.
 - Historical cards are for evidenced, completed durable events. Removing or correcting a Plot Essentials fact does not establish a historical event.`;
 
 export const TRIGGER_BEST_PRACTICES = `Trigger best practices:
@@ -52,13 +52,7 @@ ${STORY_CARD_BEST_PRACTICES}
 ${TRIGGER_BEST_PRACTICES}`;
 
 export function storyCardModeGuidance(mode: StoryCardMemoryMode | undefined): string {
-  if (mode === "living") {
-    return "This is a living Story Card: keep only the subject's current evolving state in live content. Preserve still-current facts, replace obsolete claims, and write in present tense. Do not create sibling cards for the same evolving subject.";
-  }
-  if (mode === "historical") {
-    return "This is a historical Story Card: record completed past events or retired Plot Essentials facts in past tense. Do not make resolved events sound current.";
-  }
-  return "This is a static Story Card: record durable always-true facts, traits, rules, identity, voice, location, or lore in present tense.";
+  return "All Story Cards accept new supported facts by append. Return only new facts for an existing card, preserving the entire existing body and voice contract. Keep dates, plans, claims and completed outcomes distinct.";
 }
 
 export function storyCardCreationGuidance(mode: StoryCardMemoryMode | undefined): string {

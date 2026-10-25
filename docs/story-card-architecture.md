@@ -3,10 +3,7 @@
 ## Structure and responsibilities
 
 `StoryCardType` has four values: `character`, `location`, `lore`, `custom`.
-Character and Location hold durable identity; ordinary developments go to Lore.
-Custom remains explicit reference material. Content is the single editable body.
-Relationships, politics, discoveries, first meetings, commitments and events are
-subjects of Lore, not additional top-level types. Plot Components remain separate.
+All four types can accumulate supported new facts. Automatic memory appends a factual delta to a relevant existing subject, or creates a focused new card when no subject fits. Content is the single editable body. Type describes the subject, not its mutability. Plot Components and private Brain state remain separate.
 
 Lore metadata (`StoryCard.lore`) holds `occurredAt`, `lastChangedAt`, `status`
 (`completed`, `ongoing`, `unresolved`, `superseded`), Chronicle `sourceMessageIds`,
@@ -28,23 +25,11 @@ No clock inference request, automatic backfill or wall-clock conversion is added
 
 ## Writes and retrieval
 
-Ordinary automatic Character/Location content writes are blocked at the AI boundary
-and reducer. Suggestions targeting identity with ordinary developments become Lore.
-Lore is the default almost always: it records what happens to people and places.
-Character and Location cards are near immutable, including in living mode. Even
-death belongs primarily in historical Lore, preserving biography and voice. Only
-an explicit factual identity correction or an exceptionally significant irreversible
-transformation that Lore alone cannot adequately represent warrants an identity
-update. That exception requires review and focused supporting Lore. Approval can update the identity
-and creates focused supporting historical Lore. Generated identity writes require a typed
-semantic placement review with the exact target, changed fact and exact evidence
-quotes; whole-paragraph words such as "killed" or "permanent" cannot authorize them.
-The review is bound to the exact draft, evidence and destination snapshot. Content
-or target edits invalidate it for automatic approval. Manual approval applies the
-displayed destination and preserves its current card type; it never silently
-reroutes a draft. Mixed biography/event drafts are extracted and
-revalidated once; unstable repairs retain bounded retry behavior. Explicit card editing remains available, as
-does reviewed AI-assisted authoring; model envelopes cannot set its user-initiated flag.
+All automatic card writes use the shared append/create proposal pipeline. Every saved card is an eligible destination, including inactive cards, historical Lore and legacy autoUpdate=false cards. Bounded relevance selection limits condition checks; context inclusion and per-card legacy update cooldowns do not authorize or forbid new memory. Global memory enablement/cadence and approval settings remain authoritative. Protected targets require review.
+
+Generated updates contain only new facts. The reducer appends them, retains existing content byte-for-byte, preserves type and authored controls, merges source IDs and relevant triggers, and records revision snapshots. It never silently replaces a biography, changes the voice contract or archives facts for a context budget. Manual editing remains available. Later corrections are dated additions; historical text is not an instruction to replay an event.
+
+Version 2 placement reviews bind the append/create operation, exact draft, source evidence and destination snapshot. Edits invalidate automatic approval. Old pending reviews require revalidation when processed, never a provider call on load. A mixed or exaggerated draft can be corrected once and separately reviewed; final review freezes the corrected text instead of chasing stylistic rewrites. Exact evidence IDs and quotes remain mandatory, with one bounded model repair for invalid discovery evidence. The application never fabricates or silently fixes evidence.
 
 Lore updates preserve earlier Content, earliest occurrence, source IDs and revision
 snapshots. Known dates label appended developments. Recovering older evidence does
@@ -82,113 +67,8 @@ condition remains nonpersistent. Brain targeting, capture, first-person checks,
 append/replace, archival, deduplication, cooldowns, review and context are unchanged.
 Other Brain migrations are intentionally retained.
 
-## Request/cost evidence
+## Compatibility and verification
 
-Normal turns still make one narration request containing the hidden memory tail.
-Missing/malformed envelopes queue recovery, not immediate retries. Existing recovery
-attempts wait at least five story turns (or a larger configured interval), with up
-to ten queued sources. No scheduler/provider/cooldown/output reserve is changed.
-Configured semantic rules, manual authoring and agency/continuity correction remain
-their existing separate request paths. The recovery output allowance remains
-min(background provider output cap, 1,400) times the evaluated source count;
-narration reserve stays 1,400.
+The Memory Mode selector, ongoing filter and per-card auto-update opt-in have been removed. Legacy memoryMode, autoUpdate, archivedFacts and eventMemory fields remain readable and round-trip without bulk rewriting saves. Dates and completed/ongoing/unresolved status describe facts independently of update eligibility. Existing source-completion and bounded retry/quarantine rules remain; loading an adventure does not replay history or send memory requests.
 
-The 20-turn mocked provider regression measures requests, estimated prompt tokens
-and configured output-token ceilings, not dollars or actual generated tokens.
-Before changes, the existing dirty workspace measured 20 narration / 0 recovery
-calls, 62,934 estimated prompt tokens, 24,000 output budget for valid envelopes;
-missing envelopes measured 20 / 4, 68,918 prompt tokens, 48,000 output budget.
-The same workspace after this change measured 62,314 / 68,174 prompt tokens with
-identical calls and output budgets. Its pre-existing Brain-topic/discovery work
-remains outside this commit.
-
-An independent unchanged committed-HEAD copy measured 74,053 / 82,238 prompt tokens
-for the same sessions, with the same 20/0 and 20/4 requests and 24,000 / 48,000 output
-ceilings. The isolated committed-change copy measured 70,493 / 77,966 prompt tokens
-(about 4.8% / 5.2% lower), with identical requests and output ceilings.
-A third 20-turn session with 60 stored Lore cards and a three-turn Brain cooldown
-measured 20 requests and seven Brain updates both before and after; prompt estimates
-fell from 74,580 to 71,020 and the output ceiling remained 24,000. None of the
-unrelated Lore archive was injected. The full scoped suite passed 449 tests.
-Tests enforce no additional requests or larger output budget and no prompt-token
-increase over that committed baseline. Provider billing, caching, narration lengths
-and live usage vary; this does not guarantee a particular daily/monthly dollar cost.
-
-## Deliberately deferred
-
-The suggestion engine still needs its separate routing/judgment redesign:
-
-- Improve meaningful-event nomination, same-continuing-subject matching and selection
-  of identity exceptions beyond conservative lexical review gates.
-- Replace the old `classifyMemory` immediate/current-state-to-Plot-Essentials rule.
-  Existing pressure, arc and essentials automation is unchanged in this phase;
-  none is added as a consequence of the Story Card migration.
-- Improve old existing-card semantic prompts that can nominate ordinary biography
-  updates. The new boundary blocks those writes; it does not add a corrective LLM call.
-- Add richer fantasy-calendar parsing/date inference only after evaluating its cost.
-  Ambiguous dates remain unknown/textual now.
-
-No autonomous agent, embeddings service, second normal-turn pass, recurring date
-call, automatic historical scan or new background subscription is introduced.
-
-## Main files
-
-Generated cards must have reusable topic triggers covering their content, rather
-than depending on an exact scene sentence or elaborate title. Generation prompts
-request 3–6 short phrases (for example, "runic research", "ward design", or
-"government reform"). Useful title phrases and shared relevant topics are kept;
-unrelated character-name cues and empty catch-all words remain filtered.
-`generatedStoryCardTriggers` derives grounded phrases from the title/body when
-the model omits usable keys. This runs for discovery, proposal routing, approval
-(including older triggerless pending suggestions), and generated scenario cards.
-It adds no provider calls and does not rewrite existing adventures on load.
-
-Schema: `src/types/adventure.ts`. Migration and Brain import fix:
-`src/state/defaults.ts`, `src/importers/aidCardParser.ts`. Writes/history:
-`src/state/adventureReducer.ts`, `src/memory/applyAIMemoryUpdate.ts`.
-Architecture/time/retrieval: `src/memory/storyCardArchitecture.ts`,
-`src/memory/storyTime.ts`, `src/memory/eventMemory.ts`,
-`src/contextBuilder/contextBuilder.ts`. Editing: `src/pages/StoryCardsPage.tsx`,
-`src/pages/StoryCardChronology.tsx`. Creation controls/prompts: Adventures, Memory
-Inbox, adventure generator, Story Card audit/builder and one-pass memory modules.
-Regression tests cover migrations, round-trips, identity durability/death, Lore
-dates/history/recall/privacy/budgets, Brain imports/fallbacks, editor controls,
-clock skips/flashbacks/undo, and 20-turn request/token accounting.
-
-## Placement review and older suggestions
-
-Generated Story Card suggestions classify the new fact as identity, historical Lore,
-ongoing Lore, reference Lore, existing-Brain state or no memory. Existing-card checks,
-discovery, explicit catch-up and regeneration share the same semantic placement
-validator. Identity checks can produce separate Lore without waiting for another
-independent discovery call. Candidate isolation, atomic group commits, source and
-destination guards and `autoUpdate` permissions still apply.
-
-Memory Reconcile treats its selected cards as references, allowing separate Lore
-instead of demanding profile replacements. A mismatch with an original identity
-target may yield a corrected Lore extraction, but the extracted draft must pass a
-separate attribution review against its Lore destination. Failed or malformed
-Reconcile drafts are recorded in Decisions, not published as ordinary suggestions;
-retry is explicit and repairs remain bounded. Duplicate validated accounts of the
-same finding are consolidated. This does not change manual approval of existing
-or edited suggestions, and does not rewrite saved cards on load.
-
-Memory Inbox shows Create/Update plus the card type and destination. Older generated
-pending suggestions can always be approved manually. Changed or missing source
-evidence, destination edits and missing placement validation appear as advisory
-messages; they do not disable Approve or require another AI request. Regenerate
-and Convert to Lore remain optional. Conversion extracts the new facts and validates
-the resulting Lore draft; it does not just relabel a biography. Automatic approval
-still requires valid evidence and placement. Manual approval can update inactive
-or historical destinations; a deleted destination creates a new card. Unrecognized
-Gregorian dates stay as text with unknown precision and do not prevent approval.
-Loading an adventure sends no requests and modifies no approved cards. Placement metadata is optional in
-saves and never enters narrator context. Explicit card editing and deliberate card
-builder authoring remain available.
-
-Correctly placed drafts reuse the existing validation call. Mixed drafts need one
-additional final review; supporting history with different text also needs review.
-Explicit compact catch-up now validates its generated Story Cards rather than
-promising that every catch-up batch costs a single request. Narration itself adds
-no request or token-budget increase. Offline mocked tests verify routing and commit
-behavior; real-model extraction and classification accuracy remains model-dependent.
+`storyCardPlacement.test.ts` covers every card type across all three legacy modes, disabled opt-in, inactive/protected targets, preserved bodies and controls, stale evidence, bounded repair and import/export. `hogwartsTattooAppend.test.ts` uses original source excerpts to verify partnership creation, a described paper-transfer technique, Ron's successful test, branding and future production agreements. Provider responses are explicitly mocked; these tests establish pipeline correctness, not live-model semantic accuracy.
