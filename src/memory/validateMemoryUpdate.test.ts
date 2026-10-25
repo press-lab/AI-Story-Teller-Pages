@@ -31,6 +31,12 @@ it("supplies Lore target metadata and accepts observable interest without assert
   expect(JSON.parse(messages.at(-1)!.content).targetInfo).toEqual({ type: "lore", memoryMode: "historical" });
   expect(messages.some(m => m.content.includes("title can name a topic or partnership"))).toBe(true);
 });
+it("retains a negative Story Card attribution verdict when no corrected placement was supplied", async () => {
+  const { placement: _placement, ...v } = verdict();
+  provider.mockResolvedValue({ content: JSON.stringify({ ...v, identityMatchesTarget: false, reason: "Attribution needs review." }), raw: {} });
+  expect(await validateMemoryUpdate(seed(), defaultModelConfig, "storyCard", "Fred and George", "", "Ron expressed interest."))
+    .toMatchObject({ changed: false, failureCode: "memory_identity_rejected", error: expect.stringContaining("Attribution needs review") });
+});
 it.each([{}, { ...verdict(), accepted: "false" }, { ...verdict(), meaningfulChange: "yes" }, { ...verdict(), evidenceMessageIds: "source" }])("fails closed on malformed verdicts", async result => {
   provider.mockResolvedValue({ content: JSON.stringify(result), raw: {} });
   expect(await validateMemoryUpdate(seed(), defaultModelConfig, "storyCard", "Product", "", "Ron expressed interest."))

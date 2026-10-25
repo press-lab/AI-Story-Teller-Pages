@@ -42,7 +42,7 @@ import { storyCardContextContent } from "../memory/storyCardPolicy";
 import { sendMemoryCompletion } from "../providers/memoryCompletion";
 import { memoryEvidenceWindow, storyMemoryMessages } from "../memory/memoryEvidenceWindow";
 import { MEMORY_EVALUATION_GROUPS, memoryTargetSnapshot } from "../memory/memoryCycleState";
-import { makeStoryCardSuggestion } from "../memory/storyCardSuggestions";
+import { equivalentStoryCardSuggestions, makeStoryCardSuggestion } from "../memory/storyCardSuggestions";
 import { STORY_CARD_PLACEMENT_POLICY } from "../memory/storyCardPlacement";
 import { validateStoryCardProposal } from "../memory/validateStoryCardProposal";
 import { adventureReducer } from "../state/adventureReducer";
@@ -158,9 +158,9 @@ ${storyCardContextContent(card)}
 
 Attribute each action, statement and message to its actual source. Do not identify an unknown sender as this character from an initial or a nearby mention. The player, narrator and named NPCs are separate people. Preserve this card's established identity.
 
-Based on what just happened, replace this card only when a genuinely new durable fact or correction is supported. Otherwise return NONE. Format the content as concise bullet points, one per line, using the • character. Each bullet should be a single self-contained fact, trait, or rule. Preserve all existing facts that are still true; update or remove only what has changed.
+Based on what just happened, prefer a separate focused Lore finding for a significant event involving this subject. Character and Location profiles are near immutable. Replace identity content only for an explicit factual correction or an exceptionally significant irreversible transformation that Lore alone cannot adequately represent. Otherwise leave the profile unchanged. Return NONE when no meaningful new memory qualifies. Format content as concise bullet points, one per line, using the • character. For a rare identity replacement preserve all existing facts that are still true.
 
-If this is a character card with a VOICE CONTRACT section, keep that section after the bullets — preserve it verbatim unless the character's voice has genuinely shifted, in which case refine it in place (keep the Rhythm / Default move / Emotional defense / Never sounds like / Example lines shape).
+For a rare identity replacement of a character card, preserve its VOICE CONTRACT verbatim after the bullets. For a Lore finding omit the profile and VOICE CONTRACT entirely.
 
 Do NOT include: current location, who is currently present in a scene, active mission status, next-step instructions, or momentary emotions. Only record facts that match this card's memory mode.
 
@@ -171,7 +171,7 @@ Example format:
 
 ${STORY_CARD_PLACEMENT_POLICY}
 Return NONE when nothing qualifies. Otherwise return JSON {"title":"focused subject","content":"focused new fact or identity replacement","storyCardType":"character|location|lore|custom","memoryMode":"static|living|historical"}. For a lesson or event, return a separate Lore finding containing only the new event, not the existing biography.
-Keep the replacement under 500 words, normally 150-300. A character card, even in living mode, is not a scene log. Do not add other people's profiles or voice examples. Private interpretations belong in Brains. Avoid repeating or paraphrasing existing facts. Return only the JSON draft, or NONE when nothing durable changed.`;
+Keep a Lore finding under 70 words when possible; the hard limit is 500 words. A character card, even in living mode, is not a scene log. Do not add other people's profiles or voice examples. Private interpretations belong in Brains. Avoid repeating or paraphrasing existing facts. Return only the JSON draft, or NONE when nothing durable changed.`;
 }
 
 function componentPrompt(component: ComponentEntry): string {
@@ -348,7 +348,7 @@ function storyCardUpdateConditions(adventure: Adventure): SemanticCondition[] {
   return eligible.map((target) => ({
     id: `storyCard:${target.id}`,
     label: `Story Card: ${target.title}`,
-    condition: `when the story has established new details, developments, or changes that should update the fact card titled "${target.title}" — only fire for a supported identity correction/change or a significant new development to retain separately as Lore; exclude paraphrases, routine gestures, scene movement, another person's profile, and private interpretations belonging in a Brain`,
+    condition: `when the story has established meaningful new memory involving "${target.title}" — prefer retaining significant new events separately as Lore, including death; Character/Location are near immutable and only an explicit factual correction or exceptionally significant irreversible transformation can justify an identity replacement; exclude paraphrases, routine gestures, scene movement, another person's profile, and private interpretations belonging in a Brain`,
     sourceType: "storyCard" as const,
     actionFactory: () => [{ type: "updateStoryCard" as const, storyCardId: target.id }],
   }));
@@ -1602,16 +1602,18 @@ export async function runMemoryReconcile(
 
   const systemPrompt = `You are reconciling inspectable memory for an interactive fiction game.
 
-The target list was selected deterministically. Do not add targets. Do not invent target IDs. Generate replacement/update content only for the listed targets.
+The target list was selected deterministically. Do not invent target IDs. Each update.targetId must identify a listed reference or subject. A listed Character/Location can be the reference for a separate new Lore finding; it does not have to be the destination of a profile rewrite. For such a finding return storyCardType=lore, a focused event/topic title and only the new facts. The application will create Lore without targeting the identity card. Do not add unrelated subjects.
 
 Rules:
 - If the user provided a directive, it is authoritative for current continuity. If not, infer relevant memory updates from the recent entries.
 - Remove stale active pressure. Preserve true completed events as historical facts.
 - Plot Essentials: full compact replacement, 4-7 tight bullets or short lines, overarching premise and persistent story-wide constraints only.
 - Active Pressure: exactly one sentence naming the current external pressure.
-- Story Cards: full replacement content for that card. Use present tense for static/living current facts and past tense for historical/resolved facts.
+- Story Cards: prefer focused Lore almost always for what happens to people and places. Completed events, including death, use historical Lore; genuinely evolving relationships/arrangements use ongoing Lore. Do not copy biography or voice text into Lore. Only an explicit factual identity correction or exceptionally significant irreversible transformation can justify replacing a Character/Location profile. Preserve still-valid identity for that rare replacement. Existing Lore updates retain earlier history.
 - Brain updates: return JSON with changed fields or thoughts only. Only update an existing listed Brain.
 - If deterministicStoryCardPatch or deterministicComponentPatch is present, write content that matches that state change.
+
+${STORY_CARD_PLACEMENT_POLICY}
 
 Respond ONLY with valid JSON:
 {
@@ -1679,6 +1681,8 @@ Terms: ${terms.join(", ")}
 ${recent}`;
     const actions: AdventureAction[] = [];
     const generatedContent: GeneratedContentPreview[] = [];
+    const errors = providerConfigWarnings(adventure);
+    let proposalCount = 0;
 
     for (const update of parsed.updates.slice(0, targets.length)) {
       const target = targetById.get(update.targetId);
@@ -1690,6 +1694,9 @@ ${recent}`;
       const componentPatch = target.targetType === "component"
         ? { ...(safeComponentPatch(update.componentPatch) ?? {}), ...(target.deterministicComponentPatch ?? {}) }
         : undefined;
+      const referenceCard = target.targetType === "storyCard" ? adventure.storyCards.find(card => card.id === target.id) : undefined;
+      const storyCardType = validStoryCardType(update.storyCardType) ?? referenceCard?.type;
+      const separateLore = referenceCard && referenceCard.type !== "lore" && storyCardType === "lore";
       let proposal: MemoryProposal = {
         id: createId("proposal"),
         sourceTurnId,
@@ -1701,11 +1708,11 @@ ${recent}`;
         confidence: 0.9,
         rationale: update.rationale ?? parsed.rationale ?? `Reconciled ${target.title} from recent entries and directive.`,
         status: "pending",
-        targetId: target.id,
+        targetId: separateLore ? undefined : target.id,
         appendContent: proposedType === "currentArcUpdate" ? true : false,
         memoryMode: validMemoryMode(update.memoryMode),
-        storyCardType: validStoryCardType(update.storyCardType),
-        storyCardPatch: storyCardPatch && Object.keys(storyCardPatch).length > 0 ? storyCardPatch : undefined,
+        storyCardType,
+        storyCardPatch: !separateLore && storyCardPatch && Object.keys(storyCardPatch).length > 0 ? storyCardPatch : undefined,
         componentPatch: componentPatch && Object.keys(componentPatch).length > 0 ? componentPatch : undefined,
         createdAt: now,
         updatedAt: now,
@@ -1714,20 +1721,37 @@ ${recent}`;
         const narrator = [...adventure.messages].reverse().find(m => m.role === "assistant");
         const reviewed = await validateStoryCardProposal(adventure, config, { ...proposal, sourceTurnId: narrator?.id ?? sourceTurnId,
           storyCardType: proposal.storyCardType ?? adventure.storyCards.find(c => c.id === proposal.targetId)?.type });
-        if (reviewed.proposal) proposal = reviewed.proposal;
-        // Failed/unsupported drafts remain visibly pending and cannot be approved.
-        else proposal = { ...proposal, requiresReview: true, rationale: `${proposal.rationale} Placement review: ${reviewed.error ?? "No qualifying new fact."}` };
+        if (!reviewed.proposal) {
+          const reason = reviewed.error ?? "No qualifying new fact.";
+          actions.push({ type: "RECORD_MEMORY_DIAGNOSTIC", entry: {
+            id: createId("decision"), sourceId: narrator?.id ?? sourceTurnId, createdAt: nowIso(), stage: "candidate",
+            outcome: "validation_rejected", reason: `Memory Reconcile: ${reason}`, failureCode: reviewed.failureCode,
+            providerCode: reviewed.providerCode, httpStatus: reviewed.httpStatus,
+            candidate: { kind: proposal.storyCardType ?? "storyCard", title: proposal.title, content: proposal.content,
+              evidence: proposal.sourceText, rationale: proposal.rationale, targetId: proposal.targetId },
+          } });
+          if (reviewed.retryable) errors.push(`Memory Reconcile ${proposal.title}: ${reason} Retry this reconciliation explicitly.`);
+          continue;
+        }
+        proposal = reviewed.proposal;
+        const duplicate = actions.find(action => action.type === "ADD_MEMORY_PROPOSAL" && equivalentStoryCardSuggestions(action.proposal, proposal));
+        if (duplicate?.type === "ADD_MEMORY_PROPOSAL") {
+          actions.push({ type: "RECORD_MEMORY_DIAGNOSTIC", entry: { id: createId("decision"), sourceId: proposal.sourceTurnId,
+            createdAt: nowIso(), stage: "candidate", outcome: "candidate_merged", proposalId: duplicate.proposal.id,
+            reason: "Memory Reconcile produced another account of the same validated Lore finding." } });
+          continue;
+        }
       }
       actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal });
-      generatedContent.push({ targetType: target.targetType === "brain" ? "brain" : target.targetType === "component" ? "component" : "storyCard", targetId: target.id, title: target.title, preview: preview(proposal.content) });
+      proposalCount++;
+      generatedContent.push({ targetType: target.targetType === "brain" ? "brain" : target.targetType === "component" ? "component" : "storyCard", targetId: proposal.targetId ?? proposal.id, title: proposal.title, preview: preview(proposal.content) });
     }
 
-    const errors = providerConfigWarnings(adventure);
-    if (actions.length === 0) errors.push("Memory reconcile AI response did not contain usable updates for the deterministic targets.");
+    if (proposalCount === 0) errors.push("Memory reconcile AI response did not contain usable updates for the deterministic targets.");
     const logEntry: EvaluationLogEntry = {
       ...emptyLog,
       conditionsFired: ["memoryReconcile"],
-      actionsExecuted: [`Memory Reconcile: ${actions.length} proposal(s) from ${targets.length} target(s)`],
+      actionsExecuted: [`Memory Reconcile: ${proposalCount} proposal(s) from ${targets.length} target(s)`],
       generatedContent,
       errors,
     };
@@ -1760,9 +1784,9 @@ ${STORY_CARD_BEST_PRACTICES}
 ${TRIGGER_BEST_PRACTICES}
 
 Examine the description against existing story cards and characters:
-- If the fact is a property or development of existing entities, propose updating those cards (action "update" with the cardId)
+- Prefer a focused Lore card for what happens to existing people and places, including death. Update existing Lore only when it is the same evolving subject. Character/Location are near immutable; reserve their updates for explicit identity corrections or exceptionally significant irreversible transformations that Lore alone cannot adequately represent.
 - If the fact is a distinct event, concept, or relationship with its own identity, propose a new card (action "create")
-- You may propose both updates AND a new card for the same fact
+- Do not duplicate one event across a Character update and Lore. Preserve the biography and voice on the Character card.
 - Prefer one focused proposal. Return multiple proposals only when the description clearly contains separate durable subjects.
 - Do not propose temporary scene state, one-off scenery, generic movement, or short-lived emotional reactions.
 - Do not put broad character names on event, relationship, or subplot cards when those names already belong to character cards. Use specific consequences, place names, object names, faction names, case names, or nicknames instead.
@@ -1770,8 +1794,8 @@ Examine the description against existing story cards and characters:
 Respond ONLY with valid JSON:
 {
   "proposals": [
-    { "action": "update", "cardId": "existing-card-id", "title": "Card Title", "memoryMode": "living", "content": "• Bullet fact one.\n• Bullet fact two.", "keys": ["keyword1"] },
-    { "action": "create", "title": "New Card Title", "memoryMode": "historical", "content": "• Bullet fact one.\n• Bullet fact two.", "keys": ["keyword1", "keyword2"] }
+    { "action": "update", "cardId": "existing-lore-id", "storyCardType": "lore", "title": "Card Title", "memoryMode": "living", "content": "• Bullet fact one.\n• Bullet fact two.", "keys": ["keyword1"] },
+    { "action": "create", "storyCardType": "lore", "title": "New Card Title", "memoryMode": "historical", "content": "• Bullet fact one.\n• Bullet fact two.", "keys": ["keyword1", "keyword2"] }
   ],
   "rationale": "Brief explanation of choices"
 }
@@ -1817,6 +1841,7 @@ Write the example lines in the character's actual voice. Omit the VOICE CONTRACT
       proposals: Array<{
         action: "update" | "create";
         cardId?: string;
+        storyCardType?: StoryCardType;
         title: string;
         memoryMode?: "static" | "living" | "historical";
         content: string;
@@ -1832,6 +1857,7 @@ Write the example lines in the character's actual voice. Omit the VOICE CONTRACT
     for (const p of parsed.proposals) {
       const routed = resolveMemoryTarget(adventure, {
         proposedType: "storyCard",
+        storyCardType: validStoryCardType(p.storyCardType) ?? "lore",
         title: p.title,
         content: p.content,
         sourceText: fact,
@@ -1847,6 +1873,7 @@ Write the example lines in the character's actual voice. Omit the VOICE CONTRACT
         sourceText: fact,
         userInitiated: true,
         proposedType: routed.proposedType,
+        storyCardType: routed.storyCardType,
         title: routed.title,
         content: routed.content,
         suggestedTriggers: routed.suggestedTriggers,

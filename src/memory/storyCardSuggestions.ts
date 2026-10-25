@@ -10,7 +10,7 @@ import { generatedStoryCardTriggers } from "./resolveMemoryTarget";
 export const STORY_CARD_MEMORY_CHECK = `STORY CARD MEMORY CHECK
 Find NEW MEANINGFUL durable developments, judging context, not keywords. Include significant first romantic advances, explicit attempted kisses, mutual first kisses, accepted/declined invitations, confessions, boundaries, commitments, betrayals, discoveries, deaths and permanent changes.
 Separate completed interactions from intended outcomes: an accepted invitation happened before dinner; a declined kiss attempt happened without a kiss. Research dinner need not be romantic. Significant flirtation with a lean-in/lean-back may warrant candidateOnly=true describing observations and uncertainty, NEVER a confirmed kiss attempt. Ordinary smiles, leaning to read, jokes, movement and meals alone do not qualify. Attempts require review; uncertain interpretations require candidateOnly=true,eventStatus=unresolved. Never infer consent or relationship status.
-Lore holds observable history; Brains hold supported private changes; Character/Location hold durable identity. autoUpdate=false protects existing cards, not independent new Lore. Preserve private knowledge and source quotes. Never invent outcomes, duplicate memories or suggest Plot Component updates.
+Prefer Lore almost always for observable history and developments, including death; Brains hold supported private changes. Character/Location are near immutable identity references, not accounts of what happens to them. autoUpdate=false protects existing cards, not independent new Lore. Preserve private knowledge and source quotes. Never invent outcomes, duplicate memories or suggest Plot Component updates.
 Return suggestions or an empty array.
 END STORY CARD MEMORY CHECK`;
 

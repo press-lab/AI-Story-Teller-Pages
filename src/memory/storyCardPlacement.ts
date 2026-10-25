@@ -3,9 +3,9 @@ import { memoryTargetMatches, memoryTargetSnapshot } from "./memoryCycleState";
 
 export const PLACEMENT_VERSION = 1;
 export const STORY_CARD_PLACEMENT_POLICY = `Classify the NEW fact separately from the surrounding biography.
-Character and Location cards hold enduring identity. Significant actions, lessons, relationships, agreements and events belong in Lore even when a participant has an identity card. Living mode does not permit scene logs in identity cards.
+Default to Lore for new developments, almost always instead of updating another card. Lore records the events that happen to people and places, including significant actions, lessons, relationships, agreements, discoveries, injuries and deaths. Character and Location cards are near immutable identity references, even in living mode; a person participating in an event is not a reason to rewrite their profile. Even death belongs primarily in historicalLore, preserving the person's biography and voice.
 Moody demonstrating Unforgivable Curses belongs in historicalLore, not his Character profile. Moody saying the curse killed Harry's parents does not mean Moody died. An unchanged description such as permanently scarred is not a new identity change. A classroom hosting a lesson does not change its identity; destruction elsewhere does not destroy this location.
-identity: a missing identity/reference, or an evidenced correction/transformation of the exact target. historicalLore: completed significant events. ongoingLore: evolving relationships/arrangements. referenceLore: established world rules/techniques. brain: supported private state of an existing Brain only. none: routine, redundant or unsupported.
+identity: a genuinely missing identity/reference, an explicit factual identity correction, or an exceptionally significant irreversible transformation of the exact target that cannot be represented adequately by Lore alone. Any existing identity change requires exact evidence, explicit review and focused supporting historical Lore. Prefer Lore even for major events; do not promote relationships, rivalries, achievements, new knowledge or ordinary capability use into identity changes. historicalLore: completed significant events. ongoingLore: evolving relationships/arrangements. referenceLore: established world rules/techniques. brain: supported private state of an existing Brain only. none: routine, redundant or unsupported. When in doubt between an identity update and supported Lore, choose Lore; do not record trivial events just to create memory.
 Do not infer Moody considers Seth a weapon from his eye lingering. Attribute claims to speakers. Keep Lore focused on new facts; omit biography and voice contracts.`;
 
 export function placementFingerprint(p: MemoryProposal): string {
@@ -39,6 +39,7 @@ export function placementValidationError(a: Adventure, p: MemoryProposal): strin
     if (target && (target.type === "character" || target.type === "location")) {
       const change = v.identityChange;
       if (!change || change.targetId !== target.id || typeof change.fact !== "string" || !change.fact.trim()
+        || typeof change.supportingLore !== "string" || !change.supportingLore.trim()
         || !["correction", "transformation"].includes(change.kind) || !Array.isArray(change.evidenceQuotes) || !change.evidenceQuotes.length
         || !change.evidenceQuotes.every(q => q && typeof q.messageId === "string" && typeof q.quote === "string" && q.quote.trim() && v.sources.some(s => s.id === q.messageId && s.content.includes(q.quote)))) return "The identity change lacks target-specific reviewed evidence.";
     }

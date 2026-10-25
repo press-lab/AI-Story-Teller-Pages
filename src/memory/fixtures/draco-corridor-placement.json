@@ -1,0 +1,84 @@
+{
+  "note": "Minimal source and draft excerpts from the supplied Hogwarts export. Original Character destinations recovered from proposal_accepted diagnostics. Provider verdicts in tests are synthetic; raw rejected provider responses were not saved.",
+  "messages": [
+    {
+      "id": "msg_mvncpliy_h45hmqzf",
+      "role": "user",
+      "content": "I grin and pause then walk over to Draco, leaving Ron and hermione. “Hey Draco. You like the fireworks yesterday?” I ask being cocky. “If you want a private demonstration…”",
+      "createdAt": "2026-10-25T04:52:14.266Z"
+    },
+    {
+      "id": "message_mvncpxng_ca259qvl",
+      "role": "assistant",
+      "content": "Draco stops. Slowly turns. Up close he's slightly shorter than you, which visibly irritates him.\n\n\"Fireworks,\" he repeats, in the tone of someone identifying a bad smell. \"That's what you're calling it? Waving your arm about like a fairground act?\" His pale eyes flick to your sleeve, then back up. \"Draconia might be amused by a circus, Press. I'm not. Unless you plan to enter a talent competition, I don't see why I'd want a private demonstration of anything.\"\n\nCrabbe snickers. Goyle doesn't, quite sure if there's an insult in there for him.\n\n\"Though if you're offering,\" Draco adds, lips curving, \"we could always find out what your tattoos do when you're upside down. Cornered by three people, say.\" It's delivered lightly, an idle observation rather than a threat — but the way Crabbe and Goyle shift says they've heard this kind of idle observation before.",
+      "createdAt": "2026-10-25T04:52:29.980Z"
+    },
+    {
+      "id": "msg_mvncrr20_wv3z448l",
+      "role": "user",
+      "content": "You “One, is there a talent competition? I think I’d be great. And two, upside down huh? Getting kinky on me?”",
+      "createdAt": "2026-10-25T04:53:54.744Z"
+    },
+    {
+      "id": "message_mvncrz0u_zk313bww",
+      "role": "assistant",
+      "content": "Crabbe makes a strangled noise, half-chuckle, half-confusion. Goyle looks at Draco for guidance.\n\nDraco's jaw tightens. \"Charming,\" he says flatly. \"Is everything an American joke to you?\"\n\n\"Enough, Draco.\" Draconia has drifted back through the knot of Slytherins, unhurried, clutching her bag. \"You're making us look provincial.\" She looks you over with evident amusement. \"Though honestly, if there *were* a talent competition, I'd pay to see the look on Pucey's face when you place above him.\"\n\n\"There's no talent competition,\" Draco snaps. \"He's not being serious.\"\n\n\"Obviously.\" Draconia's green eyes settle on you, dry. \"That's rather the point. He's winding you like a toy. Do try not to snap in the corridor, Mother will hear about it.\"\n\nShe turns and strolls off, Pansy falling in beside her, already talking about lunch. Draco looks between you and his sister's retreating back, visibly furious that *she's* now the one who got the last word.\n\n\"We're not finished, Press,\" he says, and shoulders past toward the Great Hall.",
+      "createdAt": "2026-10-25T04:54:05.070Z"
+    }
+  ],
+  "cards": [
+    {
+      "id": "story_hu2_1",
+      "title": "Seth Press / Player",
+      "content": "Seth Press is 21, a 6'4\" athletic, broad-shouldered American half-blood wizard with short dark-blond hair and blackwork sigil tattoos across his torso, back and arms. He grew up on family land near Woodstock, Vermont, in a loving, intellectually curious household, and flew brooms with his mother for recreation. His Muggle-born mother, Dr Rebecca Press, is a respected spell-circumstances researcher; his Muggle father Daniel works in finance. After three years at Ilvermorny, Seth transferred to Hogwarts University for fourth year and was Sorted into Gryffindor. He is an exceptionally powerful, independent wandless mage and advanced applied runic engineer. His modular tattoos provide foundational magical functions rather than holding finished spells; his ultimate power limit is unknown. Seth now collaborates with Fred and George Weasley as their applied-rune product partner. He has begun getting to know Harry, Ron and Hermione, and has met both Malfoy twins. Hermione and Draconia have each engaged him in technical discussions about recursive magic. Seth and Draconia held a private library discussion and demonstration on 2 September; they have an emerging intellectual rapport, not an established romance. The player exclusively controls Seth's thoughts, dialogue, intentions, decisions, consent and meaningful actions.",
+      "keys": [
+        "Seth Press",
+        "Seth",
+        "Press"
+      ],
+      "memoryMode": "static",
+      "autoUpdate": false
+    },
+    {
+      "id": "story_hu2_7",
+      "title": "Draco Malfoy",
+      "content": "Draco Malfoy is 21, a fourth-year Slytherin and twin brother of Draconia, raised by Lucius and Narcissa in privilege and pure-blood ideology. Proud, sharp-tongued, competitive, vain, status-conscious and quick to hide anxiety behind contempt. He has three years of rivalry with Harry Potter and strong ties to Slytherin peers such as Crabbe, Goyle, Pansy and Blaise. He genuinely loves his twin and is not simply her antagonist or guardian. He has met Seth Press, saw Seth's public recursion/discharge display alongside other Slytherins, and remains dismissive of the new Gryffindor transfer. Draco disapproves of Draconia's interest in Seth's research; he has no established friendship or alliance with Seth. VOICE: Clipped British sarcasm, prickly dignity, occasional dark humor.",
+      "keys": [
+        "Draco Malfoy",
+        "Draco"
+      ],
+      "memoryMode": "static",
+      "autoUpdate": false
+    }
+  ],
+  "drafts": [
+    {
+      "title": "Seth Press — Draco Rivalry Note",
+      "content": "Seth Press is 21, a 6'4\" athletic, broad-shouldered American half-blood wizard with short dark-blond hair and blackwork sigil tattoos across his torso, back and arms. He grew up on family land near Woodstock, Vermont, in a loving, intellectually curious household, and flew brooms with his mother for recreation. His Muggle-born mother, Dr Rebecca Press, is a respected spell-circumstances researcher; his Muggle father Daniel works in finance. After three years at Ilvermorny, Seth transferred to Hogwarts University for fourth year and was Sorted into Gryffindor. He is an exceptionally powerful, independent wandless mage and advanced applied runic engineer. His modular tattoos provide foundational magical functions rather than holding finished spells; his ultimate power limit is unknown. Seth now collaborates with Fred and George Weasley as their applied-rune product partner. He has begun getting to know Harry, Ron and Hermione, and has met both Malfoy twins. Hermione and Draconia have each engaged him in technical discussions about recursive magic. Seth and Draconia held a private library discussion and demonstration on 2 September; they have an emerging intellectual rapport, not an established romance. On 3 September Seth cockily teased Draco about the fireworks demonstration and a mock 'private demonstration,' drawing an unsubtle threat of being cornered and leaving the exchange unresolved. The player exclusively controls Seth's thoughts, dialogue, intentions, decisions, consent and meaningful actions.",
+      "storyCardPatch": {
+        "active": true,
+        "pinned": false,
+        "protected": false
+      },
+      "memoryMode": "static",
+      "targetId": "story_hu2_1",
+      "storyCardType": "character",
+      "rationale": "Seth's deliberate provocation of Draco is a significant new relationship fact worth recording on his card."
+    },
+    {
+      "title": "Draco Malfoy — Corridor Exchange Update",
+      "content": "Draco Malfoy is 21, a fourth-year Slytherin and twin brother of Draconia, raised by Lucius and Narcissa in privilege and pure-blood ideology. Proud, sharp-tongued, competitive, vain, status-conscious and quick to hide anxiety behind contempt. He has three years of rivalry with Harry Potter and strong ties to Slytherin peers such as Crabbe, Goyle, Pansy and Blaise. He genuinely loves his twin and is not simply her antagonist or guardian. He has met Seth Press, saw Seth's public recursion/discharge display, and remains dismissive of the new Gryffindor transfer. On 3 September Draco publicly mocked Seth's discharge as a 'fairground act' and hinted at cornering him; Seth needled him back, and Draconia defused the exchange by mocking Draco's temper, leaving Draco furious and declaring the matter unfinished. Draco resents Draconia's interest in Seth's research and her ability to get the last word with him. VOICE: Clipped British sarcasm, prickly dignity, occasional dark humor.",
+      "storyCardPatch": {
+        "active": true,
+        "pinned": false,
+        "protected": false
+      },
+      "memoryMode": "static",
+      "targetId": "story_hu2_7",
+      "storyCardType": "character",
+      "rationale": "The corridor exchange escalates Draco's grudge from mere dismissal to a lingering, unfinished rivalry that colors his current stance."
+    }
+  ],
+  "loreTitle": "Draco and Seth - Corridor Confrontation",
+  "lore": "Seth teased Draco about his previous magical display. Draco mocked it as a fairground act and suggested cornering Seth with Crabbe and Goyle. Draconia interrupted and mocked Draco's temper. Draco left saying, \"We're not finished, Press.\""
+}

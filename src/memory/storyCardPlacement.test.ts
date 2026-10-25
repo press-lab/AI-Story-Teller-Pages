@@ -92,6 +92,22 @@ it("reviews a genuine identity transformation and records only its supporting ev
   expect(next.storyCards[0].content).toContain(content);
   expect(next.storyCards.find(c => c.type === "lore")?.content).toBe(content);
 });
+it.each(["Alastor Moody died defending the class.", "Alastor Moody permanently lost his magical eye."])("keeps even a major event in Lore when identity replacement is unnecessary: %s", async content => {
+  const a = seed(); a.messages[0].content = content;
+  const v = loreVerdict(content); v.placement.title = "Moody: Defence class aftermath";
+  provider.mockResolvedValue(respond(v));
+  const p = (await validateStoryCardProposal(a, config, { ...draft(a), content: moody.biography + "\n" + content, sourceText: content })).proposal!;
+  expect(p).toMatchObject({ storyCardType: "lore", memoryMode: "historical", targetId: undefined, content });
+  const saved = adventureReducer(adventureReducer(a, { type: "ADD_MEMORY_PROPOSAL", proposal: p }), { type: "APPROVE_MEMORY_PROPOSAL", proposalId: p.id });
+  expect(saved.storyCards[0]).toEqual(a.storyCards[0]);
+  expect(saved.storyCards.find(card => card.type === "lore")?.content).toBe(content);
+});
+it("requires supporting Lore even for an evidenced exceptional identity change", async () => {
+  const a = seed(), content = "Alastor Moody permanently lost his magical eye."; a.messages[0].content = content;
+  provider.mockResolvedValue(respond({ ...loreVerdict(), placement: { kind: "identity", title: "Alastor Moody", content, newFact: content, reason: "Exceptional irreversible transformation.",
+    identityChange: { targetId: "moody", kind: "transformation", fact: content, evidenceQuotes: [{ messageId: "source", quote: content }] } } }));
+  expect(await validateStoryCardProposal(a, config, { ...draft(a), content })).toMatchObject({ changed: false, retryable: true, failureCode: "memory_placement_schema_invalid" });
+});
 it("converts an older mixed suggestion to a fully reviewed Lore proposal patch", async () => {
   provider.mockResolvedValueOnce(respond({ title: "Moody’s Unforgivable Curses Demonstration", content: moody.lore, storyCardType: "lore", memoryMode: "historical" })).mockResolvedValue(respond(loreVerdict()));
   const patch = await regenerateProposalContent(draft(), seed(), config, true);

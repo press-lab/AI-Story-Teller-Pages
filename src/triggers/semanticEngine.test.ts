@@ -225,6 +225,16 @@ describe("runManualBrainUpdate", () => {
 });
 
 describe("runRememberThis", () => {
+  it("defaults an event involving an existing Character to separate Lore when the model omits its type", async () => {
+    const a = baseAdventure();
+    a.storyCards = [makeStoryCard({ id: "margo", title: "Margo", type: "character", content: "Margo is a ward engineer." })];
+    mockProvider.mockResolvedValueOnce({ content: JSON.stringify({ proposals: [{ action: "update", cardId: "margo", title: "Margo's promise",
+      memoryMode: "historical", content: "Margo promised to return the ward plans.", keys: ["ward plans"] }], rationale: "A completed promise." }), raw: {} });
+    const result = await runRememberThis(a, providerConfig, "Margo promised to return the ward plans.");
+    const added = result.actions.find(action => action.type === "ADD_MEMORY_PROPOSAL");
+    expect(added).toMatchObject({ proposal: { storyCardType: "lore", targetId: undefined, memoryMode: "historical" } });
+    expect(result.actions.reduce(adventureReducer, a).storyCards).toEqual(a.storyCards);
+  });
   it("turns a description into a pending Story Card proposal", async () => {
     mockProvider.mockResolvedValueOnce({
       content: JSON.stringify({

@@ -14,12 +14,14 @@ export async function validateStoryCardProposal(a: Adventure, config: ProviderCo
     const target = snapshot.storyCards.find(c => c.id === current.targetId);
     const verdict = await validateMemoryUpdate(snapshot, config, "storyCard", current.title, target?.content ?? "", current.content,
       accum, current.appendContent ?? true, current.storyCardReview?.candidateOnly ?? false,
-      { id: target?.id, type: current.storyCardType ?? target?.type ?? "lore", memoryMode: current.memoryMode });
-    if (!verdict.changed || !verdict.placement) return verdict;
+      { id: target?.id, type: target?.type ?? current.storyCardType ?? "lore", memoryMode: current.memoryMode });
+    const repairAttribution = verdict.failureCode === "memory_identity_rejected" && target && target.type !== "lore"
+      && ["historicalLore", "ongoingLore", "referenceLore"].includes(verdict.placement?.kind ?? "");
+    if ((!verdict.changed && !repairAttribution) || !verdict.placement) return verdict;
     if (!verdict.evidenceMessageIds?.includes(draft.sourceTurnId)) return { changed: false, retryable: true,
       failureCode: "memory_placement_source_invalid", error: "Placement lacks the establishing narrator source." };
     const p = verdict.placement;
-    const type = placementCardType(p.kind, current.storyCardType ?? target?.type);
+    const type = placementCardType(p.kind, target?.type ?? current.storyCardType);
     const keepTarget = target?.type === type ? target : undefined;
     const mode = p.kind === "identity" ? keepTarget?.memoryMode ?? "static" : placementMode(p.kind);
     const suggestion = makeStoryCardSuggestion(snapshot, current.sourceTurnId, snapshot.messages.at(-1)!.content, {
@@ -29,7 +31,7 @@ export async function validateStoryCardProposal(a: Adventure, config: ProviderCo
       candidateOnly: current.storyCardReview?.candidateOnly,
     });
     let next: MemoryProposal = { ...current, ...suggestion, id: draft.id, createdAt: draft.createdAt,
-      storyCardPatch: type === current.storyCardType ? current.storyCardPatch : undefined,
+      storyCardPatch: keepTarget && suggestion.targetId === current.targetId ? current.storyCardPatch : undefined,
       memoryMode: mode, appendContent: suggestion.targetId ? (type === "lore" ? true : current.appendContent ?? false) : undefined,
       storyCardReview: { ...suggestion.storyCardReview!, additionalSources: current.storyCardReview?.additionalSources,
         evidenceQuotes: current.storyCardReview?.evidenceQuotes },

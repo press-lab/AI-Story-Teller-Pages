@@ -30,8 +30,12 @@ No clock inference request, automatic backfill or wall-clock conversion is added
 
 Ordinary automatic Character/Location content writes are blocked at the AI boundary
 and reducer. Suggestions targeting identity with ordinary developments become Lore.
-Exceptional death/alive confirmation, permanent transformation/capability change
-or explicit identity correction requires review. Approval can update the identity
+Lore is the default almost always: it records what happens to people and places.
+Character and Location cards are near immutable, including in living mode. Even
+death belongs primarily in historical Lore, preserving biography and voice. Only
+an explicit factual identity correction or an exceptionally significant irreversible
+transformation that Lore alone cannot adequately represent warrants an identity
+update. That exception requires review and focused supporting Lore. Approval can update the identity
 and creates focused supporting historical Lore. Generated identity writes require a typed
 semantic placement review with the exact target, changed fact and exact evidence
 quotes; whole-paragraph words such as "killed" or "permanent" cannot authorize them.
@@ -159,6 +163,15 @@ discovery, explicit catch-up and regeneration share the same semantic placement
 validator. Identity checks can produce separate Lore without waiting for another
 independent discovery call. Candidate isolation, atomic group commits, source and
 destination guards and `autoUpdate` permissions still apply.
+
+Memory Reconcile treats its selected cards as references, allowing separate Lore
+instead of demanding profile replacements. A mismatch with an original identity
+target may yield a corrected Lore extraction, but the extracted draft must pass a
+separate attribution review against its Lore destination. Failed or malformed
+Reconcile drafts are recorded in Decisions, not published as ordinary suggestions;
+retry is explicit and repairs remain bounded. Duplicate validated accounts of the
+same finding are consolidated. This does not change manual approval of existing
+or edited suggestions, and does not rewrite saved cards on load.
 
 Memory Inbox shows Create/Update plus the card type and destination. Older generated
 pending suggestions can always be approved manually. Changed or missing source
