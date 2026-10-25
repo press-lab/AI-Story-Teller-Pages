@@ -70,7 +70,8 @@ export interface PlayRuntimeProps extends AdventurePageProps {
   error?: string;
   onDismissError?: () => void;
   saveStatus: string;
-  onSubmitTurn: (text: string, mode: InputMode) => Promise<void>;
+  // False means no turn was accepted; keep the player draft.
+  onSubmitTurn: (text: string, mode: InputMode) => Promise<boolean | void>;
   onContinue: () => Promise<void>;
   onRegenerate: () => Promise<void>;
   onBuildContext: () => void;

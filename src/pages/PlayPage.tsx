@@ -108,10 +108,12 @@ export function PlayPage({
   uiPreferences,
   onUiPreferencesChange,
 }: PlayRuntimeProps) {
-  const memoryBlocked = memoryWork?.status === "running" || memoryWork?.status === "failed";
+  const submitPendingRef = useRef(false);
+  const draftRevisionRef = useRef(0);
   const draftKey = `play-input-draft-${adventure.id}`;
   const [input, setInput] = useState(() => { try { return localStorage.getItem(draftKey) ?? ""; } catch { return ""; } });
   function updateInput(value: string) {
+    draftRevisionRef.current += 1;
     setInput(value);
     try { if (value) { localStorage.setItem(draftKey, value); } else { localStorage.removeItem(draftKey); } } catch { /* ignore */ }
   }
@@ -274,11 +276,19 @@ export function PlayPage({
 
   async function submit() {
     const text = input.trim();
-    if (!text || loading || memoryBlocked) return;
-    updateInput("");
-    setComposerOpen(false);
-    setInputMode("do");
-    await onSubmitTurn(transformInput(text, inputMode), inputMode);
+    if (!text || loading || submitPendingRef.current) return;
+    submitPendingRef.current = true;
+    const revision = draftRevisionRef.current;
+    try {
+      const accepted = await onSubmitTurn(transformInput(text, inputMode), inputMode);
+      if (accepted !== false && draftRevisionRef.current === revision) {
+        updateInput("");
+        setComposerOpen(false);
+        setInputMode("do");
+      }
+    } finally {
+      submitPendingRef.current = false;
+    }
   }
 
   async function remember() {
@@ -526,9 +536,9 @@ export function PlayPage({
               type="button"
               className="composer-send-btn"
               aria-label="Send"
-              disabled={loading || memoryBlocked || !input.trim()}
+              disabled={loading || !input.trim()}
               onClick={submit}
-              title={loading ? "Generating…" : "Send"}
+              title={loading ? "Generating…" : memoryWork?.status === "running" ? "Send after memory finishes" : memoryWork?.status === "failed" ? "Review unfinished memory before sending" : "Send"}
             >
               {loading ? "…" : "↑"}
             </button>
@@ -555,8 +565,8 @@ export function PlayPage({
               {composerOpen ? "Close Input" : "Take a Turn"}
             </button>
             <div className={`secondary-actions${showOverflow ? " show-overflow" : ""}`}>
-              <button type="button" disabled={loading || memoryBlocked} onClick={onContinue}>Continue</button>
-              <button type="button" disabled={loading || memoryBlocked || !lastAssistant} onClick={onRegenerate}>Retry</button>
+              <button type="button" disabled={loading} onClick={onContinue}>Continue</button>
+              <button type="button" disabled={loading || !lastAssistant} onClick={onRegenerate}>Retry</button>
               <button
                 type="button"
                 disabled={loading || adventure.messages.length === 0}

@@ -22,10 +22,11 @@ function deferred() {
 function setup(saved?: Adventure, keepComponents = false) {
   const initial = saved ?? createDefaultAdventure("Memory worker");
   if (!keepComponents) initial.components = [];
+  const openTab = vi.fn();
   return renderHook(() => {
     const [adventure, setAdventure] = useState<Adventure | undefined>(initial);
-    return { adventure, setAdventure, runtime: useAdventureRuntime(adventure, setAdventure,
-      { ...defaultModelConfig, apiKey: "offline-test" }, vi.fn(), vi.fn(), vi.fn(), async () => undefined,
+    return { adventure, setAdventure, openTab, runtime: useAdventureRuntime(adventure, setAdventure,
+      { ...defaultModelConfig, apiKey: "offline-test" }, vi.fn(), vi.fn(), openTab, async () => undefined,
       { enabled: true, everyNTurns: 1, generateContent: true }) };
   });
 }
@@ -55,7 +56,7 @@ it("builds the next prompt only after the existing worker commits and blocks dup
     : Promise.resolve(response(request.memoryEvaluation ? "[]" : story)));
   const hook = setup(); await act(async () => { await hook.result.current.runtime.submitTurn("First turn."); });
   await waitFor(() => expect(provider.mock.calls.some(([request]) => request.memoryEvaluation)).toBe(true));
-  let next!: Promise<void>;
+  let next!: Promise<boolean>;
   await act(async () => { next = hook.result.current.runtime.submitTurn("Second turn."); });
   await act(async () => { await hook.result.current.runtime.submitTurn("Duplicate."); });
   await waitFor(() => expect(provider.mock.calls.some(([request]) => request.memoryEvaluation)).toBe(true));
@@ -74,7 +75,8 @@ it("does not silently retry failed memory; explicit retry spends only one unfini
   await waitFor(() => expect(provider.mock.calls.some(([request]) => request.memoryEvaluation)).toBe(true));
   expect(hook.result.current.runtime.loading).toBe(false);
   expect(hook.result.current.runtime.memoryWork?.status).toBe("failed");
-  await act(async () => { await hook.result.current.runtime.submitTurn("Blocked until choice."); });
+  await act(async () => { expect(await hook.result.current.runtime.submitTurn("Blocked until choice.")).toBe(false); });
+  expect(hook.result.current.openTab).toHaveBeenCalledWith("memoryInbox");
   await waitFor(() => expect(provider.mock.calls.some(([request]) => request.memoryEvaluation)).toBe(true));
   expect(provider).toHaveBeenCalledTimes(2);
   fail = false; await act(async () => { await hook.result.current.runtime.retryMemory(); });
@@ -172,7 +174,7 @@ it("includes a committed automatic memory update in the next prompt without addi
   });
   const hook = setup(initial, true); await act(async () => { await hook.result.current.runtime.submitTurn("I listen."); });
   expect(hook.result.current.runtime.memoryWork?.status).toBe("running");
-  let next!: Promise<void>;
+  let next!: Promise<boolean>;
   await act(async () => { next = hook.result.current.runtime.submitTurn("I answer."); });
   expect(provider.mock.calls.filter(([request]) => !request.memoryEvaluation)).toHaveLength(1);
   await act(async () => { validation.resolve(response(JSON.stringify({ accepted: true, meaningfulChange: true,

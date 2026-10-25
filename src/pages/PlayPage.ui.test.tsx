@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -19,6 +19,8 @@ global.IntersectionObserver = class {
 } as unknown as typeof IntersectionObserver;
 Element.prototype.scrollBy = () => {};
 Element.prototype.scrollIntoView = () => {};
+
+afterEach(cleanup);
 
 const originalInnerWidth = window.innerWidth;
 const originalMatchMedia = window.matchMedia;
@@ -303,17 +305,35 @@ describe("PlayPage AID-style controls", () => {
 
 });
 
-it("keeps memory notifications out of Play and preserves a draft while generation waits", async () => {
-  const user = userEvent.setup(); const adventure = playAdventure(); const submit = vi.fn(noopSubmitTurn);
+
+it.each(["running", "failed"] as const)("allows Send with %s memory and retains an unaccepted draft", async status => {
+  const user = userEvent.setup(); const adventure = playAdventure(); const submit = vi.fn(async () => false);
   render(<PlayPage adventure={adventure} dispatch={vi.fn()} loading={false} saveStatus="saved"
-    memoryWork={{ adventureId: adventure.id, status: "running", sourceIds: ["msg-ai"], remaining: 1, group: "brains" }}
+    memoryWork={{ adventureId: adventure.id, status, sourceIds: ["msg-ai"], remaining: 1, group: "brains" }}
     onSubmitTurn={submit} onContinue={noopAsync} onRegenerate={noopAsync} onBuildContext={vi.fn()}
     onOpenContext={vi.fn()} onRememberThis={noopAsync} />);
   expect(screen.queryByText(/Updating memory/)).not.toBeInTheDocument();
-  expect(screen.queryByLabelText("Generating…")).not.toBeInTheDocument();
   const input = screen.getByPlaceholderText("What does your character do?");
-  await user.type(input, "I wait{Enter}");
+  await user.type(input, "I wait");
+  expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
+  await user.click(screen.getByRole("button", { name: "Send" }));
+  expect(submit).toHaveBeenCalledWith("I wait", "do");
   expect(input).toHaveValue("I wait");
-  expect(submit).not.toHaveBeenCalled();
-  expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+});
+
+it("keeps a newer draft and ignores duplicate clicks while a submission waits for memory", async () => {
+  const user = userEvent.setup(); const adventure = playAdventure();
+  let finish!: (accepted: boolean) => void;
+  const submit = vi.fn(() => new Promise<boolean>(resolve => { finish = resolve; }));
+  render(<PlayPage adventure={adventure} dispatch={vi.fn()} loading={false} saveStatus="saved"
+    onSubmitTurn={submit} onContinue={noopAsync} onRegenerate={noopAsync} onBuildContext={vi.fn()}
+    onOpenContext={vi.fn()} onRememberThis={noopAsync} />);
+  const input = screen.getByPlaceholderText("What does your character do?");
+  await user.type(input, "I wait");
+  await user.click(screen.getByRole("button", { name: "Send" }));
+  await user.click(screen.getByRole("button", { name: "Send" }));
+  expect(submit).toHaveBeenCalledTimes(1);
+  await user.clear(input); await user.type(input, "I listen");
+  await act(async () => { finish(true); });
+  expect(input).toHaveValue("I listen");
 });

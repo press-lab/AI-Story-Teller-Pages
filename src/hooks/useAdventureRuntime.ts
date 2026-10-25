@@ -311,7 +311,10 @@ export function useAdventureRuntime(
     const latest = adventureRef.current;
     if (!latest || latest.id !== current.id) return;
     if (globalMemorySettingsRef.current.enabled && (memoryFailures(latest).length || memoryWorkRef.current?.status === "failed")
-      && allowExistingMemoryRef.current !== latest.id) return;
+      && allowExistingMemoryRef.current !== latest.id) {
+      openTab("memoryInbox");
+      return;
+    }
     allowExistingMemoryRef.current = undefined;
     return flushPendingBeforeContext(latest);
   }
@@ -485,8 +488,8 @@ export function useAdventureRuntime(
     }
   }
 
-  async function submitTurn(text: string, mode: InputMode = "story") {
-    if (!adventure || loading || isSubmittingRef.current) return;
+  async function submitTurn(text: string, mode: InputMode = "story"): Promise<boolean> {
+    if (!adventure || loading || isSubmittingRef.current) return false;
     isSubmittingRef.current = true;
     setLoading(true);
     setError(undefined);
@@ -496,7 +499,7 @@ export function useAdventureRuntime(
 
     try {
       const ready = await prepareNarration();
-      if (!ready) return;
+      if (!ready) return false;
       base = ready;
       if (mode !== "comms" && CHALLENGE_PHRASES.some(re => re.test(text))) base = adventureReducer(base, { type: "SET_CHALLENGE_MODE" });
       isNarratingRef.current = true;
@@ -534,6 +537,7 @@ export function useAdventureRuntime(
       isNarratingRef.current = false;
       adventureRef.current = next;
       if (mode !== "comms") void startPostTurnWork(next);
+      return true;
     } catch (providerError) {
       const errMsg = providerError instanceof Error ? providerError.message : "Provider request failed.";
       const isNetworkError = errMsg.startsWith("Network error");
@@ -554,6 +558,7 @@ export function useAdventureRuntime(
       const errorState = mergeQueuedUpdates(snapshotWithUserMsg ?? base);
       setAdventure(errorState);
       await saveAdventure(errorState);
+      return snapshotWithUserMsg !== undefined;
     } finally {
       setLoading(false);
       isSubmittingRef.current = false;
