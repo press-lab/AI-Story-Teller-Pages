@@ -586,7 +586,23 @@ export interface StoryCardSuggestionReview {
   playerContent?: string;
 }
 
+export type MemoryPlacementKind = "identity" | "historicalLore" | "ongoingLore" | "referenceLore" | "brain" | "none";
+
+/** A semantic review, bound to the exact draft and evidence. Never part of narrator context. */
+export interface MemoryPlacementValidation {
+  version: 1;
+  kind: MemoryPlacementKind;
+  reason: string;
+  newFact: string;
+  fingerprint: string;
+  sources: Array<{ id: string; content: string }>;
+  target?: MemoryTargetSnapshot;
+  identityChange?: { targetId: string; kind: "correction" | "transformation"; fact: string;
+    evidenceQuotes: Array<{ messageId: string; quote: string }>; supportingLore?: string };
+}
+
 export interface MemoryProposal {
+  placementValidation?: MemoryPlacementValidation;
   /** Independent evaluation evidence and destination at generation time. */
   evaluationSource?: { messages: Array<{ id: string; content: string }>; target?: MemoryTargetSnapshot };
   storyCardReview?: StoryCardSuggestionReview;
@@ -1014,7 +1030,7 @@ export type AdventureAction =
   | { type: "UPDATE_RAW_IMPORT"; rawImportId: string; patch: Partial<RawImportEntry> }
   | { type: "DELETE_RAW_IMPORT"; rawImportId: string }
   | { type: "ADD_MEMORY_PROPOSAL"; proposal: MemoryProposal }
-  | { type: "UPDATE_MEMORY_PROPOSAL"; proposalId: string; patch: Partial<MemoryProposal> }
+  | { type: "UPDATE_MEMORY_PROPOSAL"; proposalId: string; patch: Partial<MemoryProposal>; expectedFingerprint?: string }
   | { type: "APPROVE_MEMORY_PROPOSAL"; proposalId: string; editedProposal?: Partial<MemoryProposal>; automatic?: boolean }
   | { type: "REJECT_MEMORY_PROPOSAL"; proposalId: string }
   | { type: "IGNORE_MEMORY_PROPOSAL"; proposalId: string }

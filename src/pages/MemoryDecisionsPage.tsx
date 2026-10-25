@@ -1,3 +1,4 @@
+import { placementValidationError, proposalDestinationLabel } from "../memory/storyCardPlacement";
 import { backgroundProviderConfigIssue } from "../providers/backgroundProvider";
 import { useState } from "react";
 import type { Adventure, MemoryDiagnostic } from "../types/adventure";
@@ -78,6 +79,7 @@ export function MemoryDecisionsPage({ adventure, onSuggestions, onEvaluateMemory
         <summary>Message {position} · {message.memoryEvaluation ? `Independent evaluation ${message.memoryEvaluation.status}` : inline ? label(inline.outcome) : "Diagnostics unavailable for older turns"} · {latestCounts ? `${latestCounts.returned} returned / ${latestCounts.accepted} accepted drafts / ${latestCounts.rejected} rejected / ${latestCounts.suppressed} suppressed / ${latestCounts.retryPending} awaiting retry` : `${candidates.length} candidate diagnostic records (candidate count unavailable)`} · recovery {recovery?.status ?? "not recorded"} · {linked.length} suggestions</summary>
         <p><strong>Source:</strong> {message.id} · <time>{message.createdAt}</time></p>
         <p>{message.content.slice(0, 240)}{message.content.length > 240 ? "…" : ""}</p>
+        {linked.filter(p => p.proposedType === "storyCard").map(p => <p key={p.id}>{proposalDestinationLabel(adventure, p)} · {p.status === "pending" ? placementValidationError(adventure, p) ?? p.placementValidation?.reason : p.placementValidation?.reason}</p>)}
         <h3>Independent evaluation</h3>
         <p>Status: {message.memoryEvaluation?.status ?? "not recorded; older sources are evaluated only on request"}. Attempts: {message.memoryEvaluation?.attempts ?? 0}. Completed groups: {message.memoryEvaluation?.completedGroups.join(", ") || "none"}.</p>
         {message.memoryEvaluation?.lastError && <p>{message.memoryEvaluation.lastError}</p>}

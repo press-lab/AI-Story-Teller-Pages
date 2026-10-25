@@ -1,3 +1,4 @@
+import { offlinePlacementReview } from "../test/memoryPlacement";
 /** @vitest-environment jsdom */
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { useState } from "react";
@@ -26,7 +27,7 @@ function setup() {
   });
 }
 
-it("completes an explicit evaluation with one background call and no narrative or Brain change", async () => {
+it("completes an explicit evaluation with one generation and a placement review, without narrative or Brain changes", async () => {
   vi.mocked(sendOpenAICompatibleChatCompletion).mockResolvedValue({ raw: {}, content: JSON.stringify({ turns: [{ sourceTurnId: "source", updates: [
     { kind: "lore", target: "First kiss", content: "They shared their first kiss.", evidence: "Seth and Draconia shared their first kiss.", reason: "A milestone" },
   ] }] }) });
@@ -59,4 +60,11 @@ it("cannot apply a model finding after the source changes during evaluation", as
   expect(stale).toBeDefined();
   expect(suggestionSourceValid(next, stale)).toBe(false);
   expect(adventureReducer(next, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: stale.id }).storyCards).toEqual(next.storyCards);
+});
+
+// These legacy transport fixtures supply an explicit synthetic placement reviewer.
+vi.mock("../providers/memoryCompletion", async importOriginal => {
+  const actual = await importOriginal<typeof import("../providers/memoryCompletion")>();
+  return { ...actual, sendMemoryCompletion: vi.fn(async (...args: Parameters<typeof actual.sendMemoryCompletion>) =>
+    offlinePlacementReview({ messages: args[2] }) ?? actual.sendMemoryCompletion(...args)) };
 });

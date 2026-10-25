@@ -1,3 +1,4 @@
+import { reviewedProposal } from "../test/memoryPlacement";
 /** @vitest-environment jsdom */
 import "@testing-library/jest-dom/vitest";
 import { cleanup, render, screen } from "@testing-library/react";
@@ -23,9 +24,10 @@ function Review({ stale = false, extraTarget = false }) {
   initial.activeState.memoryProposals = [makeStoryCardSuggestion(initial, "source", initial.messages[0].content, {
     title: "Engagement", content: initial.messages[0].content, evidence: initial.messages[0].content, reason: "A commitment", participants: ["Seth", "Draconia"],
   })];
+  initial.activeState.memoryProposals = initial.activeState.memoryProposals.map(p => reviewedProposal(initial, p));
   if (stale) initial.messages[0].content += " This was only a dream.";
   const [adventure, dispatch] = useReducer(adventureReducer, initial);
-  return <><MemoryInboxPage adventure={adventure} dispatch={dispatch} /><output data-testid="saved">{JSON.stringify(adventure)}</output></>;
+  return <><MemoryInboxPage adventure={adventure} dispatch={dispatch} onRegenerateProposal={async id => { const p = adventure.activeState.memoryProposals.find(p => p.id === id)!; dispatch({ type: "UPDATE_MEMORY_PROPOSAL", proposalId: id, patch: reviewedProposal(adventure, p) }); }} /><output data-testid="saved">{JSON.stringify(adventure)}</output></>;
 }
 
 it("lets the reviewer choose an ambiguous update destination before approval", async () => {
@@ -33,6 +35,8 @@ it("lets the reviewer choose an ambiguous update destination before approval", a
   const user = userEvent.setup();
   expect(screen.getByText(/Several continuing subjects may fit/)).toBeInTheDocument();
   await user.selectOptions(screen.getByLabelText("Story Card destination"), "two");
+  expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
+  await user.click(screen.getByRole("button", { name: "Revalidate / Regenerate" }));
   await user.click(screen.getByRole("button", { name: "Approve" }));
   const saved = JSON.parse(screen.getByTestId("saved").textContent!);
   expect(saved.storyCards).toHaveLength(2);
@@ -69,6 +73,8 @@ it("lets the reviewer redirect to a compatible target outside the ranked candida
   render(<Review extraTarget />);
   const user = userEvent.setup();
   await user.selectOptions(screen.getByLabelText("Story Card destination"), "other");
+  expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
+  await user.click(screen.getByRole("button", { name: "Revalidate / Regenerate" }));
   await user.click(screen.getByRole("button", { name: "Approve" }));
   const saved = JSON.parse(screen.getByTestId("saved").textContent!);
   expect(saved.storyCards).toHaveLength(3);
@@ -80,7 +86,11 @@ it("can change an UPDATE into a separate CREATE without touching the former targ
   render(<Review />);
   const user = userEvent.setup();
   await user.selectOptions(screen.getByLabelText("Story Card destination"), "two");
+  expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
+  await user.click(screen.getByRole("button", { name: "Revalidate / Regenerate" }));
   await user.selectOptions(screen.getByLabelText("Story Card destination"), "");
+  expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
+  await user.click(screen.getByRole("button", { name: "Revalidate / Regenerate" }));
   await user.click(screen.getByRole("button", { name: "Approve" }));
   const saved = JSON.parse(screen.getByTestId("saved").textContent!);
   expect(saved.storyCards).toHaveLength(3);
@@ -96,9 +106,10 @@ function DatedReview({ update = false }) {
   initial.activeState.memoryProposals = [makeStoryCardSuggestion(initial, "dated-source", initial.messages[0].content, {
     title: update ? "Seth and Draconia Relationship History" : "First kiss", content: initial.messages[0].content, evidence: initial.messages[0].content, reason: "A milestone", participants: ["Seth", "Draconia"],
   })];
+  initial.activeState.memoryProposals = initial.activeState.memoryProposals.map(p => reviewedProposal(initial, p));
   if (update) initial.activeState.memoryProposals[0].lore!.occurredAt = initial.storyCards[0].lore!.occurredAt;
   const [adventure, dispatch] = useReducer(adventureReducer, initial);
-  return <><MemoryInboxPage adventure={adventure} dispatch={dispatch} /><output data-testid="saved">{JSON.stringify(adventure)}</output></>;
+  return <><MemoryInboxPage adventure={adventure} dispatch={dispatch} onRegenerateProposal={async id => { const p = adventure.activeState.memoryProposals.find(p => p.id === id)!; dispatch({ type: "UPDATE_MEMORY_PROPOSAL", proposalId: id, patch: reviewedProposal(adventure, p) }); }} /><output data-testid="saved">{JSON.stringify(adventure)}</output></>;
 }
 
 const savedReview = (): Adventure => JSON.parse(screen.getByTestId("saved").textContent!);
@@ -163,4 +174,32 @@ it.each(["2019-02-30", "February 30, 2019", "2023-02-29"])("rejects invalid exac
   expect(screen.getByRole("button", { name: "Approve" })).toBeEnabled();
   await user.click(screen.getByRole("button", { name: "Approve" }));
   expect(savedReview().storyCards[0].lore?.occurredAt?.date).toBe("2024-02-29");
+});
+
+it("shows the actual card type and converts a legacy identity draft into reviewed Lore before approval", async () => {
+  const convert = vi.fn();
+  function ConversionReview() {
+    const initial = createDefaultAdventure();
+    initial.storyCards = [makeStoryCard({ id: "moody", title: "Alastor Moody", type: "character", content: "Moody is a veteran Auror. VOICE: Blunt." })];
+    initial.messages = [{ id: "lesson", role: "assistant", content: "Moody demonstrated three curses to the class.", createdAt: "2026-01-01" }];
+    initial.activeState.memoryProposals = [makeStoryCardSuggestion(initial, "lesson", initial.messages[0].content, { title: "Alastor Moody", type: "character", targetId: "moody",
+      content: "Moody is a veteran Auror. He demonstrated three curses. VOICE: Blunt.", evidence: initial.messages[0].content, reason: "Legacy mixed suggestion" })];
+    const [a, dispatch] = useReducer(adventureReducer, initial);
+    return <><MemoryInboxPage adventure={a} dispatch={dispatch} onRegenerateProposal={async (id, convertToLore) => {
+      convert(id, convertToLore);
+      const p = makeStoryCardSuggestion(a, "lesson", a.messages[0].content, { title: "Moody’s lesson", type: "lore", content: a.messages[0].content,
+        evidence: a.messages[0].content, reason: "Completed lesson history", evidenceReviewed: true });
+      dispatch({ type: "UPDATE_MEMORY_PROPOSAL", proposalId: id, patch: reviewedProposal(a, { ...p, id }) });
+    }} /><output data-testid="saved">{JSON.stringify(a)}</output></>;
+  }
+  render(<ConversionReview />); const user = userEvent.setup();
+  expect(screen.getAllByText("Update Character · Alastor Moody").length).toBeGreaterThan(0);
+  expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
+  await user.click(screen.getByRole("button", { name: "Convert to Lore" }));
+  expect(convert).toHaveBeenCalledWith(expect.any(String), true);
+  expect(screen.getAllByText("Create Lore · Historical").length).toBeGreaterThan(0);
+  await user.click(screen.getByRole("button", { name: "Approve" }));
+  const saved = savedReview();
+  expect(saved.storyCards[0].content).toBe("Moody is a veteran Auror. VOICE: Blunt.");
+  expect(saved.storyCards.find(c => c.type === "lore")?.content).toBe("Moody demonstrated three curses to the class.");
 });

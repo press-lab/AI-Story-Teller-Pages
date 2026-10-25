@@ -1,3 +1,4 @@
+import { placementFingerprint } from "../memory/storyCardPlacement";
 import { evaluateStoryCardEntries } from "../memory/evaluateStoryCardEntries";
 import { subscribeApiCalls } from "../providers/apiCallAccounting";
 import { ONE_PASS_MEMORY_ID, MEMORY_OUTPUT_RESERVE } from "../memory/onePassMemory";
@@ -758,14 +759,13 @@ export function useAdventureRuntime(
     } finally { setLoading(false); }
   }
 
-  async function regenerateMemoryProposal(proposalId: string): Promise<void> {
+  async function regenerateMemoryProposal(proposalId: string, convertToLore = false): Promise<void> {
     if (!adventure) return;
     const proposal = adventure.activeState.memoryProposals.find((p) => p.id === proposalId);
     if (!proposal) return;
-    const newContent = await regenerateProposalContent(proposal, adventure, activeProviderConfig);
-    if (!newContent) return;
-    const appendContent = proposal.appendContent ?? (proposal.proposedType === "plotEssentialsUpdate" ? false : undefined);
-    applyActionsAndPersist([{ type: "UPDATE_MEMORY_PROPOSAL", proposalId, patch: { content: newContent, appendContent } }]);
+    const reviewedPatch = await regenerateProposalContent(proposal, adventure, activeProviderConfig, convertToLore);
+    if (!reviewedPatch.content) return;
+    applyActionsAndPersist([{ type: "UPDATE_MEMORY_PROPOSAL", proposalId, expectedFingerprint: placementFingerprint(proposal), patch: reviewedPatch }]);
   }
 
   async function regeneratePlotEssentials(componentId: string): Promise<string> {

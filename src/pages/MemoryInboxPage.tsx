@@ -1,3 +1,4 @@
+import { placementValidationError, proposalDestinationLabel } from "../memory/storyCardPlacement";
 import { MemoryDecisionsPage } from "./MemoryDecisionsPage";
 import { isHistoricalLore, proposalLore } from "../memory/storyCardArchitecture";
 import { suggestionSourceValid } from "../memory/storyCardSuggestions";
@@ -28,7 +29,7 @@ const storyCardTypes: StoryCardType[] = ["character", "location", "lore", "custo
 interface MemoryInboxPageProps extends AdventurePageProps {
   onEvaluateMemory?: (sourceIds: string[]) => Promise<void>;
   onFindEventMemories?: (onProgress: (message: string) => void, signal: AbortSignal) => Promise<void>;
-  onRegenerateProposal?: (proposalId: string) => Promise<void>;
+  onRegenerateProposal?: (proposalId: string, convertToLore?: boolean) => Promise<void>;
   onReconcileMemory?: (request: MemoryReconcileRequest) => Promise<void>;
   loading?: boolean;
 }
@@ -72,7 +73,7 @@ function MemorySuggestionsPage({ adventure, dispatch, onRegenerateProposal, onRe
   function createProposal() {
     const classified = classifyMemory(sourceText, {
       existingBrainNames: adventure.brains.map((brain) => brain.characterName),
-      existingStoryCards: adventure.storyCards.map((card) => ({ id: card.id, title: card.title, keys: card.keys })),
+      existingStoryCards: adventure.storyCards.map((card) => ({ id: card.id, title: card.title, keys: card.keys, type: card.type })),
     });
     const routed = resolveMemoryTarget(adventure, {
       proposedType: classified.proposedType,
@@ -91,6 +92,7 @@ function MemorySuggestionsPage({ adventure, dispatch, onRegenerateProposal, onRe
         sourceTurnId: adventure.messages.at(-1)?.id ?? "manual",
         sourceText,
         proposedType: routed.proposedType,
+        userInitiated: true,
         title: routed.title,
         content: routed.content,
         suggestedTriggers: routed.suggestedTriggers,
@@ -251,21 +253,24 @@ interface ProposalCardProps {
   proposal: MemoryProposal;
   dispatch: AdventurePageProps["dispatch"];
   onUpdate: (proposal: MemoryProposal, patch: Partial<MemoryProposal>) => void;
-  onRegenerate?: (proposalId: string) => Promise<void>;
+  onRegenerate?: (proposalId: string, convertToLore?: boolean) => Promise<void>;
 }
 
 function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }: ProposalCardProps) {
   const isPending = proposal.status === "pending";
   const sourceValid = suggestionSourceValid(adventure, proposal);
+  const placementError = placementValidationError(adventure, proposal);
+  const destinationLabel = proposalDestinationLabel(adventure, proposal);
+  const [regenerationError, setRegenerationError] = useState<string>();
   const [regenerating, setRegenerating] = useState(false);
   const [eventDateValid, setEventDateValid] = useState(true);
   const isLore = proposal.proposedType === "storyCard" && (proposal.storyCardType === "lore" || adventure.storyCards.some(card => card.id === proposal.targetId && card.type === "lore"));
   const lore = isLore ? proposalLore(adventure, proposal) : undefined;
 
-  async function handleRegenerate() {
+  async function handleRegenerate(convertToLore = false) {
     if (!onRegenerate || regenerating) return;
     setRegenerating(true);
-    try { await onRegenerate(proposal.id); } finally { setRegenerating(false); }
+    try { setRegenerationError(undefined); await onRegenerate(proposal.id, convertToLore); } catch (error) { setRegenerationError(error instanceof Error ? error.message : "Validation failed."); } finally { setRegenerating(false); }
   }
 
   return (
@@ -274,7 +279,7 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
         <span className="proposal-card-title">
           <strong>{proposal.title || "Untitled suggestion"}</strong>
           <span className="muted">
-            {proposal.proposedType}
+            {destinationLabel}
           </span>
         </span>
         <span className="story-card-badges">
@@ -290,7 +295,7 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
         <div className="panel-heading">
         <div className="suggestion-meta">
           <p className="eyebrow">
-            {proposal.proposedType}
+            {destinationLabel}
             {proposal.status !== "pending" ? ` · ${proposal.status}` : ""}
           </p>
           <input
@@ -302,7 +307,7 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
         <div className="row">
           <button
             type="button"
-            disabled={proposal.status === "approved" || !sourceValid || (isLore && !eventDateValid)}
+            disabled={proposal.status === "approved" || !sourceValid || Boolean(placementError) || (isLore && !eventDateValid)}
             onClick={() => dispatch({ type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id })}
           >
             Approve
@@ -310,10 +315,11 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
           {isPending && (
             <>
               {onRegenerate && (
-                <button type="button" disabled={regenerating} onClick={handleRegenerate}>
-                  {regenerating ? "…" : "Regenerate"}
+                <button type="button" disabled={regenerating} onClick={() => handleRegenerate()}>
+                  {regenerating ? "…" : placementError ? "Revalidate / Regenerate" : "Regenerate"}
                 </button>
               )}
+              {onRegenerate && proposal.proposedType === "storyCard" && !isLore && <button type="button" disabled={regenerating} onClick={() => handleRegenerate(true)}>Convert to Lore</button>}
               <button
                 type="button"
                 onClick={() => dispatch({ type: "REJECT_MEMORY_PROPOSAL", proposalId: proposal.id })}
@@ -332,6 +338,9 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
         </div>
       </div>
 
+      {isPending && placementError && <p role="status">{placementError}</p>}
+      {proposal.placementValidation && <p>{proposal.placementValidation.reason}</p>}
+      {regenerationError && <p role="alert">{regenerationError}</p>}
       {proposal.evaluationSource && <details><summary>Independent evaluation evidence</summary>
         <p>Destination: {proposal.targetId ?? "new Story Card"}</p>
         {proposal.evaluationSource.messages.map(source => <div key={source.id}><code>{source.id}</code><blockquote>{source.content}</blockquote></div>)}
@@ -393,7 +402,7 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
         <div className="grid three">
           <Field label="Type">
             <select
-              value={proposal.proposedType}
+              value={destinationLabel}
               onChange={(event) => onUpdate(proposal, { proposedType: event.target.value as MemoryProposalType })}
               disabled={!isPending}
             >
@@ -409,7 +418,7 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
               <Field label="Card Type">
                 <select
                   value={proposal.storyCardType ?? "custom"}
-                  onChange={(event) => onUpdate(proposal, { storyCardType: event.target.value as StoryCardType })}
+                  onChange={(event) => onUpdate(proposal, { storyCardType: event.target.value as StoryCardType, targetId: undefined, appendContent: undefined, placementValidation: undefined })}
                   disabled={!isPending}
                 >
                   {storyCardTypes.map((type) => <option key={type} value={type}>{type}</option>)}

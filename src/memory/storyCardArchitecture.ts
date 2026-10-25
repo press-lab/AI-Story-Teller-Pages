@@ -35,13 +35,6 @@ export function migrateStoryCard(card: Omit<StoryCard, "type"> & { type: StoryCa
   return { ...card, type, ...(historical ? { memoryMode: "historical" } : {}), ...(lore ? { lore } : {}) };
 }
 
-/** Conservative identity boundary, shared by automatic writes and reviewed proposals. */
-export function isExceptionalIdentityChange(type: string, content: string): boolean {
-  if (type === "character") return /\b(dead|died|dies|killed|confirmed alive|presumed dead|permanent(?:ly)?|identity correction|erroneous identity)\b/i.test(content);
-  if (type === "location") return /\b(destroyed|destruction|relocated|permanent(?:ly)?|fundamental(?:ly)? transform|location correction)\b/i.test(content);
-  return true;
-}
-
 export function proposalLore(adventure: Adventure, proposal: MemoryProposal): LoreMetadata {
   const source = adventure.messages.find(m => m.id === proposal.sourceTurnId);
   const sourceContent = "sourceContent" in proposal && typeof proposal.sourceContent === "string" ? proposal.sourceContent : undefined;

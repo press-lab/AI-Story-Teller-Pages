@@ -8,7 +8,8 @@ import { storyCardContextContent } from "./storyCardPolicy";
 import { sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
 import { sendMemoryCompletion } from "../providers/memoryCompletion";
 import { memoryEvidenceWindow, storyMemoryMessages } from "./memoryEvidenceWindow";
-import { validateMemoryUpdate } from "./validateMemoryUpdate";
+import { validateStoryCardProposal } from "./validateStoryCardProposal";
+import { PLACEMENT_VERSION, STORY_CARD_PLACEMENT_POLICY, placementFingerprint } from "./storyCardPlacement";
 import { parseDiscoveryCandidate, discoveryEvidenceError } from "./discoveryEvidence";
 import { createId, nowIso } from "../utils/id";
 import {
@@ -57,7 +58,34 @@ export async function regenerateProposalContent(
   proposal: MemoryProposal,
   adventure: Adventure,
   providerConfig: ProviderConfig,
-): Promise<string> {
+  convertToLore = false,
+): Promise<Partial<MemoryProposal>> {
+  if (proposal.proposedType === "storyCard") {
+    const source = adventure.messages.find(m => m.id === proposal.sourceTurnId && m.role === "assistant");
+    if (!source) throw new Error("This suggestion has no saved narrator source to revalidate.");
+    const evidence = memoryEvidenceWindow(adventure, source.id);
+    proposal = { ...proposal, sourceText: evidence.map(m => `[${m.id}] ${m.role}: ${m.content}`).join("\n\n"),
+      evaluationSource: { messages: evidence.map(({ id, content }) => ({ id, content })) },
+      storyCardReview: proposal.storyCardReview ? { ...proposal.storyCardReview, sourceContent: source.content,
+        playerContent: adventure.messages.find(m => m.id === proposal.storyCardReview?.playerMessageId)?.content,
+        additionalSources: evidence.filter(m => m.id !== source.id).map(({ id, content }) => ({ id, content })), evidenceQuotes: undefined } : undefined };
+    const response = await sendMemoryCompletion(adventure, providerConfig, [
+      ...memoryCanonMessages(adventure, proposal.sourceText, proposal.title),
+      { role: "system", content: `${STORY_CARD_PLACEMENT_POLICY}
+Regenerate a focused suggestion from evidence. Return ONLY JSON {title,content,storyCardType,memoryMode}. ${convertToLore ? "Extract significant observable history as Lore only. Omit biography, voice and private interpretations." : "Choose the correct placement for the new facts."}` },
+      { role: "user", content: JSON.stringify({ title: proposal.title, previousDraft: proposal.content, source: proposal.sourceText,
+        evidence: proposal.storyCardReview, target: adventure.storyCards.find(c => c.id === proposal.targetId) }) },
+    ]);
+    const raw = JSON.parse(response.content.replace(/<think>[\s\S]*?<\/think>/gi, "").trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, ""));
+    if (!raw || typeof raw.title !== "string" || typeof raw.content !== "string" || !["character", "location", "lore", "custom"].includes(raw.storyCardType)
+      || !["static", "living", "historical"].includes(raw.memoryMode) || (convertToLore && raw.storyCardType !== "lore")) throw new Error("Invalid regenerated placement draft.");
+    const result = await validateStoryCardProposal(adventure, providerConfig, { ...proposal, title: raw.title, content: raw.content,
+      storyCardType: raw.storyCardType, memoryMode: raw.memoryMode, targetId: raw.storyCardType === proposal.storyCardType ? proposal.targetId : undefined,
+      appendContent: raw.storyCardType === proposal.storyCardType ? proposal.appendContent : undefined });
+    if (!result.proposal) throw new Error(result.error ?? "No supported new memory was found.");
+    if (convertToLore && result.proposal.storyCardType !== "lore") throw new Error("The evidence does not support this conversion to Lore.");
+    return result.proposal;
+  }
   const systemPrompt = `You are a world-memory assistant for an interactive fiction game.
 The user has a memory suggestion they want better content for.
 Write improved content for the suggestion titled "${proposal.title}" (type: ${proposal.proposedType}, card category: ${proposal.storyCardType ?? "unspecified"}).
@@ -71,7 +99,7 @@ Respond with ONLY the content: no JSON, no preamble, no labels.`;
     messages: [...memoryCanonMessages(adventure, proposal.sourceText, proposal.title), { role: "user", content: systemPrompt }],
   });
 
-  return response.content.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+  return { content: response.content.replace(/<think>[\s\S]*?<\/think>/gi, "").trim() };
 }
 
 
@@ -138,7 +166,7 @@ export async function detectStoryCardProposals(adventure: Adventure, providerCon
   try {
     // The digest protects cached reviews from changes to canon, target controls and
     // author corrections, without duplicating the whole card archive in each save.
-    const references = JSON.stringify({ cards: adventure.storyCards, components: adventure.components,
+    const references = JSON.stringify({ placementVersion: PLACEMENT_VERSION, cards: adventure.storyCards, components: adventure.components,
       corrections: adventure.messages.filter(message => message.role === "user" && message.inputMode === "comms").slice(-4),
       settings: adventure.memoryDetectionSettings });
     const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(references));
@@ -221,22 +249,17 @@ export async function detectStoryCardProposals(adventure: Adventure, providerCon
       if (item.targetId && !adventure.storyCards.some(card => card.id === item.targetId)) {
         suppress("Unknown existing-card target."); continue;
       }
-      const proposal = makeStoryCardSuggestion(adventure, source.id, source.content, {
+      let proposal = makeStoryCardSuggestion(adventure, source.id, source.content, {
         title, content: item.content, evidence: evidence.map(message => `[${message.id}] ${message.role}: ${message.content}`).join("\n\n"),
         reason: item.rationale ?? "Grounded catch-up finding; review before applying.",
         type: isEvent ? "lore" : primaryStoryCardType(item.storyCardType), targetId: item.targetId,
         triggers: item.suggestedTriggers ?? eventMemory?.recallCues, participants: eventMemory?.participants,
         evidenceReviewed: Boolean(options.sourceId), candidateOnly: item.candidateOnly === true || item.eventStatus === "unresolved",
       });
-      const destination = adventure.storyCards.find(card => card.id === proposal.targetId);
-      if (destination?.autoUpdate === false) {
-        suppress("Existing-card autoUpdate=false; independent new Lore remains eligible."); continue;
-      }
-      if (options.sourceId) {
-        const validation = await validateMemoryUpdate(adventure, providerConfig, "storyCard", title,
-          destination?.content ?? "", item.content, result.tokenUsage, true,
-          item.candidateOnly === true || item.eventStatus === "unresolved",
-          { id: destination?.id, type: proposal.storyCardType ?? "lore", memoryMode: item.memoryMode });
+      if (item.memoryMode) proposal.memoryMode = item.memoryMode;
+      if (item.eventStatus && proposal.lore) proposal.lore.status = item.eventStatus;
+      {
+        const validation = await validateStoryCardProposal(adventure, providerConfig, proposal, result.tokenUsage);
         if (!validation.changed) {
           draft.status = validation.retryable ? "awaiting_retry" : "rejected";
           draft.reason = validation.error ?? "No new durable change.";
@@ -249,20 +272,22 @@ export async function detectStoryCardProposals(adventure: Adventure, providerCon
           if (validation.retryable) result.errors.push(draft.reason);
           continue;
         }
+        proposal = validation.proposal!;
+      }
+      const destination = adventure.storyCards.find(card => card.id === proposal.targetId);
+      if (destination?.autoUpdate === false) {
+        suppress("Existing-card autoUpdate=false; independent new Lore remains eligible."); continue;
       }
       proposal.storyCardReview = { ...proposal.storyCardReview!, additionalSources: evidence.filter(message => message.id !== source.id).map(({ id, content }) => ({ id, content })) };
       if (options.sourceId) proposal.storyCardReview.evidenceQuotes = item.evidenceQuotes;
-      if (options.sourceId && proposal.storyCardType === "lore") {
-        if (item.memoryMode) proposal.memoryMode = item.memoryMode;
-        if (item.eventStatus && proposal.lore) proposal.lore.status = item.eventStatus;
-      }
       if (item.eventStatus === "unresolved") proposal.requiresReview = true;
       if (proposal.lore) proposal.lore.sourceMessageIds = [...new Set([...proposal.lore.sourceMessageIds, ...evidence.map(message => message.id)])];
       if (eventMemory) { proposal.eventMemory = eventMemory; proposal.memoryMode = "historical"; proposal.requiresReview = true; }
       if (!options.eventsOnly && !adventure.memoryDetectionSettings.generateContent) { proposal.content = ""; proposal.requiresReview = true; }
+      if (proposal.placementValidation) proposal.placementValidation.fingerprint = placementFingerprint(proposal);
       draft.status = "accepted"; draft.proposal = proposal; draft.reason = undefined; draft.failureCode = undefined;
       capturedContent.push(item.content);
-      record("validation_accepted", "Discovery candidate passed evidence and semantic validation.");
+      record("validation_accepted", `Placement: ${proposal.placementValidation?.kind}; destination: ${proposal.storyCardType} ${proposal.targetId ?? "CREATE"}. ${proposal.placementValidation?.reason ?? "Candidate passed evidence validation."}`);
     }
     activeIndex = undefined;
     const counts = { returned: candidates.length, accepted: 0, rejected: 0, suppressed: 0, retryPending: 0 };

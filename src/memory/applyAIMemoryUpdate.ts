@@ -1,7 +1,7 @@
 import { sanitizeStoryCardTriggers } from "./resolveMemoryTarget";
-import { makeStoryCardSuggestion, companionLoreSuggestion } from "./storyCardSuggestions";
+import { makeStoryCardSuggestion } from "./storyCardSuggestions";
 import { createId, nowIso } from "../utils/id";
-import { isHistoricalLore, isExceptionalIdentityChange } from "./storyCardArchitecture";
+import { isHistoricalLore } from "./storyCardArchitecture";
 import type {
   Adventure,
   AdventureAction,
@@ -117,7 +117,7 @@ export function applyAIMemoryUpdate(adventure: Adventure, updates: AIMemoryUpdat
       if (Object.keys(patch).length === 0) { rejectedUpdates.push(reject(update, "Empty Story Card suggestion.")); continue; }
       const source = [...adventure.messages].reverse().find(message => message.role === "assistant");
       const content = update.content ?? card.content;
-      const type = (card.type === "character" || card.type === "location") && !isExceptionalIdentityChange(card.type, content) ? "lore" : card.type;
+      const type = card.type;
       const proposal = makeStoryCardSuggestion(adventure, source?.id ?? "manual", source?.content ?? content, {
         title: type === "lore" && card.type !== "lore" ? `${card.title}: Development` : card.title,
         content, evidence: source?.content ?? content, reason: "Generated Story Card change; review before applying.",
@@ -129,8 +129,6 @@ export function applyAIMemoryUpdate(adventure: Adventure, updates: AIMemoryUpdat
         ...(update.keys !== undefined ? { keys: [...new Set([...card.keys, ...sanitizeStoryCardTriggers(adventure, card.title, update.keys, card.id, card.memoryMode)])] } : {}),
       };
       actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal });
-      const companion = companionLoreSuggestion(adventure, proposal);
-      if (companion) actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal: companion });
       appliedUpdates.push({ targetType: "storyCard", targetId: card.id, actionTypes: ["ADD_MEMORY_PROPOSAL"] });
       continue;
     }

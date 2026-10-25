@@ -42,8 +42,9 @@ import { storyCardContextContent } from "../memory/storyCardPolicy";
 import { sendMemoryCompletion } from "../providers/memoryCompletion";
 import { memoryEvidenceWindow, storyMemoryMessages } from "../memory/memoryEvidenceWindow";
 import { MEMORY_EVALUATION_GROUPS, memoryTargetSnapshot } from "../memory/memoryCycleState";
-import { makeStoryCardSuggestion, companionLoreSuggestion } from "../memory/storyCardSuggestions";
-import { isExceptionalIdentityChange } from "../memory/storyCardArchitecture";
+import { makeStoryCardSuggestion } from "../memory/storyCardSuggestions";
+import { STORY_CARD_PLACEMENT_POLICY } from "../memory/storyCardPlacement";
+import { validateStoryCardProposal } from "../memory/validateStoryCardProposal";
 import { adventureReducer } from "../state/adventureReducer";
 
 const EVALUATION_SYSTEM_PROMPT =
@@ -165,10 +166,12 @@ Do NOT include: current location, who is currently present in a scene, active mi
 
 Example format:
 • Permanent trait, history, or rule about the entity.
-• Relationship or constraint that holds across all scenes.
+• Enduring identity correction about this exact target; relationships and events belong in Lore.
 • Canon fact the story must always respect.
 
-Keep the replacement under 500 words, normally 150-300. A character card, even in living mode, is not a scene log. Do not add other people's profiles or voice examples. Private interpretations belong in Brains. Avoid repeating or paraphrasing existing facts. Return ONLY the bullet-pointed replacement, or NONE when nothing durable changed.`;
+${STORY_CARD_PLACEMENT_POLICY}
+Return NONE when nothing qualifies. Otherwise return JSON {"title":"focused subject","content":"focused new fact or identity replacement","storyCardType":"character|location|lore|custom","memoryMode":"static|living|historical"}. For a lesson or event, return a separate Lore finding containing only the new event, not the existing biography.
+Keep the replacement under 500 words, normally 150-300. A character card, even in living mode, is not a scene log. Do not add other people's profiles or voice examples. Private interpretations belong in Brains. Avoid repeating or paraphrasing existing facts. Return only the JSON draft, or NONE when nothing durable changed.`;
 }
 
 function componentPrompt(component: ComponentEntry): string {
@@ -345,7 +348,7 @@ function storyCardUpdateConditions(adventure: Adventure): SemanticCondition[] {
   return eligible.map((target) => ({
     id: `storyCard:${target.id}`,
     label: `Story Card: ${target.title}`,
-    condition: `when the story has established new details, developments, or changes that should update the fact card titled "${target.title}" — only fire for a genuinely new durable fact or correction about this entity, not paraphrases, gestures, scene movement, another person's profile, or private interpretations that belong in a Brain`,
+    condition: `when the story has established new details, developments, or changes that should update the fact card titled "${target.title}" — only fire for a supported identity correction/change or a significant new development to retain separately as Lore; exclude paraphrases, routine gestures, scene movement, another person's profile, and private interpretations belonging in a Brain`,
     sourceType: "storyCard" as const,
     actionFactory: () => [{ type: "updateStoryCard" as const, storyCardId: target.id }],
   }));
@@ -616,33 +619,28 @@ async function generatedActionsFor(
       if (!card) return { actions: [], error: `Story card not found: ${triggerAction.storyCardId}` };
       const addition = independent && card.type === "lore";
       const prompt = addition ? `Maintain the evolving Lore subject "${card.title}". Existing content:\n${storyCardContextContent(card)}\nReturn ONLY genuinely new durable facts established in the latest exchange (max 70 words), or NONE. This is an addition: all existing facts remain stored unchanged. Never repeat existing facts, overwrite history, invent outcomes or include private Brain reactions.` : storyCardPrompt(card);
-      const content = await sendTargetedUpdate(adventure, providerConfig, rule?.updatePrompt || prompt, accum);
-      const validation = await validateMemoryUpdate(adventure, providerConfig, "storyCard", card.title, storyCardContextContent(card), content, accum, addition, false, { id: card.id, type: card.type, memoryMode: card.memoryMode });
-      if (!validation.changed) return { actions: [], error: independent && !validation.retryable ? undefined : validation.error, rejected: validation.error };
-      if (requireApproval) {
-        const proposal = makeProposal(
-          { proposedType: "storyCard", title: card.title, content, suggestedTriggers: card.keys, targetId: card.id, appendContent: false, memoryMode: card.memoryMode, rationale: `Auto-update for story card "${card.title}".` },
-          adventure,
-        );
-        return {
-          actions: [
-            { type: "ADD_MEMORY_PROPOSAL", proposal },
-            { type: "MARK_STORY_CARD_UPDATED", storyCardId: card.id, turn: adventure.activeState.turn, proposalId: proposal.id },
-          ],
-          generated: { targetType: "storyCard", targetId: card.id, title: card.title, preview: preview(content) },
-        };
+      const raw = await sendTargetedUpdate(adventure, providerConfig, rule?.updatePrompt || prompt, accum);
+      if (!raw.trim() || /^(NONE|NO_CHANGE)$/i.test(raw.trim())) return { actions: [] };
+      let content = raw, title = card.title, type = primaryStoryCardType(card.type), mode = card.memoryMode;
+      if (raw.trim().startsWith("{") || raw.trim().startsWith("```")) {
+        const parsed = JSON.parse(raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, ""));
+        if (!parsed || typeof parsed.content !== "string" || typeof parsed.title !== "string"
+          || !["character", "location", "lore", "custom"].includes(parsed.storyCardType)
+          || !["static", "living", "historical"].includes(parsed.memoryMode)) throw new Error("memory_model_output_invalid: Invalid placement draft.");
+        content = parsed.content; title = parsed.title; type = parsed.storyCardType; mode = parsed.memoryMode;
       }
-      const memoryUpdate = applyAIMemoryUpdate(adventure, [
-        { type: "storyCardUpdate", storyCardId: card.id, content },
-      ]);
-      return {
-        actions: [
-          ...memoryUpdate.actions,
-          { type: "MARK_STORY_CARD_UPDATED", storyCardId: card.id, turn: adventure.activeState.turn },
-        ],
-        generated: { targetType: "storyCard", targetId: card.id, title: card.title, preview: preview(content) },
-        error: memoryUpdate.rejectedUpdates[0]?.reason,
-      };
+      const source = [...adventure.messages].reverse().find(m => m.role === "assistant");
+      if (!source) return { actions: [], error: "No saved source for Story Card placement." };
+      const draft = makeStoryCardSuggestion(adventure, source.id, source.content, {
+        title, content, type, targetId: type === card.type ? card.id : undefined,
+        evidence: recentExcerpt(adventure), reason: `Auto-update check for "${card.title}".`, triggers: card.keys, evidenceReviewed: true,
+      });
+      draft.memoryMode = mode;
+      draft.appendContent = draft.targetId ? type === "lore" : undefined;
+      const validation = await validateStoryCardProposal(adventure, providerConfig, draft, accum);
+      if (!validation.proposal) return { actions: [], error: independent && !validation.retryable ? undefined : validation.error, rejected: validation.error };
+      return { actions: [{ type: "ADD_MEMORY_PROPOSAL", proposal: validation.proposal }],
+        generated: { targetType: "storyCard", targetId: validation.proposal.targetId ?? "new", title: validation.proposal.title, preview: preview(validation.proposal.content) } };
     }
 
     if (triggerAction.type === "updateComponent") {
@@ -1123,6 +1121,7 @@ ${recentBlock}`;
         : request.autoUpdate ?? (memoryMode === "living" ? true : undefined);
       const routed = resolveMemoryTarget(adventure, {
         proposedType: "storyCard",
+        storyCardType,
         title: p.title,
         content: p.content,
         sourceText,
@@ -1691,7 +1690,7 @@ ${recent}`;
       const componentPatch = target.targetType === "component"
         ? { ...(safeComponentPatch(update.componentPatch) ?? {}), ...(target.deterministicComponentPatch ?? {}) }
         : undefined;
-      const proposal: MemoryProposal = {
+      let proposal: MemoryProposal = {
         id: createId("proposal"),
         sourceTurnId,
         sourceText,
@@ -1711,6 +1710,14 @@ ${recent}`;
         createdAt: now,
         updatedAt: now,
       };
+      if (proposal.proposedType === "storyCard") {
+        const narrator = [...adventure.messages].reverse().find(m => m.role === "assistant");
+        const reviewed = await validateStoryCardProposal(adventure, config, { ...proposal, sourceTurnId: narrator?.id ?? sourceTurnId,
+          storyCardType: proposal.storyCardType ?? adventure.storyCards.find(c => c.id === proposal.targetId)?.type });
+        if (reviewed.proposal) proposal = reviewed.proposal;
+        // Failed/unsupported drafts remain visibly pending and cannot be approved.
+        else proposal = { ...proposal, requiresReview: true, rationale: `${proposal.rationale} Placement review: ${reviewed.error ?? "No qualifying new fact."}` };
+      }
       actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal });
       generatedContent.push({ targetType: target.targetType === "brain" ? "brain" : target.targetType === "component" ? "component" : "storyCard", targetId: target.id, title: target.title, preview: preview(proposal.content) });
     }
@@ -1838,6 +1845,7 @@ Write the example lines in the character's actual voice. Omit the VOICE CONTRACT
         id: createId("proposal"),
         sourceTurnId: turnId,
         sourceText: fact,
+        userInitiated: true,
         proposedType: routed.proposedType,
         title: routed.title,
         content: routed.content,
@@ -2005,29 +2013,22 @@ export async function runMemoryCycle(
       if (action.type !== "ADD_MEMORY_PROPOSAL") { routed.push(action); continue; }
       let proposal = { ...action.proposal, sourceTurnId: source.id };
       const kind = proposal.proposedType === "brainUpdate" ? "brain" : proposal.proposedType === "storyCard" ? "storyCard" : "component";
-      const target = proposal.targetId ? memoryTargetSnapshot(snapshot, kind, proposal.targetId) : undefined;
-      if (proposal.proposedType === "storyCard" && !proposal.storyCardReview) {
-        const card = snapshot.storyCards.find(card => card.id === proposal.targetId);
-        if (!card) continue;
-        if ((card.type === "character" || card.type === "location") && !isExceptionalIdentityChange(card.type, proposal.content)) {
+
+      if (proposal.proposedType === "storyCard" && !proposal.placementValidation) {
+        const reviewed = await validateStoryCardProposal(snapshot, providerConfig, proposal, accum);
+        if (!reviewed.proposal) {
+          if (reviewed.retryable) errors.push(reviewed.error ?? "Placement validation failed.");
           routed.push({ type: "RECORD_MEMORY_DIAGNOSTIC", entry: { id: createId("decision"), sourceId: source.id,
-            createdAt: nowIso(), stage: "candidate", outcome: "candidate_suppressed",
-            reason: "Ordinary developments belong in Lore discovery, not an identity replacement." } });
+            createdAt: nowIso(), stage: "candidate", outcome: "validation_rejected", reason: reviewed.error ?? "No qualifying memory.", failureCode: reviewed.failureCode } });
           continue;
         }
-        const suggestion = makeStoryCardSuggestion(snapshot, source.id, source.content, {
-          title: card.title, content: proposal.content, evidence: proposal.sourceText, reason: proposal.rationale,
-          type: primaryStoryCardType(card.type), targetId: card.id, triggers: card.keys,
-        });
-        proposal = { ...suggestion, appendContent: card.type === "lore" };
-        const companion = companionLoreSuggestion(snapshot, proposal);
-        if (companion) routed.push({ type: "ADD_MEMORY_PROPOSAL", proposal: { ...companion, requiresReview: true,
-          evaluationSource: { messages: dependencies } } });
+        proposal = reviewed.proposal;
       }
       const protectedTarget = kind === "brain" ? snapshot.brains.find(item => item.id === proposal.targetId)?.protected
         : kind === "storyCard" ? snapshot.storyCards.find(item => item.id === proposal.targetId)?.protected
         : snapshot.components.find(item => item.id === proposal.targetId)?.protected;
-      proposal.evaluationSource = { messages: dependencies, ...(target ? { target } : {}) };
+      const finalTarget = proposal.targetId ? memoryTargetSnapshot(snapshot, kind, proposal.targetId) : undefined;
+      proposal.evaluationSource = { messages: dependencies, ...(finalTarget ? { target: finalTarget } : {}) };
       proposal.requiresReview = Boolean(proposal.requiresReview || protectedTarget || snapshot.semanticEvaluationSettings.requireApprovalForAutoUpdates);
       routed.push({ type: "ADD_MEMORY_PROPOSAL", proposal });
     }

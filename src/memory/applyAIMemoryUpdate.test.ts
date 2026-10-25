@@ -1,3 +1,4 @@
+import { reviewedProposal } from "../test/memoryPlacement";
 import { describe, expect, it } from "vitest";
 import { adventureReducer } from "../state/adventureReducer";
 import { createDefaultAdventure, makeBrain, makeComponent, makeStoryCard } from "../state/defaults";
@@ -55,7 +56,10 @@ describe("applyAIMemoryUpdate", () => {
     ]);
     let next = result.actions.reduce((state, action) => adventureReducer(state, action), adventure);
     expect(next.storyCards).toEqual(adventure.storyCards);
-    next = adventureReducer(next, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: next.activeState.memoryProposals[0].id });
+    next = adventureReducer(next, { type: "ADD_MESSAGE", id: "manual", role: "assistant", content: "The Joke card has the reviewed new card fact." });
+    const draft = { ...next.activeState.memoryProposals[0], sourceTurnId: "manual" };
+    next = adventureReducer(next, { type: "UPDATE_MEMORY_PROPOSAL", proposalId: draft.id, patch: reviewedProposal(next, draft) });
+    next = adventureReducer(next, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: draft.id });
 
     expect(result.rejectedUpdates).toEqual([]);
     expect(result.changedItemIds).toEqual(["brain-margo"]);
@@ -78,7 +82,10 @@ describe("applyAIMemoryUpdate", () => {
     ]);
     let next = result.actions.reduce((state, action) => adventureReducer(state, action), adventure);
     expect(next.storyCards).toEqual(adventure.storyCards);
-    next = adventureReducer(next, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: next.activeState.memoryProposals[0].id });
+    next = adventureReducer(next, { type: "ADD_MESSAGE", id: "manual", role: "assistant", content: "The Joke card has the reviewed new card fact." });
+    const draft = { ...next.activeState.memoryProposals[0], sourceTurnId: "manual" };
+    next = adventureReducer(next, { type: "UPDATE_MEMORY_PROPOSAL", proposalId: draft.id, patch: reviewedProposal(next, draft) });
+    next = adventureReducer(next, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: draft.id });
 
     expect(result.rejectedUpdates).toEqual([]);
     expect(next.storyCards[0]).toMatchObject({ content: "old", keys: expect.arrayContaining(["silver cup"]) });

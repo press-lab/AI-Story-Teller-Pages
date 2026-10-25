@@ -1,6 +1,6 @@
 import type { Adventure, MemoryProposal, Message, StoryCardType } from "../types/adventure";
 import { createId, nowIso } from "../utils/id";
-import { isExceptionalIdentityChange, isHistoricalLore } from "./storyCardArchitecture";
+import { isHistoricalLore } from "./storyCardArchitecture";
 import { readStoryTime, transitionKey } from "./storyTime";
 import { memoryTargetMatches } from "./memoryCycleState";
 import { storyCardEntityCandidates, characterParticipants } from "./storyCardEntities";
@@ -87,7 +87,7 @@ export function storyCardTargets(adventure: Adventure, finding: { title: string;
   const terms = new Set([...titleWords(text)].filter(word => !identityTerms.has(word)));
   const ranked = adventure.storyCards.filter(card => card.active).map(card => {
     if (card.type === "character" || card.type === "location") {
-      return { card, score: finding.type === card.type && isExceptionalIdentityChange(card.type, finding.content) && (finding.targetId === card.id || normalizeMemoryText(finding.title) === normalizeMemoryText(card.title)) ? 200 : 0 };
+      return { card, score: finding.type === card.type && (finding.targetId === card.id || normalizeMemoryText(finding.title) === normalizeMemoryText(card.title)) ? 200 : 0 };
     }
     if (finding.type && finding.type !== card.type) return { card, score: 0 };
     if (isHistoricalLore(card)) return { card, score: 0 };
@@ -126,7 +126,8 @@ export function makeStoryCardSuggestion(adventure: Adventure, sourceId: string, 
   const review = candidateOnly || choices.length > 1 || Boolean(target?.protected) || Boolean(target && (target.type === "character" || target.type === "location"));
   const content = uncertain && !/^Candidate|^Plan \(/.test(finding.content) ? `Candidate interpretation (unconfirmed): ${finding.content}` : finding.content;
   const closedTitle = !choices.length && adventure.storyCards.some(card => isHistoricalLore(card) && normalizeMemoryText(card.title) === normalizeMemoryText(finding.title));
-  const suggestedTitle = closedTitle ? `${finding.title}: ${finding.content.slice(0, 60)}` : finding.title;
+  const identityTitle = type === "lore" && !target && adventure.storyCards.some(c => (c.type === "character" || c.type === "location") && normalizeMemoryText(c.title) === normalizeMemoryText(finding.title));
+  const suggestedTitle = closedTitle || identityTitle ? `${finding.title}: ${finding.content.slice(0, 60)}` : finding.title;
   const memoryMode = target?.memoryMode ?? (uncertain || continuing ? "living" : type === "lore" ? "historical" : "static");
   return {
     id: createId("proposal"), proposedType: "storyCard", storyCardType: type, title: target?.title ?? suggestedTitle,
@@ -139,17 +140,6 @@ export function makeStoryCardSuggestion(adventure: Adventure, sourceId: string, 
       ...(player ? { playerMessageId: player.id, playerContent: player.content } : {}) },
     createdAt: now, updatedAt: now,
   };
-}
-
-export function companionLoreSuggestion(adventure: Adventure, identity: MemoryProposal): MemoryProposal | undefined {
-  if (!identity.storyCardReview || (identity.storyCardType !== "character" && identity.storyCardType !== "location")) return undefined;
-  if (!isExceptionalIdentityChange(identity.storyCardType, identity.content)) return undefined;
-  return makeStoryCardSuggestion(adventure, identity.sourceTurnId, identity.storyCardReview.sourceContent, {
-    title: `${identity.title}: ${identity.storyCardReview.eventKind ?? "Permanent change"}`, content: identity.content,
-    evidence: identity.sourceText, reason: "Historical support for the proposed identity change; review separately.",
-    type: "lore", participants: identity.storyCardReview.participants, eventKind: identity.storyCardReview.eventKind,
-    origin: identity.storyCardReview.origin === "deterministic" ? "deterministic" : "model",
-  });
 }
 
 /** Local entity nominations only. Narrative developments come from model findings. */
@@ -197,7 +187,7 @@ export function mergeStoryCardSuggestions(existing: MemoryProposal, incoming: Me
   const preferModel = incoming.storyCardReview?.origin === "model" && !incoming.storyCardReview.candidateOnly;
   const chosen = preferModel ? incoming : existing;
   return { ...chosen, id: existing.id, status: existing.status, createdAt: existing.createdAt,
-    sourceText: [...new Set([existing.sourceText, incoming.sourceText])].join("\n"),
+    sourceText: chosen.placementValidation ? chosen.sourceText : [...new Set([existing.sourceText, incoming.sourceText])].join("\n"),
     storyCardReview: chosen.storyCardReview ? { ...chosen.storyCardReview,
       evidenceQuotes: [existing.storyCardReview, incoming.storyCardReview].flatMap(review => review?.evidenceQuotes ?? [])
         .filter((quote, index, all) => all.findIndex(other => other.messageId === quote.messageId && other.quote === quote.quote) === index),

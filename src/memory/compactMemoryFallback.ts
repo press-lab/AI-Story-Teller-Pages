@@ -1,3 +1,4 @@
+import { validateStoryCardProposal } from "./validateStoryCardProposal";
 import { memoryEvidenceWindow } from "./memoryEvidenceWindow";
 import { approximateTokenCount } from "../tokenizer/approximateTokenCount";
 import { sendOpenAIMemoryResponse, MemoryResponseError } from "../providers/openAIMemoryResponses";
@@ -224,6 +225,14 @@ export async function runCompactMemoryFallback(
       const turnActions = onePassMemoryActions(current, context, updates, source.content,
         source.id, undefined, batch ? "Batched memory recovery: source turn evaluated" : "Compact memory fallback: one API call", batch ? input : playerInput,
         [], allowedReferences, "recovery");
+      for (const [index, action] of turnActions.entries()) {
+        if (action.type !== "ADD_MEMORY_PROPOSAL" || action.proposal.proposedType !== "storyCard") continue;
+        const reviewed = await validateStoryCardProposal(current, providerConfig, action.proposal, tokenUsage);
+        if (reviewed.proposal) turnActions[index] = { ...action, proposal: reviewed.proposal };
+        else turnActions[index] = { type: "LOG_EVALUATION_RESULT", entry: { id: "placement-" + action.proposal.id,
+          turn: current.activeState.turn, createdAt: new Date().toISOString(), conditionsEvaluated: [], conditionsFired: [], generatedContent: [], actionsExecuted: [],
+          errors: [reviewed.error ?? "Placement rejected."] } };
+      }
       const validationErrors = turnActions.flatMap(action => action.type === "LOG_EVALUATION_RESULT" ? action.entry.errors : []);
       if (validationErrors.length) {
         validationFailure = validationErrors.some(error => /evidence|quote/i.test(error)) ? "memory_evidence_rejected" : "memory_update_rejected";

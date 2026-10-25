@@ -1,3 +1,4 @@
+import { offlinePlacementReview } from "../test/memoryPlacement";
 import { afterEach, expect, it, vi } from "vitest";
 import opening from "./fixtures/hogwarts-opening.json";
 import { createDefaultAdventure, defaultModelConfig, makeStoryCard, makeBrain } from "../state/defaults";
@@ -121,4 +122,11 @@ it("provides the already-documented Rebecca recognition as canon and accepts del
   const body = JSON.parse(spy.mock.calls[0][1]!.body as string);
   expect(JSON.stringify(body.input)).toContain(opening.documentedRecognition.content);
   expect(result.actions.some(action => action.type === "ADD_MEMORY_PROPOSAL")).toBe(false);
+});
+
+// These legacy transport fixtures supply an explicit synthetic placement reviewer.
+vi.mock("../providers/memoryCompletion", async importOriginal => {
+  const actual = await importOriginal<typeof import("../providers/memoryCompletion")>();
+  return { ...actual, sendMemoryCompletion: vi.fn(async (...args: Parameters<typeof actual.sendMemoryCompletion>) =>
+    offlinePlacementReview({ messages: args[2] }) ?? actual.sendMemoryCompletion(...args)) };
 });

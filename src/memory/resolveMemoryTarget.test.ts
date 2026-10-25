@@ -179,3 +179,13 @@ describe("generated Story Card topic triggers", () => {
     expect(generatedStoryCardTriggers(adventure, "Vi", "A Zaunite fighter.", [], undefined, "static", "character")).toEqual(["Vi"]);
   });
 });
+
+it.each(["character", "location"] as const)("does not route reference Lore to a same-mode %s destination", type => {
+  const adventure = createDefaultAdventure();
+  adventure.storyCards = [makeStoryCard({ id: "identity", title: "Same subject", content: "Authored identity.", type, memoryMode: "static", keys: ["subject alias"] })];
+  for (const targetId of [undefined, "identity"]) {
+    const routed = resolveMemoryTarget(adventure, { proposedType: "storyCard", storyCardType: "lore", title: "Same subject",
+      targetId, memoryMode: "static", content: "An established magical rule concerning this subject." });
+    expect(routed.targetId).toBeUndefined(); expect(routed.storyCardType).toBe("lore");
+  }
+});

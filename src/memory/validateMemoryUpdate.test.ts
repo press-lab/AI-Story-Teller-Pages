@@ -10,7 +10,7 @@ function seed() {
     { id: "source", role: "assistant", content: "Ron asks for first refusal if Seth and Fred sell their tattoo charms. No deal is agreed.", createdAt: "2026-01-01" }];
   return a;
 }
-const verdict = () => ({ accepted: true, meaningfulChange: true, evidenceMessageIds: ["source"], reason: "Ron expressed interest; the makers do not acquire off-screen knowledge.", identityMatchesTarget: true });
+const verdict = () => ({ accepted: true, meaningfulChange: true, evidenceMessageIds: ["source"], reason: "Ron expressed interest; the makers do not acquire off-screen knowledge.", identityMatchesTarget: true, placement: { kind: "historicalLore", newFact: "Ron expressed interest.", reason: "Observable interest.", title: "Product interest", content: "Ron expressed interest; no sale was agreed." } });
 beforeEach(() => provider.mockReset());
 it.each([undefined, null, "true", 1])("retries a missing or incorrectly typed required identity verdict: %s", async identityMatchesTarget => {
   provider.mockResolvedValue({ content: JSON.stringify({ ...verdict(), identityMatchesTarget }), raw: {} });

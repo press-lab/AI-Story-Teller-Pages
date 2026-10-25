@@ -1,3 +1,4 @@
+import { reviewedProposal } from "../test/memoryPlacement";
 import { describe, expect, it } from "vitest";
 import { createDefaultAdventure, makeBrain, makeStoryCard, normalizeAdventure } from "../state/defaults";
 import { adventureReducer as reduce } from "../state/adventureReducer";
@@ -49,13 +50,16 @@ describe("primary Story Card architecture", () => {
     const identity = makeStoryCard({ id: "identity", title: type === "character" ? "Draconia" : "Ministry", type, content: "Authored identity and appearance.", memoryMode: "living", pinned: true });
     let state = { ...createDefaultAdventure(), storyCards: [identity] };
     const content = type === "character" ? "Draconia married Seth." : "Seth and Draconia shared their first kiss at the Ministry.";
-    state = reduce(state, { type: "ADD_MEMORY_PROPOSAL", proposal: makeMemoryProposal({ id: "development", proposedType: "storyCard", title: identity.title, targetId: identity.id, content, appendContent: true, memoryMode: "living" }) });
+    state = reduce(state, { type: "ADD_MEMORY_PROPOSAL", proposal: makeMemoryProposal({ id: "development", userInitiated: false, proposedType: "storyCard", title: identity.title, targetId: identity.id, content, appendContent: true, memoryMode: "living" }) });
     const pending = state.activeState.memoryProposals.find(p => p.id === "development")!;
-    expect(pending).toMatchObject({ storyCardType: "lore", targetId: undefined });
+    expect(pending).toMatchObject({ targetId: identity.id, status: "pending" });
+    state = dated(state, "development-source", content);
+    const loreDraft = reviewedProposal(state, { ...pending, targetId: undefined, title: identity.title + ": Development", storyCardType: "lore", memoryMode: "living", sourceTurnId: "development-source", appendContent: undefined });
+    state = reduce(state, { type: "UPDATE_MEMORY_PROPOSAL", proposalId: pending.id, patch: loreDraft });
     state = reduce(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: pending.id });
     expect(state.storyCards.find(c => c.id === identity.id)?.content).toBe(identity.content);
     expect(state.storyCards.find(c => c.type === "lore")?.content).toBe(content);
-    expect(applyAIMemoryUpdate(state, [{ type: "storyCardUpdate", storyCardId: identity.id, content }]).actions).toContainEqual(expect.objectContaining({ type: "ADD_MEMORY_PROPOSAL", proposal: expect.objectContaining({ storyCardType: "lore", requiresReview: false }) }));
+    expect(applyAIMemoryUpdate(state, [{ type: "storyCardUpdate", storyCardId: identity.id, content }]).actions).toContainEqual(expect.objectContaining({ type: "ADD_MEMORY_PROPOSAL", proposal: expect.objectContaining({ storyCardType: type, requiresReview: true }) }));
   });
 
   it("requires review for character death and records dated supporting Lore on approval", () => {
@@ -63,7 +67,7 @@ describe("primary Story Card architecture", () => {
     state.memoryAutoApprove.storyCard = true;
     state.storyCards = [makeStoryCard({ id: "voldemort", title: "Voldemort", type: "character", content: "Voldemort is a dark wizard.", pinned: true })];
     state = dated(state, "death", "Current story date: February 1, 2019\nVoldemort dies at Seth's hands.");
-    state = reduce(state, { type: "ADD_MEMORY_PROPOSAL", proposal: makeMemoryProposal({ id: "identity-death", title: "Voldemort", targetId: "voldemort", sourceTurnId: "death", content: "Voldemort dies at Seth's hands.", appendContent: true, proposedType: "storyCard" }) });
+    state = reduce(state, { type: "ADD_MEMORY_PROPOSAL", proposal: reviewedProposal(state, makeMemoryProposal({ id: "identity-death", title: "Voldemort", targetId: "voldemort", sourceTurnId: "death", content: "Voldemort dies at Seth's hands.", appendContent: true, proposedType: "storyCard" })) });
     expect(state.activeState.memoryProposals[0]).toMatchObject({ status: "pending", requiresReview: true, targetId: "voldemort" });
     expect(state.storyCards[0].content).not.toContain("dies");
     state = reduce(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: "identity-death" });
@@ -200,13 +204,31 @@ it("does not bypass identity durability through a location alias", () => {
   state.memoryAutoApprove.storyCard = true;
   const place = makeStoryCard({ id: "ministry", title: "Ministry of Magic", type: "location", keys: ["Ministry"], content: "A durable magical institution." });
   state.storyCards = [place];
-  state = reduce(state, { type: "ADD_MEMORY_PROPOSAL", proposal: makeMemoryProposal({ id: "alias", title: "Ministry", content: "Seth negotiated research access there.", proposedType: "storyCard", memoryMode: "static" }) });
+  state = reduce(state, { type: "ADD_MEMORY_PROPOSAL", proposal: makeMemoryProposal({ id: "alias", userInitiated: false, title: "Ministry", content: "Seth negotiated research access there.", proposedType: "storyCard", memoryMode: "static" }) });
   expect(state.storyCards.find(c => c.id === place.id)?.content).toBe(place.content);
-  expect(state.activeState.memoryProposals[0]).toMatchObject({ targetId: undefined, storyCardType: "lore" });
+  expect(state.activeState.memoryProposals[0]).toMatchObject({ targetId: undefined, status: "pending", requiresReview: true });
 });
 
 it("preserves authored controls while migrating guarded legacy plot material", () => {
   const original = { ...makeStoryCard({ id: "pact", title: "Secret pact", content: "The two made a secret pact.", priority: 2, tokenBudget: 70, state: "user-defined", pinned: false }), type: "plot" as const };
   const state = normalizeAdventure({ ...createDefaultAdventure(), storyCards: [original] } as unknown as Adventure);
   expect(state.storyCards[0]).toMatchObject({ type: "lore", content: original.content, priority: 2, tokenBudget: 70, state: "user-defined", pinned: false });
+});
+
+// The proposal is user-supplied; these supporting exchanges are explicitly synthetic.
+describe("Moody placement regressions", () => {
+  it.each([
+    ["character", "Alastor Moody", "Moody explained that the Killing Curse killed Harry Potter's parents."],
+    ["character", "Alastor Moody", "Moody is permanently scarred. He demonstrated three curses today."],
+    ["location", "Defence Classroom", "Moody described how a distant castle was destroyed."],
+  ] as const)("does not authorize an unvalidated %s identity write: %s", (type, title, content) => {
+    let state = createDefaultAdventure();
+    const card = makeStoryCard({ id: "identity", title, type, content: "Authored identity." });
+    state.storyCards = [card];
+    state = dated(state, "moody", content);
+    state = reduce(state, { type: "ADD_MEMORY_PROPOSAL", proposal: makeMemoryProposal({ id: "misplaced", userInitiated: false, title, targetId: card.id, sourceTurnId: "moody", proposedType: "storyCard", content }) });
+    state = reduce(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: "misplaced" });
+    expect(state.storyCards.find(c => c.id === card.id)).toEqual(card);
+    expect(state.activeState.memoryProposals.find(p => p.id === "misplaced")?.status).toBe("pending");
+  });
 });

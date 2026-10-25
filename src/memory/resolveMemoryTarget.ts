@@ -1,8 +1,9 @@
-import type { Adventure, MemoryProposalType, StoryCard, StoryCardMemoryMode } from "../types/adventure";
+import type { Adventure, MemoryProposalType, StoryCard, StoryCardMemoryMode, StoryCardType } from "../types/adventure";
 import { isGuardedStoryCardMemory } from "./storyCardPolicy";
 
 export interface MemoryTargetDraft {
   proposedType: MemoryProposalType;
+  storyCardType?: StoryCardType;
   title: string;
   content: string;
   sourceText?: string;
@@ -16,6 +17,7 @@ export interface MemoryTargetDraft {
 
 export interface MemoryTargetResolution {
   proposedType: MemoryProposalType;
+  storyCardType?: StoryCardType;
   title: string;
   content: string;
   suggestedTriggers: string[];
@@ -70,7 +72,8 @@ export function inferStoryCardMemoryMode(draft: Pick<MemoryTargetDraft, "title" 
   return "static";
 }
 
-function targetAcceptsMode(card: StoryCard, inferredMode: StoryCardMemoryMode): boolean {
+function targetAcceptsMode(card: StoryCard, inferredMode: StoryCardMemoryMode, type?: StoryCardType): boolean {
+  if (type && card.type !== type) return false;
   if (isLivingStoryCard(card)) return inferredMode === "living";
   if (isHistoricalStoryCard(card)) return inferredMode === "historical";
   return inferredMode === "static";
@@ -90,34 +93,34 @@ function guardedExactTitleTarget(card: StoryCard, draft: MemoryTargetDraft): boo
 function exactStoryCardTarget(adventure: Adventure, draft: MemoryTargetDraft, inferredMode: StoryCardMemoryMode): StoryCard | undefined {
   if (draft.targetId) {
     const target = adventure.storyCards.find((card) => card.id === draft.targetId);
-    if (target && guardedExactTitleTarget(target, draft)) return target;
-    if (target && targetAcceptsMode(target, inferredMode)) return target;
+    if (target && (!draft.storyCardType || target.type === draft.storyCardType) && guardedExactTitleTarget(target, draft)) return target;
+    if (target && targetAcceptsMode(target, inferredMode, draft.storyCardType)) return target;
     return undefined;
   }
   const titleNorm = normalize(draft.title);
   const exactTitle = adventure.storyCards.find((card) => card.active && normalize(card.title) === titleNorm);
-  if (exactTitle && guardedExactTitleTarget(exactTitle, draft)) return exactTitle;
+  if (exactTitle && (!draft.storyCardType || exactTitle.type === draft.storyCardType) && guardedExactTitleTarget(exactTitle, draft)) return exactTitle;
   if (
     exactTitle &&
-    targetAcceptsMode(exactTitle, inferredMode)
+    targetAcceptsMode(exactTitle, inferredMode, draft.storyCardType)
   ) {
     return exactTitle;
   }
   return adventure.storyCards.find((card) =>
     card.active &&
     card.type !== "character" &&
-    targetAcceptsMode(card, inferredMode) &&
+    targetAcceptsMode(card, inferredMode, draft.storyCardType) &&
     card.keys.some((key) => normalize(key) === titleNorm)
   );
 }
 
 function incompatibleTarget(adventure: Adventure, draft: MemoryTargetDraft, inferredMode: StoryCardMemoryMode): StoryCard | undefined {
   const target = draft.targetId ? adventure.storyCards.find((card) => card.id === draft.targetId) : undefined;
-  if (target && guardedExactTitleTarget(target, draft)) return undefined;
-  if (target && !targetAcceptsMode(target, inferredMode)) return target;
+  if (target && (!draft.storyCardType || target.type === draft.storyCardType) && guardedExactTitleTarget(target, draft)) return undefined;
+  if (target && !targetAcceptsMode(target, inferredMode, draft.storyCardType)) return target;
   const exactTitle = adventure.storyCards.find((card) => card.active && normalize(card.title) === normalize(draft.title));
-  if (exactTitle && guardedExactTitleTarget(exactTitle, draft)) return undefined;
-  return exactTitle && !targetAcceptsMode(exactTitle, inferredMode) ? exactTitle : undefined;
+  if (exactTitle && (!draft.storyCardType || exactTitle.type === draft.storyCardType) && guardedExactTitleTarget(exactTitle, draft)) return undefined;
+  return exactTitle && !targetAcceptsMode(exactTitle, inferredMode, draft.storyCardType) ? exactTitle : undefined;
 }
 
 function childTitleFor(target: StoryCard, draft: MemoryTargetDraft, inferredMode: StoryCardMemoryMode): string {
@@ -247,6 +250,7 @@ export function resolveMemoryTarget(adventure: Adventure, draft: MemoryTargetDra
 
   return {
     proposedType: "storyCard",
+    storyCardType: draft.storyCardType,
     title,
     content: draft.content,
     suggestedTriggers,

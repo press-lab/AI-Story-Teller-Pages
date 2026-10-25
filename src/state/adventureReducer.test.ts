@@ -463,7 +463,7 @@ describe("adventureReducer", () => {
     expect(outgoing.every((proposal) => proposal.memoryMode === "historical")).toBe(true);
   });
 
-  it("auto-approves overwritten Brain field history when Story Cards are auto-approved", () => {
+  it("keeps overwritten Brain field history pending placement review even when Story Cards are auto-approved", () => {
     const brain = makeBrain({
       id: "brain-margo-auto-history",
       characterName: "Margo",
@@ -486,8 +486,8 @@ describe("adventureReducer", () => {
       },
     });
 
-    expect(state.storyCards.some((card) => card.content.includes("arm's length") && card.memoryMode === "historical")).toBe(true);
-    expect(state.activeState.memoryProposals.some((proposal) => proposal.status === "approved" && proposal.content.includes("arm's length"))).toBe(true);
+    expect(state.storyCards.some((card) => card.content.includes("arm's length") && card.memoryMode === "historical")).toBe(false);
+    expect(state.activeState.memoryProposals.some((proposal) => proposal.status === "pending" && proposal.content.includes("arm's length"))).toBe(true);
   });
 
   it("does not append duplicate brain thoughts under new keys", () => {
@@ -745,6 +745,7 @@ describe("adventureReducer", () => {
       type: "ADD_MEMORY_PROPOSAL",
       proposal: makeMemoryProposal({
         id: "proposal-seth-current",
+        storyCardType: "lore",
         proposedType: "storyCard",
         targetId: "card-seth",
         title: "Seth Valis",

@@ -1,3 +1,4 @@
+import { offlinePlacementReview } from "../test/memoryPlacement";
 import { afterEach, expect, it, vi } from "vitest";
 import { memoryReasoningFields } from "./memoryReasoning";
 import { sendOpenAICompatibleChatCompletion } from "./openAICompatible";
@@ -147,4 +148,11 @@ it("does not inherit a narrator's endpoint-specific control on a different evalu
   const config = resolveBackgroundProviderConfig(a, { ...glm, memoryReasoningControl: "openRouterDisabled" });
   expect(config.memoryReasoningControl).toBeUndefined();
   expect(memoryReasoningFields(config)).toEqual({ thinking: { type: "disabled" } });
+});
+
+// These legacy transport fixtures supply an explicit synthetic placement reviewer.
+vi.mock("./memoryCompletion", async importOriginal => {
+  const actual = await importOriginal<typeof import("./memoryCompletion")>();
+  return { ...actual, sendMemoryCompletion: vi.fn(async (...args: Parameters<typeof actual.sendMemoryCompletion>) =>
+    offlinePlacementReview({ messages: args[2] }) ?? actual.sendMemoryCompletion(...args)) };
 });

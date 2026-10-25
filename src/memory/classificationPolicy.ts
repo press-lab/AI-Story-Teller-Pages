@@ -6,7 +6,7 @@ export interface MemoryClassificationOptions {
   immediateAlwaysOn?: boolean;
   characterName?: string;
   existingBrainNames?: string[];
-  existingStoryCards?: Array<{ id: string; title: string; keys: string[] }>;
+  existingStoryCards?: Array<{ id: string; title: string; keys: string[]; type?: string }>;
 }
 
 export interface MemoryClassification {
@@ -50,7 +50,7 @@ function hasExistingBrain(options: MemoryClassificationOptions, title: string): 
 function matchingStoryCard(options: MemoryClassificationOptions, text: string): { id: string; title: string; keys: string[] } | undefined {
   const lower = text.toLocaleLowerCase();
   return (options.existingStoryCards ?? []).find((card) =>
-    [card.title, ...card.keys].some((key) => key.trim() && lower.includes(key.toLocaleLowerCase())),
+    card.type !== "character" && card.type !== "location" && [card.title, ...card.keys].some((key) => key.trim() && lower.includes(key.toLocaleLowerCase())),
   );
 }
 

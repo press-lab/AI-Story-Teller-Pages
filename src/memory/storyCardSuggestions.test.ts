@@ -1,3 +1,4 @@
+import { reviewedProposal } from "../test/memoryPlacement";
 import { describe, expect, it, vi } from "vitest";
 import { createDefaultAdventure, makeBrain, makeComponent, makeStoryCard, normalizeAdventure } from "../state/defaults";
 import { adventureReducer as reduce } from "../state/adventureReducer";
@@ -32,7 +33,7 @@ describe("merged Story Card suggestions", () => {
     const proposal = makeStoryCardSuggestion(state, "research-source", content, { title: "Aperture research", type: "lore", content,
       evidence: content, reason: "A durable research discovery", triggers: [] });
     expect(proposal.suggestedTriggers.map(key => key.toLowerCase())).toContain("ward design");
-    state = reduce(state, { type: "ADD_MEMORY_PROPOSAL", proposal });
+    state = reduce(state, { type: "ADD_MEMORY_PROPOSAL", proposal: reviewedProposal(state, proposal) });
     state = reduce(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id });
     const card = state.storyCards.find(card => card.title === proposal.title)!;
     expect(card.keys.map(key => key.toLowerCase())).toContain("runic arrays");

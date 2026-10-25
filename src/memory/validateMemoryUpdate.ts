@@ -1,3 +1,5 @@
+import { STORY_CARD_PLACEMENT_POLICY } from "./storyCardPlacement";
+import type { MemoryPlacementKind, MemoryPlacementValidation } from "../types/adventure";
 import { safeMemoryFailure } from "../providers/backgroundProvider";
 import type { Adventure, ProviderConfig } from "../types/adventure";
 import { sendMemoryCompletion } from "../providers/memoryCompletion";
@@ -5,6 +7,14 @@ import { latestMemoryTurn } from "./memoryUpdateEvidence";
 import { memoryCanonMessages } from "./memoryCanon";
 import { memoryEvidenceWindow } from "./memoryEvidenceWindow";
 
+export interface StoryCardPlacementVerdict {
+  kind: MemoryPlacementKind; newFact: string; reason: string; title: string; content: string;
+  identityChange?: MemoryPlacementValidation["identityChange"];
+}
+export interface MemoryValidationResult {
+  changed: boolean; error?: string; evidenceMessageIds?: string[]; retryable?: boolean; failureCode?: string;
+  providerCode?: string; httpStatus?: number; placement?: StoryCardPlacementVerdict;
+}
 export type ValidatedMemorySurface = "plotEssentials" | "activePressure" | "currentArc" | "storyCard" | "brain";
 
 export function memoryUpdateShapeError(surface: ValidatedMemorySurface, content: string): string | undefined {
@@ -28,7 +38,7 @@ export async function validateMemoryUpdate(
   appendOnly = false,
   reviewOnly = false,
   targetInfo?: { id?: string; type: string; memoryMode?: string },
-): Promise<{ changed: boolean; error?: string; evidenceMessageIds?: string[]; retryable?: boolean; failureCode?: string; providerCode?: string; httpStatus?: number }> {
+): Promise<MemoryValidationResult> {
   const normalize = (text: string) => text.toLocaleLowerCase().replace(/[\s•*-]+/g, " ").trim();
   if (!content.trim() || /^(NONE|NO_CHANGE)$/i.test(content.trim()) || normalize(content) === normalize(previous)) return { changed: false };
   const shapeError = memoryUpdateShapeError(surface, content);
@@ -53,6 +63,9 @@ For storyCard: require genuinely new durable facts or a factual correction about
 For historical Lore: significant interpersonal actions and their actual outcomes are eligible independently of identity-card permissions. Accept an invitation acceptance as history even before the meeting; do not call a research dinner a romantic date without evidence. An explicit attempted kiss followed by withdrawal is completed history of the attempt, never a completed kiss. For a review-only candidate, accept grounded observable advances and responses with explicit uncertainty when the surrounding scene establishes significance; an ambiguous lean does not prove a kiss attempt. Reject ordinary gestures presented as romance, unsupported private interpretations or consent/relationship assumptions. Review uncertainty as uncertainty, not as an established fact.
 For brain: review a PATCH, not a full replacement. Omitted fields remain unchanged; null thoughts archive entries. The first-person speaker must be exactly the named target, never the player or narrator. Require evidence that the target witnessed, learned, or experienced the event; do not grant off-screen knowledge. Private reactions may be inferred from the target's established perspective, but never transfer another person's actions, texts, dates, or beliefs to them.
 For brain and storyCard also return identityMatchesTarget: boolean. targetInfo identifies the destination type. For Lore, verify attribution of the observable event to its subject and participants; the title can name a topic or partnership rather than a speaker. Reporting Ron expressed interest in a product does not mean its absent makers heard him or agreed to a sale. For Character and Brain targets, verify the exact individual and their knowledge boundary. Explicitly resolve who spoke, acted, sent each text, and knows each fact. A name mentioned in the scene, an initial, or a shared location does not establish identity. Reject ambiguous attribution. Preserve established identity and voice contracts.
+For storyCard successful verdicts also return placement:{kind:"identity|historicalLore|ongoingLore|referenceLore|brain|none",newFact:"specific new fact",reason:"why this placement",title:"focused subject title",content:"final focused draft"}. Keep placement.content identical to proposed when it is already focused. For identity use the existing target title. For Lore omit biography/VOICE and unsupported interpretations, preserve observable new facts. If proposed placement is wrong but its facts are supported, accept the supported facts and return corrected placement. The application will revalidate changed content before approval.
+For an existing Character/Location identity update include placement.identityChange:{targetId:"exact ID",kind:"correction|transformation",fact:"specific identity change",evidenceQuotes:[{messageId:"ID",quote:"exact quote"}],supportingLore:"focused supporting historical event, without biography"}. A keyword anywhere in the paragraph is insufficient.
+${STORY_CARD_PLACEMENT_POLICY}
 Every meaningful change must be supported by supplied recent message IDs. Return accepted=false for unsupported certainty or invalid output, meaningfulChange=false for an unnecessary rewrite.` },
         { role: "user", content: JSON.stringify({ surface, title, targetInfo: targetInfo ?? { type: surface === "brain" ? "brain" : surface }, previous, proposed: content, reviewOnly, operation: appendOnly ? "append new facts; previous facts are retained unchanged" : "replacement or Brain patch", recentEvidence: evidence, latestTurnMessageIds: latest.map(m => m.id) }) },
       ]);
@@ -86,7 +99,27 @@ Every meaningful change must be supported by supplied recent message IDs. Return
       }
     }
     if (!v.evidenceMessageIds.some(id => latest.some(message => message.id === id))) return { changed: false, error: "Memory change lacks evidence from the establishing exchange." };
-    return { changed: true, evidenceMessageIds: v.evidenceMessageIds as string[] };
+    let placement: StoryCardPlacementVerdict | undefined;
+    if (surface === "storyCard") {
+      const p = v.placement as Record<string, unknown> | undefined;
+      const invalid = () => ({ changed: false, retryable: true, failureCode: "memory_placement_schema_invalid",
+        error: "memory_model_output_invalid: Placement verdict is missing or malformed." });
+      if (!p || typeof p !== "object" || !["identity", "historicalLore", "ongoingLore", "referenceLore", "brain", "none"].includes(String(p.kind))
+        || ![p.newFact, p.reason, p.title, p.content].every(x => typeof x === "string" && x.trim())
+        || String(p.content).length > 12000 || String(p.title).length > 160) return invalid();
+      placement = { kind: p.kind as MemoryPlacementKind, newFact: p.newFact as string, reason: p.reason as string, title: p.title as string, content: p.content as string };
+      if (p.kind === "identity" && targetInfo?.id && ["character", "location"].includes(targetInfo.type)) {
+        const c = p.identityChange as NonNullable<MemoryPlacementValidation["identityChange"]> | undefined;
+        if (!c || c.targetId !== targetInfo.id || !["correction", "transformation"].includes(c.kind)
+          || typeof c.fact !== "string" || !c.fact.trim() || !Array.isArray(c.evidenceQuotes) || !c.evidenceQuotes.length
+          || c.evidenceQuotes.some(q => !q || typeof q.messageId !== "string" || typeof q.quote !== "string" || !q.quote.trim()
+            || !(v.evidenceMessageIds as string[]).includes(q.messageId) || !messages.some(m => m.id === q.messageId && m.content.includes(q.quote)))
+          || (c.supportingLore !== undefined && typeof c.supportingLore !== "string")) return invalid();
+        placement.identityChange = { targetId: c.targetId, kind: c.kind, fact: c.fact, evidenceQuotes: c.evidenceQuotes.map(({ messageId, quote }) => ({ messageId, quote })), supportingLore: c.supportingLore };
+      }
+      if (placement.kind === "brain" || placement.kind === "none") return { changed: false, failureCode: "memory_placement_rejected", error: placement.reason, placement };
+    }
+    return { changed: true, evidenceMessageIds: v.evidenceMessageIds as string[], placement };
   } catch (error) {
     const failure = safeMemoryFailure(error, received);
     return { changed: false, retryable: true, error: failure.message, failureCode: failure.code,

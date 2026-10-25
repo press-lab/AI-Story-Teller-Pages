@@ -1,7 +1,6 @@
 import { memoryEvidenceWindow } from "./memoryEvidenceWindow";
 import { matchingStoryCardEntities } from "./storyCardEntities";
-import { STORY_CARD_MEMORY_CHECK, STORY_CARD_OUTPUT_SCHEMA, makeStoryCardSuggestion, companionLoreSuggestion } from "./storyCardSuggestions";
-import { isExceptionalIdentityChange } from "./storyCardArchitecture";
+import { STORY_CARD_MEMORY_CHECK, STORY_CARD_OUTPUT_SCHEMA, makeStoryCardSuggestion } from "./storyCardSuggestions";
 import type { Adventure, AdventureAction, BrainEntry, ContextBuildResult, MemoryProposal, Message, StoryCardType } from "../types/adventure";
 import { createId, nowIso } from "../utils/id";
 import { applyAIMemoryUpdate } from "./applyAIMemoryUpdate";
@@ -187,8 +186,7 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
       if (u.operation !== undefined && !["create", "update"].includes(String(u.operation).toLowerCase())) { reject(`${target}: invalid operation`); continue; }
       const requested = ["character", "location", "custom"].includes(String(u.cardType)) ? u.cardType as StoryCardType : "lore";
       const type: StoryCardType = existing && (existing.type === "lore" || existing.type === "custom") ? existing.type
-        : existing && (existing.type === "character" || existing.type === "location") && isExceptionalIdentityChange(existing.type, content)
-        ? existing.type : kind === "newCard" && !existing ? requested : "lore";
+        : kind === "card" && existing ? existing.type : kind === "newCard" && !existing ? requested : "lore";
       if (!existing && type !== "lore" && !adventure.systemTriggers?.enabled) { reject(`${target}: new card suggestions disabled`); continue; }
       const suggestion = makeStoryCardSuggestion(adventure, sourceTurnId, story, { title: target, content, evidence, reason: `One-pass memory: ${u.reason}`,
         type, targetId: typeof u.targetId === "string" ? u.targetId : existing?.id, candidateOnly: Boolean(inferredHabit || quote.length < 12),
@@ -214,15 +212,6 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
         if (suggestion.lore) suggestion.lore.status = u.eventStatus as "completed" | "ongoing" | "unresolved";
       }
       actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal: suggestion });
-      const companion = companionLoreSuggestion(adventure, suggestion);
-      if (companion) {
-        if (companion.storyCardReview && suggestion.storyCardReview) {
-          companion.storyCardReview.additionalSources = suggestion.storyCardReview.additionalSources;
-          companion.storyCardReview.evidenceQuotes = suggestion.storyCardReview.evidenceQuotes;
-        }
-        if (companion.lore && suggestion.lore) companion.lore.sourceMessageIds = suggestion.lore.sourceMessageIds;
-        actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal: companion });
-      }
       executed.push(`Proposed ${kind}: ${target}`);
       continue;
     } else { reject(`${target}: only Story Cards and Brains are automatic memory destinations`); continue; }

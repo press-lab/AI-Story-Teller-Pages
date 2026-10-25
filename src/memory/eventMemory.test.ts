@@ -1,3 +1,4 @@
+import { offlinePlacementReview } from "../test/memoryPlacement";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createDefaultAdventure, makeStoryCard, normalizeAdventure } from "../state/defaults";
 import { adventureReducer } from "../state/adventureReducer";
@@ -27,13 +28,13 @@ function proposal(overrides: Partial<MemoryProposal> = {}): MemoryProposal {
   return { id: "event-proposal", sourceTurnId: "1", sourceText: content, proposedType: "storyCard", title: candidate.title, content, suggestedTriggers: eventMemory.recallCues, confidence: 0.8, rationale: "How they met", status: "pending", memoryMode: "historical", storyCardType: "event", eventMemory, createdAt: "2026-09-27T00:00:00Z", updatedAt: "2026-09-27T00:00:00Z", ...overrides };
 }
 function eventCard() { return makeStoryCard({ id: "encounter", title: candidate.title, content, type: "event", eventMemory }); }
-beforeEach(() => provider.mockReset());
+beforeEach(() => { provider.mockReset(); provider.mockImplementation(async r => offlinePlacementReview(r) ?? { content: "[]", raw: {} }); });
 
 describe("Event Memories", () => {
   it("keeps a completed event discoverable when a character card already mentions it", async () => {
     const a = seed();
     a.storyCards[0].content = content;
-    provider.mockResolvedValue({ content: JSON.stringify([candidate]), raw: {} });
+    provider.mockImplementation(async r => offlinePlacementReview(r) ?? { content: JSON.stringify([candidate]), raw: {} });
     const result = await detectStoryCardProposals(a, config);
     expect(result.actions).toContainEqual(expect.objectContaining({ type: "ADD_MEMORY_PROPOSAL", proposal: expect.objectContaining({ storyCardType: "lore", eventMemory: expect.objectContaining({ sourceMessageIds: ["door"] }) }) }));
   });
@@ -41,7 +42,7 @@ describe("Event Memories", () => {
   it("discovers an event independently of an existing character, requires approval, and preserves evidence", async () => {
     const reviewState = seed();
     reviewState.memoryAutoApprove.storyCard = false;
-    provider.mockResolvedValue({ content: JSON.stringify([candidate]), raw: {} });
+    provider.mockImplementation(async r => offlinePlacementReview(r) ?? { content: JSON.stringify([candidate]), raw: {} });
     const result = await detectStoryCardProposals(reviewState, config);
     expect(result.errors).toEqual([]);
     let state = result.actions.reduce(adventureReducer, reviewState);
@@ -127,7 +128,7 @@ describe("Event Memories", () => {
   it("scans earlier Chronicle excerpts even with automatic discovery disabled and suppresses overlap duplicates", async () => {
     const a = seed(); a.memoryDetectionSettings.enabled = false;
     a.messages.push(...Array.from({ length: 30 }, (_, i) => ({ id: "later-" + i, role: "assistant" as const, content: "Later scene " + i, createdAt: "2026-09-27T00:00:00Z" })));
-    provider.mockResolvedValueOnce({ content: JSON.stringify([candidate]), raw: {} }).mockResolvedValueOnce({ content: "[]", raw: {} });
+    let generations = 0; provider.mockImplementation(async r => offlinePlacementReview(r) ?? { content: generations++ ? "[]" : JSON.stringify([candidate]), raw: {} });
     const progress = vi.fn(); const actions = vi.fn();
     expect(await scanEventMemories(a, config, actions, progress, new AbortController().signal)).toBe(1);
     expect(provider).toHaveBeenCalledTimes(2);
@@ -138,14 +139,21 @@ describe("Event Memories", () => {
   it("cancels between excerpts and preserves completed proposals on a later provider failure", async () => {
     const a = seed(); a.messages.push(...Array.from({ length: 30 }, (_, i) => ({ ...a.messages[0], id: "later-" + i })));
     const controller = new AbortController();
-    provider.mockResolvedValue({ content: JSON.stringify([candidate]), raw: {} });
+    provider.mockImplementation(async r => offlinePlacementReview(r) ?? { content: JSON.stringify([candidate]), raw: {} });
     const actions = vi.fn(() => controller.abort());
     expect(await scanEventMemories(a, config, actions, vi.fn(), controller.signal)).toBe(1);
     expect(provider).toHaveBeenCalledTimes(1);
     provider.mockReset();
-    provider.mockResolvedValueOnce({ content: JSON.stringify([candidate]), raw: {} }).mockRejectedValueOnce(new Error("Provider unavailable"));
+    let generations = 0; provider.mockImplementation(async r => { const review = offlinePlacementReview(r); if (review) return review; if (generations++) throw new Error("Provider unavailable"); return { content: JSON.stringify([candidate]), raw: {} }; });
     const persisted = vi.fn();
     await expect(scanEventMemories(a, config, persisted, vi.fn(), new AbortController().signal)).rejects.toThrow("memory_provider_request_failed");
     expect(persisted).toHaveBeenCalledTimes(1);
   });
+});
+
+// These legacy transport fixtures supply an explicit synthetic placement reviewer.
+vi.mock("../providers/memoryCompletion", async importOriginal => {
+  const actual = await importOriginal<typeof import("../providers/memoryCompletion")>();
+  return { ...actual, sendMemoryCompletion: vi.fn(async (...args: Parameters<typeof actual.sendMemoryCompletion>) =>
+    offlinePlacementReview({ messages: args[2] }) ?? actual.sendMemoryCompletion(...args)) };
 });

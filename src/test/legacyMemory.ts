@@ -1,3 +1,5 @@
+import { reviewedProposal } from "./memoryPlacement";
+import { makeStoryCardSuggestion } from "../memory/storyCardSuggestions";
 /** Compatibility tests for the payload adapter still used by explicit compact catch-up.
  * This helper is never part of normal play: tests feed legacy findings explicitly.
  */
@@ -30,7 +32,22 @@ export async function runLegacyCandidateFixture(options: RunTurnPipelineOptions)
   const context = legacyMemoryContext(result.adventure, { currentInput: options.text, latestModelOutput: source.content });
   const actions = onePassMemoryActions(result.adventure, context, parsed.updates, source.content, source.id, parsed.error,
     "Explicit legacy candidate adapter test", options.text);
-  result.adventure = actions.reduce(adventureReducer, result.adventure);
+  const reviewedActions = actions.flatMap(action => {
+    if (action.type !== "ADD_MEMORY_PROPOSAL" || action.proposal.proposedType !== "storyCard") return [action];
+    const p = action.proposal, target = result.adventure.storyCards.find(c => c.id === p.targetId);
+    // Synthetic reviewer answers for the old adapter's fixed fixtures. Real review
+    // is exercised through validateStoryCardProposal in placement/pipeline tests.
+    const identity = target && /\b(died|dies|dead|killed|destroyed)\b/i.test(p.content)
+      && !/\b(kin|parents|relatives|years|1997)\b/i.test(p.content);
+    const routed = target && ["character", "location"].includes(target.type) && !identity
+      ? makeStoryCardSuggestion(result.adventure, source.id, source.content, { title: p.title, content: p.content, type: "lore", evidence: p.sourceText,
+        reason: p.rationale, candidateOnly: p.storyCardReview?.candidateOnly, triggers: p.suggestedTriggers }) : p;
+    const reviewed = reviewedProposal(result.adventure, routed);
+    const companion = identity ? makeStoryCardSuggestion(result.adventure, source.id, source.content, { title: `${p.title}: Status change`, content: p.content,
+      evidence: p.sourceText, type: "lore", reason: "Synthetic supporting history", candidateOnly: true }) : undefined;
+    return [{ type: "ADD_MEMORY_PROPOSAL" as const, proposal: reviewed }, ...(companion ? [{ type: "ADD_MEMORY_PROPOSAL" as const, proposal: reviewedProposal(result.adventure, companion) }] : [])];
+  });
+  result.adventure = reviewedActions.reduce(adventureReducer, result.adventure);
   result.adventure = adventureReducer(result.adventure, { type: "SCAN_STORY_CARD_EXCHANGE", sourceMessageId: source.id, manual: true });
   return result;
 }

@@ -23,6 +23,11 @@ export function makeMemoryProposal(overrides: Partial<MemoryProposal> = {}): Mem
     storyCardType: overrides.storyCardType,
     autoUpdate: overrides.autoUpdate,
     autoUpdateCooldownTurns: overrides.autoUpdateCooldownTurns,
+    // This helper represents explicit authored drafts. Generated-output tests set false or bind a synthetic review.
+    userInitiated: overrides.userInitiated ?? true,
+    placementValidation: overrides.placementValidation,
+    storyCardReview: overrides.storyCardReview,
+    evaluationSource: overrides.evaluationSource,
   };
 }
 

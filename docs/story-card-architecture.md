@@ -32,8 +32,13 @@ Ordinary automatic Character/Location content writes are blocked at the AI bound
 and reducer. Suggestions targeting identity with ordinary developments become Lore.
 Exceptional death/alive confirmation, permanent transformation/capability change
 or explicit identity correction requires review. Approval can update the identity
-and creates supporting historical Lore. The lexical exception check nominates
-review; it does not establish truth. Explicit card editing remains available, as
+and creates focused supporting historical Lore. Identity writes require a typed
+semantic placement review with the exact target, changed fact and exact evidence
+quotes; whole-paragraph words such as "killed" or "permanent" cannot authorize them.
+The review is bound to the exact draft, evidence and destination snapshot. Content
+or target edits invalidate it. Approval applies the displayed reviewed destination;
+it never silently reroutes a draft. Mixed biography/event drafts are extracted and
+revalidated once; unstable repairs retain bounded retry behavior. Explicit card editing remains available, as
 does reviewed AI-assisted authoring; model envelopes cannot set its user-initiated flag.
 
 Lore updates preserve earlier Content, earliest occurrence, source IDs and revision
@@ -144,3 +149,27 @@ Inbox, adventure generator, Story Card audit/builder and one-pass memory modules
 Regression tests cover migrations, round-trips, identity durability/death, Lore
 dates/history/recall/privacy/budgets, Brain imports/fallbacks, editor controls,
 clock skips/flashbacks/undo, and 20-turn request/token accounting.
+
+## Placement review and older suggestions
+
+Generated Story Card suggestions classify the new fact as identity, historical Lore,
+ongoing Lore, reference Lore, existing-Brain state or no memory. Existing-card checks,
+discovery, explicit catch-up and regeneration share the same semantic placement
+validator. Identity checks can produce separate Lore without waiting for another
+independent discovery call. Candidate isolation, atomic group commits, source and
+destination guards and `autoUpdate` permissions still apply.
+
+Memory Inbox shows Create/Update plus the card type and destination. Older generated
+pending suggestions remain inspectable but need explicit Revalidate / Regenerate or
+Convert to Lore before approval. Conversion extracts the new facts and validates
+the resulting Lore draft; it does not just relabel a biography. Loading an adventure
+sends no requests and modifies no approved cards. Placement metadata is optional in
+saves and never enters narrator context. Explicit card editing and deliberate card
+builder authoring remain available.
+
+Correctly placed drafts reuse the existing validation call. Mixed drafts need one
+additional final review; supporting history with different text also needs review.
+Explicit compact catch-up now validates its generated Story Cards rather than
+promising that every catch-up batch costs a single request. Narration itself adds
+no request or token-budget increase. Offline mocked tests verify routing and commit
+behavior; real-model extraction and classification accuracy remains model-dependent.

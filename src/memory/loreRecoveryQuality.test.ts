@@ -1,3 +1,4 @@
+import { offlinePlacementReview } from "../test/memoryPlacement";
 import { afterEach, expect, it, vi } from "vitest";
 import { syntheticMemoryAdventure, offerSourceId, partnershipSourceId, acceptanceId, recordedLoreId, offerQuote, acceptanceQuote, confirmationQuote } from "./fixtures/syntheticMemoryAdventure";
 import type { GoldenMemoryCase } from "./semanticGoldenCases";
@@ -203,4 +204,11 @@ it("splits failed retries while giving fresh work and older retries alternating 
   expect(a.messages.filter(message => retry.some(source => source.id === message.id)).every(message => message.memoryRecovery?.batchLimit === 2)).toBe(true);
   a.activeState.memoryRecoveryStoryTurn = 60;
   expect(memoryRecoveryBatch(a).map(source => source.id)).toEqual(["new-source"]);
+});
+
+// These legacy transport fixtures supply an explicit synthetic placement reviewer.
+vi.mock("../providers/memoryCompletion", async importOriginal => {
+  const actual = await importOriginal<typeof import("../providers/memoryCompletion")>();
+  return { ...actual, sendMemoryCompletion: vi.fn(async (...args: Parameters<typeof actual.sendMemoryCompletion>) =>
+    offlinePlacementReview({ messages: args[2] }) ?? actual.sendMemoryCompletion(...args)) };
 });

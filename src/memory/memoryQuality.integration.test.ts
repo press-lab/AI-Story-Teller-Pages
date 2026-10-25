@@ -1,3 +1,4 @@
+import { offlinePlacementReview } from "../test/memoryPlacement";
 import type { MemoryProposal } from "../types/adventure";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createDefaultAdventure, makeBrain, makeComponent, makeStoryCard } from "../state/defaults";
@@ -28,7 +29,7 @@ function seattle() {
   ];
   return a;
 }
-beforeEach(() => { provider.mockReset(); });
+beforeEach(() => { provider.mockReset(); provider.mockImplementation(async r => offlinePlacementReview(r) ?? { content: "[]", raw: {} }); });
 
 describe("Seattle memory quality", () => {
   it("does not miss early evidence when discovery runs every five turns", async () => {
@@ -130,7 +131,7 @@ describe("Seattle memory quality", () => {
     for (const name of ["Priya", "Ren"]) {
       const routed = resolveMemoryTarget(a, { proposedType: "storyCard", title: name, content: `${name} knows Seth and Edythe in Seattle.`, sourceText: "Seth and Edythe talk about Priya and Ren in Seattle.", memoryMode: name === "Priya" ? "static" : "living" });
       expect(routed.targetId).toBeUndefined(); expect(routed.title).toBe(name);
-      const proposal = makeMemoryProposal({ ...routed, storyCardType: "character" });
+      const proposal = makeMemoryProposal({ ...routed, storyCardType: "character", userInitiated: true });
       let state = adventureReducer(a, { type: "ADD_MEMORY_PROPOSAL", proposal });
       state = adventureReducer(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id });
       expect(state.storyCards.find(c => c.title === name)?.type).toBe("character");

@@ -1,3 +1,4 @@
+import { offlinePlacementReview } from "../test/memoryPlacement";
 import { beforeEach, expect, it, vi } from "vitest";
 import { createDefaultAdventure, defaultModelConfig, makeBrain, makeStoryCard } from "../state/defaults";
 import { adventureReducer } from "../state/adventureReducer";
@@ -54,4 +55,11 @@ it("bounds requested history and rejects missing sources before making a request
   await expect(evaluateStoryCardEntries(fixture(), defaultModelConfig, ["missing"])).rejects.toThrow("no longer available");
   await expect(evaluateStoryCardEntries(fixture(), defaultModelConfig, Array.from({ length: 11 }, (_, index) => String(index)))).rejects.toThrow("one and ten");
   expect(provider).not.toHaveBeenCalled();
+});
+
+// These legacy transport fixtures supply an explicit synthetic placement reviewer.
+vi.mock("../providers/memoryCompletion", async importOriginal => {
+  const actual = await importOriginal<typeof import("../providers/memoryCompletion")>();
+  return { ...actual, sendMemoryCompletion: vi.fn(async (...args: Parameters<typeof actual.sendMemoryCompletion>) =>
+    offlinePlacementReview({ messages: args[2] }) ?? actual.sendMemoryCompletion(...args)) };
 });

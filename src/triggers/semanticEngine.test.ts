@@ -1,3 +1,4 @@
+import { mockPlacementVerdict } from "../test/memoryPlacement";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import {
   runSemanticPostTurnEvaluation,
@@ -14,7 +15,9 @@ import type { Adventure } from "../types/adventure";
 
 // These dispatch tests isolate provider generation; validation has real-provider-mock integration coverage.
 vi.mock("../memory/validateMemoryUpdate", () => ({
-  validateMemoryUpdate: vi.fn(async (_a, _p, _s, _t, previous, content) => ({ changed: Boolean(content.trim()) && content !== previous && content !== "NONE" })),
+  validateMemoryUpdate: vi.fn(async (a, _p, surface, title, previous, content, _accum, _append, _review, targetInfo) => ({
+    changed: Boolean(content.trim()) && content !== previous && content !== "NONE", evidenceMessageIds: [a.messages.at(-1)?.id],
+    placement: surface === "storyCard" ? mockPlacementVerdict({ title, proposed: content, targetInfo, latestTurnMessageIds: [a.messages.at(-1)?.id], recentEvidence: `[${a.messages.at(-1)?.id}] assistant: ${a.messages.at(-1)?.content}` }) : undefined })),
 }));
 
 vi.mock("../providers/openAICompatible", () => ({

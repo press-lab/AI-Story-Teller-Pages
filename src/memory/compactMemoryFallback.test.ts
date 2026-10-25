@@ -1,3 +1,4 @@
+import { offlinePlacementReview } from "../test/memoryPlacement";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createDefaultAdventure, defaultModelConfig, makeBrain, makeComponent, makeStoryCard } from "../state/defaults";
 import { adventureReducer } from "../state/adventureReducer";
@@ -217,4 +218,11 @@ it.each([0, 1])("isolates malformed source schemas at index %s", async bad => {
   expect(result.actions.some(action => action.type === "ADD_MEMORY_PROPOSAL")).toBe(false);
   expect(provider).toHaveBeenCalledTimes(1);
   expect(provider.mock.calls[0][0].retry).toBe(false);
+});
+
+// These legacy transport fixtures supply an explicit synthetic placement reviewer.
+vi.mock("../providers/memoryCompletion", async importOriginal => {
+  const actual = await importOriginal<typeof import("../providers/memoryCompletion")>();
+  return { ...actual, sendMemoryCompletion: vi.fn(async (...args: Parameters<typeof actual.sendMemoryCompletion>) =>
+    offlinePlacementReview({ messages: args[2] }) ?? actual.sendMemoryCompletion(...args)) };
 });

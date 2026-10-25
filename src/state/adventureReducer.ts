@@ -1,9 +1,10 @@
+import { placementValidationError, placementFingerprint } from "../memory/storyCardPlacement";
 import { backgroundProviderConfigIssue } from "../providers/backgroundProvider";
 import { memoryRecoveryInterval, MEMORY_RECOVERY_MAX_FAILURES } from "../memory/memoryRecoveryBatch";
 import { MEMORY_EVALUATION_GROUPS, memoryTargetMatches } from "../memory/memoryCycleState";
 import { memoryEvidenceWindow } from "../memory/memoryEvidenceWindow";
 import { scanStoryCardExchange, equivalentStoryCardSuggestions, mergeStoryCardSuggestions, suggestionSourceValid, storyCardScanFingerprint, storyCardMustBeReviewed } from "../memory/storyCardSuggestions";
-import { mergeLoreMetadata, migrateStoryCard, primaryStoryCardType, isHistoricalLore, isExceptionalIdentityChange, proposalLore } from "../memory/storyCardArchitecture";
+import { mergeLoreMetadata, migrateStoryCard, primaryStoryCardType, isHistoricalLore, proposalLore } from "../memory/storyCardArchitecture";
 import { readStoryTime, formatStoryTime, reconcileStoryClock, transitionKey, initialStoryClock } from "../memory/storyTime";
 import { sameEventMemory } from "../memory/eventMemory";
 import type {
@@ -621,7 +622,9 @@ function redoStoryEdit(state: Adventure): Adventure {
 function updateMemoryProposal(proposal: MemoryProposal, patch: Partial<MemoryProposal>): MemoryProposal {
   const sanitizedPatch = { ...patch };
   delete sanitizedPatch.updatedAt;
-  return { ...proposal, ...sanitizedPatch, updatedAt: nowIso() };
+  const next = { ...proposal, ...sanitizedPatch, updatedAt: nowIso() };
+  if (next.placementValidation && next.placementValidation.fingerprint !== placementFingerprint(next)) next.placementValidation = undefined;
+  return next;
 }
 
 function proposalWithEdits(proposal: MemoryProposal, editedProposal?: Partial<MemoryProposal>): MemoryProposal {
@@ -766,14 +769,8 @@ function routedProposal(state: Adventure, proposal: MemoryProposal): MemoryPropo
   if (proposal.proposedType === "storyCard") {
     const target = state.storyCards.find(c => proposal.targetId ? c.id === proposal.targetId : c.title.toLocaleLowerCase() === proposal.title.toLocaleLowerCase() || (c.type === "location" && !proposal.storyCardType && cardMatchesName(c, proposal.title)));
     const identity = target && (target.type === "character" || target.type === "location");
-    if (identity && !proposal.userInitiated && !isExceptionalIdentityChange(target.type, proposal.content)) {
-      proposal = { ...proposal, targetId: undefined, appendContent: undefined, storyCardType: "lore",
-        title: proposal.title === target.title ? `${target.title}: ${proposal.content.slice(0, 64)}` : proposal.title,
-        memoryMode: proposal.memoryMode === "historical" ? "historical" : "living",
-        rationale: proposal.rationale + " Development retained as Lore; identity profile unchanged." };
-    } else if (identity) {
-      proposal = { ...proposal, memoryMode: target.memoryMode, requiresReview: true };
-    }
+    if (identity) proposal = { ...proposal, requiresReview: true };
+    if (proposal.placementValidation || (!proposal.userInitiated && identity)) return proposal;
     const legacyEvent = proposal.storyCardType === "event";
     proposal = { ...proposal, storyCardType: proposal.storyCardType ? primaryStoryCardType(proposal.storyCardType) : undefined };
     if (legacyEvent || proposal.eventMemory) return { ...proposal, lore: proposalLore(state, proposal), memoryMode: "historical", requiresReview: true, targetId: undefined, appendContent: undefined };
@@ -781,9 +778,10 @@ function routedProposal(state: Adventure, proposal: MemoryProposal): MemoryPropo
   }
   // This pipeline already verified and ranked destinations. Do not run a second fuzzy resolver
   // that can override an explicit CREATE choice or an ambiguous set of review options.
-  if (proposal.storyCardReview) return proposal;
+  if (proposal.storyCardReview || proposal.placementValidation) return proposal;
   const routed = resolveMemoryTarget(state, {
     proposedType: proposal.proposedType,
+    storyCardType: proposal.storyCardType ? primaryStoryCardType(proposal.storyCardType) : undefined,
     title: proposal.title,
     content: proposal.content,
     sourceText: proposal.sourceText,
@@ -882,6 +880,7 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal)
     );
     proposal = { ...proposal, suggestedTriggers: generatedStoryCardTriggers(state, cardTitle, safeContent, proposal.suggestedTriggers,
       existing?.id, proposal.memoryMode ?? existing?.memoryMode, proposal.storyCardType ? primaryStoryCardType(proposal.storyCardType) : existing?.type) };
+    if (existing && proposal.storyCardType && existing.type !== primaryStoryCardType(proposal.storyCardType)) return {};
     if (proposal.eventMemory && existing) return {};
     if (existing && isHistoricalLore(existing)) return {};
     const changeTime = proposal.lore?.lastChangedAt;
@@ -992,10 +991,11 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal)
     }
     if (proposal.evaluationSource) storyCard = { ...storyCard, lastAutoUpdateTurn: state.activeState.turn };
     let cards = upsertById(state.storyCards, storyCard);
-    if (existing && (existing.type === "character" || existing.type === "location") && isExceptionalIdentityChange(existing.type, safeContent) && !proposal.storyCardReview) {
-      const title = `${existing.title}: ${safeContent.slice(0, 64)}`;
-      if (!cards.some(c => c.type === "lore" && c.title === title && c.content === safeContent)) {
-        const history = recordStoryCardMemoryUpdate(undefined, makeStoryCard({ title, type: "lore", content: safeContent,
+    if (existing && (existing.type === "character" || existing.type === "location") && proposal.placementValidation?.identityChange?.supportingLore) {
+      const supportingLore = proposal.placementValidation!.identityChange!.supportingLore!;
+      const title = `${existing.title}: ${supportingLore.slice(0, 64)}`;
+      if (!cards.some(c => c.type === "lore" && c.title === title && c.content === supportingLore)) {
+        const history = recordStoryCardMemoryUpdate(undefined, makeStoryCard({ title, type: "lore", content: supportingLore,
           memoryMode: "historical", keys: proposal.suggestedTriggers ?? [], lore: { ...proposalLore(state, proposal), status: "completed" },
           sourceTurnIds: appendSourceTurnIds(undefined, proposal.sourceTurnId),
         }), proposalMemoryMeta("create"));
@@ -1231,7 +1231,7 @@ function applyCompanionMemoryProposals(
     const clean = sanitizeProposal(routedProposal(workingState, proposal));
     if (!clean) continue;
     const autoApprove = workingState.memoryAutoApprove?.[clean.proposedType as keyof typeof workingState.memoryAutoApprove] ?? false;
-    if (!autoApprove || clean.requiresReview) {
+    if (!autoApprove || clean.requiresReview || placementValidationError(workingState, clean)) {
       recorded.push(clean);
       continue;
     }
@@ -1768,7 +1768,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
         || (!state.messages.some(message => message.id === proposal.storyCardReview!.sourceMessageId)
           && proposal.storyCardReview.sourceMessageId === clean.storyCardReview?.sourceMessageId && proposal.storyCardReview.sourceContent === clean.storyCardReview.sourceContent));
       if (clean.proposedType === "storyCard") {
-        clean.requiresReview = storyCardMustBeReviewed(state, clean);
+        clean.requiresReview = storyCardMustBeReviewed(state, clean) || Boolean(placementValidationError(state, clean));
         const duplicate = comparableProposals.find(proposal => equivalentStoryCardSuggestions(proposal, clean));
         if (duplicate) {
           if (duplicate.status !== "pending") return suppressed("Equivalent suggestion already reviewed: " + duplicate.status, duplicate.id);
@@ -1844,7 +1844,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
         );
       if (duplicatesPending || duplicatesDismissed || duplicatesCard || duplicatesStoryCardContent || duplicatesExistingCardContent || duplicatesExistingTargetContent || duplicatesCurrentPressure) return suppressed(
         duplicatesPending ? "Duplicate pending proposal" : duplicatesDismissed ? "Duplicate rejected or ignored proposal" : duplicatesCard ? "Story Card title already exists" : duplicatesStoryCardContent ? "Duplicate proposal content" : duplicatesExistingCardContent ? "Duplicate existing Story Card content" : duplicatesExistingTargetContent ? "Target already contains this content" : "Current pressure already contains this content");
-      const autoApprove = suggestionSourceValid(state, clean) && (state.memoryAutoApprove?.[clean.proposedType as keyof typeof state.memoryAutoApprove] ?? false);
+      const autoApprove = !placementValidationError(state, clean) && suggestionSourceValid(state, clean) && (state.memoryAutoApprove?.[clean.proposedType as keyof typeof state.memoryAutoApprove] ?? false);
       if (autoApprove && !clean.requiresReview) {
         const approved = updateMemoryProposal(clean, { status: "approved" });
         const applied = applyApprovedMemoryProposal(state, approved);
@@ -1863,7 +1863,10 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
         },
       });
     }
-    case "UPDATE_MEMORY_PROPOSAL":
+    case "UPDATE_MEMORY_PROPOSAL": {
+      const current = state.activeState.memoryProposals.find(p => p.id === action.proposalId);
+      if (!current || current.status !== "pending" || (action.expectedFingerprint && action.expectedFingerprint !== placementFingerprint(current))) return state;
+      if (action.patch.placementValidation && placementValidationError(state, { ...current, ...action.patch })) return state;
       return touchAdventure(state, {
         activeState: {
           ...state.activeState,
@@ -1872,15 +1875,19 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
           ),
         },
       });
+    }
     case "APPROVE_MEMORY_PROPOSAL": {
       const existing = state.activeState.memoryProposals.find((proposal) => proposal.id === action.proposalId);
       if (!existing || existing.status === "approved" || !suggestionSourceValid(state, existing)) return state;
-      const proposal = sanitizeProposal(routedProposal(state, proposalWithEdits(existing, action.editedProposal)));
+      const proposal = sanitizeProposal(proposalWithEdits(existing, action.editedProposal));
       if (!proposal) return state;
+      const placementError = placementValidationError(state, proposal);
+      if (placementError) return adventureReducer(state, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: { id: createId("decision"), sourceId: proposal.sourceTurnId,
+        createdAt: nowIso(), stage: "reducer", outcome: "validation_rejected", reason: placementError, proposalId: proposal.id, failureCode: "memory_placement_required" } });
       if (proposal.storyCardReview && proposal.targetId) {
         const target = state.storyCards.find(card => card.id === proposal.targetId && card.active);
         if (!target || isHistoricalLore(target) || (proposal.storyCardType && target.type !== primaryStoryCardType(proposal.storyCardType))) return state;
-        if ((target.type === "character" || target.type === "location") && !isExceptionalIdentityChange(target.type, proposal.content)) return state;
+
       }
       const approved = updateMemoryProposal(proposal, { status: "approved" });
       const applied = applyApprovedMemoryProposal(state, approved);

@@ -1,3 +1,5 @@
+import moodyPlacement from "./fixtures/moody-placement.json";
+import { mockPlacementVerdict } from "../test/memoryPlacement";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createDefaultAdventure, defaultModelConfig, makeBrain, makeComponent, makeStoryCard, normalizeAdventure } from "../state/defaults";
 import { adventureReducer } from "../state/adventureReducer";
@@ -51,7 +53,7 @@ beforeEach(() => {
       if (fail === "validation") throw new Error("offline validation failure");
       const body = JSON.parse(request.messages.at(-1)!.content);
       content = JSON.stringify({ accepted: !reject, meaningfulChange: !reject, reason: "Supported change in the supplied establishing exchange",
-        evidenceMessageIds: body.latestTurnMessageIds, identityMatchesTarget: true, pressureChange: "changed_obligation" });
+        evidenceMessageIds: body.latestTurnMessageIds, placement: mockPlacementVerdict(body), identityMatchesTarget: true, pressureChange: "changed_obligation" });
     } else if (text.includes("evaluation engine")) {
       const body = JSON.parse(request.messages.at(-1)!.content);
       if (fail && body.conditions.some((condition: { id: string }) => condition.id.includes(fail!))) throw new Error("offline condition failure");
@@ -643,4 +645,27 @@ it("repairs an edited old source whose evaluation marker was lost but whose diag
   expect(a.messages.at(-1)?.memoryEvaluation).toBeUndefined();
   const edited = adventureReducer(a, { type: "UPDATE_MESSAGE", messageId: recorded.sourceId, content: a.messages.at(-1)!.content + " Corrected wording." });
   expect(memoryCycleSources(edited).map(m => m.id)).toContain(recorded.sourceId);
+});
+
+it("retains a Moody lesson from the existing Character check as focused Lore without changing its identity", async () => {
+  const a = seed(); a.brains = []; a.storyCards = [makeStoryCard({ id: "moody", title: "Alastor Moody", type: "character", content: moodyPlacement.biography, autoUpdate: true, keys: ["Moody"] })];
+  a.messages.at(-1)!.content = moodyPlacement.source; fired = ["storyCard:moody"]; discoveries = [];
+  const previous = provider.getMockImplementation()!;
+  provider.mockImplementation(async request => {
+    const text = request.messages.map(m => m.content).join("\n");
+    if (text.includes("MEMORY UPDATE VALIDATION")) {
+      const body = JSON.parse(request.messages.at(-1)!.content);
+      return { content: JSON.stringify({ accepted: true, meaningfulChange: true, identityMatchesTarget: true, evidenceMessageIds: body.latestTurnMessageIds, reason: "Supported classroom event.",
+        placement: { kind: "historicalLore", title: "Moody’s Unforgivable Curses Demonstration", content: moodyPlacement.lore, newFact: moodyPlacement.lore, reason: "Completed lesson, no identity change." } }), raw: {} };
+    }
+    if (text.includes("persistent world fact card")) return { content: moodyPlacement.proposal, raw: {} };
+    return previous(request);
+  });
+  const result = await evaluate(a);
+  expect(result.logEntry.errors).toEqual([]);
+  const proposal = result.state.activeState.memoryProposals.find(p => p.storyCardType === "lore")!;
+  expect(proposal).toMatchObject({ content: moodyPlacement.lore, placementValidation: { kind: "historicalLore" } });
+  const approved = adventureReducer(result.state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id });
+  expect(approved.storyCards[0]).toEqual(a.storyCards[0]);
+  expect(approved.storyCards.find(c => c.type === "lore")?.content).toBe(moodyPlacement.lore);
 });
