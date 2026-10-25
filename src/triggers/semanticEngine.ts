@@ -12,6 +12,7 @@ import type {
   EvaluatedCondition,
   EvaluationLogEntry,
   GeneratedContentPreview,
+  MemoryEvaluationGroup,
   MemoryReconcileRequest,
   MemoryProposal,
   PlotAIBuilderRequest,
@@ -1956,7 +1957,11 @@ export async function runManualPEComponentUpdate(
 export async function runMemoryCycle(
   adventure: Adventure,
   providerConfig: ProviderConfig,
-  options: { sourceId?: string; manual?: boolean } = {},
+  options: { sourceId?: string; manual?: boolean;
+    shouldContinue?: () => boolean;
+    onProgress?: (group: MemoryEvaluationGroup) => void;
+    onGroupComplete?: (commit: AdventureAction, usage: { promptTokens: number; completionTokens: number }) => Promise<Adventure | undefined>;
+  } = {},
 ): Promise<SemanticRunResult> {
   const accum = { promptTokens: 0, completionTokens: 0 };
   const logEntry: EvaluationLogEntry = {
@@ -1991,7 +1996,10 @@ export async function runMemoryCycle(
   logEntry.actionsExecuted.push(`Memory source: ${source.id}`, "Independent memory: original foundation");
 
   for (const group of MEMORY_EVALUATION_GROUPS) {
+    if (options.shouldContinue && !options.shouldContinue()) return { actions, logEntry, tokenUsage: accum };
     if (source.memoryEvaluation?.completedGroups.includes(group)) continue;
+    options.onProgress?.(group);
+    const beforeUsage = { ...accum };
     const snapshot = working;
     const forcePropose = { ...snapshot, semanticEvaluationSettings: { ...snapshot.semanticEvaluationSettings, requireApprovalForAutoUpdates: true } };
     const groupActions: AdventureAction[] = [];
@@ -2064,7 +2072,7 @@ export async function runMemoryCycle(
       const code = error.match(/memory_[a-z_]+/)?.[0] ?? "memory_model_output_invalid";
       routed.push({ type: "RECORD_MEMORY_DIAGNOSTIC", entry: {
         id: createId("decision"), sourceId: source.id, createdAt: nowIso(), stage: "independent", outcome: "evaluation_failed", group,
-        providerCode: error.match(/\[(memory_provider_http_\d{3}_(?:reasoning_control|response_format|unknown_parameter)|provider_request_failed_http_\d{3}|provider_request_failed_network|provider_api_key_missing)\]/)?.[1],
+        providerCode: error.match(/\[(memory_provider_http_\d{3}_(?:reasoning_control|response_format|unknown_parameter)|provider_request_failed_http_\d{3}|provider_request_failed_network|provider_request_timed_out|provider_api_key_missing)\]/)?.[1],
         httpStatus: /(?:memory_provider_http_|provider_request_failed_http_)(\d{3})/.test(error)
           ? Number(error.match(/(?:memory_provider_http_|provider_request_failed_http_)(\d{3})/)![1]) : undefined,
         failureCode: code, failureCategory: code === "memory_provider_request_failed" ? "transport_api" : "invalid_model_output", reason: error,
@@ -2075,6 +2083,22 @@ export async function runMemoryCycle(
       revision: source.memoryEvaluation?.revision, discoveryCheckpoint };
     actions.push(commit);
     working = adventureReducer(working, commit);
+    if (options.onGroupComplete) {
+      const current = await options.onGroupComplete(commit, {
+        promptTokens: accum.promptTokens - beforeUsage.promptTokens,
+        completionTokens: accum.completionTokens - beforeUsage.completionTokens,
+      });
+      const currentSource = current?.messages.find(message => message.id === source.id);
+      // Edits, destination conflicts and adventure switches stop further paid work.
+      if (!current || !currentSource || currentSource.content !== source.content
+        || currentSource.memoryEvaluation?.revision !== source.memoryEvaluation?.revision
+        || (!errors.length && !currentSource.memoryEvaluation?.completedGroups.includes(group))) {
+        return { actions, logEntry, tokenUsage: accum };
+      }
+      working = { ...current, messages: current.messages.slice(0, current.messages.indexOf(currentSource) + 1),
+        activeState: { ...current.activeState, turn: working.activeState.turn },
+        semanticEvaluationSettings: { ...current.semanticEvaluationSettings, messagesIncluded: evidence.length } };
+    }
     logEntry.actionsExecuted.push(`${group}: ${errors.length ? "failed; successful groups retained" : fired.length ? fired.map(item => item.label).join(", ") : "evaluated"}`);
     logEntry.errors.push(...errors);
   }

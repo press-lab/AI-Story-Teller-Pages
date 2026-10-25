@@ -1,6 +1,38 @@
 import type { ApiCallPurpose, ApiCallRecord, ProviderConfig, ProviderUsage } from "../types/adventure";
 import { createId, nowIso } from "../utils/id";
 
+// Includes receiving the response body. No automatic retry is added on timeout.
+export const PROVIDER_REQUEST_TIMEOUT_MS = 180_000;
+export class ProviderRequestTimeoutError extends Error {
+  constructor() { super("provider_request_timed_out"); }
+}
+
+async function readResponse(url: string, init: RequestInit) {
+  const controller = new AbortController();
+  const abort = () => controller.abort(init.signal?.reason);
+  if (init.signal?.aborted) abort();
+  else init.signal?.addEventListener("abort", abort, { once: true });
+  let rejectAborted!: (error: unknown) => void;
+  const aborted = new Promise<never>((_resolve, reject) => { rejectAborted = reject; });
+  const onAbort = () => rejectAborted(controller.signal.reason);
+  controller.signal.addEventListener("abort", onAbort, { once: true });
+  const timer = globalThis.setTimeout(() => controller.abort(new ProviderRequestTimeoutError()), PROVIDER_REQUEST_TIMEOUT_MS);
+  try {
+    if (controller.signal.aborted) throw controller.signal.reason;
+    return await Promise.race([
+      (async () => {
+        const response = await fetch(url, { ...init, signal: controller.signal });
+        return { response, text: await response.text() };
+      })(),
+      aborted,
+    ]);
+  } finally {
+    globalThis.clearTimeout(timer);
+    init.signal?.removeEventListener("abort", abort);
+    controller.signal.removeEventListener("abort", onAbort);
+  }
+}
+
 const listeners = new Set<(record: ApiCallRecord) => void>();
 export function subscribeApiCalls(listener: (record: ApiCallRecord) => void) {
   listeners.add(listener);
@@ -25,8 +57,7 @@ export async function fetchWithAccounting(url: string, init: RequestInit, config
     purpose, model: config.model, startedAt: nowIso(), status: "started" };
   publish(record);
   try {
-    const response = await fetch(url, init);
-    const text = await response.text();
+    const { response, text } = await readResponse(url, init);
     let usage: ProviderUsage | undefined;
     let finishReason: string | undefined;
     let responseModel: string | undefined;

@@ -54,9 +54,21 @@ export interface ProviderPreset extends RuntimeProviderSettings {
   label: string;
 }
 
+export interface MemoryWorkStatus {
+  adventureId: string;
+  status: "running" | "failed" | "paused";
+  sourceIds: string[];
+  remaining: number;
+  group?: import("../types/adventure").MemoryEvaluationGroup;
+  error?: string;
+}
+
 export interface PlayRuntimeProps extends AdventurePageProps {
   contextResult?: ContextBuildResult;
   loading: boolean;
+  memoryWork?: MemoryWorkStatus;
+  onRetryMemory?: () => Promise<void>;
+  onContinueWithExistingMemory?: () => void;
   error?: string;
   onDismissError?: () => void;
   saveStatus: string;

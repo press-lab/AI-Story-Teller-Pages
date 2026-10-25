@@ -1,5 +1,5 @@
 import { memoryReasoningFields, assertMemoryReasoningDisabled } from "./memoryReasoning";
-import { fetchWithAccounting } from "./apiCallAccounting";
+import { fetchWithAccounting, ProviderRequestTimeoutError } from "./apiCallAccounting";
 import { waitForProviderThrottle, type ProviderResponse, type SendChatCompletionOptions } from "./openAICompatible";
 
 /** Transport schema only. Existing memory validators still decide evidence, targets and approval. */
@@ -55,6 +55,7 @@ export async function sendOpenAIMemoryResponse(options: SendChatCompletionOption
   } catch { throw new MemoryResponseError("responses_provider_configuration_invalid"); }
   const reasoningFields = memoryReasoningFields(config, "responses");
   await waitForProviderThrottle(config, signal);
+  if (options.shouldSend && !options.shouldSend()) throw new Error("memory_work_cancelled");
   let response;
   try {
     response = await fetchWithAccounting(endpoint.toString(), {
@@ -65,7 +66,10 @@ export async function sendOpenAIMemoryResponse(options: SendChatCompletionOption
         text: { format: { type: "json_schema", name: "memory_evaluation", strict: true, schema: options.schema ?? MEMORY_RESPONSE_SCHEMA } },
       }),
     }, config, options.purpose ?? "memoryRecovery");
-  } catch { throw new MemoryResponseError("provider_request_failed_network"); }
+  } catch (error) {
+    if (error instanceof ProviderRequestTimeoutError) throw error;
+    throw new MemoryResponseError("provider_request_failed_network");
+  }
   if (!response.ok) throw new MemoryResponseError(response.status === 400
     ? "provider_configuration_rejected_http_400: Check endpoint, model, Structured Outputs and declared non-thinking capability."
     : `provider_request_failed_http_${response.status}`);

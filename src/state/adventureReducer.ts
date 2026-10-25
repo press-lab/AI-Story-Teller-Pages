@@ -1328,7 +1328,8 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
       if (!source || source.memoryEvaluation?.completedGroups.includes(action.group)) return state;
       const stale = source.memoryEvaluation?.revision !== action.revision || source.content !== action.source.content || action.dependencies.some(item => !state.messages.some(message => message.id === item.id && message.content === item.content))
         || action.targets.some(target => !memoryTargetMatches(state, target));
-      if (stale) return adventureReducer(state, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: {
+      if (stale) return adventureReducer(source.memoryEvaluation ? touchAdventure(state, { messages: state.messages.map(message => message.id === source.id
+        ? { ...message, memoryEvaluation: { ...message.memoryEvaluation!, status: "pending" as const } } : message) }) : state, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: {
         id: createId("decision"), sourceId: source.id, createdAt: nowIso(), stage: "independent",
         outcome: "evaluation_stale", group: action.group, reason: "Source evidence or destination changed during evaluation; result discarded.",
       } });

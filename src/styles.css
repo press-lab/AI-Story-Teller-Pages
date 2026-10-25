@@ -1992,6 +1992,21 @@ button.primary-action:hover:not(:disabled),
   gap: 0;
 }
 
+.memory-work-notice {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.85rem;
+}
+
+.memory-work-notice p {
+  margin: 0 0 4px;
+}
+
+.memory-work-notice button + button {
+  margin-left: 8px;
+}
+
 /* Toolkit sidebar — desktop only; width driven by inline style */
 .play-sidebar {
   display: flex;

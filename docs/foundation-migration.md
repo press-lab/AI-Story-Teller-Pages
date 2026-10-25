@@ -201,3 +201,28 @@ The shared suggestion router also requires overlapping facts before merging find
 These are controlled provider-response regressions, not a paid replay of the adventure or a claim that its unseen rejected candidates were valid.
 
 Validation for this scoped patch: 789 tests passed; TypeScript/production build and production smoke passed; git diff --check passed. The original uploaded JSON SHA-256 was verified unchanged. No live model requests were made. The existing Vite bundle-size warning remains.
+
+
+### Responsive memory processing and API cost
+
+Narration loading ends once the finalized story is saved. A single ordered worker
+per active adventure evaluates the same bounded cadence window, with separate
+Plot / Story Cards / Brains / Discovery progress. Reading and composing stay
+available; generation waits for the worker so the next context includes committed
+automatic memory. A failed or interrupted evaluation offers explicit retry or
+continue with existing memory. Opening an adventure still sends no memory requests.
+
+Group commits persist independently through the existing evidence, revision,
+destination and approval checks. Stale groups remain pending for reevaluation,
+without an immediate retry. Completed groups cannot replay. Switching adventures
+prevents the old worker from committing or starting another group.
+
+Each HTTP attempt has a three-minute deadline including the response body. Timeout
+adds no automatic HTTP retry, retains completed groups/checkpoints and records a
+safe failure classification. Provider billing can continue after client abort;
+an explicit later retry may therefore incur another charge for unfinished work.
+
+Expected normal cost change: 0%. Models, prompts, token limits, condition checks,
+cadence and update parallelism are unchanged. The offline accounting regression
+continues to require exactly 20 narration plus 40 independent HTTP requests for
+20 turns. No paid API calls are needed for validation.

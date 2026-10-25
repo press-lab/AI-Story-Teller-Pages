@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { act, cleanup, renderHook } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDefaultAdventure, defaultModelConfig, normalizeAdventure } from "../state/defaults";
@@ -32,13 +32,14 @@ describe("actual HTTP call accounting", () => {
       const body = JSON.parse(init!.body as string);
       if (body.model === "arbitrary-evaluator") {
         const saved = vi.mocked(saveAdventure).mock.calls.at(-1)![0];
-        expect(saved.messages.at(-1)?.memoryEvaluation?.status).toBe("running");
+        expect(saved.messages.at(-1)?.memoryEvaluation?.attempts).toBeGreaterThan(0);
         return reply("[]", 800, 80);
       }
       return reply("Mira waits beside the gate.", 2000, 100);
     });
     const { result } = setup();
     for (let i = 0; i < 20; i++) await act(async () => { await result.current.runtime.submitTurn("I listen."); });
+    await waitFor(() => expect(result.current.runtime.memoryWork?.status).not.toBe("running"));
     expect(fetchMock).toHaveBeenCalledTimes(60);
     expect(result.current.adventure!.activeState.apiCallTotals).toEqual({
       narration: { requests: 20, failedRequests: 0, unreportedUsage: 0, promptTokens: 40000, completionTokens: 2000 },
@@ -65,7 +66,9 @@ describe("actual HTTP call accounting", () => {
     expect(saved.activeState.apiCallTotals!.memoryEvaluation).toMatchObject({ requests: 2, failedRequests: 1, unreportedUsage: 1 });
     hook.unmount(); hook = setup(saved); await act(async () => {});
     expect(evaluations).toBe(2);
+    act(() => hook.result.current.runtime.continueWithExistingMemory());
     await act(async () => { await hook.result.current.runtime.continueTurn(); });
+    await waitFor(() => expect(hook.result.current.runtime.memoryWork?.status).not.toBe("running"));
     expect(hook.result.current.adventure!.messages.filter(message => message.role === "assistant").every(message => message.memoryEvaluation?.status === "complete")).toBe(true);
     expect(hook.result.current.adventure!.activeState.apiCallTotals!.memoryEvaluation).toMatchObject({ requests: 5, failedRequests: 1 });
   });

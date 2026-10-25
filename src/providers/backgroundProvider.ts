@@ -1,3 +1,4 @@
+import { ProviderRequestTimeoutError } from "./apiCallAccounting";
 import type { Adventure, ProviderConfig } from "../types/adventure";
 
 export function isUsableProviderBaseUrl(value: string | undefined): boolean {
@@ -64,6 +65,8 @@ export class MemoryEvaluationError extends Error {
 /** Never copy arbitrary provider exceptions (which may include credentials) into saves. */
 export function safeMemoryFailure(error: unknown, received = false): MemoryEvaluationError {
   if (error instanceof MemoryEvaluationError) return error;
+  if (error instanceof ProviderRequestTimeoutError) return new MemoryEvaluationError("transport_api", "memory_provider_request_failed",
+    "The memory request timed out. Completed work is saved. The provider may have billed this attempt; retry only when ready.", "provider_request_timed_out");
   // Read only allowlisted classifications, never arbitrary provider text, URLs or bodies.
   const message = error instanceof Error ? error.message : "";
   const chat = /^memory_provider_http_(\d{3})_(reasoning_control|response_format|unknown_parameter):/.exec(message);

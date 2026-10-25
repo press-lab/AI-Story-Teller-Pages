@@ -494,6 +494,9 @@ export default function App() {
             {...common}
             contextResult={contextResult}
             loading={runtime.loading}
+            memoryWork={runtime.memoryWork}
+            onRetryMemory={runtime.retryMemory}
+            onContinueWithExistingMemory={runtime.continueWithExistingMemory}
             error={runtime.error}
             onDismissError={runtime.clearError}
             saveStatus={saveStatus}

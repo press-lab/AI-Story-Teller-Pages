@@ -302,3 +302,30 @@ describe("PlayPage AID-style controls", () => {
   });
 
 });
+
+it("shows memory progress without a narration spinner and preserves a draft while generation waits", async () => {
+  const user = userEvent.setup(); const adventure = playAdventure(); const submit = vi.fn(noopSubmitTurn);
+  render(<PlayPage adventure={adventure} dispatch={vi.fn()} loading={false} saveStatus="saved"
+    memoryWork={{ adventureId: adventure.id, status: "running", sourceIds: ["msg-ai"], remaining: 1, group: "brains" }}
+    onSubmitTurn={submit} onContinue={noopAsync} onRegenerate={noopAsync} onBuildContext={vi.fn()}
+    onOpenContext={vi.fn()} onRememberThis={noopAsync} />);
+  expect(screen.getByRole("status").textContent).toContain("Updating memory: Brains");
+  expect(screen.queryByLabelText("Generating…")).not.toBeInTheDocument();
+  const input = screen.getByPlaceholderText("What does your character do?");
+  await user.type(input, "I wait{Enter}");
+  expect(input).toHaveValue("I wait");
+  expect(submit).not.toHaveBeenCalled();
+  expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+});
+it("offers explicit cost-aware retry and continue choices after a memory failure", async () => {
+  const user = userEvent.setup(); const adventure = playAdventure();
+  const retry = vi.fn(noopAsync), bypass = vi.fn();
+  render(<PlayPage adventure={adventure} dispatch={vi.fn()} loading={false} saveStatus="saved"
+    memoryWork={{ adventureId: adventure.id, status: "failed", sourceIds: ["msg-ai"], remaining: 1,
+      error: "Completed groups are saved. A retry may incur API costs." }} onRetryMemory={retry} onContinueWithExistingMemory={bypass}
+    onSubmitTurn={noopSubmitTurn} onContinue={noopAsync} onRegenerate={noopAsync} onBuildContext={vi.fn()}
+    onOpenContext={vi.fn()} onRememberThis={noopAsync} />);
+  await user.click(screen.getByRole("button", { name: "Retry memory" }));
+  await user.click(screen.getByRole("button", { name: "Continue with existing memory" }));
+  expect(retry).toHaveBeenCalledTimes(1); expect(bypass).toHaveBeenCalledTimes(1);
+});

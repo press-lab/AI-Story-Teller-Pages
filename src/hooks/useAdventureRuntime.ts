@@ -1,3 +1,5 @@
+import { guardMemoryRequests } from "../providers/memoryCompletion";
+import { flushSync } from "react-dom";
 import { placementFingerprint } from "../memory/storyCardPlacement";
 import { evaluateStoryCardEntries } from "../memory/evaluateStoryCardEntries";
 import { subscribeApiCalls } from "../providers/apiCallAccounting";
@@ -53,7 +55,7 @@ import type {
   StoryCardAIBuilderRequest,
 } from "../types/adventure";
 import { createId, nowIso } from "../utils/id";
-import type { RuntimeProviderSettings } from "../pages/pageTypes";
+import type { MemoryWorkStatus, RuntimeProviderSettings } from "../pages/pageTypes";
 
 function mergeProviderConfig(adventure: Adventure, settings: RuntimeProviderSettings): RuntimeProviderSettings {
   const sessionId = `ai-story-teller:${adventure.id}`.slice(0, 256);
@@ -180,13 +182,22 @@ export function useAdventureRuntime(
   globalMemorySettings: MemoryDetectionSettings,
 ) {
   const [loading, setLoading] = useState(false);
+  const [memoryWorkState, setMemoryWorkState] = useState<MemoryWorkStatus>();
+  const memoryWorkRef = useRef<MemoryWorkStatus | undefined>(undefined);
+  const setMemoryWork = useCallback((status: MemoryWorkStatus | undefined) => {
+    memoryWorkRef.current = status;
+    setMemoryWorkState(status);
+  }, []);
+  const memoryWorkerRef = useRef<{ adventureId: string; promise: Promise<void> } | undefined>(undefined);
+  const memoryEpochRef = useRef(0);
+  const allowExistingMemoryRef = useRef<string | undefined>(undefined);
+  const isNarratingRef = useRef(false);
   const [error, setError] = useState<string | undefined>();
   const adventureRef = useRef<Adventure | undefined>(adventure);
   const providerSettingsRef = useRef(providerSettings);
   const globalMemorySettingsRef = useRef(globalMemorySettings);
   const isSubmittingRef = useRef(false);
   const semanticInFlight = useRef(new Set<string>());
-  const memoryFallbackInFlight = useRef(new Set<string>());
   const arcInFlight = useRef(new Set<string>());
   const apiActionsRef = useRef<AdventureAction[]>([]);
   const queuedUpdatesRef = useRef<PendingAdventureUpdate[]>([]);
@@ -195,6 +206,13 @@ export function useAdventureRuntime(
   const continueTurnRef = useRef<(() => Promise<void>) | undefined>(undefined);
 
   useEffect(() => { adventureRef.current = adventure; }, [adventure]);
+  useEffect(() => {
+    memoryEpochRef.current += 1;
+    memoryWorkerRef.current = undefined;
+    allowExistingMemoryRef.current = undefined;
+    setMemoryWork(undefined);
+    return () => { memoryEpochRef.current += 1; };
+  }, [adventure?.id]);
   useEffect(() => { providerSettingsRef.current = providerSettings; }, [providerSettings]);
   useEffect(() => { globalMemorySettingsRef.current = globalMemorySettings; }, [globalMemorySettings]);
 
@@ -234,7 +252,7 @@ export function useAdventureRuntime(
   useEffect(() => subscribeApiCalls(record => {
     if (!adventureRef.current || record.sessionId !== `ai-story-teller:${adventureRef.current.id}`.slice(0, 256)) return;
     const action: AdventureAction = { type: "RECORD_API_CALL", record };
-    if (isSubmittingRef.current) apiActionsRef.current.push(action);
+    if (isNarratingRef.current) apiActionsRef.current.push(action);
     else applyActionsAndPersist([action]);
   }), [applyActionsAndPersist]);
 
@@ -266,63 +284,136 @@ export function useAdventureRuntime(
     return { ...next, memoryDetectionSettings: { ...globalMemorySettingsRef.current } };
   }
 
-  async function startIndependentMemory(snapshot: Adventure, sourceIds?: string[]) {
-    if (memoryFallbackInFlight.current.has(snapshot.id)) return;
-    const selected = sourceIds ? snapshot.messages.filter(message => sourceIds.includes(message.id)
+  function memoryFailures(snapshot: Adventure) {
+    return snapshot.messages.filter(message => message.role === "assistant" && message.memoryEvaluation
+      && (["failed", "quarantined", "running"].includes(message.memoryEvaluation.status)
+        || message.memoryEvaluation.status === "pending" && message.memoryEvaluation.attempts > 0));
+  }
+
+  const memoryWork = memoryWorkState?.adventureId === adventure?.id ? memoryWorkState
+    : adventure && globalMemorySettings.enabled && memoryFailures(adventure).length ? {
+      adventureId: adventure.id, status: "failed" as const,
+      sourceIds: memoryFailures(adventure).map(message => message.id), remaining: memoryFailures(adventure).length,
+      error: "Memory has unfinished evaluations. Retry them or continue with existing memory.",
+    } : undefined;
+
+  function continueWithExistingMemory() {
+    if (!adventureRef.current || memoryWorkerRef.current) return;
+    allowExistingMemoryRef.current = adventureRef.current.id;
+    setMemoryWork({ adventureId: adventureRef.current.id, status: "paused", sourceIds: [], remaining: 0 });
+  }
+
+  async function prepareNarration() {
+    const current = adventureRef.current;
+    if (!current) return;
+    // The UI permits composing, but a new context cannot overtake the ordered worker.
+    if (memoryWorkerRef.current?.adventureId === current.id) await memoryWorkerRef.current.promise;
+    const latest = adventureRef.current;
+    if (!latest || latest.id !== current.id) return;
+    if (globalMemorySettingsRef.current.enabled && (memoryFailures(latest).length || memoryWorkRef.current?.status === "failed")
+      && allowExistingMemoryRef.current !== latest.id) return;
+    allowExistingMemoryRef.current = undefined;
+    return flushPendingBeforeContext(latest);
+  }
+
+  function startIndependentMemory(initial: Adventure, sourceIds?: string[]): Promise<void> {
+    if (memoryWorkerRef.current?.adventureId === initial.id) return memoryWorkerRef.current.promise;
+    const selected = sourceIds ? initial.messages.filter(message => sourceIds.includes(message.id)
       && message.role === "assistant" && message.inputMode !== "comms" && message.memoryEvaluation?.status !== "complete").slice(0, 10)
-      : memoryCycleSources(snapshot);
-    if (!selected.length) return;
-    memoryFallbackInFlight.current.add(snapshot.id);
-    adventureRef.current = snapshot;
-    try {
-      for (const source of selected) {
-        if (adventureRef.current?.id !== snapshot.id) return;
-        snapshot = mergeQueuedUpdates(adventureRef.current);
-        try { resolveMemoryEvaluationProviderConfig(snapshot, mergeProviderConfig(snapshot, providerSettingsRef.current)); }
-        catch {
-          // Preflight before the durable claim: configuration never spends a source retry.
-          const result = await runMemoryCycle(snapshot, mergeProviderConfig(snapshot, providerSettingsRef.current),
-            { sourceId: source.id, manual: Boolean(sourceIds) });
-          const next = reduceActions(snapshot, result.actions);
-          adventureRef.current = next;
-          setAdventure(next);
-          setError(result.logEntry.errors.join("; "));
-          await saveAdventure(next);
-          return;
+      : memoryCycleSources(initial);
+    if (!selected.length) return Promise.resolve();
+    const epoch = memoryEpochRef.current;
+    const currentJob = () => memoryEpochRef.current === epoch && adventureRef.current?.id === initial.id;
+    const ids = selected.map(message => message.id);
+    setMemoryWork({ adventureId: initial.id, status: "running", sourceIds: ids, remaining: ids.length });
+    const persistActions = async (actions: AdventureAction[]) => {
+      if (!currentJob()) return;
+      let committed: Adventure | undefined;
+      const pendingActions = apiActionsRef.current;
+      apiActionsRef.current = [];
+      const pendingUpdates = queuedUpdatesRef.current;
+      queuedUpdatesRef.current = [];
+      const allActions: AdventureAction[] = [...pendingActions,
+        ...pendingUpdates.map(update => ({ type: "QUEUE_PENDING_UPDATE" as const, update })), ...actions];
+      // Read the latest React state (including user edits) before persisting a group.
+      // Drain queues once, outside the pure updater, including under StrictMode.
+      flushSync(() => setAdventure(current => {
+        if (!currentJob() || current?.id !== initial.id) return current;
+        committed = reduceActions(current, allActions);
+        return committed;
+      }));
+      if (!committed) return;
+      adventureRef.current = committed;
+      await saveAdventure(committed);
+      return currentJob() ? adventureRef.current : undefined;
+    };
+    const promise = (async () => {
+      try {
+        for (const [index, selectedSource] of selected.entries()) {
+          if (!currentJob()) return;
+          const snapshot = adventureRef.current!;
+          const source = snapshot.messages.find(message => message.id === selectedSource.id);
+          if (!source || source.memoryEvaluation?.status === "complete") continue;
+          setMemoryWork({ adventureId: initial.id, status: "running", sourceIds: ids, remaining: ids.length - index });
+          let validConfig = true;
+          try { resolveMemoryEvaluationProviderConfig(snapshot, mergeProviderConfig(snapshot, providerSettingsRef.current)); }
+          catch { validConfig = false; }
+          // Invalid configuration never consumes a claim or starts an HTTP request.
+          const claimed = validConfig ? await persistActions([{ type: "CLAIM_MEMORY_EVALUATION", sourceId: source.id,
+            turn: snapshot.activeState.memoryRecoveryStoryTurn ?? 0, manual: Boolean(sourceIds) }]) : snapshot;
+          if (!claimed || !currentJob()) return;
+          const memoryConfig = guardMemoryRequests(mergeProviderConfig(claimed, providerSettingsRef.current), currentJob);
+          const result = await runMemoryCycle(claimed, memoryConfig, {
+            sourceId: source.id, manual: Boolean(sourceIds), shouldContinue: currentJob,
+            onProgress: group => { if (currentJob()) setMemoryWork({ adventureId: initial.id, status: "running",
+              sourceIds: ids, remaining: ids.length - index, group }); },
+            onGroupComplete: (commit, usage) => persistActions([commit, { type: "ACCUMULATE_BACKGROUND_TOKENS", ...usage }]),
+          });
+          if (!currentJob()) return;
+          await persistActions(result.actions.filter(action => action.type !== "COMMIT_MEMORY_EVALUATION_GROUP"
+            && action.type !== "ACCUMULATE_BACKGROUND_TOKENS"));
+          const latestSource = adventureRef.current!.messages.find(message => message.id === source.id);
+          if (sourceIds && latestSource?.memoryEvaluation?.status === "complete" && source.memoryRecovery?.status === "pending") {
+            await persistActions([{ type: "COMPLETE_MEMORY_RECOVERY", sources: [{ id: source.id, content: source.content }], actions: [] }]);
+          }
+          if (!validConfig) break;
         }
-        snapshot = adventureReducer(snapshot, { type: "CLAIM_MEMORY_EVALUATION",
-          sourceId: source.id, turn: adventureRef.current.activeState.memoryRecoveryStoryTurn ?? 0, manual: Boolean(sourceIds) });
-        // Persist the claim first. Reloading the app never replays a paid request.
-        adventureRef.current = snapshot;
-        setAdventure(snapshot);
-        await saveAdventure(snapshot);
-        const result = await runMemoryCycle(snapshot, mergeProviderConfig(snapshot, providerSettingsRef.current),
-          { sourceId: source.id, manual: Boolean(sourceIds) });
-        if (adventureRef.current?.id !== snapshot.id) return;
-        let next = reduceActions(mergeQueuedUpdates(adventureRef.current), result.actions);
-        if (sourceIds && next.messages.find(message => message.id === source.id)?.memoryEvaluation?.status === "complete"
-          && source.memoryRecovery?.status === "pending") {
-          next = adventureReducer(next, { type: "COMPLETE_MEMORY_RECOVERY", sources: [{ id: source.id, content: source.content }], actions: [] });
-        }
-        adventureRef.current = next;
-        setAdventure(next);
-        await saveAdventure(next);
+        if (!currentJob()) return;
+        const unfinished = ids.filter(id => adventureRef.current!.messages.some(message => message.id === id
+          && message.memoryEvaluation?.status !== "complete"));
+        setMemoryWork(unfinished.length ? { adventureId: initial.id, status: "failed", sourceIds: unfinished,
+          remaining: unfinished.length, error: "Memory could not finish. Completed groups are saved. A retry may incur API costs." } : undefined);
+      } catch (error) {
+        if (currentJob()) setMemoryWork({ adventureId: initial.id, status: "failed", sourceIds: ids, remaining: ids.length,
+          error: error instanceof Error ? error.message : "Memory evaluation failed; story saved." });
+      } finally {
+        if (currentJob()) memoryWorkerRef.current = undefined;
       }
-    } catch (error) {
-      if (adventureRef.current?.id === snapshot.id) setError(error instanceof Error ? error.message : "Independent memory evaluation failed; story saved.");
-    } finally {
-      memoryFallbackInFlight.current.delete(snapshot.id);
-    }
+    })();
+    memoryWorkerRef.current = { adventureId: initial.id, promise };
+    return promise;
   }
 
   async function evaluateMemorySources(sourceIds: string[]) {
     const snapshot = adventureRef.current;
     if (!snapshot || loading || isSubmittingRef.current) return;
     if (!sourceIds.length || sourceIds.length > 10) throw new Error("Select one to ten completed sources.");
-    isSubmittingRef.current = true;
-    setLoading(true);
-    try { await startIndependentMemory(snapshot, sourceIds); }
-    finally { isSubmittingRef.current = false; setLoading(false); }
+    await startIndependentMemory(snapshot, sourceIds);
+  }
+
+  async function retryMemory() {
+    if (!adventureRef.current || memoryWorkerRef.current) return;
+    const ids = memoryWork?.sourceIds.length ? memoryWork.sourceIds : memoryFailures(adventureRef.current).map(message => message.id);
+    if (ids.length) await evaluateMemorySources(ids.slice(0, 10));
+  }
+
+  async function startPostTurnWork(snapshot: Adventure, includeArcContinuation = true) {
+    const epoch = memoryEpochRef.current;
+    await startIndependentMemory(snapshot);
+    if (epoch !== memoryEpochRef.current || adventureRef.current?.id !== snapshot.id) return;
+    const latest = adventureRef.current;
+    void startSemanticEvaluation(latest);
+    if (includeArcContinuation) void checkArcContinuation(latest);
   }
 
   async function startSemanticEvaluation(snapshot: Adventure) {
@@ -344,7 +435,7 @@ export function useAdventureRuntime(
         ? { type: "ACCUMULATE_BACKGROUND_TOKENS", promptTokens: result.tokenUsage.promptTokens, completionTokens: result.tokenUsage.completionTokens }
         : undefined;
       const allActions = [...result.actions, stampAction, ...(tokenAction ? [tokenAction] : [])];
-      if (isSubmittingRef.current) {
+      if (isNarratingRef.current) {
         queuePendingUpdate(allActions, "semanticEvaluation");
         return;
       }
@@ -400,13 +491,15 @@ export function useAdventureRuntime(
     setLoading(true);
     setError(undefined);
 
-    let base = flushPendingBeforeContext(adventure);
-    if (mode !== "comms" && CHALLENGE_PHRASES.some((re) => re.test(text))) {
-      base = adventureReducer(base, { type: "SET_CHALLENGE_MODE" });
-    }
+    let base: Adventure = adventure;
     let snapshotWithUserMsg: typeof adventure | undefined;
 
     try {
+      const ready = await prepareNarration();
+      if (!ready) return;
+      base = ready;
+      if (mode !== "comms" && CHALLENGE_PHRASES.some(re => re.test(text))) base = adventureReducer(base, { type: "SET_CHALLENGE_MODE" });
+      isNarratingRef.current = true;
       const result = await runTurnPipeline({
         adventure: base,
         text,
@@ -438,11 +531,9 @@ export function useAdventureRuntime(
       setContextResult(result.postTurnContext);
       await saveAdventure(next);
       setSaveStatus("saved");
-      if (mode !== "comms") {
-        await startIndependentMemory(next);
-        void startSemanticEvaluation(next);
-        void checkArcContinuation(next);
-      }
+      isNarratingRef.current = false;
+      adventureRef.current = next;
+      if (mode !== "comms") void startPostTurnWork(next);
     } catch (providerError) {
       const errMsg = providerError instanceof Error ? providerError.message : "Provider request failed.";
       const isNetworkError = errMsg.startsWith("Network error");
@@ -466,6 +557,7 @@ export function useAdventureRuntime(
     } finally {
       setLoading(false);
       isSubmittingRef.current = false;
+      isNarratingRef.current = false;
       if (apiActionsRef.current.length) {
         const actions = apiActionsRef.current;
         apiActionsRef.current = [];
@@ -482,7 +574,9 @@ export function useAdventureRuntime(
     setError(undefined);
 
     try {
-      const base = flushPendingBeforeContext(adventure);
+      const base = await prepareNarration();
+      if (!base) return;
+      isNarratingRef.current = true;
       const result = await runTurnPipeline({
         adventure: base,
         text: "[continue]",
@@ -512,9 +606,9 @@ export function useAdventureRuntime(
       setContextResult(result.postTurnContext);
       await saveAdventure(next);
       setSaveStatus("saved");
-      await startIndependentMemory(next);
-      void startSemanticEvaluation(next);
-      void checkArcContinuation(next);
+      isNarratingRef.current = false;
+      adventureRef.current = next;
+      void startPostTurnWork(next);
     } catch (providerError) {
       setError(providerError instanceof Error ? providerError.message : "Continue failed.");
       const failed = mergeQueuedUpdates(adventure);
@@ -523,6 +617,7 @@ export function useAdventureRuntime(
     } finally {
       setLoading(false);
       isSubmittingRef.current = false;
+      isNarratingRef.current = false;
       if (apiActionsRef.current.length) {
         const actions = apiActionsRef.current;
         apiActionsRef.current = [];
@@ -538,7 +633,10 @@ export function useAdventureRuntime(
     setLoading(true);
     setError(undefined);
 
-    let next = flushPendingBeforeContext(adventure);
+    const ready = await prepareNarration();
+    if (!ready) { isSubmittingRef.current = false; setLoading(false); return; }
+    isNarratingRef.current = true;
+    let next = ready;
     next = adventureReducer(next, { type: "REMOVE_LAST_ASSISTANT_MESSAGE" });
     const lastUser = [...next.messages].reverse().find((m) => m.role === "user")?.content ?? "Continue.";
     const context = buildContext(next, { currentInput: lastUser, latestModelOutput: latestAssistantOutput(next) });
@@ -571,8 +669,9 @@ export function useAdventureRuntime(
       setContextResult(buildContext(next, { latestModelOutput: applied.responseContent }));
       await saveAdventure(next);
       setSaveStatus("saved");
-      await startIndependentMemory(next);
-      void startSemanticEvaluation(next);
+      isNarratingRef.current = false;
+      adventureRef.current = next;
+      void startPostTurnWork(next, false);
     } catch (providerError) {
       setError(providerError instanceof Error ? providerError.message : "Regeneration failed.");
       const failed = mergeQueuedUpdates(adventure);
@@ -581,6 +680,7 @@ export function useAdventureRuntime(
     } finally {
       setLoading(false);
       isSubmittingRef.current = false;
+      isNarratingRef.current = false;
       if (apiActionsRef.current.length) {
         const actions = apiActionsRef.current;
         apiActionsRef.current = [];
@@ -884,6 +984,9 @@ Respond with ONLY the new content — no preamble, no labels, no explanation.`;
 
   return {
     loading,
+    memoryWork,
+    retryMemory,
+    continueWithExistingMemory,
     error,
     clearError: () => setError(undefined),
     activeProviderConfig,

@@ -86,6 +86,9 @@ export function PlayPage({
   dispatch,
   contextResult,
   loading,
+  memoryWork,
+  onRetryMemory,
+  onContinueWithExistingMemory,
   error,
   saveStatus,
   onSubmitTurn,
@@ -107,6 +110,7 @@ export function PlayPage({
   uiPreferences,
   onUiPreferencesChange,
 }: PlayRuntimeProps) {
+  const memoryBlocked = memoryWork?.status === "running" || memoryWork?.status === "failed";
   const draftKey = `play-input-draft-${adventure.id}`;
   const [input, setInput] = useState(() => { try { return localStorage.getItem(draftKey) ?? ""; } catch { return ""; } });
   function updateInput(value: string) {
@@ -272,7 +276,7 @@ export function PlayPage({
 
   async function submit() {
     const text = input.trim();
-    if (!text || loading) return;
+    if (!text || loading || memoryBlocked) return;
     updateInput("");
     setComposerOpen(false);
     setInputMode("do");
@@ -333,6 +337,20 @@ export function PlayPage({
       )}
 
       <div className="play-main">
+        {memoryWork && (
+          <div className="memory-work-notice" role="status" aria-live="polite">
+            {memoryWork.status === "running" ? (
+              <p>Updating memory{memoryWork.group ? ": " + ({ plot: "Plot", storyCards: "Story Cards", brains: "Brains", discovery: "Discovery" }[memoryWork.group]) : ""} — {memoryWork.remaining} {memoryWork.remaining === 1 ? "entry" : "entries"} remaining. You can write your next turn while this finishes.</p>
+            ) : memoryWork.status === "failed" ? (
+              <>
+                <p>{memoryWork.error ?? "Memory has unfinished evaluations."} Retry unfinished work or continue with existing memory.</p>
+                <button type="button" disabled={loading} onClick={() => void onRetryMemory?.()}>Retry memory</button>
+                <button type="button" disabled={loading} onClick={onContinueWithExistingMemory}>Continue with existing memory</button>
+              </>
+            ) : <p>The next turn will use existing memory. Unfinished evaluations remain saved.</p>}
+          </div>
+        )}
+
         <div className="transcript-area">
         <div ref={transcriptRef} className="transcript" onClick={() => setComposerOpen(false)}>
           <div className="story-text-frame">
@@ -524,7 +542,7 @@ export function PlayPage({
               type="button"
               className="composer-send-btn"
               aria-label="Send"
-              disabled={loading || !input.trim()}
+              disabled={loading || memoryBlocked || !input.trim()}
               onClick={submit}
               title={loading ? "Generating…" : "Send"}
             >
@@ -553,8 +571,8 @@ export function PlayPage({
               {composerOpen ? "Close Input" : "Take a Turn"}
             </button>
             <div className={`secondary-actions${showOverflow ? " show-overflow" : ""}`}>
-              <button type="button" disabled={loading} onClick={onContinue}>Continue</button>
-              <button type="button" disabled={loading || !lastAssistant} onClick={onRegenerate}>Retry</button>
+              <button type="button" disabled={loading || memoryBlocked} onClick={onContinue}>Continue</button>
+              <button type="button" disabled={loading || memoryBlocked || !lastAssistant} onClick={onRegenerate}>Retry</button>
               <button
                 type="button"
                 disabled={loading || adventure.messages.length === 0}

@@ -1,5 +1,5 @@
 import { memoryReasoningFields, assertMemoryReasoningDisabled } from "./memoryReasoning";
-import { fetchWithAccounting } from "./apiCallAccounting";
+import { fetchWithAccounting, ProviderRequestTimeoutError } from "./apiCallAccounting";
 import type { ApiCallPurpose, ChatMessage, ProviderConfig, ProviderRequestThrottle, ProviderUsage } from "../types/adventure";
 
 type CacheBlock = { type: "text"; text: string; cache_control?: { type: "ephemeral" } };
@@ -38,6 +38,7 @@ export interface SendChatCompletionOptions {
   messages: ChatMessage[];
   config: ProviderConfig;
   signal?: AbortSignal;
+  shouldSend?: () => boolean;
   responseFormat?: "json_object";
   thinking?: "enabled" | "disabled";
   memoryEvaluation?: boolean;
@@ -267,6 +268,7 @@ async function sendOpenAIRequestOnce(
       }),
     }, config, purpose);
   } catch (err) {
+    if (err instanceof ProviderRequestTimeoutError) throw err;
     const msg = err instanceof Error ? err.message : String(err);
     throw new Error(`Network error (${endpoint}): ${msg}. If using a local server, check CORS headers and that the server is reachable.`);
   }
@@ -360,6 +362,7 @@ async function sendAnthropicRequest(
       }),
     }, config, purpose);
   } catch (err) {
+    if (err instanceof ProviderRequestTimeoutError) throw err;
     const msg = err instanceof Error ? err.message : String(err);
     throw new Error(`Network error (${endpoint}): ${msg}.`);
   }
@@ -402,6 +405,7 @@ export async function sendOpenAICompatibleChatCompletion({
   purpose = "otherBackground",
   retry = true,
   memoryEvaluation = false,
+  shouldSend,
 }: SendChatCompletionOptions): Promise<ProviderResponse> {
   if (!config.apiKey?.trim()) {
     throw new Error("Missing API key. Add one in Settings before generating.");
@@ -419,6 +423,7 @@ export async function sendOpenAICompatibleChatCompletion({
     retry = false;
   }
   await waitForProviderThrottle(config, signal);
+  if (shouldSend && !shouldSend()) throw new Error("memory_work_cancelled");
 
   const endpoint = completionEndpoint(config.baseUrl);
   const result = isAnthropicFormat(config.baseUrl)
