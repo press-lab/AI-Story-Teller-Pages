@@ -81,6 +81,9 @@ describe("actual HTTP call accounting", () => {
     await act(async () => { await hook.result.current.runtime.continueTurn(); await settleHttp(); await vi.advanceTimersByTimeAsync(120_000); });
     vi.useRealTimers();
     await waitFor(() => expect(hook.result.current.runtime.memoryWork?.status).not.toBe("running"));
+    expect(evaluations).toBe(2);
+    expect(hook.result.current.adventure!.messages[0].memoryEvaluation?.status).toBe("failed");
+    await act(async () => { await hook.result.current.runtime.retryMemory(); });
     expect(hook.result.current.adventure!.messages.filter(message => message.role === "assistant").every(message => message.memoryEvaluation?.status === "complete")).toBe(true);
     expect(hook.result.current.adventure!.activeState.apiCallTotals!.memoryEvaluation).toMatchObject({ requests: 3, failedRequests: 1 });
   });

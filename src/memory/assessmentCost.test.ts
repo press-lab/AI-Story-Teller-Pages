@@ -244,7 +244,7 @@ it("compares identical three-source standalone and batched assessment HTTP usage
     }
     const [before, after] = measurements;
     expect(after.assessmentHttp).toBe(scenario === "one-invalid-record" ? 2 : 1);
-    expect(after.repairHttp).toBe(scenario === "one-invalid-record" ? 1 : 0);
+    expect(after.repairHttp).toBe(0);
     expect(after.downstreamHttp).toBe(before.downstreamHttp);
     expect(after.suggestions).toEqual(before.suggestions);
     if (count === 3 && scenario !== "one-invalid-record") expect(after.assessmentInput).toBeLessThan(before.assessmentInput);

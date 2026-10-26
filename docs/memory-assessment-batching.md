@@ -1,5 +1,7 @@
 # Assessment batching verification
 
+This report describes the original batching release. The current failure and reuse policy is in [Memory cost and reliability correction](memory-cost-reliability.md).
+
 Implemented on current main based on `6a75b0e`, which contains the requested baseline and Brain recovery fixes. No live provider was used.
 
 Automatic assessment uses one actual HTTP request for up to three fresh narrator sources. One or two tracked sources wait for 120 seconds of idle time on a visible page. Manual selection remains immediate. Valid siblings are stored before downstream processing. Narrator/evidence edits block stale commits; relevant reference edits invalidate assessment reuse. Initial and compact-repair transport failures follow backoff without individual fan-out.

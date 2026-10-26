@@ -94,7 +94,7 @@ it("does not replay legacy or new pending memory on load", async () => {
   const hook = setup(normalizeAdventure(saved)); await act(async () => {});
   expect(provider).not.toHaveBeenCalled(); expect(hook.result.current.adventure!.messages).toHaveLength(80);
 });
-it("retains failed groups and saved narration, then retries only unfinished work on a later turn", async () => {
+it("retains failed groups and saved narration, requires explicit retry for unfinished work", async () => {
   let fail = true;
   provider.mockImplementation(async request => {
     if (request.memoryEvaluation && fail) throw new Error("offline memory transport");
@@ -108,6 +108,7 @@ it("retains failed groups and saved narration, then retries only unfinished work
   fail = false; await act(async () => { await hook.result.current.runtime.continueTurn(); await tickIdle(); });
   await waitFor(() => expect(hook.result.current.runtime.memoryWork?.status).not.toBe("running"));
   await waitFor(() => expect(hook.result.current.runtime.memoryWork?.status).not.toBe("running"));
+  await act(async () => { await hook.result.current.runtime.retryMemory(); });
   expect(hook.result.current.adventure!.messages.filter(message => message.role === "assistant").every(message => message.memoryEvaluation?.status === "complete")).toBe(true);
 });
 it("evaluates all queued new sources at cadence, with no missing intermediate developments", async () => {

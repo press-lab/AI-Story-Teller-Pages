@@ -162,9 +162,10 @@ export async function detectStoryCardProposals(adventure: Adventure, providerCon
           { role: "system", content: `${STORY_CARD_MEMORY_CHECK}
 ${STORY_CARD_PLACEMENT_POLICY}
   ${options.eventsOnly ? "Evaluate completed history as Lore only." : "Evaluate the supplied completed exchanges."}
-  ${options.sourceId ? `The latest establishing exchange ends at narrator source ${options.sourceId}; the immediately preceding player action belongs to that exchange. Earlier exchanges are supporting context. Every finding must include the literal ID ${options.sourceId} in evidenceMessageIds and an exact quote from that message. Cite the player action too when needed to establish who acted. Do not substitute a numeric turn, card ID or invented ID. Only propose developments established in source ${options.sourceId}. Earlier exchanges supply attribution and continuity, not events happening again now. Cite that establishing source and all necessary earlier evidence. Include evidenceQuotes:[{messageId,quote}] with exact unmodified quotes from the supplied original messages. Also provide eventStatus: completed|ongoing|unresolved. A confirmed agreement is completed history even when the agreed future work remains unfinished. A discovery can have separate historical Lore and character-private Brain reactions; do not put private thoughts into this public record. Propose at most three findings.` : ""}
+
   Return ONLY a JSON array, [] when nothing qualifies. Each item: {"title":"subject or existing title","targetId":"existing ID for an update, otherwise omit","content":"NEW fact only; max 70 words","storyCardType":"lore|character|location|custom","suggestedTriggers":["3-6 short reusable topic phrases covering the card content; use ordinary future wording, not exact scene sentences or just the full title; never empty"],"rationale":"why durable","evidenceMessageIds":["supplied source IDs"],"evidenceQuotes":[{"messageId":"supplied source ID","quote":"exact unmodified supporting quote"}],"eventStatus":"completed|ongoing|unresolved","candidateOnly":false}. Set candidateOnly=true for uncertain interpretations and explicit attempts requiring review. An uncertain interpretation must use eventStatus=unresolved. A completed attempt can use eventStatus=completed while its intended outcome remains uncompleted. Never assert a confirmed kiss attempt from an ambiguous lean. Routine hospitality and scene filler do not qualify. Do not repeat dismissed or already captured facts. This legacy catch-up response is adapted into the shared Story Card pipeline.` },
           ...memoryCanonMessages(adventure, excerpt, "Discover missing Story Cards", true),
+          ...(options.sourceId ? [{ role: "user" as const, content: `The latest establishing exchange ends at narrator source ${options.sourceId}; the immediately preceding player action belongs to that exchange. Earlier exchanges are supporting context. Every finding must include the literal ID ${options.sourceId} in evidenceMessageIds and an exact quote from that message. Cite the player action too when needed to establish who acted. Do not substitute a numeric turn, card ID or invented ID. Only propose developments established in source ${options.sourceId}. Earlier exchanges supply attribution and continuity, not events happening again now. Cite that establishing source and all necessary earlier evidence. Include evidenceQuotes:[{messageId,quote}] with exact unmodified quotes from the supplied original messages. Also provide eventStatus: completed|ongoing|unresolved. A confirmed agreement is completed history even when the agreed future work remains unfinished. A discovery can have separate historical Lore and character-private Brain reactions; do not put private thoughts into this public record. Propose at most three findings.` }] : []),
           { role: "user", content: "Relevant existing cards: " + JSON.stringify(cardInventory) },
           { role: "user", content: "Previously considered Story Card proposals (including dismissed; omit duplicates): " + JSON.stringify(proposalInventory) },
           { role: "user", content: (options.sourceId ? `Establishing narrator ID: ${options.sourceId}\nAllowed evidence message IDs: ${messages.map(message => message.id).join(", ")}\n` : "") + "Recent story evidence:\n" + excerpt },
@@ -195,7 +196,7 @@ ${STORY_CARD_PLACEMENT_POLICY}
         if (draft.status === "accepted" && draft.proposal) capturedContent.push(draft.proposal.content);
         continue;
       }
-      let item = draft.candidate;
+      const item = draft.candidate;
       const title = item.title;
       const reject = (reason: string, code: string) => {
         draft.status = "rejected"; draft.reason = reason; draft.failureCode = code;
@@ -216,36 +217,7 @@ ${STORY_CARD_PLACEMENT_POLICY}
       if (proposalCoverage(adventure, earlyDraft) || (item.storyCardType !== "event" && factsCovered(item.content, capturedContent))) {
         suppress("Factual delta already recorded or considered; no repair or review request needed."); continue;
       }
-      let error = discoveryEvidenceError(item, messages, options.sourceId);
-      if (error && options.sourceId) {
-        record("validation_rejected", error.reason, { failureCode: error.code, targetId: item.targetId,
-          candidate: { kind: item.storyCardType, title: item.title, content: item.content,
-            evidence: JSON.stringify(item.evidenceQuotes), rationale: item.rationale ?? "", targetId: item.targetId } });
-        let repairReceived = false;
-        try {
-          const repair = await sendMemoryCompletion(adventure, providerConfig, [
-            { role: "system", content: `${STORY_CARD_MEMORY_CHECK}
-${STORY_CARD_PLACEMENT_POLICY}
-Repair this single discovery candidate using only the supplied original messages. Return ONLY one candidate object with title, content (new supported facts only), storyCardType, targetId when relevant, evidenceMessageIds, evidenceQuotes:[{messageId,quote}], eventStatus and candidateOnly. Include the establishing narrator ID and its exact unmodified supporting quote. Do not invent evidence, concatenate noncontiguous quotes or assert planned work is complete. Return null if unsupported.` },
-            { role: "user", content: JSON.stringify({ candidate: item, failure: error, establishingSourceId: sourceId, allowedEvidence: dependencies }) },
-          ], "repair");
-          repairReceived = true;
-          result.tokenUsage.promptTokens += repair.usage?.promptTokens ?? 0;
-          result.tokenUsage.completionTokens += repair.usage?.completionTokens ?? 0;
-          const raw = JSON.parse(repair.content.replace(/<think>[\s\S]*?<\/think>/gi, "").trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, ""));
-          if (raw === null) { reject("Evidence repair found no supported durable fact.", "memory_no_supported_fact"); continue; }
-          const repaired = parseDiscoveryCandidate(raw);
-          const repairError = repaired.error ?? discoveryEvidenceError(repaired.candidate, messages, options.sourceId);
-          if (!repairError) { item = repaired.candidate; draft.candidate = item; error = undefined; }
-          else error = repairError;
-        } catch (cause) {
-          const failure = safeMemoryFailure(cause, repairReceived);
-          draft.status = "awaiting_retry"; draft.reason = failure.message; draft.failureCode = failure.code;
-          record("candidate_awaiting_retry", failure.message, { failureCode: failure.code,
-            candidate: { kind: item.storyCardType, title, content: item.content, evidence: JSON.stringify(item.evidenceQuotes), rationale: item.rationale ?? "", targetId: item.targetId } });
-          result.errors.push(failure.message); continue;
-        }
-      }
+      const error = discoveryEvidenceError(item, messages, options.sourceId);
       if (error) { reject(error.reason, error.code); continue; }
       const evidence = messages.filter(message => item.evidenceMessageIds.includes(message.id));
       if (item.storyCardType !== "event" && factsCovered(item.content, capturedContent)) {

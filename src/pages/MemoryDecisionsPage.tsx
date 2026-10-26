@@ -54,6 +54,7 @@ export function MemoryDecisionsPage({ adventure, onSuggestions, onEvaluateMemory
     <h2>Memory decisions</h2>
     {backgroundProviderConfigIssue(adventure) && <p role="alert">{backgroundProviderConfigIssue(adventure)}</p>}
     <p>Observed pipeline decisions. Zero candidates does not explain what the model considered important. Diagnostics retain the latest 600 events; older stages may be unavailable.</p>
+    <p>Use Retry for failed entries. New story turns do not retry failed requests.</p>
     <p aria-label="Decision counts">{pending} pending recovery · {quarantined} quarantined recovery · {missing} missing envelopes · {rejected} recent rejected candidates · {proposals.filter(p => p.status === "pending").length} pending proposals</p>
     <div className="editor-stat-row">
       <label>Filter <select value={filter} onChange={e => setFilter(e.target.value)}>

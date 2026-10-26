@@ -428,7 +428,11 @@ export function useAdventureRuntime(
             deferred.forEach(source => deferredBatchSourceIds.add(source.id));
             await persistActions(deferred.map(source => ({ type: "COMMIT_MEMORY_EVALUATION_GROUP" as const,
               source: { id: source.id, content: source.content }, revision: source.memoryEvaluation?.revision,
-              group: "plot" as const, dependencies: [], targets: [], actions: [], error: result.error })));
+              group: "plot" as const, dependencies: [], targets: [], actions: [{ type: "RECORD_MEMORY_DIAGNOSTIC" as const, entry: {
+                id: createId("decision"), sourceId: source.id, createdAt: nowIso(), stage: "independent" as const,
+                requestStage: "assessment" as const, outcome: "evaluation_failed" as const, failureCategory: "invalid_model_output" as const,
+                failureCode: "memory_assessment_batch_invalid", retryable: false, reason: result.error!,
+              } }], error: result.error })));
           }
         }
         for (const [index, selectedSource] of selected.entries()) {

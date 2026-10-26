@@ -77,7 +77,7 @@ it("keeps deterministic identity nominations when semantic discovery is validly 
   expect(r.state.activeState.memoryProposals).toContainEqual(expect.objectContaining({ title: "Silverpeak Citadel", storyCardReview: expect.objectContaining({ origin: "deterministic" }) }));
 });
 const isRepair = (messages: { content: string }[]) => messages[0]?.content.startsWith("ASSESSMENT FORMAT REPAIR");
-it.each(["missing discovery", "missing brains", "unknown ID", "invalid evidence", "missing citation"])("repairs %s once with a compact payload", async kind => {
+it.each(["missing discovery", "missing brains", "unknown ID", "invalid evidence", "missing citation"])("retains incomplete %s for explicit retry without a paid repair", async kind => {
   const a = seed(); a.storyCards = [makeStoryCard({ id: "invitation", title: "Dinner invitation", type: "lore", keys: ["invitation"], content: "PRIVATE FULL CARD CONTENT" })];
   let valid = "", invalid = "";
   provider.mockImplementation(async request => {
@@ -93,20 +93,9 @@ it.each(["missing discovery", "missing brains", "unknown ID", "invalid evidence"
     return response(invalid);
   });
   const r = await cycle(a);
-  expect(counts()).toEqual({ assessment: 1, validation: 0, total: 2 });
-  const repair = provider.mock.calls[1][0];
-  expect(repair.config.memoryRequest).toMatchObject({ stage: "repair", sourceId: "source" });
-  expect(repair.messages).toHaveLength(2);
-  const payload = JSON.parse(repair.messages[1].content);
-  expect(Object.keys(payload).sort()).toEqual(["sourceId", "requestedGroups", "eligibleTargetIds", "allowedEvidenceMessageIds", "validationErrorCode", "validationFieldPath", "originalAssessment"].sort());
-  expect(payload).toMatchObject({ sourceId: "source", requestedGroups: ["plot", "storyCards", "brains", "discovery"],
-    eligibleTargetIds: { plot: [], storyCards: ["storyCard:invitation"], brains: [] },
-    allowedEvidenceMessageIds: ["prior", "player", "source"], originalAssessment: invalid });
-  expect(payload.validationErrorCode).toMatch(/^memory_assessment_/);
-  expect(payload.validationFieldPath).toMatch(/^\$\./);
-  expect(JSON.stringify(repair.messages)).not.toContain("PRIVATE FULL CARD CONTENT");
-  expect(JSON.stringify(repair.messages)).not.toContain(a.messages[0].content);
-  expect(r.state.messages.at(-1)?.memoryEvaluation?.status).toBe("complete");
+  expect(counts()).toEqual({ assessment: 1, validation: 0, total: 1 });
+  expect(r.state.messages.at(-1)?.memoryEvaluation?.status).toBe("quarantined");
+  expect(r.state.activeState.memoryProposals).toEqual([]);
 });
 it("normalizes absent negative discovery evidence in one assessment without repair", async () => {
   provider.mockImplementation(async request => {
@@ -141,18 +130,18 @@ it.each(["storyCard", "brain"])("normalizes an exact %s prefix omission and pres
   const approved = reduce(r.state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id });
   expect(approved.activeState.memoryProposals[0].status).toBe("approved");
 });
-it.each(["{}", "[]", "{broken"])("quarantines invalid repair output %s after exactly two calls and permits manual retry", async repair => {
-  provider.mockImplementation(async request => response(isRepair(request.messages) ? repair : "{}"));
+it.each(["{}", "[]", "{broken"])("quarantines invalid output %s after exactly one call and permits manual retry", async repair => {
+  provider.mockImplementation(async request => response(repair));
   const r = await cycle(seed());
-  expect(counts().total).toBe(2);
+  expect(counts().total).toBe(1);
   expect(r.state.messages.at(-1)?.memoryEvaluation).toMatchObject({ status: "quarantined", attempts: 1, completedGroups: [] });
   expect(r.state.activeState.memoryDiagnostics).toContainEqual(expect.objectContaining({ requestStage: "assessment", failureCategory: "invalid_model_output" }));
   r.state.activeState.memoryRecoveryStoryTurn = 100;
   expect(memoryCycleSources(r.state)).toEqual([]);
-  expect(counts().total).toBe(2);
+  expect(counts().total).toBe(1);
   provider.mockImplementation(async request => response(mockAssessment(request.messages)));
   const manual = await cycle(r.state);
-  expect(counts().total).toBe(3);
+  expect(counts().total).toBe(2);
   expect(manual.state.messages.at(-1)?.memoryEvaluation).toMatchObject({ status: "complete", attempts: 2 });
 });
 it.each(["[]", '{"plot":{"targets":null,"reason":"Quiet"}}', "{broken"])("does not repair other parser errors: %s", async invalid => {
@@ -161,27 +150,19 @@ it.each(["[]", '{"plot":{"targets":null,"reason":"Quiet"}}', "{broken"])("does n
   expect(counts().total).toBe(1);
   expect(r.state.messages.at(-1)?.memoryEvaluation?.status).toBe("quarantined");
 });
-it.each([false, true])("retains three-attempt automatic transport backoff (failure during repair: %s)", async duringRepair => {
-  provider.mockImplementation(async request => {
-    if (duringRepair && isAssessment(request.messages)) return response("{}");
-    throw Error("Disconnected");
-  });
-  let state = seed(); state.memoryDetectionSettings.enabled = true; state.memoryDetectionSettings.everyNTurns = 1;
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    const turn = state.activeState.turn;
-    const claimed = reduce(state, { type: "CLAIM_MEMORY_EVALUATION", sourceId: "source", turn });
-    const result = await runMemoryCycle(claimed, config, { sourceId: "source" });
-    state = result.actions.reduce(reduce, claimed);
-    const evaluation = state.messages.at(-1)!.memoryEvaluation!;
-    expect(evaluation).toMatchObject({ attempts: attempt, status: attempt === 3 ? "quarantined" : "failed", nextEligibleTurn: turn + 2 ** (attempt - 1) });
-    expect(state.activeState.memoryDiagnostics).toContainEqual(expect.objectContaining({ failureCategory: "transport_api" }));
-    state.activeState.memoryRecoveryStoryTurn = turn;
-    expect(memoryCycleSources(state)).toEqual([]);
-    state.activeState.turn = evaluation.nextEligibleTurn!;
-    state.activeState.memoryRecoveryStoryTurn = state.activeState.turn;
-    expect(memoryCycleSources(state).map(m => m.id)).toEqual(attempt === 3 ? [] : ["source"]);
-  }
-  expect(counts().total).toBe(duringRepair ? 6 : 3);
+it("never automatically retries a failed transport request, but permits explicit retry", async () => {
+  provider.mockRejectedValue(Error("Disconnected"));
+  const first = await cycle(seed());
+  expect(first.state.messages.at(-1)?.memoryEvaluation?.status).toBe("failed");
+  first.state.activeState.memoryRecoveryStoryTurn = 100;
+  first.state.memoryDetectionSettings.enabled = true;
+  first.state.memoryDetectionSettings.everyNTurns = 1;
+  expect(memoryCycleSources(first.state)).toEqual([]);
+  expect(provider).toHaveBeenCalledTimes(1);
+  provider.mockImplementation(async r => response(mockAssessment(r.messages)));
+  const retried = await cycle(first.state);
+  expect(provider).toHaveBeenCalledTimes(2);
+  expect(retried.state.messages.at(-1)?.memoryEvaluation?.status).toBe("complete");
 });
 it("sends earlier participant context and the latest pronoun/short answer without literal-name eligibility", async () => {
   const a = seed(); a.brains = [makeBrain({ id: "d", characterName: "Draconia", active: true }), makeBrain({ id: "h", characterName: "Hermione", active: true })];
@@ -372,7 +353,7 @@ it("rejects stale negative assessments at commit even when no proposal supplied 
   expect(stale.activeState.memoryDiagnostics).toContainEqual(expect.objectContaining({ outcome: "evaluation_stale" }));
 });
 
-it("preserves a valid positive decision through format repair, generation, validation, and approval", async () => {
+it("preserves a valid positive decision through local normalization, validation, and approval", async () => {
   const a = seed(); a.semanticEvaluationSettings.requireApprovalForAutoUpdates = true;
   a.storyCards = [makeStoryCard({ id: "invitation", title: "Dinner invitation", type: "lore", content: "A dinner was offered.", keys: ["invitation"] })];
   fired = ["storyCard:invitation"];
@@ -384,12 +365,12 @@ it("preserves a valid positive decision through format repair, generation, valid
     const validDecision = JSON.parse(mockAssessment(request.messages, fired));
     validDecision.storyCards.targets[0].delta = "Hermione accepted the invitation.";
     valid = JSON.stringify(validDecision);
-    const value = JSON.parse(valid); delete value.discovery;
+    const value = JSON.parse(valid); delete value.discovery.evidenceMessageIds;
     return response(JSON.stringify(value));
   });
   const r = await cycle(a);
-  expect(counts()).toEqual({ assessment: 1, validation: 1, total: 3 });
-  expect(provider.mock.calls.filter(([r]) => isRepair(r.messages))).toHaveLength(1);
+  expect(counts()).toEqual({ assessment: 1, validation: 1, total: 2 });
+  expect(provider.mock.calls.filter(([r]) => isRepair(r.messages))).toHaveLength(0);
   expect(r.state.messages.at(-1)?.memoryEvaluation?.assessment?.storyCards).toEqual(JSON.parse(valid).storyCards);
   expect(r.state.activeState.memoryProposals).toHaveLength(1);
   expect(r.state.activeState.memoryProposals[0].status).toBe("pending");
@@ -799,7 +780,7 @@ it("batches distinct invitation, research and attempted kiss sources without fut
   expect(batch.sources.map(s => s.assessment.discovery.reason)).toEqual(a.messages.map(m => m.content));
   expect(batch.sources.every(s => s.assessment.discovery.evidenceMessageIds.join() === s.sourceId)).toBe(true);
 });
-it("retains two valid siblings after one malformed batch record and one bounded repair", async () => {
+it("retains two valid siblings after one malformed batch record without a paid repair", async () => {
   const a = assessmentBatchSeed();
   provider.mockImplementation(async request => {
     if (isAssessment(request.messages)) {
@@ -811,7 +792,7 @@ it("retains two valid siblings after one malformed batch record and one bounded 
   });
   const batch = await assessMemoryBatch(a, config, a.messages.map(m => m.id));
   expect(batch.sources.map(s => s.sourceId)).toEqual(["batch-0", "batch-2"]);
-  expect(batch.invalidSourceIds).toEqual(["batch-1"]); expect(provider).toHaveBeenCalledTimes(2);
+  expect(batch.invalidSourceIds).toEqual(["batch-1"]); expect(provider).toHaveBeenCalledTimes(1);
 });
 it("rejects duplicated IDs, missing sources, foreign evidence and duplicate source records independently", async () => {
   const a = assessmentBatchSeed();
@@ -927,4 +908,71 @@ it("uses the same evidence window as runMemoryCycle for long histories and exclu
   a.messages.push({ id: "ooc-player", role: "user", inputMode: "comms", content: "Explain this.", createdAt: "2026-10-26" },
     { id: "ooc-narrator", role: "assistant", content: "An explanation.", createdAt: "2026-10-26", memoryEvaluation: { turn: 4, attempts: 0, status: "pending", completedGroups: [] } });
   await expect(assessMemoryBatch(a, config, ["ooc-narrator"])).rejects.toThrow();
+});
+
+
+it("reuses all batch decisions after an automatic Brain write and still invalidates author edits", async () => {
+  let a = assessmentBatchSeed();
+  a.brains = [makeBrain({ id: "h", characterName: "Hermione", active: true })];
+  const batch = await assessMemoryBatch(a, config, a.messages.map(m => m.id));
+  a = reduce(a, { type: "STORE_MEMORY_ASSESSMENT_BATCH", sources: batch.sources });
+  a = reduce(a, { type: "APPLY_BRAIN_UPDATE", diagnosticSourceId: "batch-0", brainId: "h", patch: { thoughts: { dinner: "I accept the invitation." } } });
+  expect(a.brains[0].thoughts.dinner).toBeDefined();
+  provider.mockClear();
+  for (const id of a.messages.map(m => m.id)) {
+    const snapshot = { ...a, messages: a.messages.slice(0, a.messages.findIndex(m => m.id === id) + 1) };
+    expect((await assessMemory(snapshot, config, id, buildMemoryAssessmentConditions(snapshot), { promptTokens: 0, completionTokens: 0 })).reused).toBe(true);
+  }
+  expect(provider).not.toHaveBeenCalled();
+  a.brains[0].thoughts.author = "An explicit author correction.";
+  // A later automatic write must not conceal an earlier author edit.
+  a = reduce(a, { type: "APPLY_BRAIN_UPDATE", diagnosticSourceId: "batch-1", brainId: "h", patch: { thoughts: { research: "I will share the notebook." } } });
+  const snapshot = { ...a, messages: a.messages.slice(0, 1) };
+  expect((await assessMemory(snapshot, config, "batch-0", buildMemoryAssessmentConditions(snapshot), { promptTokens: 0, completionTokens: 0 })).reused).toBe(false);
+  expect(provider).toHaveBeenCalledTimes(1);
+});
+
+it("reuses sibling assessments through actual automatic Lore appends without losing any distinct delta", async () => {
+  let a = assessmentBatchSeed();
+  a.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
+  a.memoryAutoApprove.storyCard = true;
+  a.storyCards = [makeStoryCard({ id: "research", type: "lore", title: "Research", keys: ["research", "invitation", "kiss"], content: "Research history." })];
+  fired = ["storyCard:research"];
+  const base = provider.getMockImplementation()!;
+  provider.mockImplementation(async request => {
+    if (!isAssessment(request.messages)) return base(request);
+    const value = JSON.parse(mockAssessment(request.messages, fired));
+    for (const record of value.sources ?? [value]) {
+      const id = record.sourceId ?? JSON.parse(request.messages.at(-1)!.content).sourceId;
+      record.storyCards.targets[0].delta = a.messages.find(m => m.id === id)!.content;
+    }
+    return response(JSON.stringify(value));
+  });
+  const batch = await assessMemoryBatch(a, config, a.messages.map(m => m.id));
+  a = reduce(a, { type: "STORE_MEMORY_ASSESSMENT_BATCH", sources: batch.sources });
+  for (const id of a.messages.map(m => m.id)) {
+    const result = await runMemoryCycle(a, config, { sourceId: id });
+    a = result.actions.reduce(reduce, a);
+  }
+  expect(counts().assessment).toBe(1);
+  expect(a.activeState.memoryProposals.filter(p => p.status === "approved")).toHaveLength(3);
+  for (const message of a.messages) expect(a.storyCards[0].content).toContain(message.content);
+  expect(a.messages.every(m => m.memoryEvaluation?.status === "complete")).toBe(true);
+  expect(a.messages.every(m => m.memoryEvaluation?.assessment?.reusableState === undefined)).toBe(true);
+});
+
+it("uses identical frozen Brain evidence for generation and review and excludes saved metadata", async () => {
+  let a = batchSeed();
+  for (const id of ["one", "two"]) a = (await autoTurn(a, id, ["brain:h"])).state;
+  provider.mockClear();
+  const result = await autoTurn(a, "three", []);
+  const generation = provider.mock.calls.find(([r]) => r.messages.some(m => m.content.includes("Bounded Brain batch:")))![0];
+  const validation = provider.mock.calls.find(([r]) => r.messages.some(m => m.content.includes("MEMORY UPDATE VALIDATION")))![0];
+  const evidence = JSON.parse(validation.messages.at(-1)!.content).recentEvidence;
+  expect(generation.messages.at(-1)!.content).toContain(evidence);
+  expect(JSON.parse(validation.messages.at(-1)!.content).brainSourceIds).toEqual(["one", "two"]);
+  expect(generation.messages.at(-1)!.content).not.toContain("research agreement three");
+  const payload = JSON.stringify(generation.messages);
+  for (const forbidden of ["memoryEvaluation", "reusableState", "completedGroups", "promptTokens"]) expect(payload).not.toContain(forbidden);
+  expect(result.state.messages.at(-1)?.memoryEvaluation?.status).toBe("complete");
 });

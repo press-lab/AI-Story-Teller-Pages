@@ -42,8 +42,7 @@ export function brainBatchEvidenceMessages(adventure: Adventure, sourceIds: read
     if (index === undefined || story[index].role !== "assistant") {
       throw new Error("memory_brain_batch_source_stale: Missing in-story narrator source.");
     }
-    selected.add(id);
-    if (index > 0 && story[index - 1].role === "user") selected.add(story[index - 1].id);
+    for (const message of memoryEvidenceWindow(adventure, id)) selected.add(message.id);
   }
   return story.filter(message => selected.has(message.id));
 }
