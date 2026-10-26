@@ -93,7 +93,7 @@ it("allows successive turns after memory failures without a choice and retains u
   await waitFor(() => expect(provider.mock.calls.some(([request]) => request.memoryEvaluation)).toBe(true));
   expect(provider.mock.calls.filter(([request]) => !request.memoryEvaluation)).toHaveLength(2);
   await waitFor(() => expect(hook.result.current.runtime.memoryWork?.status).not.toBe("running"));
-  expect(hook.result.current.adventure!.messages.find(message => message.id === sourceId)?.memoryEvaluation?.status).toBe("failed");
+  expect(hook.result.current.adventure!.messages.find(message => message.id === sourceId)?.memoryEvaluation?.status).toBe("quarantined");
   expect(hook.result.current.openTab).not.toHaveBeenCalled();
 });
 
@@ -240,7 +240,7 @@ it("opens and reopens a save with the reported historical failure counts without
   expect(hook.result.current.openTab).not.toHaveBeenCalled();
 });
 
-it("continues a queued submission after a worker failure with unchanged bounded-retry accounting", async () => {
+it("continues a queued submission after quarantining invalid assessment output", async () => {
   const pending = deferred(); let first = true;
   provider.mockImplementation(request => request.memoryEvaluation && first ? (first = false, assessmentMessages = request.messages, pending.promise)
     : Promise.resolve(response(request.memoryEvaluation ? mockAssessment(request.messages) : story)));
@@ -250,9 +250,9 @@ it("continues a queued submission after a worker failure with unchanged bounded-
   await act(async () => { pending.resolve(response("malformed")); expect(await next).toBe(true); });
   await waitFor(() => expect(hook.result.current.runtime.memoryWork?.status).not.toBe("running"));
   expect(hook.result.current.adventure!.messages.map(message => message.content)).toEqual(["First turn.", story, "Second turn.", story]);
-  expect(hook.result.current.adventure!.messages[1].memoryEvaluation).toMatchObject({ status: "complete", attempts: 2 });
+  expect(hook.result.current.adventure!.messages[1].memoryEvaluation).toMatchObject({ status: "quarantined", attempts: 1 });
   expect(hook.result.current.adventure!.activeState.memoryDiagnostics).toContainEqual(expect.objectContaining({ outcome: "evaluation_failed", requestStage: "assessment", failureCode: "memory_assessment_invalid_json", fieldPath: "$" }));
   expect(hook.result.current.adventure!.activeState.memoryDiagnostics?.filter(d => d.outcome === "evaluation_failed")).toHaveLength(1);
-  expect(provider).toHaveBeenCalledTimes(5); // Two narration calls, one failed assessment, its bounded retry and the new source assessment.
+  expect(provider).toHaveBeenCalledTimes(4); // Two narration calls, one quarantined assessment and the new source assessment.
   expect(hook.result.current.openTab).not.toHaveBeenCalled();
 });

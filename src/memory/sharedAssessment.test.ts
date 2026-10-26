@@ -4,6 +4,7 @@ import { adventureReducer as reduce } from "../state/adventureReducer";
 import { runMemoryCycle } from "../triggers/semanticEngine";
 import { isAssessment, mockAssessment } from "../test/memoryAssessment";
 import { mockPlacementVerdict } from "../test/memoryPlacement";
+import { memoryCycleSources } from "./memoryCycleState";
 import { factsCovered, proposalCoverage, relevantProposalCoverage } from "./factCoverage";
 import { makeStoryCardSuggestion } from "./storyCardSuggestions";
 import { validateMemoryUpdate } from "./validateMemoryUpdate";
@@ -65,20 +66,112 @@ it("keeps deterministic identity nominations when semantic discovery is validly 
   expect(counts().total).toBe(1);
   expect(r.state.activeState.memoryProposals).toContainEqual(expect.objectContaining({ title: "Silverpeak Citadel", storyCardReview: expect.objectContaining({ origin: "deterministic" }) }));
 });
-it.each(["missing discovery", "missing brains", "unknown ID", "missing evidence", "malformed targets"])("fails visibly without legacy fallback on %s", async kind => {
+const isRepair = (messages: { content: string }[]) => messages[0]?.content.startsWith("ASSESSMENT FORMAT REPAIR");
+it.each(["missing discovery", "missing brains", "unknown ID", "invalid evidence", "missing citation"])("repairs %s once with a compact payload", async kind => {
+  const a = seed(); a.storyCards = [makeStoryCard({ id: "invitation", title: "Dinner invitation", type: "lore", keys: ["invitation"], content: "PRIVATE FULL CARD CONTENT" })];
+  let valid = "", invalid = "";
   provider.mockImplementation(async request => {
-    const value = JSON.parse(mockAssessment(request.messages));
+    if (isRepair(request.messages)) return response(valid);
+    valid = mockAssessment(request.messages);
+    const value = JSON.parse(valid);
     if (kind === "missing discovery") delete value.discovery;
     if (kind === "missing brains") delete value.brains;
-    if (kind === "unknown ID") value.brains.targets = [{ id: "brain:unknown", delta: "changed", evidenceMessageIds: ["source"] }];
-    if (kind === "missing evidence") delete value.discovery.evidenceMessageIds;
-    if (kind === "malformed targets") value.plot.targets = null;
+    if (kind === "unknown ID") value.storyCards.targets = [{ id: "unknown", delta: "changed", evidenceMessageIds: ["source"] }];
+    if (kind === "invalid evidence") value.discovery = { needed: true, reason: "Change", evidenceMessageIds: ["invented"] };
+    if (kind === "missing citation") value.discovery = { needed: true, reason: "Change", evidenceMessageIds: ["prior"] };
+    invalid = JSON.stringify(value);
+    return response(invalid);
+  });
+  const r = await cycle(a);
+  expect(counts()).toEqual({ assessment: 1, validation: 0, total: 2 });
+  const repair = provider.mock.calls[1][0];
+  expect(repair.config.memoryRequest).toMatchObject({ stage: "repair", sourceId: "source" });
+  expect(repair.messages).toHaveLength(2);
+  const payload = JSON.parse(repair.messages[1].content);
+  expect(Object.keys(payload).sort()).toEqual(["sourceId", "requestedGroups", "eligibleTargetIds", "allowedEvidenceMessageIds", "validationErrorCode", "validationFieldPath", "originalAssessment"].sort());
+  expect(payload).toMatchObject({ sourceId: "source", requestedGroups: ["plot", "storyCards", "brains", "discovery"],
+    eligibleTargetIds: { plot: [], storyCards: ["storyCard:invitation"], brains: [] },
+    allowedEvidenceMessageIds: ["prior", "player", "source"], originalAssessment: invalid });
+  expect(payload.validationErrorCode).toMatch(/^memory_assessment_/);
+  expect(payload.validationFieldPath).toMatch(/^\$\./);
+  expect(JSON.stringify(repair.messages)).not.toContain("PRIVATE FULL CARD CONTENT");
+  expect(JSON.stringify(repair.messages)).not.toContain(a.messages[0].content);
+  expect(r.state.messages.at(-1)?.memoryEvaluation?.status).toBe("complete");
+});
+it("normalizes absent negative discovery evidence in one assessment without repair", async () => {
+  provider.mockImplementation(async request => {
+    const value = JSON.parse(mockAssessment(request.messages)); delete value.discovery.evidenceMessageIds;
     return response(JSON.stringify(value));
   });
   const r = await cycle(seed());
-  expect(counts().total).toBe(1); expect(r.state.messages.at(-1)?.memoryEvaluation?.status).toBe("failed");
-  expect(r.state.messages.at(-1)?.memoryEvaluation?.completedGroups).toEqual([]);
-  expect(r.state.activeState.memoryDiagnostics).toContainEqual(expect.objectContaining({ failureCategory: "invalid_model_output" }));
+  expect(counts().total).toBe(1);
+  expect(provider.mock.calls.filter(([r]) => isRepair(r.messages))).toHaveLength(0);
+  expect(r.state.messages.at(-1)?.memoryEvaluation?.assessment?.discovery.evidenceMessageIds).toEqual([]);
+});
+it.each(["storyCard", "brain"])("normalizes an exact %s prefix omission and preserves the approval pipeline", async kind => {
+  const a = seed();
+  a.semanticEvaluationSettings.requireApprovalForAutoUpdates = true;
+  a.storyCards = [makeStoryCard({ id: "invitation", title: "Dinner invitation", type: "lore", content: "A dinner was offered.", keys: ["invitation"] })];
+  a.brains = [makeBrain({ id: "h", characterName: "Hermione", active: true })];
+  fired = [kind === "brain" ? "brain:h" : "storyCard:invitation"];
+  const original = provider.getMockImplementation()!;
+  provider.mockImplementation(async request => {
+    if (!isAssessment(request.messages)) return original(request);
+    const value = JSON.parse(mockAssessment(request.messages, fired));
+    value[kind === "brain" ? "brains" : "storyCards"].targets[0].id = kind === "brain" ? "h" : "invitation";
+    return response(JSON.stringify(value));
+  });
+  const r = await cycle(a);
+  expect(counts().assessment).toBe(1);
+  expect(provider.mock.calls.filter(([r]) => isRepair(r.messages))).toHaveLength(0);
+  expect(r.state.activeState.memoryProposals).toHaveLength(1);
+  const proposal = r.state.activeState.memoryProposals[0];
+  expect(proposal.status).toBe("pending");
+  expect(r.state.storyCards).toEqual(a.storyCards); expect(r.state.brains).toEqual(a.brains);
+  const approved = reduce(r.state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id });
+  expect(approved.activeState.memoryProposals[0].status).toBe("approved");
+});
+it.each(["{}", "[]", "{broken"])("quarantines invalid repair output %s after exactly two calls and permits manual retry", async repair => {
+  provider.mockImplementation(async request => response(isRepair(request.messages) ? repair : "{}"));
+  const r = await cycle(seed());
+  expect(counts().total).toBe(2);
+  expect(r.state.messages.at(-1)?.memoryEvaluation).toMatchObject({ status: "quarantined", attempts: 1, completedGroups: [] });
+  expect(r.state.activeState.memoryDiagnostics).toContainEqual(expect.objectContaining({ requestStage: "assessment", failureCategory: "invalid_model_output" }));
+  r.state.activeState.memoryRecoveryStoryTurn = 100;
+  expect(memoryCycleSources(r.state)).toEqual([]);
+  expect(counts().total).toBe(2);
+  provider.mockImplementation(async request => response(mockAssessment(request.messages)));
+  const manual = await cycle(r.state);
+  expect(counts().total).toBe(3);
+  expect(manual.state.messages.at(-1)?.memoryEvaluation).toMatchObject({ status: "complete", attempts: 2 });
+});
+it.each(["[]", '{"plot":{"targets":null,"reason":"Quiet"}}', "{broken"])("does not repair other parser errors: %s", async invalid => {
+  provider.mockResolvedValue(response(invalid));
+  const r = await cycle(seed());
+  expect(counts().total).toBe(1);
+  expect(r.state.messages.at(-1)?.memoryEvaluation?.status).toBe("quarantined");
+});
+it.each([false, true])("retains three-attempt automatic transport backoff (failure during repair: %s)", async duringRepair => {
+  provider.mockImplementation(async request => {
+    if (duringRepair && isAssessment(request.messages)) return response("{}");
+    throw Error("Disconnected");
+  });
+  let state = seed(); state.memoryDetectionSettings.enabled = true; state.memoryDetectionSettings.everyNTurns = 1;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const turn = state.activeState.turn;
+    const claimed = reduce(state, { type: "CLAIM_MEMORY_EVALUATION", sourceId: "source", turn });
+    const result = await runMemoryCycle(claimed, config, { sourceId: "source" });
+    state = result.actions.reduce(reduce, claimed);
+    const evaluation = state.messages.at(-1)!.memoryEvaluation!;
+    expect(evaluation).toMatchObject({ attempts: attempt, status: attempt === 3 ? "quarantined" : "failed", nextEligibleTurn: turn + 2 ** (attempt - 1) });
+    expect(state.activeState.memoryDiagnostics).toContainEqual(expect.objectContaining({ failureCategory: "transport_api" }));
+    state.activeState.memoryRecoveryStoryTurn = turn;
+    expect(memoryCycleSources(state)).toEqual([]);
+    state.activeState.turn = evaluation.nextEligibleTurn!;
+    state.activeState.memoryRecoveryStoryTurn = state.activeState.turn;
+    expect(memoryCycleSources(state).map(m => m.id)).toEqual(attempt === 3 ? [] : ["source"]);
+  }
+  expect(counts().total).toBe(duringRepair ? 6 : 3);
 });
 it("sends earlier participant context and the latest pronoun/short answer without literal-name eligibility", async () => {
   const a = seed(); a.brains = [makeBrain({ id: "d", characterName: "Draconia", active: true }), makeBrain({ id: "h", characterName: "Hermione", active: true })];
@@ -267,4 +360,29 @@ it("rejects stale negative assessments at commit even when no proposal supplied 
   const stale = result.actions.reduce(reduce, edited);
   expect(stale.messages.at(-1)?.memoryEvaluation?.completedGroups).toEqual([]);
   expect(stale.activeState.memoryDiagnostics).toContainEqual(expect.objectContaining({ outcome: "evaluation_stale" }));
+});
+
+it("preserves a valid positive decision through format repair, generation, validation, and approval", async () => {
+  const a = seed(); a.semanticEvaluationSettings.requireApprovalForAutoUpdates = true;
+  a.storyCards = [makeStoryCard({ id: "invitation", title: "Dinner invitation", type: "lore", content: "A dinner was offered.", keys: ["invitation"] })];
+  fired = ["storyCard:invitation"];
+  const original = provider.getMockImplementation()!;
+  let valid = "";
+  provider.mockImplementation(async request => {
+    if (isRepair(request.messages)) return response(valid);
+    if (!isAssessment(request.messages)) return original(request);
+    valid = mockAssessment(request.messages, fired);
+    const value = JSON.parse(valid); delete value.discovery;
+    return response(JSON.stringify(value));
+  });
+  const r = await cycle(a);
+  expect(counts()).toEqual({ assessment: 1, validation: 1, total: 4 });
+  expect(provider.mock.calls.filter(([r]) => isRepair(r.messages))).toHaveLength(1);
+  expect(r.state.messages.at(-1)?.memoryEvaluation?.assessment?.storyCards).toEqual(JSON.parse(valid).storyCards);
+  expect(r.state.activeState.memoryProposals).toHaveLength(1);
+  expect(r.state.activeState.memoryProposals[0].status).toBe("pending");
+  expect(r.state.storyCards).toEqual(a.storyCards);
+  const approved = reduce(r.state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: r.state.activeState.memoryProposals[0].id });
+  expect(approved.storyCards[0].content).toContain("Hermione accepted the invitation.");
+  expect(approved.activeState.memoryProposals[0].status).toBe("approved");
 });

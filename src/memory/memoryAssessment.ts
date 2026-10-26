@@ -3,7 +3,7 @@ import { PLACEMENT_VERSION, STORY_CARD_PLACEMENT_POLICY } from "./storyCardPlace
 import { matchPatterns } from "../triggers/matching";
 import type { Adventure, MemoryAssessmentCheckpoint, MemoryAssessmentDecision, MemoryEvaluationGroup, ProviderConfig } from "../types/adventure";
 import { sendMemoryCompletion } from "../providers/memoryCompletion";
-import { safeMemoryFailure } from "../providers/backgroundProvider";
+import { MemoryEvaluationError, safeMemoryFailure } from "../providers/backgroundProvider";
 import { memoryCanonMessages } from "./memoryCanon";
 import { relevantProposalCoverage } from "./factCoverage";
 import { relevantStoryCardInventory, SHARED_STORY_MEMORY_POLICY } from "./storyCardSuggestions";
@@ -56,6 +56,20 @@ export async function assessMemory(a: Adventure, provider: ProviderConfig, sourc
       ...inputs.canon,
       { role: "system", content: `SHARED MEMORY ASSESSMENT. One assessment of the latest player/narrator exchange. Return ALL qualifying targets, not a single winner.
 Return ONLY a JSON object with this shape: {"plot":{"targets":[],"reason":"explanation"},"storyCards":{"targets":[],"reason":"explanation"},"brains":{"targets":[],"reason":"explanation"},"discovery":{"needed":false,"reason":"explanation","evidenceMessageIds":[]}}. A qualifying target is {"id":"supplied condition ID","delta":"supported new fact","evidenceMessageIds":["supplied source ID"]}. Every field is required, including explicit negative reasons. IDs must be supplied eligible condition IDs. Every delta must cite the establishing narrator source and any necessary contextual evidence. Return empty targets for groups not requested.
+Return all four groups: plot, storyCards, brains, discovery.
+Every group must contain every required field.
+For a negative discovery decision, return:
+"needed": false
+"reason": "specific reason"
+"evidenceMessageIds": []
+For a positive discovery decision, include the establishing
+source message ID in evidenceMessageIds.
+Each target ID must match an eligible condition ID exactly.
+Do not construct IDs from character names or titles.
+Reference cards without an eligible condition are context,
+not valid update targets.
+For groups not requested, return empty targets and a reason.
+Do not omit fields.
 Latest exchange establishes changes; earlier exchanges resolve participants, pronouns, short answers (Yes, tomorrow), messages, off-screen disclosures and continuity. A prior name alone is not a new Brain change. Mentioning an absent character never grants knowledge. Respect authored conditions and private attribution. Consecutive meaningful private changes are eligible without a default cooldown or quota.
 Plot Essentials: premise/constraints. Active Pressure: external threat/obligation. Current Arc: established arc progress, never Director phases. Brains: supported private interpretations, distinct for each character. Do not expose private Brain content as public facts or give it to another character.
 Story Cards: enduring profiles; Lore: observable events/shared developments. Coverage marked pending/rejected/ignored prevents duplicate suggestions but is NOT canon or proof of knowledge. Account for established and considered facts. Discovery means ADDITIONAL durable developments beyond qualifying existing-card deltas. Do not skip a whole subject because one fact is covered. Invitation acceptance and a separate research agreement can both qualify. Set needed=false only with a supported reason.
@@ -67,7 +81,38 @@ ${SHARED_STORY_MEMORY_POLICY}` },
     ], "assessment");
     received = true;
     accum.promptTokens += response.usage?.promptTokens ?? 0; accum.completionTokens += response.usage?.completionTokens ?? 0;
-    const value = parseMemoryAssessment(response.content, conditions, needed, inputs.evidence.map(e => e.id), sourceId);
+    let value;
+    try {
+      value = parseMemoryAssessment(response.content, conditions, needed, inputs.evidence.map(e => e.id), sourceId);
+    } catch (error) {
+      if (!(error instanceof MemoryEvaluationError) || ![
+        "memory_assessment_missing_field", "memory_assessment_unknown_target_id",
+        "memory_assessment_invalid_evidence_id", "memory_assessment_missing_source_citation",
+      ].includes(error.code)) throw error;
+      // Transport failures during repair remain transport failures for the existing retry policy.
+      received = false;
+      const repair = await sendMemoryCompletion(a, provider, [
+        { role: "system", content: `ASSESSMENT FORMAT REPAIR
+Repair the supplied memory assessment JSON.
+Keep all valid decisions, deltas, and evidence.
+Correct only schema and reference errors.
+Return the complete four-group assessment object.
+Use only supplied eligible target IDs and evidence IDs.
+If a target has no exact valid mapping, omit that target.
+Do not choose a different target by semantic similarity.
+Do not invent facts, decisions, evidence, or source IDs.
+For discovery.needed=false, use evidenceMessageIds=[].
+For positive changes, preserve the establishing source citation.
+Return only valid JSON.` },
+        { role: "user", content: JSON.stringify({ sourceId, requestedGroups: needed,
+          eligibleTargetIds: Object.fromEntries(Object.entries(conditions).map(([group, targets]) => [group, targets.map(t => t.id)])),
+          allowedEvidenceMessageIds: inputs.evidence.map(e => e.id), validationErrorCode: error.code,
+          validationFieldPath: error.fieldPath, originalAssessment: response.content }) },
+      ], "repair");
+      received = true;
+      accum.promptTokens += repair.usage?.promptTokens ?? 0; accum.completionTokens += repair.usage?.completionTokens ?? 0;
+      value = parseMemoryAssessment(repair.content, conditions, needed, inputs.evidence.map(e => e.id), sourceId);
+    }
     const d = value.discovery;
     const decision = (g: "plot" | "storyCards" | "brains"): MemoryAssessmentDecision => {
       const d = value[g] as MemoryAssessmentDecision;

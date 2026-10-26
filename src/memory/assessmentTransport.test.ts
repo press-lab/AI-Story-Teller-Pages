@@ -100,9 +100,9 @@ it("preserves all checkpoints, approved proposals and completed groups when reas
   ev.groupWork = { storyCards: { fingerprint: "old-checkpoint", drafts: { saved: { raw: "Saved generated draft" } } } };
   ev.discoveryCheckpoint = { version: 1, dependencies: [], referenceFingerprint: "old-discovery", candidates: [] };
   http.spy.mockRestore();
-  const broken = mockAssessmentHttp(approved, "breakfast", { invalid: "{}" });
+  const broken = mockAssessmentHttp(approved, "breakfast", { invalid: "{}", repair: "{}" });
   const failed = await cycle(approved);
-  expect(broken.spy).toHaveBeenCalledTimes(1);
+  expect(broken.spy).toHaveBeenCalledTimes(2);
   const actual = failed.state.messages.at(-1)!.memoryEvaluation!;
   expect(actual.completedGroups).toEqual(ev.completedGroups);
   expect(actual.groupWork).toEqual(ev.groupWork);
@@ -128,4 +128,39 @@ it.each([false, true])("allows either a quiet Potions decision or supported publ
   expect(r.state.brains).toEqual(a.brains);
   expect(r.state.activeState.memoryProposals).toHaveLength(potionsLore ? 1 : 0);
   if (potionsLore) expect(r.state.activeState.memoryProposals[0]).toMatchObject({ storyCardType: "lore", content: potions });
+});
+
+it.each([false, true])("attributes and accounts for both Anthropic assessment and repair calls (invalid repair: %s)", async invalidRepair => {
+  const a = assessmentFixture("routine");
+  a.semanticEvaluationSettings.backgroundProviderConfig = { ...assessmentConfig, model: "configured-memory-model" };
+  const http = mockAssessmentHttp(a, "routine", { invalid: "{}", ...(invalidRepair ? { repair: "{}" } : {}) });
+  const calls: ApiCallRecord[] = [], unsubscribe = subscribeApiCalls(call => calls.push(call));
+  try {
+    const r = await cycle(a);
+    expect(http.spy).toHaveBeenCalledTimes(2);
+    const completed = calls.filter(c => c.status === "succeeded");
+    expect(completed.map(c => c.memoryRequest?.stage)).toEqual(["assessment", "repair"]);
+    for (const call of completed) {
+      expect(call.memoryRequest).toMatchObject({ sourceId: "routine-source", attempt: 1 });
+      expect(call.model).toBe("configured-memory-model");
+      expect(call.usage!.promptTokens).toBeGreaterThan(0);
+      expect(call.usage!.completionTokens).toBeGreaterThan(0);
+    }
+    expect(r.state.activeState.backgroundTokenUsage).toEqual(r.tokenUsage);
+    expect(r.tokenUsage).toEqual({ promptTokens: http.requests.reduce((sum, req) => sum + req.promptTokens, 0),
+      completionTokens: http.requests.reduce((sum, req) => sum + req.completionTokens, 0) });
+    expect(http.requests.every(req => req.url === "https://api.deepseek.com/anthropic/v1/messages")).toBe(true);
+    expect(http.requests.map(req => req.body.model)).toEqual(["configured-memory-model", "configured-memory-model"]);
+    const repair = http.requests[1].body;
+    expect(JSON.stringify(repair.system)).toContain("ASSESSMENT FORMAT REPAIR");
+    expect(repair.messages).toHaveLength(1); // Anthropic serializes the system message separately.
+    const payload = JSON.parse((repair.messages as { content: string }[])[0].content);
+    expect(payload).toMatchObject({ sourceId: "routine-source", originalAssessment: "{}",
+      validationErrorCode: "memory_assessment_missing_field", validationFieldPath: "$.plot" });
+    expect(JSON.stringify(repair)).not.toContain(a.messages[0].content);
+    expect(r.state.messages.at(-1)?.memoryEvaluation).toMatchObject({ status: invalidRepair ? "quarantined" : "complete", attempts: 1 });
+    r.state.activeState.memoryRecoveryStoryTurn = 100;
+    expect(memoryCycleSources(r.state)).toEqual([]);
+    expect(http.spy).toHaveBeenCalledTimes(2);
+  } finally { unsubscribe(); }
 });

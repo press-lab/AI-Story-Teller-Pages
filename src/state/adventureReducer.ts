@@ -1178,16 +1178,18 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
         outcome: "evaluation_stale", group: action.group, reason: "Source evidence or destination changed during evaluation; result discarded.",
       } });
       const error = action.error;
+      const terminalAssessmentFailure = action.actions.some(item => item.type === "RECORD_MEMORY_DIAGNOSTIC"
+        && item.entry.requestStage === "assessment" && item.entry.failureCategory === "invalid_model_output");
       const next = (error ? action.actions.filter(item => item.type === "RECORD_MEMORY_DIAGNOSTIC") : action.actions).reduce(adventureReducer, state);
       const completedGroups = [...(source.memoryEvaluation?.completedGroups ?? []), ...(!error ? [action.group] : [])];
       const complete = MEMORY_EVALUATION_GROUPS.every(group => completedGroups.includes(group));
       const updated = touchAdventure(next, { messages: next.messages.map(message => message.id === source.id
         ? { ...message, memoryEvaluation: { ...message.memoryEvaluation, turn: source.memoryEvaluation?.turn ?? state.activeState.turn,
           attempts: source.memoryEvaluation?.attempts ?? 0, completedGroups,
-          assessment: action.assessment ?? message.memoryEvaluation?.assessment,
-          groupWork: { ...message.memoryEvaluation?.groupWork, [action.group]: error ? action.groupWork : undefined },
-          ...(action.group === "discovery" ? { discoveryCheckpoint: error ? action.discoveryCheckpoint : undefined } : {}),
-          status: complete ? "complete" as const : error ? (source.memoryEvaluation?.attempts ?? 0) >= 3 ? "quarantined" as const : "failed" as const
+          assessment: terminalAssessmentFailure ? message.memoryEvaluation?.assessment : action.assessment ?? message.memoryEvaluation?.assessment,
+          groupWork: terminalAssessmentFailure ? message.memoryEvaluation?.groupWork : { ...message.memoryEvaluation?.groupWork, [action.group]: error ? action.groupWork : undefined },
+          ...(!terminalAssessmentFailure && action.group === "discovery" ? { discoveryCheckpoint: error ? action.discoveryCheckpoint : undefined } : {}),
+          status: terminalAssessmentFailure ? "quarantined" as const : complete ? "complete" as const : error ? (source.memoryEvaluation?.attempts ?? 0) >= 3 ? "quarantined" as const : "failed" as const
             : message.memoryEvaluation?.status === "quarantined" ? "quarantined" as const : message.memoryEvaluation?.status === "failed" ? "failed" as const : "pending" as const,
           lastError: complete ? undefined : error ?? message.memoryEvaluation?.lastError } } : message) });
       // A shared assessment failure already has one source-level diagnostic.

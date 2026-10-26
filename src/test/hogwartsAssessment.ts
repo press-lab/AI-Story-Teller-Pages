@@ -30,7 +30,7 @@ export function assessmentFixture(name: AssessmentCase): Adventure {
 }
 
 /** Real provider serialization + accounting; only the HTTP response is synthetic. */
-export function mockAssessmentHttp(a: Adventure, name: AssessmentCase, options: { potionsLore?: boolean; invalid?: string; failReview?: boolean; covered?: boolean } = {}) {
+export function mockAssessmentHttp(a: Adventure, name: AssessmentCase, options: { potionsLore?: boolean; invalid?: string; repair?: string; failReview?: boolean; covered?: boolean } = {}) {
   const requests: Array<{ url: string; body: Record<string, unknown>; promptTokens: number; completionTokens: number }> = [];
   const source = a.messages.at(-1)!;
   const spy = vi.spyOn(globalThis, "fetch").mockImplementation(async (url, init) => {
@@ -44,6 +44,11 @@ export function mockAssessmentHttp(a: Adventure, name: AssessmentCase, options: 
       if (name === "breakfast") decision.storyCards.targets[0].delta = sales;
       if (name === "charms" && options.covered) decision.storyCards.targets = [{ id: `storyCard:${a.storyCards[0].id}`, delta: a.storyCards[0].content, evidenceMessageIds: [source.id] }];
       content = options.invalid ?? JSON.stringify(decision);
+    } else if (system.includes("ASSESSMENT FORMAT REPAIR")) {
+      content = options.repair ?? JSON.stringify({
+        plot: { targets: [], reason: "No changed plot." }, storyCards: { targets: [], reason: "No new card fact." },
+        brains: { targets: [], reason: "No private change." }, discovery: { needed: false, reason: "No additional change.", evidenceMessageIds: [] },
+      });
     } else if (system.includes("MEMORY UPDATE VALIDATION")) {
       if (options.failReview) throw new Error("offline transport failure");
       const payload = JSON.parse(messages.at(-1)!.content);

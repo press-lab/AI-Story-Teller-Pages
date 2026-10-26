@@ -28,12 +28,35 @@ function array(value: unknown, path: string): unknown[] {
   return value;
 }
 
+function normalizeAssessmentShape(raw: unknown, conditions: AssessmentConditions): unknown {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
+  const value = raw as Record<string, unknown>;
+  const discovery = value.discovery;
+  if (discovery && typeof discovery === "object" && !Array.isArray(discovery)) {
+    const d = discovery as Record<string, unknown>;
+    if (d.needed === false && !Object.hasOwn(d, "evidenceMessageIds")) d.evidenceMessageIds = [];
+  }
+  for (const [group, prefix] of [["storyCards", "storyCard:"], ["brains", "brain:"]] as const) {
+    const decision = value[group];
+    if (!decision || typeof decision !== "object" || Array.isArray(decision)) continue;
+    const targets = (decision as Record<string, unknown>).targets;
+    if (!Array.isArray(targets)) continue;
+    for (const target of targets) {
+      if (!target || typeof target !== "object" || Array.isArray(target) || typeof target.id !== "string") continue;
+      if (conditions[group].some(c => c.id === target.id)) continue;
+      const matches = conditions[group].filter(c => c.id === `${prefix}${target.id}`);
+      if (matches.length === 1) target.id = matches[0].id;
+    }
+  }
+  return raw;
+}
+
 export function parseMemoryAssessment(content: string, conditions: AssessmentConditions, requested: readonly MemoryEvaluationGroup[],
   evidenceIds: readonly string[], sourceId: string): Pick<MemoryAssessmentCheckpoint, "plot" | "storyCards" | "brains" | "discovery"> {
   let raw: unknown;
   try { raw = JSON.parse(content.replace(/<think>[\s\S]*?<\/think>/gi, "").trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "")); }
   catch { fail("invalid_json", "$"); }
-  const value = object(raw, "$");
+  const value = object(normalizeAssessmentShape(raw, conditions), "$");
   const evidence = (ids: unknown, path: string, changed: boolean): string[] => {
     const result = array(ids, path).map((id, index) => {
       if (typeof id !== "string") fail("wrong_type", `${path}[${index}]`);

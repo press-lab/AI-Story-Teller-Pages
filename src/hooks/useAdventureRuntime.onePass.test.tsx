@@ -90,7 +90,10 @@ it("does not replay legacy or new pending memory on load", async () => {
 });
 it("retains failed groups and saved narration, then retries only unfinished work on a later turn", async () => {
   let fail = true;
-  provider.mockImplementation(async request => ({ content: request.memoryEvaluation ? fail ? "malformed" : mockAssessment(request.messages) : story, raw: {} }));
+  provider.mockImplementation(async request => {
+    if (request.memoryEvaluation && fail) throw new Error("offline memory transport");
+    return { content: request.memoryEvaluation ? mockAssessment(request.messages) : story, raw: {} };
+  });
   let hook = setup(); await act(async () => { await hook.result.current.runtime.continueTurn(); });
   await waitFor(() => expect(hook.result.current.runtime.memoryWork?.status).not.toBe("running"));
   expect(hook.result.current.adventure!.messages.at(-1)?.memoryEvaluation?.status).toBe("failed");
