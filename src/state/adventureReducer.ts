@@ -1189,6 +1189,9 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
           status: complete ? "complete" as const : error ? (source.memoryEvaluation?.attempts ?? 0) >= 3 ? "quarantined" as const : "failed" as const
             : message.memoryEvaluation?.status === "quarantined" ? "quarantined" as const : message.memoryEvaluation?.status === "failed" ? "failed" as const : "pending" as const,
           lastError: complete ? undefined : error ?? message.memoryEvaluation?.lastError } } : message) });
+      // A shared assessment failure already has one source-level diagnostic.
+      // Group transaction bookkeeping is not another provider request/failure.
+      if (error && action.actions.some(item => item.type === "RECORD_MEMORY_DIAGNOSTIC" && item.entry.requestStage === "assessment")) return updated;
       return adventureReducer(updated, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: {
         id: createId("decision"), sourceId: source.id, createdAt: nowIso(), stage: "independent",
         outcome: error ? "evaluation_failed" : "evaluation_completed", group: action.group,

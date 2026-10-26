@@ -95,7 +95,9 @@ export function MemoryDecisionsPage({ adventure, onSuggestions, onEvaluateMemory
           {Object.entries(work!.drafts).map(([id, draft]) => <p key={id}>{id}: {draft.result ? "completed target work" : draft.raw ? "generated draft awaiting review" : "awaiting generation"}; {Object.keys(draft.validationCache ?? {}).length} completed reviews</p>)}
         </details>)}
         {message.memoryEvaluation?.lastError && <p>{message.memoryEvaluation.lastError}</p>}
-        {entries.filter(entry => entry.stage === "independent").map(entry => <p key={entry.id}>{label(entry.outcome)} · {entry.reason}</p>)}
+        {entries.filter(entry => entry.stage === "independent").map(entry => <div key={entry.id}><p>{label(entry.outcome)} · {entry.reason}</p>
+          {entry.requestStage && <p>Source: {entry.sourceId} · Request stage: {entry.requestStage} · {entry.failureCode} · Field: {entry.fieldPath ?? "not applicable"} · Transport: {entry.transport ?? "not recorded"}. Assessment: {entry.outcome === "evaluation_failed" ? "failed; no decision accepted" : entry.outcome}.</p>}
+        </div>)}
         {logs.map(log => <details key={log.id}><summary>Conditions and generated destinations</summary>
           <ul>{log.conditionsEvaluated.map(condition => <li key={condition.id}><strong>{condition.label}</strong> ({condition.sourceType}) — {log.conditionsFired.includes(condition.id) ? "condition fired" : "condition did not fire; see shared assessment when available"}<p>{condition.condition}</p></li>)}</ul>
           {log.generatedContent.map((item, index) => <p key={index}>{item.targetType}: {item.title} ({item.targetId ?? "new destination"}) — {item.preview}</p>)}
@@ -132,7 +134,7 @@ export function MemoryDecisionsPage({ adventure, onSuggestions, onEvaluateMemory
           {(adventure.activeState.apiCalls ?? []).filter(call => call.memoryRequest?.sourceId === message.id).map(call => <p key={call.id}>
             {call.memoryRequest!.stage} · {call.memoryRequest!.group ?? "shared"} · attempt {call.memoryRequest!.attempt} · {call.status}
           </p>)}
-          <p>Saved-work reuse, skips and suppressions are decisions, not requests. Provider prompt-cache usage remains separate in API accounting.</p>
+          <p>These are HTTP request outcomes; HTTP success does not establish assessment validity. Saved-work reuse, skips and suppressions are decisions, not requests. Provider prompt-cache usage remains separate in API accounting.</p>
         </details>
         <h3>D. Final disposition</h3>
         {linked.map(p => <p key={p.id}>{p.title}: {p.status === "approved" && entries.some(e => e.proposalId === p.id && e.outcome === "automatically_approved") ? "automatically approved" : p.status} <button type="button" onClick={() => onSuggestions(p.title)}>Open suggestion</button></p>)}

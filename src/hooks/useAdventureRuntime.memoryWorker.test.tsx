@@ -251,7 +251,8 @@ it("continues a queued submission after a worker failure with unchanged bounded-
   await waitFor(() => expect(hook.result.current.runtime.memoryWork?.status).not.toBe("running"));
   expect(hook.result.current.adventure!.messages.map(message => message.content)).toEqual(["First turn.", story, "Second turn.", story]);
   expect(hook.result.current.adventure!.messages[1].memoryEvaluation).toMatchObject({ status: "complete", attempts: 2 });
-  expect(hook.result.current.adventure!.activeState.memoryDiagnostics).toContainEqual(expect.objectContaining({ outcome: "evaluation_failed", group: "discovery" }));
-  expect(provider).toHaveBeenCalledTimes(5); // Existing one-group backoff retry plus the new source; no completed-group replay.
+  expect(hook.result.current.adventure!.activeState.memoryDiagnostics).toContainEqual(expect.objectContaining({ outcome: "evaluation_failed", requestStage: "assessment", failureCode: "memory_assessment_invalid_json", fieldPath: "$" }));
+  expect(hook.result.current.adventure!.activeState.memoryDiagnostics?.filter(d => d.outcome === "evaluation_failed")).toHaveLength(1);
+  expect(provider).toHaveBeenCalledTimes(5); // Two narration calls, one failed assessment, its bounded retry and the new source assessment.
   expect(hook.result.current.openTab).not.toHaveBeenCalled();
 });

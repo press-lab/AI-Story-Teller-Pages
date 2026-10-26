@@ -1941,6 +1941,31 @@ export async function runMemoryCycle(
   const assessment = assessmentResult.assessment;
   logEntry.actionsExecuted.push(assessmentResult.reused ? "Shared assessment: checkpoint reused (no request)" : "Shared assessment: requested");
 
+  if (assessmentResult.error) {
+    const failure = assessmentResult.error;
+    // One shared request failed, not four group requests. Use the first unfinished
+    // transaction to retain revision/evidence guards without overwriting saved work.
+    const group = MEMORY_EVALUATION_GROUPS.find(g => !source.memoryEvaluation?.completedGroups.includes(g));
+    if (group) {
+      const commit: AdventureAction = { type: "COMMIT_MEMORY_EVALUATION_GROUP", source: { id: source.id, content: source.content },
+        group, dependencies, targets: [], revision: source.memoryEvaluation?.revision,
+        decisionState: memoryDecisionState(working, source.id), error: failure.message,
+        groupWork: source.memoryEvaluation?.groupWork?.[group], discoveryCheckpoint: source.memoryEvaluation?.discoveryCheckpoint,
+        actions: [{ type: "RECORD_MEMORY_DIAGNOSTIC", entry: {
+          id: createId("decision"), sourceId: source.id, createdAt: nowIso(), stage: "independent", requestStage: "assessment",
+          outcome: "evaluation_failed", evaluationAttempt: source.memoryEvaluation?.attempts ?? 0,
+          failureCategory: failure.category, failureCode: failure.code, fieldPath: failure.fieldPath,
+          providerCode: failure.providerCode, httpStatus: failure.httpStatus, retryable: failure.category !== "configuration",
+          transport: failure.category === "invalid_model_output" ? "succeeded" : "failed", usage: { ...accum }, reason: failure.message,
+        } }] };
+      actions.push(commit);
+      if (options.onGroupComplete) await options.onGroupComplete(commit, { ...accum });
+    }
+    logEntry.errors.push(failure.message);
+    actions.push({ type: "ACCUMULATE_BACKGROUND_TOKENS", ...accum }, { type: "LOG_EVALUATION_RESULT", entry: logEntry });
+    return { actions, logEntry, tokenUsage: accum };
+  }
+
   for (const group of MEMORY_EVALUATION_GROUPS) {
     if (options.shouldContinue && !options.shouldContinue()) return { actions, logEntry, tokenUsage: accum };
     if (source.memoryEvaluation?.completedGroups.includes(group)) continue;
@@ -1962,11 +1987,6 @@ export async function runMemoryCycle(
     const work: import("../types/adventure").MemoryGroupWork = priorWork?.fingerprint === workFingerprint
       ? { ...priorWork, drafts: structuredClone(priorWork.drafts) } : { fingerprint: workFingerprint, drafts: {} };
     logEntry.conditionsEvaluated.push(...conditions.map(({ id, label, condition, sourceType }) => ({ id, label, condition, sourceType })));
-    if (assessmentResult.error) {
-      errors.push(assessmentResult.error.message);
-      failures.set(assessmentResult.error.message, { category: assessmentResult.error.category, code: assessmentResult.error.code,
-        retryable: assessmentResult.error.category !== "configuration", providerCode: assessmentResult.error.providerCode, httpStatus: assessmentResult.error.httpStatus });
-    }
     const fired = conditions.filter(condition => group !== "discovery" && assessment?.[group].targets.some(t => t.id === condition.id));
     if (assessmentResult.reused) groupActions.push({ type: "RECORD_MEMORY_DIAGNOSTIC", entry: {
       id: createId("decision"), sourceId: source.id, createdAt: nowIso(), stage: "independent", group,

@@ -599,7 +599,7 @@ export function SettingsPage({
               <NumberInput min={0} max={100} value={globalAdventureSettings.memoryDetectionSettings.everyNTurns}
                 onChange={everyNTurns => updateMemoryDetection({ everyNTurns: Math.max(0, Math.min(100, Math.floor(everyNTurns))) })} />
             </Field>
-            <p className="muted">Uses Background Provider in LLM Evaluation. Each source uses up to three condition checks plus discovery, then generation and validation for changed targets. Up to ten queued sources run per cadence window. Failed groups retry at most three times with backoff. Loading an adventure makes no memory requests. Retry a source explicitly in Memory Suggestions → Decisions.</p>
+            <p className="muted">Uses Background Provider in LLM Evaluation. Each source uses one shared assessment, then generation, validation and additional discovery only when needed. Up to ten queued sources run per cadence window. Failed evaluations retry at most three times with backoff. Loading an adventure makes no memory requests. Retry a source explicitly in Memory Suggestions → Decisions.</p>
             <Field label="Memory evaluation API">
               <select value={activeSettings.semanticEvaluationSettings.memoryEvaluationApi ?? "chat"}
                 onChange={e => updateSemanticSettings({ memoryEvaluationApi: e.target.value as "chat" | "openaiResponses" })}>

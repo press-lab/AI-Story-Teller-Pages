@@ -13,6 +13,8 @@ export interface MemoryDiagnostic {
   retryable?: boolean;
   failureCategory?: "configuration" | "transport_api" | "invalid_model_output";
   failureCode?: string;
+  fieldPath?: string;
+  requestStage?: MemoryRequestAttribution["stage"];
   providerCode?: string;
   httpStatus?: number;
   targetId?: string;

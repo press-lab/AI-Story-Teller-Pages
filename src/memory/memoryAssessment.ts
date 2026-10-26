@@ -1,3 +1,4 @@
+import { parseMemoryAssessment } from "./assessmentValidation";
 import { PLACEMENT_VERSION, STORY_CARD_PLACEMENT_POLICY } from "./storyCardPlacement";
 import { matchPatterns } from "../triggers/matching";
 import type { Adventure, MemoryAssessmentCheckpoint, MemoryAssessmentDecision, MemoryEvaluationGroup, ProviderConfig } from "../types/adventure";
@@ -5,7 +6,7 @@ import { sendMemoryCompletion } from "../providers/memoryCompletion";
 import { safeMemoryFailure } from "../providers/backgroundProvider";
 import { memoryCanonMessages } from "./memoryCanon";
 import { relevantProposalCoverage } from "./factCoverage";
-import { relevantStoryCardInventory, STORY_CARD_MEMORY_CHECK } from "./storyCardSuggestions";
+import { relevantStoryCardInventory, SHARED_STORY_MEMORY_POLICY } from "./storyCardSuggestions";
 import { storyCardContextContent } from "./storyCardPolicy";
 import { memoryEvidenceWindow } from "./memoryEvidenceWindow";
 import { latestMemoryTurn } from "./memoryUpdateEvidence";
@@ -30,7 +31,7 @@ export async function assessmentInputs(a: Adventure, sourceId: string, condition
     recentDevelopments: b.recentDevelopments, notes: b.notes, updatePrompt: b.updatePrompt, updateMode: b.updateMode, condenseThreshold: b.condenseThreshold, protected: b.protected }));
   const coverage = relevantProposalCoverage(a, excerpt, currentCards.map(c => c.id), evidence.map(m => m.id));
   const canon = memoryCanonMessages(a, excerpt, "Assess memory", true);
-  const common = { version: 1, placementVersion: PLACEMENT_VERSION, policy: STORY_CARD_PLACEMENT_POLICY + STORY_CARD_MEMORY_CHECK, evidence, canon, currentCards, currentPlot, coverage };
+  const common = { version: 1, placementVersion: PLACEMENT_VERSION, policy: STORY_CARD_PLACEMENT_POLICY + SHARED_STORY_MEMORY_POLICY, evidence, canon, currentCards, currentPlot, coverage };
   const fingerprints = {} as Record<MemoryEvaluationGroup, string>;
   for (const group of ["plot", "storyCards", "brains", "discovery"] as const) fingerprints[group] = await fingerprint({ ...common,
     conditions: group === "discovery" ? [] : conditions[group], ...(group === "brains" ? { currentBrains } : {}) });
@@ -58,7 +59,7 @@ Return ONLY a JSON object with this shape: {"plot":{"targets":[],"reason":"expla
 Latest exchange establishes changes; earlier exchanges resolve participants, pronouns, short answers (Yes, tomorrow), messages, off-screen disclosures and continuity. A prior name alone is not a new Brain change. Mentioning an absent character never grants knowledge. Respect authored conditions and private attribution. Consecutive meaningful private changes are eligible without a default cooldown or quota.
 Plot Essentials: premise/constraints. Active Pressure: external threat/obligation. Current Arc: established arc progress, never Director phases. Brains: supported private interpretations, distinct for each character. Do not expose private Brain content as public facts or give it to another character.
 Story Cards: enduring profiles; Lore: observable events/shared developments. Coverage marked pending/rejected/ignored prevents duplicate suggestions but is NOT canon or proof of knowledge. Account for established and considered facts. Discovery means ADDITIONAL durable developments beyond qualifying existing-card deltas. Do not skip a whole subject because one fact is covered. Invitation acceptance and a separate research agreement can both qualify. Set needed=false only with a supported reason.
-${STORY_CARD_MEMORY_CHECK}` },
+${SHARED_STORY_MEMORY_POLICY}` },
       { role: "user", content: JSON.stringify({ sourceId, requestedGroups: needed, latestTurn: latestMemoryTurn(a), storyExcerpt: inputs.evidence,
         conditions: Object.fromEntries(Object.entries(conditions).map(([g, cs]) => [g, needed.includes(g as MemoryEvaluationGroup) ? cs : []])),
         currentPlot: inputs.currentPlot, currentCards: inputs.currentCards, currentBrains: inputs.currentBrains,
@@ -66,19 +67,8 @@ ${STORY_CARD_MEMORY_CHECK}` },
     ], "assessment");
     received = true;
     accum.promptTokens += response.usage?.promptTokens ?? 0; accum.completionTokens += response.usage?.completionTokens ?? 0;
-    const raw: unknown = JSON.parse(response.content.replace(/<think>[\s\S]*?<\/think>/gi, "").trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, ""));
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw Error();
-    const value = raw as Record<string, unknown>;
-    const validEvidence = (ids: unknown, change: boolean) => Array.isArray(ids) && ids.every(id => typeof id === "string" && inputs.evidence.some(e => e.id === id)) && (!change || ids.includes(sourceId));
-    for (const g of ["plot", "storyCards", "brains"] as const) {
-      const d = value[g] as MemoryAssessmentDecision | undefined;
-      if (!d || !Array.isArray(d.targets) || typeof d.reason !== "string" || !d.reason.trim() || d.reason.length > 1200 || d.targets.length > conditions[g].length
-        || d.targets.some(t => !t || typeof t.id !== "string" || !conditions[g].some(c => c.id === t.id)
-          || !needed.includes(g) || typeof t.delta !== "string" || !t.delta.trim() || t.delta.length > 2400 || !validEvidence(t.evidenceMessageIds, true))
-        || new Set(d.targets.map(t => t.id)).size !== d.targets.length) throw Error();
-    }
-    const d = value.discovery as MemoryAssessmentCheckpoint["discovery"] | undefined;
-    if (!d || typeof d.needed !== "boolean" || typeof d.reason !== "string" || !d.reason.trim() || d.reason.length > 1200 || !validEvidence(d.evidenceMessageIds, d.needed)) throw Error();
+    const value = parseMemoryAssessment(response.content, conditions, needed, inputs.evidence.map(e => e.id), sourceId);
+    const d = value.discovery;
     const decision = (g: "plot" | "storyCards" | "brains"): MemoryAssessmentDecision => {
       const d = value[g] as MemoryAssessmentDecision;
       return { reason: d.reason, targets: d.targets.map(t => ({ id: t.id, delta: t.delta, evidenceMessageIds: [...t.evidenceMessageIds] })) };

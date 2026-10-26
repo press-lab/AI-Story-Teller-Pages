@@ -16,7 +16,7 @@ The envelope is mandatory on EVERY narrative response, including when nothing ch
 Each update has: kind, target, content, evidence, reason. evidence is an EXACT quote from this turn's player input or your visible story, establishing the change. reason explains why it will matter beyond this scene. Do not treat a suggestion, possibility, or plan as an accomplished fact. Do not give absent characters knowledge they did not receive.
 Allowed kinds:
 - "thought": target is an eligible character name below; content is ONE new first-person internal reaction, belief, or private plan (max 45 words). Capture only if the character participated or learned something this turn. Never repeat existing thoughts or put generic world facts here.
-${includeStoryCards ? STORY_CARD_MEMORY_CHECK + "\n" + STORY_CARD_OUTPUT_SCHEMA : "Story Cards are evaluated separately. Only eligible thought updates belong in this envelope; return an empty array when none changed."}
+${includeStoryCards ? STORY_CARD_MEMORY_CHECK + "\n" + STORY_CARD_OUTPUT_SCHEMA : "Story Cards are evaluated separately. Only eligible thought updates belong in this envelope; leave updates empty when none changed."}
 Eligible thought targets: ${brains.map(b => JSON.stringify(b.characterName)).join(", ") || "none"}.
 Only output changes supported by this turn and consistent with ALL supplied canon. These hidden updates are not narrative and must never steer the scene merely to create memory.`;
 }

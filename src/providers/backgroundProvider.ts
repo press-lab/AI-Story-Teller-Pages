@@ -57,7 +57,7 @@ export function resolveMemoryEvaluationProviderConfig(adventure: Adventure, acti
 
 export class MemoryEvaluationError extends Error {
   constructor(readonly category: "configuration" | "transport_api" | "invalid_model_output", readonly code: string, message: string,
-    readonly providerCode?: string, readonly httpStatus?: number) {
+    readonly providerCode?: string, readonly httpStatus?: number, readonly fieldPath?: string) {
     super(`${code}: ${message}${providerCode ? ` [${providerCode}]` : ""}`);
   }
 }

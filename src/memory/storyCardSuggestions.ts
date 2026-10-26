@@ -8,12 +8,14 @@ import { storyCardEntityCandidates, characterParticipants } from "./storyCardEnt
 import { storyMemoryMessages } from "./memoryEvidenceWindow";
 import { generatedStoryCardTriggers } from "./resolveMemoryTarget";
 
-export const STORY_CARD_MEMORY_CHECK = `STORY CARD MEMORY CHECK
+export const SHARED_STORY_MEMORY_POLICY = `STORY CARD MEMORY CHECK
 Find NEW MEANINGFUL durable developments, judging context, not keywords. Include significant first romantic advances, explicit attempted kisses, mutual first kisses, accepted/declined invitations, confessions, boundaries, commitments, betrayals, discoveries, deaths and permanent changes.
-Separate completed interactions from intended outcomes: an accepted invitation happened before dinner; a declined kiss attempt happened without a kiss. Research dinner need not be romantic. Significant flirtation with a lean-in/lean-back may warrant candidateOnly=true describing observations and uncertainty, NEVER a confirmed kiss attempt. Ordinary smiles, leaning to read, jokes, movement and meals alone do not qualify. Attempts require review; uncertain interpretations require candidateOnly=true,eventStatus=unresolved. Never infer consent or relationship status.
-Default to Lore for events and shared developments; append existing topical Lore or create focused Lore. Character updates require an evidenced enduring profile change beyond scene participation. Brains hold supported private changes. Preserve private knowledge and source quotes. Never invent outcomes, duplicate memories or suggest Plot Component updates.
-Return suggestions or an empty array.
+Separate completed interactions from intended outcomes: an accepted invitation happened before dinner; a declined kiss attempt happened without a kiss. Research dinner need not be romantic. Significant flirtation with a lean-in/lean-back may warrant review describing observations and uncertainty, NEVER a confirmed kiss attempt. Ordinary smiles, leaning to read, jokes, movement and meals alone do not qualify. Attempts require review; uncertain interpretations remain unresolved. Never infer consent or relationship status.
+Default to Lore for events and shared developments; append existing topical Lore or create focused Lore. Character updates require an evidenced enduring profile change beyond scene participation. Brains hold supported private changes. Preserve private knowledge and source quotes. Never invent outcomes or duplicate memories.
 END STORY CARD MEMORY CHECK`;
+
+/** Eligibility policy only. Each caller supplies its own array, object or envelope contract. */
+export const STORY_CARD_MEMORY_CHECK = `${SHARED_STORY_MEMORY_POLICY}\nUncertain Story Card candidates require candidateOnly=true,eventStatus=unresolved. Never suggest Plot Component updates.`;
 
 export const STORY_CARD_OUTPUT_SCHEMA = `Story Card fields: kind=lore (events/changes), newCard (missing subject), card (existing subject); cardType=lore|character|location|custom; operation=CREATE|APPEND; target=title; targetId=existing ID for UPDATE; content=new fact, max70 words; evidence=exact quote; reason; triggers=3-6 short reusable topic phrases covering the card's subjects, activities and concepts (for example "runic research", "ward design", "government reform"). Use ordinary future wording, not exact scene sentences or only the full title; never leave triggers empty. Avoid unrelated catch-all words and bare participant names on Lore. Optional participants. Return only new factual deltas; never a replacement body. Shared maximum: four updates.`;
 

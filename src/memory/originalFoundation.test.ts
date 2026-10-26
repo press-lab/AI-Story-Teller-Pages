@@ -462,7 +462,8 @@ describe("memory provider configuration recovery", () => {
     const a = seed(); a.brains = []; fired = [];
     provider.mockRejectedValueOnce(new Error("API failure with key secret-never-log"));
     const transport = await evaluate(a);
-    expect(transport.state.activeState.memoryDiagnostics).toContainEqual(expect.objectContaining({ group: "discovery", failureCategory: "transport_api", failureCode: "memory_provider_request_failed" }));
+    expect(transport.state.activeState.memoryDiagnostics).toContainEqual(expect.objectContaining({ requestStage: "assessment", failureCategory: "transport_api", failureCode: "memory_provider_request_failed" }));
+    expect(transport.state.activeState.memoryDiagnostics?.filter(d => d.outcome === "evaluation_failed")).toHaveLength(1);
     expect(JSON.stringify(transport.logEntry)).not.toContain("secret-never-log");
     expect(transport.state.activeState.memoryDiagnostics?.some(entry => entry.outcome === "zero_candidates")).toBe(false);
     fail = "discovery";

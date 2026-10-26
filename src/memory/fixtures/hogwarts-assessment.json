@@ -1,0 +1,372 @@
+{
+  "provenance": "Minimal verbatim evidence and topical cards from Hogwarts export, 2026-10-25. Provider settings, private Brains and unrelated transcript excluded. Controlled offline verdicts are not live model results.",
+  "cases": {
+    "breakfast": {
+      "sourceId": "message_mvohiudy_5a4yw393",
+      "messages": [
+        {
+          "id": "msg_mvogouf3_14y98pbg",
+          "role": "user",
+          "content": "I grin and shrug at her. I rise my coffee mug in a shallow toast then return focus to my table\n\nAi - the youngest someone here could be is 18",
+          "createdAt": "2026-10-25T23:31:23.775Z",
+          "inputMode": "do"
+        },
+        {
+          "id": "message_mvohfi6d_uaq9mf19",
+          "role": "assistant",
+          "content": "Draconia's mouth curves — not quite a smile, but close enough — and she turns a page she hasn't read.\n\n\"Right,\" Fred says, clapping his hands. \"Twelve. Let's be having you. Form an orderly line, no shoving, and if anyone asks where you got it, you got it from *nobody*.\"\n\nThe queue shuffles into something like order. The first Ravenclaw steps up, sleeve already rolled. \"Mood one. On the inside of the wrist, if it'll take there.\"\n\n\"Anywhere'll take,\" George says, \"but the wrist's a good choice. Visible. Dramatic.\" He glances at you. \"Seth. First customer.\"",
+          "createdAt": "2026-10-25T23:52:07.622Z",
+          "inputMode": "story"
+        },
+        {
+          "id": "msg_mvohi0wx_bl0z5ryw",
+          "role": "user",
+          "content": "I hand him a paper “place it where you want then run water over it. It works anywhere”",
+          "createdAt": "2026-10-25T23:54:05.217Z",
+          "inputMode": "do"
+        },
+        {
+          "id": "message_mvohi2qz_m1gj39rg",
+          "role": "assistant",
+          "content": "The Ravenclaw takes the paper, presses it to the inside of her wrist, and looks around, suddenly self-conscious.\n\n\"Water,\" she says. \"Right. There's a jug over—\" someone's already passing one down. She tips it over her wrist, and the paper darkens, and then the rune lifts off it and sinks into her skin, settling into a deep, curious violet.\n\n\"Violet,\" Fred says, leaning in. \"What's violet mean?\"\n\n\"Nothing yet,\" the girl says. \"I'm just —\" she looks up, grinning, \"— pleased with myself.\"",
+          "createdAt": "2026-10-25T23:54:07.595Z",
+          "inputMode": "do"
+        },
+        {
+          "id": "msg_mvohis2k_rx0eo27t",
+          "role": "user",
+          "content": "You “Bad ass looking” I hold out my hand for a high five",
+          "createdAt": "2026-10-25T23:54:40.412Z",
+          "inputMode": "do"
+        },
+        {
+          "id": "message_mvohiudy_5a4yw393",
+          "role": "assistant",
+          "content": "She laughs and slaps your hand.\n\n\"Right, next,\" Fred says, but he's grinning too. \"Two more mood, one liar — no, hang on, *one* liar only, I'm not having a queue full of people who can't lie, it'll ruin the market —\"\n\n\"Fred,\" George says patiently, \"the market's the *point*.\"\n\nThe queue moves. By the time the bell for Charms rings, eleven tattoos are on eleven arms and Fred is holding a small, heavy pouch of gold with the expression of a man who's just discovered religion.",
+          "createdAt": "2026-10-25T23:54:43.414Z",
+          "inputMode": "do"
+        }
+      ],
+      "evaluation": {
+        "turn": 272,
+        "status": "quarantined",
+        "attempts": 3,
+        "completedGroups": []
+      }
+    },
+    "potions": {
+      "sourceId": "message_mvoiy27x_5drb0b0c",
+      "messages": [
+        {
+          "id": "msg_mvoiu87b_jtcfky0t",
+          "role": "user",
+          "content": "I don’t react in anyway",
+          "createdAt": "2026-10-26T00:31:34.151Z",
+          "inputMode": "do"
+        },
+        {
+          "id": "message_mvoiua9e_ebq0t8a6",
+          "role": "assistant",
+          "content": "Snape's gaze lingers a moment longer than necessary, then moves on.\n\nThe board reads: *A Draught of Peace. Third-year standard. You have no excuse for failure.*\n\nAround you, cauldrons are being lit. Hermione's already reading the instructions twice. Ron is squinting at the board as though it's personally offended him. On the Slytherin side, Draco is arranging his ingredients with the fussy precision of someone who's done this before and intends to be seen doing it.\n\nSnape begins to walk the aisles.",
+          "createdAt": "2026-10-26T00:31:36.818Z",
+          "inputMode": "do"
+        },
+        {
+          "id": "msg_mvoiw60m_jwa4h8rp",
+          "role": "user",
+          "content": "I am silent, non of my usual bravado. I arrange the ingredients, light the cauldron and follow the instructions without bullshiting around",
+          "createdAt": "2026-10-26T00:33:04.630Z",
+          "inputMode": "do"
+        },
+        {
+          "id": "message_mvoiw83g_u6ovfzyo",
+          "role": "assistant",
+          "content": "Snape passes your station, and stops.\n\nHe doesn't say anything. He simply stands there, watching your hands, for what feels like a very long time. Then he reaches down and lifts your moonstone dust a quarter-inch from the table, examines it, and sets it back exactly where it was.\n\n\"Continue,\" he says, and moves on.\n\nHalfway down the aisle, to a Hufflepuff whose cauldron is smoking: \"That is not a simmer. That is a *fire*. Do you intend to brew, or to cremate?\"",
+          "createdAt": "2026-10-26T00:33:07.324Z",
+          "inputMode": "do"
+        },
+        {
+          "id": "msg_mvoixzoj_czy3kcfs",
+          "role": "user",
+          "content": "I grin, a silent laugh, I like him but I’m also not drawing attention to myself. I continue this throughout class",
+          "createdAt": "2026-10-26T00:34:29.731Z",
+          "inputMode": "do"
+        },
+        {
+          "id": "message_mvoiy27x_5drb0b0c",
+          "role": "assistant",
+          "content": "You work quietly. The potion comes together — the moonstone dissolving cleanly, the steam turning the right shade of pale silver. When the ninety minutes are nearly up, Snape returns to your station and looks into the cauldron for a long moment.\n\n\"Acceptable,\" he says. Which, from him, is practically a eulogy.\n\nHe moves on. Hermione gets \"You have over-stirred.\" Ron gets a long, silent look and then \"Explain to me why you thought that was a good idea,\" which is worse.\n\nThen, at the front: \"Bottles out. We will be testing these at the end of the week, so if you've produced something that will kill someone, I'd like to know now.\"",
+          "createdAt": "2026-10-26T00:34:33.021Z",
+          "inputMode": "do"
+        }
+      ],
+      "evaluation": {
+        "turn": 300,
+        "status": "failed",
+        "attempts": 2,
+        "completedGroups": []
+      }
+    },
+    "charms": {
+      "sourceId": "message_mvohz4bu_oocrwsns",
+      "messages": [
+        {
+          "id": "msg_mvohwh4t_msj1n8n2",
+          "role": "user",
+          "content": "I smile at how quickly Hermione reacts",
+          "createdAt": "2026-10-26T00:05:19.421Z",
+          "inputMode": "do"
+        },
+        {
+          "id": "message_mvohwk1y_rjfdw0l0",
+          "role": "assistant",
+          "content": "\"Is it true, Professor, that the Cheering Charm is the only charm in the standard curriculum that affects the mind and isn't classified as a curse?\"\n\nFlitwick beams. \"Five points to Gryffindor, Miss Granger, and a very good question. The answer is *no*, but it's a common misconception. The Cheering Charm is the only one we *teach*, which is not the same thing at all.\" He hops down from his books. \"There are others. Some of them are illegal. Some of them are merely unwise. And the reason we teach this one is that it is the mildest, the most reversible, and the easiest to do wrong in a way that can be *seen*.\"\n\nHe turns to the room. \"Which brings me to the practical. You will work in pairs, and you will charm your partner, and your partner will tell you honestly how it felt. No —\" he raises a hand, \"— I do not want to hear that it felt like nothing. If it felt like nothing, you have failed. Clear?\"",
+          "createdAt": "2026-10-26T00:05:23.206Z",
+          "inputMode": "do"
+        },
+        {
+          "id": "msg_mvohxhjq_zr7jh8fy",
+          "role": "user",
+          "content": "I look around the room for a potential partner",
+          "createdAt": "2026-10-26T00:06:06.614Z",
+          "inputMode": "do"
+        },
+        {
+          "id": "message_mvohxk0c_j5ib9zc5",
+          "role": "assistant",
+          "content": "\"Partner up,\" Flitwick says, and the room dissolves into the usual shuffle.\n\nHermione is already turning toward you, but she's beaten to it — Harry's sliding into the seat beside her with an apologetic look, and Ron's grabbed the chair on her other side. \"Sorry,\" Harry mouths.\n\n\"Mr Press,\" Flitwick says, from the front. \"I'd like you to work with Miss Malfoy. I'm told the two of you have been doing interesting things with circumstances, and I want to see whether it's made either of you sloppy.\" He says it cheerfully. \"Miss Malfoy, if you would.\"",
+          "createdAt": "2026-10-26T00:06:09.804Z",
+          "inputMode": "do"
+        },
+        {
+          "id": "msg_mvohz24l_34x76nu7",
+          "role": "user",
+          "content": "I find where Draconia is sitting then give her a look of *are you coming over here* with a grin",
+          "createdAt": "2026-10-26T00:07:19.941Z",
+          "inputMode": "do"
+        },
+        {
+          "id": "message_mvohz4bu_oocrwsns",
+          "role": "assistant",
+          "content": "Draconia rises without hurry, book tucked under her arm, and crosses the room.\n\n\"Professor Flitwick,\" she says, arriving, \"has an unfortunate sense of humour.\" She sets her book down and looks at you. \"He's also right. Cheering Charms are easy to do and hard to do *well*, and half this room is going to make their partner feel briefly delighted and then vaguely ill for an hour.\" A pause. \"I'll go first. Charm me. And don't be gentle about it — if you're going to do it wrong I'd rather know now.\"",
+          "createdAt": "2026-10-26T00:07:22.794Z",
+          "inputMode": "do"
+        }
+      ],
+      "evaluation": {
+        "turn": 277,
+        "status": "complete",
+        "attempts": 3,
+        "completedGroups": [
+          "plot",
+          "storyCards",
+          "brains",
+          "discovery"
+        ]
+      }
+    }
+  },
+  "cards": [
+    {
+      "id": "lore_hu_played_20010901_weasley_products",
+      "title": "Fred and George — Active Magical Products, September 2001",
+      "type": "lore",
+      "content": "Fred and George's current magical joke projects include Skiving Snackboxes (Fainting Fancies and Nosebleed Noughts), a previously unstable Portable Swamp concept, extendable ears, and experimental Peruvian Instant Darkness Powder modifications. The twins work in a concealed workshop near Gryffindor Tower's upper corridors. Fainting Fancy Mark IV initially had a severe flow mismatch between its trigger and containment, making the intended faint unreliable. Seth inspected its magical structure with floating sigils and carved a subtle feed/meter/stabilize array into the product housing. Fred tested the modified version and briefly fainted as intended; that single demonstration succeeded, though no batch-level reliability evidence yet exists. Seth proposed template-based mass enchanting to supply inventory, but no actual production run or sales have occurred on-screen. Seth also suggested binding the swamp with controllable containment and recall; that design remains unbuilt and untested. Lee Jordan agreed to five percent of the Portable Swamp fund, not an ownership share in every product.\n[2001-09-02] In the twins' workshop, Seth cast runes onto an entire stack of blank tattoo paper at once, the runes forming in the air and flowing down through the stack so each sheet carried its own faint rune. Fred and George examined the sheets and George confirmed they were all identical. George then asked how many Seth could produce in one go, reasoning that if he could do a hundred like that, they would be a supplier rather than a stall.\n[2001-09-02] The twins resolved the yes/no tattoo's liability concern by analogy to Muggle Magic 8-Balls: George reasoned nobody sues them because it is understood as a toy, and the twins agreed to sell and label their own version as a toy, with reliance on it for real answers the buyer's own fault. Fred proposed writing up the proven, public liar-detection design first to draw customers, with mood colours second, and asked Seth whether he had reason to put a different design first.\n[2001-09-02] In the twins' workshop, the liability question for the yes/no tattoo design was settled by comparison to Muggle Magic 8-Balls: George reasoned nobody sues them because they are understood as toys, and the twins agreed to sell and label their own version as a toy, with reliance on it for real answers the buyer's own fault. Fred proposed writing up the proven, public liar-detection design first to draw customers, with mood colours second, and asked Seth whether he had reason to put a different design first.\n[2001-09-02] Seth proposed a fifth stockpile design: a deliberately non-functional 'confidence' tattoo. Fred priced it at three galleons, reasoning it sells to buyers who want to look confident and cannot complain it doesn't work; George gleefully endorsed it as 'properly evil.' Four designs now counted (liar-detection, mood colours, rune pet, dud); the fifth and first written-up design remain undecided.\n[2001-09-02] In the twins' concealed workshop, Seth and the twins discussed a stockpile of finished tattoo designs: mood colours, the liar-detection design already demonstrated on Ron, a rune pet, and a deliberately non-functional 'dud' confidence design Seth proposed as a joke. Fred priced the dud at three galleons, reasoning it sells to those who want to look confident without grounds to complain, and George gleefully endorsed the pitch. Four items counted; the fifth and first written-up design remain undecided.\n[2001-09-02] The twins grasped that the tattoos' 3–5 day lifespan makes them a subscription rather than a one-off: customers wear out and return for more. They planned a public breakfast demonstration — Fred wearing the liar design, George the 'confidence' dud, Seth the mood colours — timed for the whole Hall, including Slytherins and Ravenclaws, to notice.\n[2001-09-02] On the stairway back to Gryffindor Tower after the Goblet of Fire, two younger Durmstrang students approached Seth, having heard at dinner that he does rune tattoos, and asked a question about the Goblet: what happens if someone puts in a name that isn't theirs. The matter is left unresolved.\n[2001-09-02] [2001-09-03] At the public breakfast tattoo demonstration the twins set prices — mood colours three galleons, liar-detection four, rune pet two, confidence dud three — and, after Seth suggested milking a limited-supply angle, George capped sales at the first twelve with Fred inventing a paper shortage as the excuse. A mixed queue formed: mostly Ravenclaws, a couple of Hufflepuffs, and one observing Slytherin. Draconia watched from the Slytherin table with assessing interest; Draco scowled.",
+      "keys": [
+        "Fred and George",
+        "Weasley products",
+        "Skiving Snackboxes",
+        "Fainting Fancies",
+        "Nosebleed Noughts",
+        "Portable Swamp",
+        "Peruvian Instant Darkness Powder",
+        "Weasley Twins",
+        "Tattoo Toy",
+        "Toy Production",
+        "twins",
+        "cast runes",
+        "runes onto",
+        "yes or no tattoo",
+        "Magic 8-Ball comparison",
+        "product liability",
+        "first design to write up",
+        "liar-detection tattoo",
+        "mood colour tattoo",
+        "joke product stockpile",
+        "dud confidence tattoo",
+        "pricing a prank product",
+        "which design to write up first",
+        "Weasley product line",
+        "rune magic",
+        "runes",
+        "runic arrays",
+        "runic engineering",
+        "applied runic engineering",
+        "recursive architectures",
+        "breakfast tattoo demonstration",
+        "subscription tattoos",
+        "Fred liar tattoo",
+        "George confidence dud",
+        "repeat customers",
+        "Durmstrang students",
+        "Goblet entry question",
+        "name that isn't theirs",
+        "rune tattoos rumour",
+        "Goblet of Fire",
+        "tattoo sales",
+        "breakfast demonstration",
+        "limited supply",
+        "tattoo pricing",
+        "queue of buyers"
+      ],
+      "lore": {
+        "status": "ongoing",
+        "sourceMessageIds": [
+          "message_mvm0eit7_3yw8b16v",
+          "message_mvm0frda_3rg9cdws",
+          "message_mvm0jxly_7w9zeck6",
+          "message_mvm3urid_2nmao3cn",
+          "msg_mvm3unzx_oogbqvk8",
+          "message_mvm34c8r_ypdk3fjy",
+          "message_mvm37l90_xwgrlrcz",
+          "message_mvm3qt91_8c74w1do",
+          "message_mvm3slhn_ugzltmt7",
+          "message_mvm3t3th_ydrib68w",
+          "msg_mvm3z020_i3jkogab",
+          "message_mvm3z2il_iipf6ubx",
+          "message_mvm3zu8h_zguw8xn8",
+          "msg_mvm4ap3a_f1zgujbf",
+          "message_mvm4asa7_oj473ajs",
+          "message_mvo47af5_5jb3qqsn",
+          "msg_mvo477z7_wtvrvkmp",
+          "message_mvo42ct0_2jiswcog",
+          "msg_mvo42adf_sdvlx9ic",
+          "message_mvo3zkxe_mh1bi9xt",
+          "msg_mvo3zinj_7w3a31fs",
+          "msg_mvo3f66y_vrzvfz1n",
+          "message_mvo3f8ka_enpyuutl",
+          "message_mvo4soc2_z9l5vjl8",
+          "msg_mvo4slfu_1e5hn7cc",
+          "msg_mvo4ml76_8ed84k75",
+          "message_mvo4njlu_jfnhe16h",
+          "message_mvo4rti3_94ebuu5e",
+          "message_mvofl9mh_tnlb4k8k",
+          "msg_mvofl6zk_syxw8rui",
+          "message_mvognm7x_9y9ql383",
+          "msg_mvognkcx_h8ewahnm",
+          "msg_mvoglimd_ejoawyay",
+          "message_mvogll4q_34qxr2bh",
+          "msg_mvogmmoq_pbru3tn5",
+          "message_mvogmovj_sqkwjh0z"
+        ],
+        "occurredAt": {
+          "text": "2001-09-01",
+          "date": "2001-09-01",
+          "precision": "day"
+        },
+        "lastChangedAt": {
+          "text": "2001-09-02",
+          "date": "2001-09-02",
+          "precision": "day"
+        }
+      }
+    },
+    {
+      "id": "story_mvoi3gv7_i121gn1i",
+      "title": "4 September 2001 — Charms Practical: Seth and Draconia Paired",
+      "type": "lore",
+      "content": "In Flitwick's Charms class on 4 September 2001, Flitwick assigned the Cheering Charm practical in pairs: each student charms their partner, who must honestly report how it felt. Flitwick deliberately paired Seth with Draconia, saying he'd been told the two had been doing 'interesting things with circumstances' and wanted to see whether it had made either of them sloppy. Draconia crossed the room, remarked that Flitwick has an unfortunate sense of humour, noted that Cheering Charms are easy to do and hard to do well, and volunteered to be charmed first, telling Seth not to be gentle so she'd know now if he was going to do it wrong.",
+      "keys": [
+        "Charms Practical",
+        "Charms class",
+        "assigned the",
+        "Cheering",
+        "Cheering Charm",
+        "Charm practical"
+      ],
+      "lore": {
+        "status": "ongoing",
+        "sourceMessageIds": [
+          "message_mvohz4bu_oocrwsns",
+          "msg_mvohz24l_34x76nu7",
+          "message_mvohxk0c_j5ib9zc5"
+        ],
+        "occurredAt": {
+          "text": "2001-09-02",
+          "date": "2001-09-02",
+          "precision": "day"
+        },
+        "lastChangedAt": {
+          "text": "2001-09-02",
+          "date": "2001-09-02",
+          "precision": "day"
+        }
+      }
+    }
+  ],
+  "identities": [
+    {
+      "id": "story_hu2_4",
+      "title": "Draconia Malfoy",
+      "type": "character",
+      "keys": [
+        "Draconia Malfoy",
+        "Draconia"
+      ]
+    },
+    {
+      "id": "story_hu2_13",
+      "title": "Ron Weasley",
+      "type": "character",
+      "keys": [
+        "Ron Weasley",
+        "Ron"
+      ]
+    },
+    {
+      "id": "story_hu2_14",
+      "title": "Hermione Granger",
+      "type": "character",
+      "keys": [
+        "Hermione Granger",
+        "Hermione"
+      ]
+    },
+    {
+      "id": "story_hu2_16",
+      "title": "Severus Snape",
+      "type": "character",
+      "keys": [
+        "Severus Snape",
+        "Snape"
+      ]
+    },
+    {
+      "id": "story_hu2_18",
+      "title": "Filius Flitwick",
+      "type": "character",
+      "keys": [
+        "Filius Flitwick",
+        "Flitwick"
+      ]
+    },
+    {
+      "id": "story_hu2_27",
+      "title": "Fred Weasley",
+      "type": "character",
+      "keys": [
+        "Fred Weasley",
+        "Fred"
+      ]
+    },
+    {
+      "id": "story_hu2_28",
+      "title": "George Weasley",
+      "type": "character",
+      "keys": [
+        "George Weasley",
+        "George"
+      ]
+    }
+  ]
+}

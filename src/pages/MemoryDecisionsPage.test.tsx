@@ -130,6 +130,22 @@ it("keeps quarantined drafts visible and retryable without presenting them as ac
   expect(retry).toHaveBeenCalledWith(["source"]);
 });
 
+it("shows the source, request stage, validation code and field separately from HTTP success", () => {
+  const a = seed();
+  a.messages = [{ id: "message_mvohiudy_5a4yw393", role: "assistant", content: story, createdAt: "2026-10-25",
+    memoryEvaluation: { turn: 1, attempts: 3, status: "quarantined", completedGroups: [] } }];
+  a.activeState.memoryDiagnostics = [{ id: "assessment-failure", sourceId: a.messages[0].id, createdAt: "2026-10-25",
+    stage: "independent", requestStage: "assessment", outcome: "evaluation_failed", transport: "succeeded",
+    failureCode: "memory_assessment_missing_source_citation", fieldPath: "$.storyCards.targets[0].evidenceMessageIds" }];
+  render(<MemoryDecisionsPage adventure={a} onSuggestions={vi.fn()} />);
+  const row = screen.getByText(/Request stage: assessment/);
+  expect(row.textContent).toContain("message_mvohiudy_5a4yw393");
+  expect(row.textContent).toContain("memory_assessment_missing_source_citation");
+  expect(row.textContent).toContain("$.storyCards.targets[0].evidenceMessageIds");
+  expect(row.textContent).toContain("Transport: succeeded. Assessment: failed; no decision accepted");
+  expect(screen.getByText(/HTTP success does not establish assessment validity/)).toBeDefined();
+});
+
 
 it("preserves noncanonical retry drafts through IndexedDB reload and keeps them out of provider context", async () => {
   Object.defineProperty(globalThis, "indexedDB", { value: new IDBFactory(), configurable: true });
