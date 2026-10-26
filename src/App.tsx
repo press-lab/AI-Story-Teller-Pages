@@ -31,6 +31,8 @@ import { ImportExportPage } from "./pages/ImportExportPage";
 import { HelpPage } from "./pages/HelpPage";
 import { CloudSavesPage } from "./pages/CloudSavesPage";
 import { premadeAdventures } from "./dev/premadeAdventures";
+import { AppUpdateButton } from "./components/AppUpdateButton";
+import { getLatestAppUrl } from "./utils/appUpdate";
 import { AdventureThumbnailPicker } from "./components/AdventureThumbnail";
 import { getAdventureThumbnail, thumbnailMetadataPatch } from "./utils/adventureImages";
 
@@ -654,6 +656,15 @@ export default function App() {
           </button>
         </nav>
         <div className="header-meta">
+          <AppUpdateButton
+            disabled={runtime.loading || Boolean(gitHubSaveLoad.loadingSlotId)}
+            onUpdate={async () => {
+              const url = await getLatestAppUrl(window.location.href);
+              // Flush the current state instead of waiting for the debounced autosave.
+              if (adventure) await saveAdventure(adventure);
+              window.location.replace(url);
+            }}
+          />
           {adventure && <span className="status-pill">{saveStatus}</span>}
           {activeTab === "play" && (
             <button type="button" className="theme-toggle" onClick={() => setNavForceVisible(false)} title="Hide navigation bar">
