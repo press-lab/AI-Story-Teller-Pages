@@ -83,9 +83,9 @@ it("keeps failed memory advisory while explicit retry spends only one unfinished
   await waitFor(() => expect(hook.result.current.runtime.memoryWork?.status).toBe("failed"));
   expect(hook.result.current.runtime.loading).toBe(false);
   expect(hook.result.current.openTab).not.toHaveBeenCalled();
-  expect(provider).toHaveBeenCalledTimes(4); // Batch, compact repair, bounded individual fallback, plus narration.
+  expect(provider).toHaveBeenCalledTimes(2); // One batch and narration; no paid repair or fallback.
   fail = false; await act(async () => { await hook.result.current.runtime.retryMemory(); });
-  expect(provider).toHaveBeenCalledTimes(5);
+  expect(provider).toHaveBeenCalledTimes(3);
   expect(hook.result.current.adventure!.messages.at(-1)?.memoryEvaluation).toMatchObject({ status: "complete", attempts: 2 });
   expect(hook.result.current.runtime.memoryWork).toBeUndefined();
 });
@@ -246,7 +246,7 @@ it("opens and reopens a save with the reported historical failure counts without
   expect(hook.result.current.openTab).not.toHaveBeenCalled();
 });
 
-it("continues a queued submission after compact batch format repair", async () => {
+it("continues a queued submission after an incomplete batch without paid repair", async () => {
   const pending = deferred(); let first = true;
   provider.mockImplementation(request => request.memoryEvaluation && first ? (first = false, assessmentMessages = request.messages, pending.promise)
     : Promise.resolve(response(request.memoryEvaluation ? mockAssessment(request.messages.some(m => m.content.includes("ASSESSMENT BATCH FORMAT REPAIR")) ? assessmentMessages : request.messages) : story)));
@@ -256,9 +256,9 @@ it("continues a queued submission after compact batch format repair", async () =
   await act(async () => { pending.resolve(response("malformed")); expect(await next).toBe(true); await tickIdle(); });
   await waitFor(() => expect(hook.result.current.runtime.memoryWork?.status).not.toBe("running"));
   expect(hook.result.current.adventure!.messages.map(message => message.content)).toEqual(["First turn.", story, "Second turn.", story]);
-  expect(hook.result.current.adventure!.messages[1].memoryEvaluation).toMatchObject({ status: "complete", attempts: 1 });
-  expect(provider.mock.calls.filter(([r]) => r.messages.some(m => m.content.includes("ASSESSMENT BATCH FORMAT REPAIR")))).toHaveLength(1);
-  expect(provider).toHaveBeenCalledTimes(5); // Two narration, two assessments, one compact repair.
+  expect(hook.result.current.adventure!.messages[1].memoryEvaluation).toMatchObject({ status: "quarantined", attempts: 1 });
+  expect(provider.mock.calls.filter(([r]) => r.messages.some(m => m.content.includes("ASSESSMENT BATCH FORMAT REPAIR")))).toHaveLength(0);
+  expect(provider).toHaveBeenCalledTimes(4); // Two narration and two assessments; no repair.
   expect(hook.result.current.openTab).not.toHaveBeenCalled();
 });
 
@@ -490,7 +490,7 @@ it("an active narration request suspends the idle timer until its successful nar
   expect(provider.mock.calls.filter(([r]) => r.memoryEvaluation)).toHaveLength(1);
 });
 
-it("a transport failure during compact repair does not fan out into individual assessments", async () => {
+it("an incomplete batch does not request repair or individual fallback", async () => {
   controlledBatchClock();
   provider.mockImplementation(async r => {
     if (!r.memoryEvaluation) return response(story);
@@ -500,6 +500,6 @@ it("a transport failure during compact repair does not fan out into individual a
   const hook = setup();
   for (let i = 0; i < 3; i++) await act(async () => { await hook.result.current.runtime.continueTurn(); });
   await settleWorker(hook);
-  expect(provider.mock.calls.filter(([r]) => r.memoryEvaluation)).toHaveLength(2);
-  expect(hook.result.current.adventure!.messages.every(m => m.memoryEvaluation?.status === "failed" && m.memoryEvaluation.attempts === 1)).toBe(true);
+  expect(provider.mock.calls.filter(([r]) => r.memoryEvaluation)).toHaveLength(1);
+  expect(hook.result.current.adventure!.messages.every(m => m.memoryEvaluation?.status === "quarantined" && m.memoryEvaluation.attempts === 1)).toBe(true);
 });

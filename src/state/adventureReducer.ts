@@ -1,5 +1,5 @@
 import { reconcileBrainBatchState } from "../memory/brainBatchRecovery";
-import { memoryDecisionState } from "../memory/memoryAssessment";
+import { memoryDecisionState, rebaseAutomaticAssessments } from "../memory/memoryAssessment";
 import { factsCovered, hasFactOverlap, proposalCoverage } from "../memory/factCoverage";
 import { placementValidationError, placementFingerprint } from "../memory/storyCardPlacement";
 import { backgroundProviderConfigIssue } from "../providers/backgroundProvider";
@@ -1122,7 +1122,12 @@ function applyCompanionMemoryProposals(
 }
 
 export function adventureReducer(state: Adventure, action: AdventureAction): Adventure {
-  const next = reduceAdventure(state, action);
+  const reduced = reduceAdventure(state, action);
+  const automatic = action.type === "COMMIT_MEMORY_EVALUATION_GROUP"
+    || (action.type === "ADD_MEMORY_PROPOSAL" && !action.proposal.userInitiated)
+    || (action.type === "APPROVE_MEMORY_PROPOSAL" && action.automatic === true)
+    || (action.type === "APPLY_BRAIN_UPDATE" && Boolean(action.diagnosticSourceId));
+  const next = automatic ? rebaseAutomaticAssessments(state, reduced) : reduced;
   if (action.type === "APPLY_BRAIN_UPDATE" && action.diagnosticSourceId
     && next.brains.find(brain => brain.id === action.brainId) !== state.brains.find(brain => brain.id === action.brainId)) {
     return adventureReducer(next, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: {
@@ -1244,12 +1249,17 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
         for (const consumed of action.brainBatch.consumeKeys) pending.delete(consumed);
         next = { ...next, activeState: { ...next.activeState, pendingBrainDeltas: [...pending.values()] } };
       }
+      const savedAssessment = next.messages.find(m => m.id === source.id)?.memoryEvaluation?.assessment;
+      const incomingAssessment = action.assessment ?? savedAssessment;
+      const assessment = incomingAssessment && savedAssessment?.assessmentSourceFingerprint === incomingAssessment.assessmentSourceFingerprint
+        ? { ...incomingAssessment, reusableState: savedAssessment?.reusableState ?? incomingAssessment.reusableState } : incomingAssessment;
       const completedGroups = [...(source.memoryEvaluation?.completedGroups ?? []), ...(!error ? [action.group] : [])];
       const complete = MEMORY_EVALUATION_GROUPS.every(group => completedGroups.includes(group));
       const updated = reconcileBrainBatchState(touchAdventure(next, { messages: next.messages.map(message => message.id === source.id
         ? { ...message, memoryEvaluation: { ...message.memoryEvaluation, turn: source.memoryEvaluation?.turn ?? state.activeState.turn,
           attempts: source.memoryEvaluation?.attempts ?? 0, completedGroups,
-          assessment: terminalAssessmentFailure ? message.memoryEvaluation?.assessment : action.assessment ?? message.memoryEvaluation?.assessment,
+          assessment: terminalAssessmentFailure ? message.memoryEvaluation?.assessment
+            : complete && assessment ? { ...assessment, reusableState: undefined } : assessment,
           groupWork: terminalAssessmentFailure ? message.memoryEvaluation?.groupWork : { ...message.memoryEvaluation?.groupWork, [action.group]: error ? action.groupWork : undefined },
           ...(!terminalAssessmentFailure && action.group === "discovery" ? { discoveryCheckpoint: error ? action.discoveryCheckpoint : undefined } : {}),
           status: terminalAssessmentFailure ? "quarantined" as const : complete ? "complete" as const : error ? (source.memoryEvaluation?.attempts ?? 0) >= 3 ? "quarantined" as const : "failed" as const

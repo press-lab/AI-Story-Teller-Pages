@@ -88,6 +88,8 @@ export interface MemoryAssessmentBatchSource {
   assessment: MemoryAssessmentCheckpoint;
 }
 export interface MemoryAssessmentCheckpoint {
+  /** Exact dependencies, rebased only after a verified automatic memory write. */
+  reusableState?: string;
   assessmentSourceFingerprint?: string;
   sourceFingerprint?: string;
   version: 1;

@@ -3,14 +3,15 @@ import type { Adventure, MemoryTargetSnapshot } from "../types/adventure";
 
 export const MEMORY_EVALUATION_GROUPS = ["plot", "storyCards", "brains", "discovery"] as const;
 
-/** One cadence window, bounded to ten sources. No load effect calls this scheduler. */
+/** One cadence window, bounded to ten sources. Failed work requires an explicit
+ * retry. New story turns do not retry failed requests. */
 export function memoryCycleSources(adventure: Adventure) {
   const settings = adventure.memoryDetectionSettings;
   const cadence = Math.max(0, Math.floor(settings.everyNTurns));
   const turn = adventure.activeState.memoryRecoveryStoryTurn ?? 0;
   if (!settings.enabled || !cadence || turn % cadence !== 0) return [];
   return storyMemoryMessages(adventure).filter(message => message.role === "assistant" && message.inputMode !== "comms"
-    && message.memoryEvaluation && ["pending", "failed", "running"].includes(message.memoryEvaluation.status)
+    && message.memoryEvaluation && ["pending", "running"].includes(message.memoryEvaluation.status)
     && message.memoryEvaluation.attempts < 3
     && (message.memoryEvaluation.nextEligibleTurn ?? 0) <= turn).slice(0, 10);
 }

@@ -67,20 +67,26 @@ it.each(cases)("retains the supported tattoo development from $source", async te
   expect(result.actions).toContainEqual(expect.objectContaining({ type: "RECORD_MEMORY_DIAGNOSTIC", entry: expect.objectContaining({
     outcome: "validation_accepted", targetId: test.targetId, cardOperation: test.targetId ? "append" : "create" }) }));
 });
-it("repairs a foreign ID against original evidence once and still requires semantic review", async () => {
+it("retains a foreign evidence ID as an explicit failure without buying a repair or review", async () => {
   const a = seed(), good = candidate(a);
-  provider.mockResolvedValueOnce(response([{ ...good, evidenceMessageIds: ["invented"] }]))
-    .mockResolvedValueOnce(response(good)).mockResolvedValueOnce(response({ accepted: true, meaningfulChange: true,
-      identityMatchesTarget: true, evidenceMessageIds: good.evidenceMessageIds, reason: "Grounded agreement.",
-      placement: { kind: "create", title: good.title, content: good.content, newFact: good.content, reason: "New business subject." } }));
+  provider.mockResolvedValueOnce(response([{ ...good, evidenceMessageIds: ["invented"] }]));
   const result = await detectStoryCardProposals(a, config, { sourceId: cases[0].source });
-  expect(result.errors).toEqual([]); expect(provider).toHaveBeenCalledTimes(3);
-  expect(result.actions.filter(action => action.type === "ADD_MEMORY_PROPOSAL" && action.proposal.storyCardReview?.origin === "model")).toHaveLength(1);
+  expect(result.errors).toEqual(["memory_model_output_invalid: All discovery candidates failed source/schema validation."]);
+  expect(provider).toHaveBeenCalledTimes(1);
+  expect(result.actions.filter(action => action.type === "ADD_MEMORY_PROPOSAL" && action.proposal.storyCardReview?.origin === "model")).toHaveLength(0);
 });
-it("never accepts fabricated quotes when the bounded repair is also invalid", async () => {
+it("never accepts fabricated quotes and never buys a second request", async () => {
   const a = seed(), bad = { ...candidate(a), evidenceQuotes: [{ messageId: cases[0].source, quote: "Seth completed an industrial factory." }] };
   provider.mockResolvedValueOnce(response([bad])).mockResolvedValueOnce(response(bad));
   const result = await detectStoryCardProposals(a, config, { sourceId: cases[0].source });
-  expect(provider).toHaveBeenCalledTimes(2); expect(result.actions.filter(action => action.type === "ADD_MEMORY_PROPOSAL" && action.proposal.storyCardReview?.origin === "model")).toHaveLength(0);
+  expect(provider).toHaveBeenCalledTimes(1); expect(result.actions.filter(action => action.type === "ADD_MEMORY_PROPOSAL" && action.proposal.storyCardReview?.origin === "model")).toHaveLength(0);
   expect(result.actions).toContainEqual(expect.objectContaining({ type: "RECORD_MEMORY_DIAGNOSTIC", entry: expect.objectContaining({ failureCode: "discovery_invalid_evidence_quote" }) }));
+});
+
+it("keeps source IDs out of the shared discovery system prefix", async () => {
+  const a = seed(); provider.mockResolvedValue(response([]));
+  await detectStoryCardProposals(a, config, { sourceId: cases[0].source });
+  const messages = provider.mock.calls[0][2];
+  expect(messages.filter(m => m.role === "system").map(m => m.content).join("\n")).not.toContain(cases[0].source);
+  expect(messages.filter(m => m.role === "user").map(m => m.content).join("\n")).toContain(cases[0].source);
 });
