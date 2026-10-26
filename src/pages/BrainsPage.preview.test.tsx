@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 import "@testing-library/jest-dom/vitest";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { BrainsPage } from "./BrainsPage";
@@ -85,4 +85,39 @@ it("preserves the new thought preview when Update Now also condenses the thought
   await user.click(summary);
   expect(document.querySelector(".brain-summary-thought")).toHaveTextContent(newest);
   expect(provider).toHaveBeenCalledTimes(2);
+});
+
+
+it("explains the Brain cooldown and preserves the existing update dispatch", async () => {
+  const user = userEvent.setup();
+  const a = seed(false);
+  a.brains[0].autoUpdateCooldownTurns = 0;
+  a.brains[0].lastUpdatedTurn = 12;
+  const dispatch = vi.fn();
+  function Fixture() {
+    const [adventure, setAdventure] = useState(a);
+    return <BrainsPage adventure={adventure} dispatch={action => {
+      dispatch(action);
+      setAdventure(current => adventureReducer(current, action));
+    }} loading={false} onUpdateBrainNow={async () => undefined} />;
+  }
+  render(<Fixture />);
+  await user.click(document.querySelector(".brain-item > summary")!);
+  await user.click(screen.getByText("Update cadence and priority", { selector: "summary" }));
+  const interval = screen.getByLabelText("Minimum turns between automatic Brain updates");
+  expect(interval).toHaveValue(0);
+  expect(screen.getByText(/0 disables the cooldown/)).toBeVisible();
+  expect(screen.queryByText(/every turn character appears/i)).not.toBeInTheDocument();
+  expect(screen.getByText(/An appearance alone does not cause an update/)).toBeVisible();
+  expect(screen.getAllByText(/The evaluator can group several meaningful developments/)).toHaveLength(1);
+  expect(screen.getByLabelText("Last recorded Brain update turn")).toHaveValue("12");
+  expect(screen.getByLabelText("Last recorded Brain update turn")).toHaveAttribute("readonly");
+  fireEvent.change(interval, { target: { value: "7" } });
+  expect(dispatch).toHaveBeenLastCalledWith({ type: "UPDATE_BRAIN", brainId: "mira", patch: { autoUpdateCooldownTurns: 7 } });
+  fireEvent.change(interval, { target: { value: "0" } });
+  expect(dispatch).toHaveBeenLastCalledWith({ type: "UPDATE_BRAIN", brainId: "mira", patch: { autoUpdateCooldownTurns: undefined } });
+  await user.click(screen.getByText("Automation & context settings", { selector: "summary" }));
+  fireEvent.change(screen.getByLabelText("Condition for a meaningful Brain change"), { target: { value: "A lasting private decision changes." } });
+  expect(dispatch).toHaveBeenLastCalledWith({ type: "UPDATE_BRAIN", brainId: "mira", patch: { updateCondition: "A lasting private decision changes." } });
+  expect(screen.getByLabelText("Update Prompt Override")).toBeVisible();
 });

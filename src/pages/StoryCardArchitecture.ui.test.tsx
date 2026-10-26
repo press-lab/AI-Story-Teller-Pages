@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useReducer } from "react";
 import { afterEach, expect, it } from "vitest";
@@ -36,4 +36,28 @@ it("offers four types and edits the independent story clock and Lore chronology"
   const saved = JSON.parse(screen.getByTestId("saved").textContent!);
   expect(saved.storyClock.current).toMatchObject({ date: "2019-02-01", precision: "day" });
   expect(saved.storyCards[0].lore).toMatchObject({ occurredAt: { date: "2019-01-18" }, status: "unresolved", knownTo: ["Seth", "Draconia"] });
+});
+
+
+it("explains relevance selection without per-card scheduling and keeps context controls editable", async () => {
+  const user = userEvent.setup();
+  render(<Editor />);
+  await user.click(document.querySelector(".story-card-editor-item > summary")!);
+  await user.click(screen.getByText("Context, automation, and ordering", { selector: "summary" }));
+  expect(screen.getByRole("heading", { name: "Automatic Memory Eligibility" })).toBeVisible();
+  expect(screen.getByText("Per-card update interval: Not configurable.")).toBeVisible();
+  expect(screen.getByText("Per-card automatic update switch: Not available in the current evaluator.")).toBeVisible();
+  expect(screen.getByText(/up to eight candidate cards/)).toBeVisible();
+  expect(screen.queryByLabelText(/auto.?update|automatic.*update|cooldown/i)).not.toBeInTheDocument();
+  const initial = JSON.parse(screen.getByTestId("saved").textContent!);
+  await user.click(screen.getByLabelText("Pinned (included even without a trigger match)"));
+  await user.click(screen.getByLabelText("Protected (cannot be dropped by token truncation)"));
+  await user.click(screen.getByLabelText("Active", { exact: true }));
+  await user.selectOptions(screen.getByLabelText("Inclusion Policy"), "always");
+  fireEvent.change(screen.getByLabelText("Priority (higher = loaded first)"), { target: { value: "73" } });
+  fireEvent.change(screen.getByLabelText("Token Budget (0 = default ~200; caps live content, older facts archive)"), { target: { value: "430" } });
+  const saved = JSON.parse(screen.getByTestId("saved").textContent!);
+  expect(saved.storyCards[0]).toMatchObject({ pinned: true, protected: true, active: false, inclusionPolicy: "always", priority: 73, tokenBudget: 430 });
+  expect(saved.storyCards[0].autoUpdate).toEqual(initial.storyCards[0].autoUpdate);
+  expect(saved.storyCards[0].autoUpdateCooldownTurns).toEqual(initial.storyCards[0].autoUpdateCooldownTurns);
 });

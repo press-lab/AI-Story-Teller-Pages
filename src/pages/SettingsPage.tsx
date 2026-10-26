@@ -382,9 +382,14 @@ export function SettingsPage({
         </article>
 
         <article className="panel settings-card settings-section-full">
-          <h3>Automatic memory</h3>
+          <h3>Automatic Memory Evaluation</h3>
           <CheckboxField label="Automatic memory evaluation" checked={globalAdventureSettings.memoryDetectionSettings.enabled} onChange={(enabled) => updateMemoryDetection({ enabled })} />
-          <p className="muted">After each scheduled story turn, independent background calls evaluate meaningful changes to characters, Story Cards and eligible plot components. The story is saved first. Review proposals in Memory Suggestions; cadence, costs and approval controls are in advanced Memory Detection settings.</p>
+          <Field label="Evaluate every N story turns">
+            <NumberInput min={0} max={100} value={globalAdventureSettings.memoryDetectionSettings.everyNTurns}
+              onChange={everyNTurns => updateMemoryDetection({ everyNTurns: Math.max(0, Math.min(100, Math.floor(everyNTurns))) })} />
+          </Field>
+          <p className="muted">0: Manual evaluation only. 1: Every story turn is eligible. Higher values: AIST starts an evaluation check at the selected turn interval. AIST can process several saved turns in one batch. An evaluation does not guarantee a memory update.</p>
+          <p className="muted">This setting applies to Components, Story Cards, and Brains. Each memory type has separate eligibility rules. Approval settings determine when an update becomes active memory.</p>
         </article>
         {/* ── Context Budget (advanced) ─────────────── */}
         {advanced && (
@@ -447,25 +452,7 @@ export function SettingsPage({
                 />
               </div>
               <div>
-                <CheckboxField
-                  label="Auto-summarize in background (legacy)"
-                  checked={activeSettings.tokenBudgetSettings.autoSummarize ?? true}
-                  onChange={(autoSummarize) => updateBudget({ autoSummarize })}
-                />
-                <Field label="Auto-summarize every N turns (legacy)">
-                  <NumberInput
-                    min={5}
-                    value={activeSettings.tokenBudgetSettings.autoSummarizeEveryNTurns ?? 20}
-                    onChange={(autoSummarizeEveryNTurns) => updateBudget({ autoSummarizeEveryNTurns })}
-                  />
-                </Field>
-                <Field label="Scene state every N turns (0 = manual only)">
-                  <NumberInput
-                    min={0}
-                    value={activeSettings.tokenBudgetSettings.autoSceneStateEveryNTurns ?? 1}
-                    onChange={(autoSceneStateEveryNTurns) => updateBudget({ autoSceneStateEveryNTurns })}
-                  />
-                </Field>
+                <p className="muted">Legacy summary and scene-state schedules are stored for compatibility. These settings do not control the current automatic memory evaluator.</p>
                 <Field label="Section Budgets JSON">
                   <JsonTextarea
                     value={activeSettings.tokenBudgetSettings.sectionBudgets}
@@ -488,14 +475,15 @@ export function SettingsPage({
                 onChange={(e) => updateSemanticSettings({ evaluationModel: e.target.value })}
               />
             </Field>
-            <Field label="Messages Included In Evaluation">
+            <h4>Custom Semantic Automations</h4>
+            <Field label="Recent messages for custom rules">
               <NumberInput
                 min={1}
                 value={activeSettings.semanticEvaluationSettings.messagesIncluded}
                 onChange={(messagesIncluded) => updateSemanticSettings({ messagesIncluded })}
               />
             </Field>
-            <Field label="Semantic eval every N turns (0 = disabled, 1 = every turn)">
+            <Field label="Check custom semantic rules every N turns">
               <NumberInput
                 min={0}
                 value={activeSettings.semanticEvaluationSettings.semanticEvalEveryNTurns ?? 1}
@@ -503,34 +491,52 @@ export function SettingsPage({
               />
             </Field>
             <CheckboxField
-              label="Enable semantic triggers"
+              label="Enable custom semantic rules"
               checked={activeSettings.semanticEvaluationSettings.enabled}
               onChange={(enabled) => updateSemanticSettings({ enabled })}
             />
+            <p className="muted">These controls apply to custom semantic automation rules. They do not set the automatic memory evaluation interval.</p>
             <CheckboxField
               label="Show evaluation log on Automations page"
               checked={activeSettings.semanticEvaluationSettings.showLog}
               onChange={(showLog) => updateSemanticSettings({ showLog })}
             />
-            <Field label="Max Parallel Update Calls">
+            <h4>Generated Updates</h4>
+            <Field label="Maximum parallel generated update calls">
               <NumberInput
                 min={1}
                 value={activeSettings.semanticEvaluationSettings.maxParallelUpdateCalls}
                 onChange={(maxParallelUpdateCalls) => updateSemanticSettings({ maxParallelUpdateCalls })}
               />
             </Field>
+            <p className="muted">This setting limits concurrent update requests. It does not set the evaluation interval.</p>
+            <h4>Automatic Update Approval</h4>
             <CheckboxField
-              label="Review all automatic updates"
+              label="Require review for automatic updates"
               checked={activeSettings.semanticEvaluationSettings.requireApprovalForAutoUpdates ?? true}
               onChange={(requireApprovalForAutoUpdates) => updateSemanticSettings({ requireApprovalForAutoUpdates })}
             />
             <p className="muted">
-              When on, independent memory updates and custom rule updates require review. When off, the per-type auto-approval controls below apply; protected and uncertain changes still require review.
+              When enabled, AIST sends automatic updates to Memory Suggestions. When disabled, a memory type can use its auto-approval setting. Protected or uncertain updates can still require review.
+            </p>
+            <div className="auto-approve-toggles">
+              <span className="auto-approve-label muted">Auto-approve:</span>
+              <CheckboxField label="Legacy Summary" checked={activeSettings.memoryAutoApprove.summaryUpdate} onChange={(summaryUpdate) => updateMemoryAutoApprove({ summaryUpdate })} />
+              <CheckboxField label="Plot Essentials" checked={activeSettings.memoryAutoApprove.plotEssentialsUpdate} onChange={(plotEssentialsUpdate) => updateMemoryAutoApprove({ plotEssentialsUpdate })} />
+              <CheckboxField label="Active Pressure" checked={activeSettings.memoryAutoApprove.plotPressureUpdate} onChange={(plotPressureUpdate) => updateMemoryAutoApprove({ plotPressureUpdate })} />
+              <CheckboxField label="Current Arc (off: review generated events before they become canon)" checked={activeSettings.memoryAutoApprove.currentArcUpdate} onChange={(currentArcUpdate) => updateMemoryAutoApprove({ currentArcUpdate })} />
+              <CheckboxField label="Arc Proposals" checked={activeSettings.memoryAutoApprove.arcProposal} onChange={(arcProposal) => updateMemoryAutoApprove({ arcProposal })} />
+              <CheckboxField label="Story Cards" checked={activeSettings.memoryAutoApprove.storyCard} onChange={(storyCard) => updateMemoryAutoApprove({ storyCard })} />
+              <CheckboxField label="Characters" checked={activeSettings.memoryAutoApprove.brainUpdate} onChange={(brainUpdate) => updateMemoryAutoApprove({ brainUpdate })} />
+            </div>
+            <p className="muted">
+              These toggles apply to Memory Suggestions created by automatic detection, manual builders,
+              and independent evaluation. Story Card auto-approval is off by default. Unconfirmed candidates, ambiguous destinations, protected cards and exceptional identity changes always require review. Plot Essentials requires component auto-update permission; Current Arc and Active Pressure respect explicit opt-outs.
             </p>
             <h4>Background Provider</h4>
             <p className="muted">
-              Route background tasks (evaluation, brain updates, story card updates, and plot updates) through a
-              separate provider. Leave blank to use the active preset for all tasks.
+              Route background tasks through a separate provider. Leave blank to use the active preset.
+              The Evaluation Model Override and Background Provider settings can also affect independent memory evaluation.
             </p>
             <Field label="Base URL">
               <input
@@ -589,16 +595,7 @@ export function SettingsPage({
             <p className="muted">
               Independent evaluation checks plot developments, existing Story Cards, character Brains and missing durable memories after the story is saved. It works without a narrator memory appendix and uses targeted background calls on your chosen schedule.
             </p>
-            <CheckboxField
-              label="Automatic memory evaluation"
-              checked={globalAdventureSettings.memoryDetectionSettings.enabled}
-              onChange={(enabled) => updateMemoryDetection({ enabled })}
-            />
             <p className="muted">Evaluator: original independent memory foundation. Legacy narrator/dedicated preferences are retained in exports; both now use independent evaluation.</p>
-            <Field label="Evaluate every N story turns (0 = manual only, 1 = every turn)">
-              <NumberInput min={0} max={100} value={globalAdventureSettings.memoryDetectionSettings.everyNTurns}
-                onChange={everyNTurns => updateMemoryDetection({ everyNTurns: Math.max(0, Math.min(100, Math.floor(everyNTurns))) })} />
-            </Field>
             <p className="muted">Uses Background Provider in LLM Evaluation. Each source uses one shared assessment, then generation, validation and additional discovery only when needed. Up to ten queued sources run per cadence window. Failed evaluations retry at most three times with backoff. Loading an adventure makes no memory requests. Retry a source explicitly in Memory Suggestions → Decisions.</p>
             <Field label="Memory evaluation API">
               <select value={activeSettings.semanticEvaluationSettings.memoryEvaluationApi ?? "chat"}
@@ -626,24 +623,6 @@ export function SettingsPage({
               </select>
             </Field>
             <p className="muted">Memory evaluation never enables reasoning. For custom endpoints, select only a control documented by that provider.</p>
-            {globalAdventureSettings.memoryDetectionSettings.enabled && (
-              <>
-                <div className="auto-approve-toggles">
-                  <span className="auto-approve-label muted">Auto-approve:</span>
-                  <CheckboxField label="Legacy Summary" checked={activeSettings.memoryAutoApprove.summaryUpdate} onChange={(summaryUpdate) => updateMemoryAutoApprove({ summaryUpdate })} />
-                  <CheckboxField label="Plot Essentials" checked={activeSettings.memoryAutoApprove.plotEssentialsUpdate} onChange={(plotEssentialsUpdate) => updateMemoryAutoApprove({ plotEssentialsUpdate })} />
-                  <CheckboxField label="Active Pressure" checked={activeSettings.memoryAutoApprove.plotPressureUpdate} onChange={(plotPressureUpdate) => updateMemoryAutoApprove({ plotPressureUpdate })} />
-                  <CheckboxField label="Current Arc (off: review generated events before they become canon)" checked={activeSettings.memoryAutoApprove.currentArcUpdate} onChange={(currentArcUpdate) => updateMemoryAutoApprove({ currentArcUpdate })} />
-                  <CheckboxField label="Arc Proposals" checked={activeSettings.memoryAutoApprove.arcProposal} onChange={(arcProposal) => updateMemoryAutoApprove({ arcProposal })} />
-                  <CheckboxField label="Story Cards" checked={activeSettings.memoryAutoApprove.storyCard} onChange={(storyCard) => updateMemoryAutoApprove({ storyCard })} />
-                  <CheckboxField label="Characters" checked={activeSettings.memoryAutoApprove.brainUpdate} onChange={(brainUpdate) => updateMemoryAutoApprove({ brainUpdate })} />
-                </div>
-                <p className="muted">
-                  These toggles apply to Memory Suggestions created by automatic detection, manual builders,
-                  and independent evaluation. Story Card auto-approval is off by default. Unconfirmed candidates, ambiguous destinations, protected cards and exceptional identity changes always require review. Plot Essentials requires component auto-update permission; Current Arc and Active Pressure respect explicit opt-outs.
-                </p>
-              </>
-            )}
           </article>
         )}
 

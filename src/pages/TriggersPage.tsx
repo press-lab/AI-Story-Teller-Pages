@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { InlineMemoryCategory, TriggerEvaluationMode, TriggerMatchType, TriggerSource } from "../types/adventure";
+import type { TriggerEvaluationMode, TriggerMatchType, TriggerSource } from "../types/adventure";
 import { makeTriggerRule } from "../state/defaults";
 import type { AdventurePageProps } from "./pageTypes";
 import { CheckboxField, Field, JsonTextarea, NumberInput, UpdatedAtBadge, commaList, fromCommaList } from "./shared";
@@ -7,21 +7,6 @@ import { CheckboxField, Field, JsonTextarea, NumberInput, UpdatedAtBadge, commaL
 const sources: TriggerSource[] = ["input", "output", "both"];
 const matchTypes: TriggerMatchType[] = ["keyword", "phrase", "regex"];
 const evaluationModes: TriggerEvaluationMode[] = ["semantic", "keyword", "regex"];
-const quietMemoryCategories: Record<InlineMemoryCategory, boolean> = {
-  character_reveal: true,
-  world_fact: true,
-  relationship: false,
-  plot_beat: false,
-  status_change: false,
-};
-const balancedMemoryCategories: Record<InlineMemoryCategory, boolean> = {
-  character_reveal: true,
-  world_fact: true,
-  relationship: true,
-  plot_beat: true,
-  status_change: true,
-};
-
 export function TriggersPage({ adventure, dispatch }: AdventurePageProps) {
   const [flagKey, setFlagKey] = useState("");
   const [flagValue, setFlagValue] = useState("");
@@ -64,6 +49,7 @@ export function TriggersPage({ adventure, dispatch }: AdventurePageProps) {
           Automations watch turns for authored conditions, then update memory, plot state, flags, or review proposals.
           Keep rules searchable and expand only the one you are editing.
         </p>
+        <p className="muted">Automatic memory evaluation is configured in Settings. Custom automation rules are separate. Keyword and regex rules check story text. Semantic rules use their own evaluation interval.</p>
         <div className="editor-stat-row" aria-label="Automation counts">
           <span>{adventure.triggerRules.length} rules</span>
           <span>{enabledRuleCount} enabled</span>
@@ -84,64 +70,6 @@ export function TriggersPage({ adventure, dispatch }: AdventurePageProps) {
         </button>
       </div>
 
-      <details className="panel editor-tools-panel" open>
-        <summary>System memory triggers</summary>
-        <p className="muted">
-          Inline story card detection runs without extra API calls. The model flags permanent story facts while writing
-          each response, then proposals go to Memory Suggestions for approval.
-        </p>
-        {(() => {
-          const st = adventure.systemTriggers;
-          const enabled = st.enabled !== false;
-          const categories: Array<{ key: InlineMemoryCategory; label: string; description: string }> = [
-            { key: "relationship", label: "Relationship Milestone", description: "First between characters, revealed preference, dynamic shift" },
-            { key: "world_fact", label: "World Fact", description: "New location, organization, rule, or permanent world detail" },
-            { key: "character_reveal", label: "Character Reveal", description: "Character discloses backstory, secret, or personal truth" },
-            { key: "plot_beat", label: "Plot Beat", description: "Alliance, betrayal, new threat, or permanent consequence sealed" },
-            { key: "status_change", label: "Status Change", description: "Rank, title, allegiance, or relationship status changes" },
-          ];
-          return (
-            <>
-              <CheckboxField
-                label="Enable system triggers"
-                checked={enabled}
-                onChange={(v) => dispatch({ type: "SET_SYSTEM_TRIGGER_SETTINGS", settings: { ...st, enabled: v } })}
-              />
-              <div className="toolbar">
-                <button
-                  type="button"
-                  onClick={() => dispatch({ type: "SET_SYSTEM_TRIGGER_SETTINGS", settings: { ...st, enabled: true, categories: quietMemoryCategories } })}
-                >
-                  Quiet entity-only
-                </button>
-                <button
-                  type="button"
-                  onClick={() => dispatch({ type: "SET_SYSTEM_TRIGGER_SETTINGS", settings: { ...st, enabled: true, categories: balancedMemoryCategories } })}
-                >
-                  Balanced story memory
-                </button>
-              </div>
-              <p className="muted">
-                Quiet tracks new characters and world facts. Balanced also tracks relationship, plot, and status milestones;
-                the prompt still asks for only the strongest durable memory tag per response.
-              </p>
-              <div className="grid two disabled-when-off" data-disabled={!enabled}>
-                {categories.map(({ key, label, description }) => (
-                  <div key={key}>
-                    <CheckboxField
-                      label={label}
-                      checked={st.categories[key] !== false}
-                      onChange={(v) => dispatch({ type: "SET_SYSTEM_TRIGGER_SETTINGS", settings: { ...st, categories: { ...st.categories, [key]: v } } })}
-                    />
-                    <p className="muted">{description}</p>
-                  </div>
-                ))}
-              </div>
-            </>
-          );
-        })()}
-      </details>
-
       <details className="panel editor-tools-panel">
         <summary>How automations work</summary>
         <p className="muted">
@@ -149,8 +77,8 @@ export function TriggersPage({ adventure, dispatch }: AdventurePageProps) {
           to evaluate natural-language conditions after the turn completes in the background.
         </p>
         <p className="muted">
-          Actions can update Story Cards, Brains, Plot Essentials, state flags, or Memory Suggestion proposals. Use
-          Trigger History and Evaluation Log to see what fired and why.
+          Supported actions depend on the rule mode. Semantic rules skip Plot Component and legacy summary writes.
+          Use Trigger History and Evaluation Log to see what fired and why.
         </p>
       </details>
 
@@ -250,7 +178,7 @@ export function TriggersPage({ adventure, dispatch }: AdventurePageProps) {
                         onChange={(value) => dispatch({ type: "UPDATE_TRIGGER_RULE", triggerRuleId: rule.id, patch: { priority: value } })}
                       />
                     </Field>
-                    <Field label="Cooldown">
+                    <Field label="Minimum turns between rule executions">
                       <NumberInput
                         min={0}
                         value={rule.cooldownTurns}
@@ -258,6 +186,7 @@ export function TriggersPage({ adventure, dispatch }: AdventurePageProps) {
                       />
                     </Field>
                   </div>
+                  <p className="muted">0 disables this rule’s cooldown. This setting does not change the automatic memory evaluation interval.</p>
                   <Field label="Semantic Condition">
                     <textarea
                       rows={3}
@@ -285,6 +214,10 @@ export function TriggersPage({ adventure, dispatch }: AdventurePageProps) {
                   <Field label="Actions JSON">
                     <JsonTextarea value={rule.actions} onValidChange={(actions) => dispatch({ type: "UPDATE_TRIGGER_RULE", triggerRuleId: rule.id, patch: { actions } })} rows={8} />
                   </Field>
+                  {(rule.evaluationMode === undefined || rule.evaluationMode === "semantic")
+                    && rule.actions.some(action => ["updateComponent", "updateComponentPressure", "updateComponentArc", "updateSummary"].includes(action.type)) && (
+                    <p className="notice" role="alert">This semantic rule cannot write Plot Components or the legacy summary. AIST skips these actions. Use automatic memory evaluation or a manual update tool.</p>
+                  )}
                   <p className="muted">Last fired turn: {rule.lastFiredTurn ?? "never"}</p>
                   <button type="button" className="danger" onClick={() => dispatch({ type: "DELETE_TRIGGER_RULE", triggerRuleId: rule.id })}>
                     Delete
