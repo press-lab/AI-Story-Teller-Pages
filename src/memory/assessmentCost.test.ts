@@ -96,3 +96,75 @@ it("compares automatic Brain, manual Brain, existing Lore and unrequested-group 
   }
   console.log("MEMORY_REQUEST_COMPARISON", JSON.stringify(metrics));
 });
+
+// This same offline harness runs against 9557e39 and the repaired implementation.
+it("measures recovery and assessment retry request counts with mocked HTTP", async () => {
+  const { createDefaultAdventure, makeBrain, normalizeAdventure } = await import("../state/defaults");
+  const { mockAssessment, isAssessment } = await import("../test/memoryAssessment");
+  const baseline = process.env.BRAIN_RECOVERY_BASELINE === "1";
+  const metrics = [];
+  for (const scenario of ["edited-source", "downstream-approval", "stale-frozen-cleanup", "valid-three-source-batch"]) {
+    let a = createDefaultAdventure(); a.components = []; a.storyCards = []; a.messages = [];
+    a.brains = [makeBrain({ id: "mira", characterName: "Mira", active: true })];
+    a.memoryDetectionSettings.enabled = true; a.memoryDetectionSettings.everyNTurns = 1;
+    a.semanticEvaluationSettings.requireApprovalForAutoUpdates = true;
+    const stages: string[] = []; let failDiscovery = false, failValidation = false;
+    const http = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+      const body = JSON.parse(String(init?.body));
+      const system = typeof body.system === "string" ? body.system : body.system.map((b: { text: string }) => b.text).join("\n");
+      const messages = [{ role: "system" as const, content: system }, ...body.messages];
+      let content: string;
+      if (isAssessment(messages)) {
+        stages.push("assessment"); content = mockAssessment(messages, ["brain:mira"], scenario === "downstream-approval");
+      } else if (system.includes("MEMORY UPDATE VALIDATION")) {
+        stages.push("validation"); if (failValidation) throw Error("Offline validation failure");
+        const payload = JSON.parse(messages.at(-1)!.content);
+        content = JSON.stringify({ accepted: true, meaningfulChange: true, identityMatchesTarget: true,
+          evidenceMessageIds: payload.latestTurnMessageIds, reason: "Mock supported private change" });
+      } else if (system.includes("STORY CARD MEMORY CHECK")) {
+        stages.push("discovery"); if (failDiscovery) throw Error("Offline discovery failure"); content = "[]";
+      } else {
+        stages.push("generation"); content = JSON.stringify({ thoughts: { reaction: "I will verify the key myself." } });
+      }
+      return new Response(JSON.stringify({ content: [{ type: "text", text: content }], stop_reason: "end_turn",
+        usage: { input_tokens: 10, output_tokens: 5 } }), { status: 200 });
+    });
+    async function evaluate(id: string, manual = false) {
+      a = reduce(a, { type: "CLAIM_MEMORY_EVALUATION", sourceId: id, manual, turn: a.activeState.turn });
+      const result = await runMemoryCycle(a, assessmentConfig, { sourceId: id, manual });
+      a = result.actions.reduce(reduce, a);
+    }
+    async function turn(id: string) {
+      a.messages.push({ id, role: "assistant", content: `Mira learns the ward key ${id}.`, createdAt: "2026-10-26" });
+      a.activeState.turn++; await evaluate(id);
+    }
+    if (scenario === "downstream-approval") a.activeState.memoryProposals.push({ id: "covered", proposedType: "storyCard", storyCardType: "lore",
+      title: "Ward key", content: "Mira remembers an earlier ward key.", sourceTurnId: "one", sourceText: "Earlier key",
+      suggestedTriggers: [], confidence: 1, rationale: "Earlier supported change", status: "pending", createdAt: "2026-10-26", updatedAt: "2026-10-26" });
+    if (scenario === "valid-three-source-batch" || scenario === "stale-frozen-cleanup") {
+      await turn("one"); await turn("two"); failValidation = scenario === "stale-frozen-cleanup"; await turn("three");
+      if (scenario === "stale-frozen-cleanup") {
+        a.messages[1].content = "Mira did not learn the second key."; stages.length = 0;
+        a = normalizeAdventure(JSON.parse(JSON.stringify(a)));
+        expect(a.activeState.pendingBrainDeltas?.map(d => d.sourceId)).toEqual(baseline ? ["one", "two"] : ["one", "three"]);
+        if (!baseline) expect(a.messages[2].memoryEvaluation?.completedGroups).toContain("brains");
+      }
+    } else if (scenario === "edited-source") {
+      await turn("one"); stages.length = 0;
+      a = reduce(a, { type: "UPDATE_MESSAGE", messageId: "one", content: "Mira learns a different ward key." });
+      await evaluate("one");
+    } else {
+      failDiscovery = true; await turn("one");
+      expect(a.messages[0].memoryEvaluation?.status).toBe("failed");
+      a.activeState.memoryProposals[0].status = "approved";
+      failDiscovery = false; stages.length = 0; await evaluate("one", true);
+    }
+    const counts = { scenario, assessment: stages.filter(s => s === "assessment").length,
+      brainGeneration: stages.filter(s => s === "generation").length, validation: stages.filter(s => s === "validation").length,
+      discovery: stages.filter(s => s === "discovery").length };
+    expect([counts.assessment, counts.brainGeneration]).toEqual(scenario === "valid-three-source-batch" ? [3, 1]
+      : scenario === "edited-source" ? [1, 0] : scenario === "downstream-approval" && baseline ? [1, 0] : [0, 0]);
+    metrics.push(counts); http.mockRestore();
+  }
+  console.log("BRAIN_RECOVERY_REQUEST_COUNTS", JSON.stringify({ baseline, metrics }));
+});

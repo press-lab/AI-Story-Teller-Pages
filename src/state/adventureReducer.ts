@@ -1,3 +1,4 @@
+import { reconcileBrainBatchState } from "../memory/brainBatchRecovery";
 import { memoryDecisionState } from "../memory/memoryAssessment";
 import { factsCovered, hasFactOverlap, proposalCoverage } from "../memory/factCoverage";
 import { placementValidationError, placementFingerprint } from "../memory/storyCardPlacement";
@@ -517,30 +518,57 @@ function withStoryHistory(state: Adventure, patch: Partial<Adventure>, entry: St
   });
 }
 
+/** Removing a batch owner must not lose survivors held only in its checkpoint. */
+function reconcileStoryMutation(previous: Adventure, next: Adventure): Adventure {
+  const remaining = new Set(next.messages.map(m => m.id));
+  const interrupted = previous.messages.filter(m => !remaining.has(m.id) && !m.memoryEvaluation?.completedGroups.includes("brains"))
+    .flatMap(m => { const batch = m.memoryEvaluation?.groupWork?.brains?.brainBatch;
+      return batch ? [...batch.enqueue, ...batch.batches.flat()] : []; });
+  return reconcileBrainBatchState(interrupted.length ? { ...next, activeState: { ...next.activeState,
+    pendingBrainDeltas: [...(next.activeState.pendingBrainDeltas ?? []), ...interrupted] } } : next);
+}
+
+/** Undo/redo content changes need the same source invalidation as direct edits. */
+function reconcileStoryHistory(previous: Adventure, next: Adventure): Adventure {
+  const recovered = reconcileStoryMutation(previous, next);
+  const prior = new Map(previous.messages.map(m => [m.id, m]));
+  const messages = recovered.messages.map(message => {
+    if (!message.memoryEvaluation || message.role !== "assistant") return message;
+    const old = prior.get(message.id);
+    if (!old) return message;
+    const before = memoryEvidenceWindow(previous, message.id).map(m => [m.id, m.content]);
+    const after = memoryEvidenceWindow(recovered, message.id).map(m => [m.id, m.content]);
+    if (JSON.stringify(before) === JSON.stringify(after)) return message;
+    return { ...message, memoryEvaluation: { turn: message.memoryEvaluation.turn,
+      revision: createId("memoryRevision"), status: "pending" as const, attempts: 0, completedGroups: [] } };
+  });
+  return { ...recovered, messages };
+}
+
 function undoStoryEdit(state: Adventure): Adventure {
   const [entry, ...remaining] = state.activeState.storyUndoStack;
   if (!entry) return state;
-  return touchAdventure(state, {
+  return reconcileStoryHistory(state, touchAdventure(state, {
     ...applyStoryPatch(state, entry.undo),
     activeState: {
       ...state.activeState,
       storyUndoStack: remaining,
       storyRedoStack: [entry, ...state.activeState.storyRedoStack].slice(0, STORY_HISTORY_LIMIT),
     },
-  });
+  }));
 }
 
 function redoStoryEdit(state: Adventure): Adventure {
   const [entry, ...remaining] = state.activeState.storyRedoStack;
   if (!entry) return state;
-  return touchAdventure(state, {
+  return reconcileStoryHistory(state, touchAdventure(state, {
     ...applyStoryPatch(state, entry.redo),
     activeState: {
       ...state.activeState,
       storyUndoStack: [entry, ...state.activeState.storyUndoStack].slice(0, STORY_HISTORY_LIMIT),
       storyRedoStack: remaining,
     },
-  });
+  }));
 }
 
 function updateMemoryProposal(proposal: MemoryProposal, patch: Partial<MemoryProposal>): MemoryProposal {
@@ -1169,14 +1197,28 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
     case "COMMIT_MEMORY_EVALUATION_GROUP": {
       const source = state.messages.find(message => message.id === action.source.id);
       if (!source || source.memoryEvaluation?.completedGroups.includes(action.group)) return state;
-      const stale = source.memoryEvaluation?.revision !== action.revision || source.content !== action.source.content || action.dependencies.some(item => !state.messages.some(message => message.id === item.id && message.content === item.content))
+      const staleBatch = action.group === "brains" && action.groupWork?.brainBatch
+        && [...action.groupWork.brainBatch.enqueue, ...action.groupWork.brainBatch.batches.flat()]
+          .some(d => !state.messages.some(m => m.id === d.sourceId && m.content === d.sourceContent));
+      const stale = staleBatch || source.memoryEvaluation?.revision !== action.revision || source.content !== action.source.content || action.dependencies.some(item => !state.messages.some(message => message.id === item.id && message.content === item.content))
         || action.targets.some(target => !memoryTargetMatches(state, target))
         || (action.decisionState !== undefined && action.decisionState !== memoryDecisionState(state, source.id));
-      if (stale) return adventureReducer(source.memoryEvaluation ? touchAdventure(state, { messages: state.messages.map(message => message.id === source.id
-        ? { ...message, memoryEvaluation: { ...message.memoryEvaluation!, status: "pending" as const } } : message) }) : state, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: {
+      if (stale) {
+        if (action.group === "brains" && action.groupWork?.brainBatch) {
+          const batch = action.groupWork.brainBatch;
+          const sameSource = source.content === action.source.content && source.memoryEvaluation?.revision === action.revision;
+          state = reconcileBrainBatchState({ ...state,
+            messages: sameSource && staleBatch ? state.messages.map(m => m.id === source.id && m.memoryEvaluation
+              ? { ...m, memoryEvaluation: { ...m.memoryEvaluation, groupWork: { ...m.memoryEvaluation.groupWork, brains: action.groupWork } } } : m) : state.messages,
+            activeState: { ...state.activeState,
+            pendingBrainDeltas: [...(state.activeState.pendingBrainDeltas ?? []), ...batch.enqueue, ...batch.batches.flat()] } });
+        }
+        return adventureReducer(reconcileBrainBatchState(source.memoryEvaluation ? touchAdventure(state, { messages: state.messages.map(message => message.id === source.id
+        ? { ...message, memoryEvaluation: { ...message.memoryEvaluation!, status: MEMORY_EVALUATION_GROUPS.every(g => message.memoryEvaluation!.completedGroups.includes(g)) ? "complete" as const : "pending" as const } } : message) }) : state), { type: "RECORD_MEMORY_DIAGNOSTIC", entry: {
         id: createId("decision"), sourceId: source.id, createdAt: nowIso(), stage: "independent",
         outcome: "evaluation_stale", group: action.group, reason: "Source evidence or destination changed during evaluation; result discarded.",
       } });
+      }
       const error = action.error;
       const terminalAssessmentFailure = action.actions.some(item => item.type === "RECORD_MEMORY_DIAGNOSTIC"
         && item.entry.requestStage === "assessment" && item.entry.failureCategory === "invalid_model_output");
@@ -1190,7 +1232,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
       }
       const completedGroups = [...(source.memoryEvaluation?.completedGroups ?? []), ...(!error ? [action.group] : [])];
       const complete = MEMORY_EVALUATION_GROUPS.every(group => completedGroups.includes(group));
-      const updated = touchAdventure(next, { messages: next.messages.map(message => message.id === source.id
+      const updated = reconcileBrainBatchState(touchAdventure(next, { messages: next.messages.map(message => message.id === source.id
         ? { ...message, memoryEvaluation: { ...message.memoryEvaluation, turn: source.memoryEvaluation?.turn ?? state.activeState.turn,
           attempts: source.memoryEvaluation?.attempts ?? 0, completedGroups,
           assessment: terminalAssessmentFailure ? message.memoryEvaluation?.assessment : action.assessment ?? message.memoryEvaluation?.assessment,
@@ -1198,7 +1240,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
           ...(!terminalAssessmentFailure && action.group === "discovery" ? { discoveryCheckpoint: error ? action.discoveryCheckpoint : undefined } : {}),
           status: terminalAssessmentFailure ? "quarantined" as const : complete ? "complete" as const : error ? (source.memoryEvaluation?.attempts ?? 0) >= 3 ? "quarantined" as const : "failed" as const
             : message.memoryEvaluation?.status === "quarantined" ? "quarantined" as const : message.memoryEvaluation?.status === "failed" ? "failed" as const : "pending" as const,
-          lastError: complete ? undefined : error ?? message.memoryEvaluation?.lastError } } : message) });
+          lastError: complete ? undefined : error ?? message.memoryEvaluation?.lastError } } : message) }));
       // A shared assessment failure already has one source-level diagnostic.
       // Group transaction bookkeeping is not another provider request/failure.
       if (error && action.actions.some(item => item.type === "RECORD_MEMORY_DIAGNOSTIC" && item.entry.requestStage === "assessment")) return updated;
@@ -1262,13 +1304,16 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
     case "UPDATE_MESSAGE": {
       const existing = state.messages.find((message) => message.id === action.messageId);
       if (!existing || existing.content === action.content) return state;
+      // Salvage frozen survivors before the existing edit invalidation drops work.
+      state = reconcileBrainBatchState({ ...state, messages: state.messages.map(m =>
+        m.id === action.messageId ? { ...m, content: action.content } : m) });
       // Old exports may have lost the marker after an edit. Only explicit prior
       // independent-evaluation records qualify; never nominate untracked history.
       const trackedIds = new Set((state.activeState.memoryDiagnostics ?? []).filter(entry => entry.stage === "independent"
         && ["evaluation_queued", "evaluation_started", "evaluation_completed", "evaluation_failed"].includes(entry.outcome)).map(entry => entry.sourceId));
       const tracked = (message: Message) => message.role === "assistant" && message.inputMode !== "comms"
         && Boolean(message.memoryEvaluation || trackedIds.has(message.id));
-      return withStoryHistory(
+      return reconcileStoryMutation(state, withStoryHistory(
         state,
         {
           messages: state.messages.map((message) =>
@@ -1284,13 +1329,13 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
           { type: "updateMessage", messageId: action.messageId, content: existing.content },
           { type: "updateMessage", messageId: action.messageId, content: action.content },
         ),
-      );
+      ));
     }
     case "DELETE_MESSAGE": {
       const index = state.messages.findIndex((message) => message.id === action.messageId);
       const message = state.messages[index];
       if (!message) return state;
-      return withStoryHistory(
+      return reconcileStoryMutation(state, withStoryHistory(
         state,
         { messages: state.messages.filter((entry) => entry.id !== action.messageId) },
         storyHistoryEntry(
@@ -1298,13 +1343,13 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
           { type: "insertMessage", message, index },
           { type: "deleteMessage", messageId: message.id },
         ),
-      );
+      ));
     }
     case "DELETE_LAST_MESSAGE": {
       const index = state.messages.length - 1;
       const message = state.messages[index];
       if (!message) return state;
-      return withStoryHistory(
+      return reconcileStoryMutation(state, withStoryHistory(
         state,
         { messages: state.messages.slice(0, -1) },
         storyHistoryEntry(
@@ -1312,14 +1357,14 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
           { type: "insertMessage", message, index },
           { type: "deleteMessage", messageId: message.id },
         ),
-      );
+      ));
     }
     case "REMOVE_LAST_ASSISTANT_MESSAGE": {
       const index = [...state.messages].reverse().findIndex((message) => message.role === "assistant");
       if (index === -1) return state;
       const removeIndex = state.messages.length - 1 - index;
       const message = state.messages[removeIndex];
-      return withStoryHistory(
+      return reconcileStoryMutation(state, withStoryHistory(
         state,
         { messages: state.messages.filter((_, itemIndex) => itemIndex !== removeIndex) },
         storyHistoryEntry(
@@ -1327,7 +1372,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
           { type: "insertMessage", message, index: removeIndex },
           { type: "deleteMessage", messageId: message.id },
         ),
-      );
+      ));
     }
     case "UNDO_STORY_EDIT":
       return undoStoryEdit(state);

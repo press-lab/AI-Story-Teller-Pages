@@ -35,7 +35,11 @@ export async function assessmentInputs(a: Adventure, sourceId: string, condition
   const fingerprints = {} as Record<MemoryEvaluationGroup, string>;
   for (const group of ["plot", "storyCards", "brains", "discovery"] as const) fingerprints[group] = await fingerprint({ ...common,
     conditions: group === "discovery" ? [] : conditions[group], ...(group === "brains" ? { currentBrains } : {}) });
-  return { evidence, excerpt, currentCards, currentPlot, currentBrains, coverage, canon, fingerprints };
+  const source = a.messages.find(m => m.id === sourceId);
+  const sourceFingerprint = await fingerprint({ version: 1, sourceId, revision: source?.memoryEvaluation?.revision,
+    evidence, conditions: Object.fromEntries((["plot", "storyCards", "brains"] as const)
+      .map(group => [group, conditions[group].map(({ id, condition }) => ({ id, condition }))])) });
+  return { evidence, excerpt, currentCards, currentPlot, currentBrains, coverage, canon, fingerprints, sourceFingerprint };
 }
 export async function assessMemory(a: Adventure, provider: ProviderConfig, sourceId: string, conditions: AssessmentConditions,
   accum: { promptTokens: number; completionTokens: number }) {
@@ -48,7 +52,8 @@ export async function assessMemory(a: Adventure, provider: ProviderConfig, sourc
     ? saved : undefined;
   const completed = a.messages.find(m => m.id === sourceId)?.memoryEvaluation?.completedGroups ?? [];
   const needed = (["plot", "storyCards", "brains", "discovery"] as const).filter(g => !completed.includes(g)
-    && (!prior || prior.version !== 1 || prior.fingerprints[g] !== inputs.fingerprints[g]));
+    && (!prior || (prior.sourceFingerprint !== undefined
+      ? prior.sourceFingerprint !== inputs.sourceFingerprint : prior.fingerprints[g] !== inputs.fingerprints[g])));
   if (!needed.length && prior) return { assessment: prior, reused: true, inputs };
   let received = false;
   try {
@@ -118,7 +123,7 @@ Return only valid JSON.` },
       const d = value[g] as MemoryAssessmentDecision;
       return { reason: d.reason, targets: d.targets.map(t => ({ id: t.id, delta: t.delta, evidenceMessageIds: [...t.evidenceMessageIds] })) };
     };
-    const assessment: MemoryAssessmentCheckpoint = { version: 1, fingerprints: { ...prior?.fingerprints, ...Object.fromEntries(needed.map(g => [g, inputs.fingerprints[g]])) } as MemoryAssessmentCheckpoint["fingerprints"],
+    const assessment: MemoryAssessmentCheckpoint = { version: 1, sourceFingerprint: inputs.sourceFingerprint, fingerprints: { ...prior?.fingerprints, ...Object.fromEntries(needed.map(g => [g, inputs.fingerprints[g]])) } as MemoryAssessmentCheckpoint["fingerprints"],
       plot: needed.includes("plot") ? decision("plot") : prior?.plot ?? { targets: [], reason: "Previously completed transaction." },
       storyCards: needed.includes("storyCards") ? decision("storyCards") : prior?.storyCards ?? { targets: [], reason: "Previously completed transaction." },
       brains: needed.includes("brains") ? decision("brains") : prior?.brains ?? { targets: [], reason: "Previously completed transaction." },

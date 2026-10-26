@@ -1,3 +1,6 @@
+import { reconcileBrainBatchState } from "./brainBatchRecovery";
+import { brainBatchEvidenceMessages } from "./memoryEvidenceWindow";
+import { normalizeAdventure } from "../state/defaults";
 import { beforeEach, expect, it, vi } from "vitest";
 import { createDefaultAdventure, defaultModelConfig, makeBrain, makeComponent, makeStoryCard } from "../state/defaults";
 import { adventureReducer as reduce } from "../state/adventureReducer";
@@ -229,8 +232,8 @@ it.each(["metadata", "thought", "evidence"])("binds reuse to actual dependencies
   if (kind === "thought") first.state.brains[0].thoughts.changed = "A relevant new interpretation.";
   if (kind === "evidence") first.state.messages[1].content = "I decline.";
   failValidation = undefined; provider.mockClear(); await cycle(first.state);
-  expect(counts().assessment).toBe(kind === "metadata" ? 0 : 1);
-  expect(counts().total).toBe(kind === "metadata" ? 1 : 3);
+  expect(counts().assessment).toBe(kind === "evidence" ? 1 : 0);
+  expect(counts().total).toBe(kind === "metadata" ? 1 : kind === "thought" ? 2 : 3);
 });
 it("classifies local parsing after a response as invalid output and regenerates only the malformed draft on retry", async () => {
   const a = seed(); a.brains = [makeBrain({ id: "h", characterName: "Hermione", active: true })]; fired = ["brain:h"];
@@ -522,7 +525,7 @@ it("ignores OOC turns when advancing the Brain batching deadline", async () => {
   a = (await autoTurn(a, "three", ["brain:h"])).state;
   expect(counts()).toEqual({ assessment: 3, validation: 1, total: 5 });
 });
-it("rejects a stale Brain buffer transaction and leaves both original and new deltas intact", async () => {
+it("rejects a stale Brain transaction, removes unsupported buffer entries and salvages valid deltas", async () => {
   let a = batchSeed(); a = (await autoTurn(a, "one", ["brain:h"])).state;
   a = (await autoTurn(a, "two", ["brain:h"])).state;
   const r = await autoTurn(a, "three", ["brain:h"]);
@@ -531,7 +534,7 @@ it("rejects a stale Brain buffer transaction and leaves both original and new de
   const changed = { ...claimed, activeState: { ...claimed.activeState, pendingBrainDeltas: [...claimed.activeState.pendingBrainDeltas!,
     { ...claimed.activeState.pendingBrainDeltas![0], delta: "Edited buffered interpretation", sourceId: "extra" }] } };
   const stale = reduce(changed, commit);
-  expect(stale.activeState.pendingBrainDeltas).toEqual(changed.activeState.pendingBrainDeltas);
+  expect(stale.activeState.pendingBrainDeltas?.map(d => d.sourceId)).toEqual(["one", "two", "three"]);
   expect(stale.activeState.memoryProposals).toEqual([]);
   expect(stale.activeState.memoryDiagnostics).toContainEqual(expect.objectContaining({ outcome: "evaluation_stale", group: "brains" }));
 });
@@ -604,7 +607,7 @@ it("rejects Brain review evidence that misses the supplied establishing source o
 });
 
 it("enqueues once and consumes atomically only on successful Brain group commits", () => {
-  const a = seed(); const delta = { brainId: "h", sourceId: "prior", sourceTurn: 1,
+  const a = seed(); a.brains = [makeBrain({ id: "h", characterName: "Hermione" })]; const delta = { brainId: "h", sourceId: "prior", sourceTurn: 1,
     sourceContent: a.messages[0].content, delta: "I reconsider the offer.", evidenceMessageIds: ["prior"] };
   a.activeState.pendingBrainDeltas = [delta];
   const next = { ...delta, sourceId: "source", sourceContent: a.messages.at(-1)!.content };
@@ -613,4 +616,157 @@ it("enqueues once and consumes atomically only on successful Brain group commits
   expect(reduce(a, commit).activeState.pendingBrainDeltas).toEqual([next]);
   expect(reduce(a, { ...commit, error: "Offline failure" }).activeState.pendingBrainDeltas).toEqual([delta]);
   expect(reduce(a, { ...commit, group: "storyCards" }).activeState.pendingBrainDeltas).toEqual([delta]);
+});
+
+function recoverySeed() {
+  const a = batchSeed();
+  a.messages = ["one", "two", "three", "four"].map(id => ({ id, role: "assistant", content: `Hermione establishes ${id}.`, createdAt: "2026-10-25" }));
+  a.activeState.pendingBrainDeltas = a.messages.slice(0, 3).map((m, i) => ({ brainId: "h", sourceId: m.id,
+    sourceTurn: i + 1, sourceContent: m.content, delta: `I reconsider ${m.id}.`, evidenceMessageIds: [m.id] }));
+  return a;
+}
+function freezeRecovery(a: Adventure) {
+  const deltas = a.activeState.pendingBrainDeltas!;
+  a.messages[3].memoryEvaluation = { turn: 4, status: "failed", attempts: 3, completedGroups: ["plot", "storyCards", "discovery"],
+    groupWork: { brains: { fingerprint: "old", drafts: { "brain:h": { raw: "stale patch", validationCache: { old: "verdict" } } },
+      brainBatch: { enqueue: [], batches: [deltas], consumeKeys: deltas.map(d => `${d.sourceId}:${d.brainId}`) } } } };
+}
+it("drops edited buffered evidence while preserving valid deltas and source reassessment without requests", () => {
+  const a = recoverySeed(); const valid = a.activeState.pendingBrainDeltas!.slice(1);
+  a.messages[0].memoryEvaluation = { turn: 1, status: "complete", attempts: 1, completedGroups: ["plot", "storyCards", "brains", "discovery"] };
+  const edited = reduce(a, { type: "UPDATE_MESSAGE", messageId: "one", content: "Hermione declines." });
+  const recovered = reconcileBrainBatchState(edited);
+  expect(recovered.activeState.pendingBrainDeltas).toEqual(valid);
+  expect(recovered.messages[0].memoryEvaluation).toMatchObject({ status: "pending", completedGroups: [] });
+  expect(provider).not.toHaveBeenCalled();
+});
+it("deletes only unsupported deltas and releases stale reservations in order", () => {
+  const a = recoverySeed(); freezeRecovery(a); const valid = [a.activeState.pendingBrainDeltas![0], a.activeState.pendingBrainDeltas![2]];
+  const recovered = reduce(a, { type: "DELETE_MESSAGE", messageId: "two" });
+  expect(recovered.activeState.pendingBrainDeltas).toEqual(valid);
+  expect(recovered.messages.at(-1)?.memoryEvaluation?.groupWork?.brains).toBeUndefined();
+  expect(provider).not.toHaveBeenCalled();
+});
+it("flushes an older valid narrator outside the standard window with its exact evidence", async () => {
+  const a = recoverySeed(); a.activeState.pendingBrainDeltas = a.activeState.pendingBrainDeltas!.slice(0, 1);
+  fired = [];
+  const r = await autoSource(a, "four");
+  expect(r.logEntry.errors).toEqual([]);
+  const review = provider.mock.calls.find(([r]) => r.messages.some(m => m.content.includes("MEMORY UPDATE VALIDATION")))![0];
+  const body = JSON.parse(review.messages.at(-1)!.content);
+  expect(body.latestTurnMessageIds).toEqual(["one"]);
+  expect(body.recentEvidence).toContain(a.messages[0].content);
+  expect(r.state.activeState.memoryProposals.filter(p => p.proposedType === "brainUpdate")).toHaveLength(1);
+});
+it.each(["failed", "quarantined", "running"] as const)("releases a %s stale frozen batch idempotently, retaining siblings and committed proposals", status => {
+  const a = recoverySeed(); freezeRecovery(a); a.messages[3].memoryEvaluation!.status = status;
+  a.messages[3].memoryEvaluation!.groupWork!.plot = { fingerprint: "plot", drafts: {} };
+  a.messages[1].content = "Edited second source.";
+  const valid = [a.activeState.pendingBrainDeltas![0], a.activeState.pendingBrainDeltas![2]];
+  a.activeState.pendingBrainDeltas = []; // Recover from frozen entries, not just the buffer.
+  const recovered = reconcileBrainBatchState(a);
+  expect(recovered.activeState.pendingBrainDeltas).toEqual(valid);
+  expect(recovered.messages[3].memoryEvaluation).toMatchObject({ status: "complete", completedGroups: ["plot", "storyCards", "discovery", "brains"] });
+  expect(recovered.messages[3].memoryEvaluation?.groupWork?.brains).toBeUndefined();
+  expect(recovered.messages[3].memoryEvaluation?.groupWork?.plot).toEqual(a.messages[3].memoryEvaluation?.groupWork?.plot);
+  expect(reconcileBrainBatchState(recovered)).toBe(recovered);
+  expect(provider).not.toHaveBeenCalled();
+});
+it("never replays a completed approved batch after reload and repeated recovery", async () => {
+  let a = batchSeed();
+  for (const id of ["one", "two", "three"]) a = (await autoTurn(a, id, ["brain:h"])).state;
+  a = reduce(a, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: a.activeState.memoryProposals[0].id });
+  const thoughts = a.brains[0].thoughts, proposals = a.activeState.memoryProposals;
+  provider.mockClear();
+  a = reconcileBrainBatchState(reconcileBrainBatchState(normalizeAdventure(JSON.parse(JSON.stringify(a)))));
+  await autoSource(a, "three");
+  expect(a.brains[0].thoughts).toEqual(thoughts); expect(a.activeState.memoryProposals).toEqual(proposals);
+  expect(a.activeState.pendingBrainDeltas).toEqual([]); expect(provider).not.toHaveBeenCalled();
+});
+it("requests one new assessment for a genuine narrator edit", async () => {
+  const first = await cycle(seed()); provider.mockClear();
+  const edited = reduce(first.state, { type: "UPDATE_MESSAGE", messageId: "source", content: "Hermione declines the invitation." });
+  await cycle(edited); expect(counts().assessment).toBe(1);
+});
+it("reuses discovery decisions after approval changes while running current downstream checks", async () => {
+  const a = seed(); discovery = true;
+  const original = provider.getMockImplementation()!;
+  provider.mockImplementation(async r => !isAssessment(r.messages) && r.messages.some(m => m.content.includes("STORY CARD MEMORY CHECK")) ? Promise.reject(Error("Disconnected")) : original(r));
+  const first = await cycle(a);
+  expect(first.state.messages.at(-1)?.memoryEvaluation?.completedGroups).not.toContain("discovery");
+  first.state.activeState.memoryProposals.push({ ...makeStoryCardSuggestion(first.state, "source", a.messages.at(-1)!.content,
+    { title: "Invitation", content: "Hermione accepted the invitation.", type: "lore", reason: "Observed", evidence: a.messages.at(-1)!.content }), status: "approved" });
+  provider.mockImplementation(original); provider.mockClear();
+  const result = await cycle(first.state);
+  expect(counts().assessment).toBe(0);
+  expect(result.state.messages.at(-1)?.memoryEvaluation?.completedGroups).toContain("discovery");
+  expect(provider.mock.calls.some(([r]) => r.messages.some(m => m.content.includes("STORY CARD MEMORY CHECK")))).toBe(true);
+});
+it.each(["condition", "target"])("requests one new assessment after eligible %s changes", async kind => {
+  const a = seed(); a.brains = [makeBrain({ id: "h", characterName: "Hermione", active: true })]; fired = ["brain:h"]; failValidation = "Hermione";
+  const first = await cycle(a); failValidation = undefined; provider.mockClear();
+  if (kind === "condition") first.state.brains[0].updateCondition = "Only when the invitation changes.";
+  else first.state.brains.push(makeBrain({ id: "d", characterName: "Draconia", active: true }));
+  await cycle(first.state); expect(counts().assessment).toBe(1);
+});
+it("binds Brain validation cache to exact old source content and current Brain state", async () => {
+  const a = recoverySeed(); const cache = {};
+  const review = () => validateMemoryUpdate(a, config, "brain", "Hermione", "", '{"thoughts":{"new":"I reconsider."}}', undefined,
+    false, false, { id: "h", type: "brain" }, cache, ["one"]);
+  await review(); await review(); expect(provider).toHaveBeenCalledTimes(1);
+  a.messages[0].content += " Updated evidence."; await review(); expect(provider).toHaveBeenCalledTimes(2);
+  a.brains[0].thoughts.other = "I remember another fact."; await review(); expect(provider).toHaveBeenCalledTimes(3);
+});
+it("selects explicit batch narrators and preceding story inputs without substitutions or future evidence", () => {
+  const a = seed(); a.messages.push({ id: "future", role: "assistant", content: "Later events", createdAt: "today" });
+  expect(brainBatchEvidenceMessages(a, ["source", "prior", "source"]).map(m => m.id)).toEqual(["prior", "player", "source"]);
+  for (const ids of [[], ["missing"], ["player"], ["prior", "source", "future", "extra"]]) expect(() => brainBatchEvidenceMessages(a, ids)).toThrow();
+  a.messages[0].inputMode = "comms"; expect(() => brainBatchEvidenceMessages(a, ["prior"])).toThrow();
+});
+it("repairs malformed deltas, missing targets and duplicate keys without altering valid evidence", () => {
+  const a = recoverySeed(); const good = a.activeState.pendingBrainDeltas![0];
+  a.activeState.pendingBrainDeltas = [good, { ...good }, { ...good, brainId: "deleted" },
+    { ...good, sourceTurn: NaN }, { ...good, evidenceMessageIds: [42] as unknown as string[] }];
+  expect(reconcileBrainBatchState(a).activeState.pendingBrainDeltas).toEqual([good]); expect(provider).not.toHaveBeenCalled();
+});
+
+it("recovers frozen-only survivors when deleting the interrupted batch owner", () => {
+  const a = recoverySeed(); freezeRecovery(a); const valid = a.activeState.pendingBrainDeltas!;
+  a.activeState.pendingBrainDeltas = [];
+  const recovered = reduce(a, { type: "DELETE_MESSAGE", messageId: "four" });
+  expect(recovered.activeState.pendingBrainDeltas).toEqual(valid);
+  expect(provider).not.toHaveBeenCalled();
+});
+it("repairs a thirteen-delta regression fixture by discarding six stale sources and preserving seven valid entries", () => {
+  const a = batchSeed();
+  a.messages = Array.from({ length: 13 }, (_, i) => ({ id: `source_${i}`, role: "assistant", content: `Hermione learns research fact ${i}.`, createdAt: "2026-10-26" }));
+  const buffered = a.messages.map((m, i) => ({ brainId: "h", sourceId: m.id, sourceTurn: i,
+    sourceContent: m.content, delta: `I reconsider fact ${i}.`, evidenceMessageIds: [m.id] }));
+  a.activeState.pendingBrainDeltas = buffered;
+  for (let i = 0; i < 3; i++) a.messages[i].content += " Edited.";
+  a.messages = a.messages.filter((_, i) => i < 3 || i >= 6);
+  const recovered = normalizeAdventure(JSON.parse(JSON.stringify(a)));
+  expect(recovered.activeState.pendingBrainDeltas).toEqual(buffered.slice(6));
+  expect(reconcileBrainBatchState(recovered)).toBe(recovered);
+  expect(provider).not.toHaveBeenCalled();
+});
+
+it("processes recovered survivors in the next automatic Brain cycle without retrying their old owner", async () => {
+  let a = recoverySeed(); freezeRecovery(a); a.messages[1].content = "Edited second source.";
+  a = reconcileBrainBatchState(a); provider.mockClear();
+  const old = await autoSource(a, "four");
+  expect(provider).not.toHaveBeenCalled();
+  a = (await autoTurn(old.state, "five", ["brain:h"])).state;
+  expect(counts()).toEqual({ assessment: 1, validation: 1, total: 3 });
+  expect(a.activeState.pendingBrainDeltas).toEqual([]);
+  const proposal = a.activeState.memoryProposals.find(p => p.proposedType === "brainUpdate")!;
+  expect(Object.keys(JSON.parse(proposal.content).thoughts)).toEqual(["reaction_one", "reaction_three", "reaction_five"]);
+});
+it("uses legacy full-fingerprint validation when a checkpoint has no source identity", async () => {
+  const a = seed(); a.brains = [makeBrain({ id: "h", characterName: "Hermione", active: true })];
+  fired = ["brain:h"]; failValidation = "Hermione"; const first = await cycle(a);
+  delete first.state.messages.at(-1)!.memoryEvaluation!.assessment!.sourceFingerprint;
+  first.state.brains[0].thoughts.changed = "I reconsider an unrelated question.";
+  failValidation = undefined; provider.mockClear(); await cycle(first.state);
+  expect(counts().assessment).toBe(1);
 });

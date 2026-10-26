@@ -96,6 +96,7 @@ it("preserves all checkpoints, approved proposals and completed groups when reas
   const good = await cycle(a);
   const approved = reduce(good.state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: good.state.activeState.memoryProposals[0].id });
   const ev = approved.messages.at(-1)!.memoryEvaluation!;
+  ev.revision = "changed-source-revision"; // A genuine assessment dependency changes.
   ev.status = "quarantined"; ev.completedGroups = ["plot", "brains"]; // imported partially completed recovery
   ev.groupWork = { storyCards: { fingerprint: "old-checkpoint", drafts: { saved: { raw: "Saved generated draft" } } } };
   ev.discoveryCheckpoint = { version: 1, dependencies: [], referenceFingerprint: "old-discovery", candidates: [] };

@@ -6,7 +6,7 @@ import type { Adventure, ProviderConfig } from "../types/adventure";
 import { sendMemoryCompletion } from "../providers/memoryCompletion";
 import { latestMemoryTurn } from "./memoryUpdateEvidence";
 import { memoryCanonMessages } from "./memoryCanon";
-import { storyMemoryMessages, memoryEvidenceWindow } from "./memoryEvidenceWindow";
+import { brainBatchEvidenceMessages, memoryEvidenceWindow } from "./memoryEvidenceWindow";
 
 export interface StoryCardPlacementVerdict {
   kind: MemoryPlacementKind; newFact: string; reason: string; title: string; content: string;
@@ -47,12 +47,13 @@ async function validateMemoryUpdateUncached(
   const shapeError = memoryUpdateShapeError(surface, content);
   if (shapeError) return { changed: false, error: shapeError };
   const latestSource = adventure.messages.at(-1);
-  const messages = latestSource?.role === "assistant" ? memoryEvidenceWindow(adventure, latestSource.id)
+  let messages = latestSource?.role === "assistant" ? memoryEvidenceWindow(adventure, latestSource.id)
     : adventure.messages.filter(m => m.role === "user" || m.role === "assistant").slice(-Math.max(8, adventure.semanticEvaluationSettings.messagesIncluded));
   const establishingIds = surface === "brain" ? brainSourceIds : undefined;
-  if (establishingIds && (!establishingIds.length || establishingIds.some(id =>
-    !messages.some(m => m.id === id && m.role === "assistant") || !storyMemoryMessages(adventure).some(m => m.id === id)))) {
-    return { changed: false, error: "Brain batch sources are not narrator messages in the current evidence window." };
+  if (establishingIds) {
+    try { messages = brainBatchEvidenceMessages(adventure, establishingIds); }
+    catch { return { changed: false, failureCode: "memory_brain_batch_source_stale",
+      error: "memory_brain_batch_source_stale: Brain batch sources are not current in-story narrator messages." }; }
   }
   const latest = establishingIds ? messages.filter(m => establishingIds.includes(m.id)) : latestMemoryTurn(adventure);
   const evidence = messages.map(m => `[${m.id}] ${m.role}: ${m.content}`).join("\n\n");
@@ -158,7 +159,14 @@ export async function validateMemoryUpdate(
   cache?: Record<string, string>,
   brainSourceIds?: string[],
 ): Promise<MemoryValidationResult> {
+  let batchEvidence;
+  if (surface === "brain" && brainSourceIds) {
+    try { batchEvidence = brainBatchEvidenceMessages(adventure, brainSourceIds); }
+    catch { return { changed: false, failureCode: "memory_brain_batch_source_stale", error: "memory_brain_batch_source_stale: Invalid Brain evidence." }; }
+  }
   const key = cache ? await fingerprint({ version: 1, placementVersion: PLACEMENT_VERSION, policy: STORY_CARD_PLACEMENT_POLICY, surface, title, previous, content, appendOnly, reviewOnly, targetInfo, brainSourceIds: surface === "brain" ? brainSourceIds : undefined,
+    currentBrain: batchEvidence ? adventure.brains.find(b => b.id === targetInfo?.id) : undefined,
+    batchEvidence: batchEvidence?.map(({ id, role, content }) => ({ id, role, content })),
     evidence: memoryEvidenceWindow(adventure, adventure.messages.at(-1)?.id ?? "").map(({ id, content }) => ({ id, content })),
     references: memoryCanonMessages(adventure, memoryEvidenceWindow(adventure, adventure.messages.at(-1)?.id ?? "").map(m => m.content).join("\n"), `Review ${title}\nPrevious: ${previous}\nProposed: ${content}`),
   }) : undefined;

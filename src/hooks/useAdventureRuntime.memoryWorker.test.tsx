@@ -325,3 +325,45 @@ it("keeps manual historical recovery separate from a later automatic buffer", as
   expect(JSON.stringify(generated.messages)).not.toContain("Bounded Brain batch:");
   expect(hook.result.current.adventure!.activeState.memoryProposals.find(p => p.proposedType === "brainUpdate")?.sourceTurnId).toBe("historical");
 });
+
+it.each(["edit", "delete", "deleteLast", "removeAssistant"] as const)("repairs the Brain buffer through runtime %s, undo, redo and reload without requests", async operation => {
+  mockBrainWorker(); let hook = setup(brainWorkerSeed());
+  await workerTurn(hook); await workerTurn(hook);
+  const original = hook.result.current.adventure!;
+  const id = original.messages.at(-1)!.id;
+  const survivor = original.activeState.pendingBrainDeltas![0];
+  provider.mockClear();
+  act(() => hook.result.current.setAdventure(current => adventureReducer(current!, operation === "edit"
+    ? { type: "UPDATE_MESSAGE", messageId: id, content: "Mira departed." }
+    : operation === "delete" ? { type: "DELETE_MESSAGE", messageId: id }
+    : { type: operation === "deleteLast" ? "DELETE_LAST_MESSAGE" : "REMOVE_LAST_ASSISTANT_MESSAGE" })));
+  expect(hook.result.current.adventure!.activeState.pendingBrainDeltas).toEqual([survivor]);
+  act(() => hook.result.current.setAdventure(current => adventureReducer(current!, { type: "UNDO_STORY_EDIT" })));
+  expect(hook.result.current.adventure!.messages.at(-1)?.content).toBe(original.messages.at(-1)!.content);
+  expect(hook.result.current.adventure!.activeState.pendingBrainDeltas).toEqual([survivor]);
+  act(() => hook.result.current.setAdventure(current => adventureReducer(current!, { type: "REDO_STORY_EDIT" })));
+  expect(hook.result.current.adventure!.activeState.pendingBrainDeltas).toEqual([survivor]);
+  const saved = normalizeAdventure(JSON.parse(JSON.stringify(hook.result.current.adventure)));
+  hook.unmount(); hook = setup(saved); await act(async () => {});
+  expect(hook.result.current.adventure!.activeState.pendingBrainDeltas).toEqual([survivor]);
+  expect(provider).not.toHaveBeenCalled();
+});
+it("rejects a generated Brain patch if establishing evidence is edited while generation is pending", async () => {
+  mockBrainWorker(); const hook = setup(brainWorkerSeed());
+  await workerTurn(hook); await workerTurn(hook);
+  const prior = hook.result.current.adventure!;
+  const pending = deferred(); const original = provider.getMockImplementation()!;
+  provider.mockImplementation(r => r.config.memoryRequest?.stage === "generation" ? pending.promise : original(r));
+  await act(async () => { await hook.result.current.runtime.continueTurn(); });
+  await waitFor(() => expect(provider.mock.calls.some(([r]) => r.config.memoryRequest?.stage === "generation")).toBe(true));
+  const editedId = prior.messages[0].id;
+  act(() => hook.result.current.setAdventure(current => adventureReducer(current!, { type: "UPDATE_MESSAGE", messageId: editedId, content: "Mira never learned the key." })));
+  await act(async () => { pending.resolve(response('{"thoughts":{"stale":"I learned the key."}}')); });
+  await waitFor(() => expect(hook.result.current.runtime.memoryWork?.status).not.toBe("running"));
+  const current = hook.result.current.adventure!;
+  expect(current.brains[0].thoughts).toEqual(prior.brains[0].thoughts);
+  expect(current.activeState.memoryProposals).toEqual([]);
+  expect(current.activeState.pendingBrainDeltas?.some(d => d.sourceId === editedId)).toBe(false);
+  expect(provider.mock.calls.filter(([r]) => isAssessment(r.messages))).toHaveLength(3);
+  expect(provider.mock.calls.filter(([r]) => r.config.memoryRequest?.stage === "generation")).toHaveLength(1);
+});

@@ -1,3 +1,4 @@
+import { reconcileBrainBatchState } from "../memory/brainBatchRecovery";
 import { assessMemory, assessmentInputs, fingerprint, memoryDecisionState } from "../memory/memoryAssessment";
 import { proposalCoverage, relevantProposalCoverage } from "../memory/factCoverage";
 import { relevantStoryCardInventory } from "../memory/storyCardSuggestions";
@@ -489,7 +490,8 @@ async function generatedActionsFor(
         return { actions: [] };
       }
       if (brainBatch?.some(d => !adventure.messages.some(m => m.id === d.sourceId && m.content === d.sourceContent))) {
-        return { actions: [], error: "Brain batch establishing content changed; deltas retained for recovery." };
+        return { actions: [], error: "memory_brain_batch_source_stale: Brain batch establishing content changed.",
+          failure: { category: "invalid_model_output", code: "memory_brain_batch_source_stale", retryable: false } };
       }
       const authoredPrompt = rule?.updatePrompt || brain.updatePrompt;
       const raw = await targeted(brainBatch
@@ -1927,6 +1929,7 @@ export async function runMemoryCycle(
     onGroupComplete?: (commit: AdventureAction, usage: { promptTokens: number; completionTokens: number }) => Promise<Adventure | undefined>;
   } = {},
 ): Promise<SemanticRunResult> {
+  adventure = reconcileBrainBatchState(adventure);
   const accum = { promptTokens: 0, completionTokens: 0 };
   const logEntry: EvaluationLogEntry = {
     id: createId("evaluation"), turn: adventure.activeState.turn, createdAt: nowIso(),
@@ -2014,7 +2017,7 @@ export async function runMemoryCycle(
     // Recovery resumes this source's frozen selection, even when invoked manually.
     // It never adds later queued sources to a historical batch.
     const batches = new Map<string, PendingBrainDelta[]>();
-    let brainBatch = group === "brains" ? priorWork?.brainBatch : undefined;
+    let brainBatch = group === "brains" && priorWork?.fingerprint === workFingerprint ? priorWork.brainBatch : undefined;
     if (brainBatch) work.brainBatch = brainBatch;
     if (group === "brains" && !brainBatch && !options.manual && assessment) {
       const key = (d: PendingBrainDelta) => `${d.sourceId}:${d.brainId}`;

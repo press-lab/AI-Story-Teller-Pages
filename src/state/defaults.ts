@@ -1,3 +1,4 @@
+import { reconcileBrainBatchState } from "../memory/brainBatchRecovery";
 import { initialStoryClock } from "../memory/storyTime";
 import { migrateStoryCard, primaryStoryCardType } from "../memory/storyCardArchitecture";
 import type {
@@ -510,7 +511,7 @@ export function normalizeAdventure(adventure: Adventure): Adventure {
   const baseline = createDefaultAdventure(adventure.title || "Untitled Adventure");
   const messages = removeMirroredOpeningMessage(adventure);
   const migrateGuardedStoryCards = !adventure.activeState?.stateFlags?.compactStoryCardsMigrated;
-  return {
+  return reconcileBrainBatchState({
     ...baseline,
     ...adventure,
     openingScene: adventure.openingScene ?? "",
@@ -654,5 +655,5 @@ export function normalizeAdventure(adventure: Adventure): Adventure {
         ...(adventure.modelConfig?.requestThrottle ?? {}),
       },
     },
-  };
+  });
 }

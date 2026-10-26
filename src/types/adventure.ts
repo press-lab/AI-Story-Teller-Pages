@@ -81,6 +81,7 @@ export interface MemoryAssessmentDecision {
   reason: string;
 }
 export interface MemoryAssessmentCheckpoint {
+  sourceFingerprint?: string;
   version: 1;
   fingerprints: Record<MemoryEvaluationGroup, string>;
   plot: MemoryAssessmentDecision;
