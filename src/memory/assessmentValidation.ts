@@ -28,9 +28,15 @@ function array(value: unknown, path: string): unknown[] {
   return value;
 }
 
-function normalizeAssessmentShape(raw: unknown, conditions: AssessmentConditions): unknown {
+function normalizeAssessmentShape(raw: unknown, conditions: AssessmentConditions, requested: readonly MemoryEvaluationGroup[]): unknown {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
   const value = raw as Record<string, unknown>;
+  for (const group of ["plot", "storyCards", "brains"] as const) {
+    const decision = value[group];
+    if (!requested.includes(group) && decision && typeof decision === "object" && !Array.isArray(decision)) {
+      (decision as Record<string, unknown>).targets = [];
+    }
+  }
   const discovery = value.discovery;
   if (discovery && typeof discovery === "object" && !Array.isArray(discovery)) {
     const d = discovery as Record<string, unknown>;
@@ -56,7 +62,7 @@ export function parseMemoryAssessment(content: string, conditions: AssessmentCon
   let raw: unknown;
   try { raw = JSON.parse(content.replace(/<think>[\s\S]*?<\/think>/gi, "").trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "")); }
   catch { fail("invalid_json", "$"); }
-  const value = object(normalizeAssessmentShape(raw, conditions), "$");
+  const value = object(normalizeAssessmentShape(raw, conditions, requested), "$");
   const evidence = (ids: unknown, path: string, changed: boolean): string[] => {
     const result = array(ids, path).map((id, index) => {
       if (typeof id !== "string") fail("wrong_type", `${path}[${index}]`);

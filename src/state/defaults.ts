@@ -223,6 +223,7 @@ export function createDefaultAdventure(title = "Untitled Adventure"): Adventure 
       forceIncludeNextTurn: [],
       triggerLog: [],
       evaluationLog: [],
+      pendingBrainDeltas: [],
       memoryProposals: [],
       pendingUpdates: [],
       storyUndoStack: [],
@@ -525,6 +526,7 @@ export function normalizeAdventure(adventure: Adventure): Adventure {
       evaluationLog: adventure.activeState?.evaluationLog ?? [],
       memoryProposals: (adventure.activeState?.memoryProposals ?? []).map(proposal => proposal.proposedType === "storyCard" && proposal.storyCardType
         ? { ...proposal, storyCardType: primaryStoryCardType(proposal.storyCardType), ...(proposal.storyCardType === "event" ? { memoryMode: "historical" as const } : {}) } : proposal),
+      pendingBrainDeltas: adventure.activeState?.pendingBrainDeltas ?? [],
       pendingUpdates: adventure.activeState?.pendingUpdates ?? [],
       storyUndoStack: adventure.activeState?.storyUndoStack ?? [],
       storyRedoStack: adventure.activeState?.storyRedoStack ?? [],

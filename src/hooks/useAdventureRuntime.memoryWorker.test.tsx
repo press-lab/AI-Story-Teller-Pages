@@ -3,7 +3,7 @@ import { mockAssessment, isAssessment } from "../test/memoryAssessment";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { createDefaultAdventure, defaultModelConfig, normalizeAdventure, makeComponent } from "../state/defaults";
+import { createDefaultAdventure, defaultModelConfig, normalizeAdventure, makeComponent, makeBrain } from "../state/defaults";
 import { adventureReducer } from "../state/adventureReducer";
 import type { Adventure } from "../types/adventure";
 import { sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
@@ -255,4 +255,73 @@ it("continues a queued submission after quarantining invalid assessment output",
   expect(hook.result.current.adventure!.activeState.memoryDiagnostics?.filter(d => d.outcome === "evaluation_failed")).toHaveLength(1);
   expect(provider).toHaveBeenCalledTimes(4); // Two narration calls, one quarantined assessment and the new source assessment.
   expect(hook.result.current.openTab).not.toHaveBeenCalled();
+});
+
+function brainWorkerSeed() {
+  const a = createDefaultAdventure("Batch worker"); a.components = []; a.storyCards = [];
+  a.brains = [makeBrain({ id: "mira", characterName: "Mira", active: true })];
+  a.semanticEvaluationSettings.requireApprovalForAutoUpdates = true;
+  return a;
+}
+function mockBrainWorker(waiting?: ReturnType<typeof deferred>) {
+  provider.mockImplementation(async request => {
+    if (!request.memoryEvaluation) return response(story);
+    if (isAssessment(request.messages)) return response(mockAssessment(request.messages, ["brain:mira"]));
+    if (request.messages.some(m => m.content.includes("MEMORY UPDATE VALIDATION"))) {
+      if (waiting) return waiting.promise;
+      const body = JSON.parse(request.messages.at(-1)!.content);
+      return response(JSON.stringify({ accepted: true, meaningfulChange: true, identityMatchesTarget: true,
+        evidenceMessageIds: body.latestTurnMessageIds, reason: "Supported original sources" }));
+    }
+    return response('{"thoughts":{"research_agreement":"I will check the research agreement myself."}}');
+  });
+}
+async function workerTurn(hook: ReturnType<typeof setup>) {
+  await act(async () => { await hook.result.current.runtime.continueTurn(); });
+  await waitFor(() => expect(hook.result.current.runtime.memoryWork?.status).not.toBe("running"));
+}
+it("batches through startIndependentMemory and resumes a saved buffer after runtime reload", async () => {
+  mockBrainWorker();
+  let hook = setup(brainWorkerSeed());
+  await workerTurn(hook);
+  expect(hook.result.current.adventure!.activeState.pendingBrainDeltas).toHaveLength(1);
+  const saved = normalizeAdventure(JSON.parse(JSON.stringify(hook.result.current.adventure)));
+  expect(vi.mocked(saveAdventure).mock.calls.at(-1)![0].activeState.pendingBrainDeltas).toHaveLength(1);
+  hook.unmount(); provider.mockClear(); hook = setup(saved);
+  await act(async () => {}); expect(provider).not.toHaveBeenCalled();
+  await workerTurn(hook); await workerTurn(hook);
+  const memory = provider.mock.calls.filter(([r]) => r.memoryEvaluation);
+  expect(memory.filter(([r]) => isAssessment(r.messages))).toHaveLength(2);
+  expect(memory.filter(([r]) => r.config.memoryRequest?.stage === "generation")).toHaveLength(1);
+  expect(memory.filter(([r]) => r.config.memoryRequest?.stage === "validation")).toHaveLength(1);
+  expect(hook.result.current.adventure!.activeState.pendingBrainDeltas).toEqual([]);
+  expect(hook.result.current.adventure!.activeState.memoryProposals.filter(p => p.proposedType === "brainUpdate")).toHaveLength(1);
+});
+it("does not consume pending deltas when the worker stops during validation", async () => {
+  mockBrainWorker(); const hook = setup(brainWorkerSeed());
+  await workerTurn(hook); await workerTurn(hook);
+  const pending = deferred(); mockBrainWorker(pending);
+  await act(async () => { await hook.result.current.runtime.continueTurn(); });
+  await waitFor(() => expect(provider.mock.calls.some(([r]) => r.config.memoryRequest?.stage === "validation")).toBe(true));
+  const saved = normalizeAdventure(JSON.parse(JSON.stringify(hook.result.current.adventure)));
+  expect(saved.activeState.pendingBrainDeltas).toHaveLength(2);
+  act(() => hook.result.current.setAdventure(createDefaultAdventure("Switched")));
+  await act(async () => { pending.resolve(response(JSON.stringify({ accepted: true, meaningfulChange: true, identityMatchesTarget: true,
+    evidenceMessageIds: saved.activeState.pendingBrainDeltas!.map(d => d.sourceId), reason: "Supported" }))); });
+  act(() => hook.result.current.setAdventure(saved));
+  expect(hook.result.current.adventure!.activeState.pendingBrainDeltas).toEqual(saved.activeState.pendingBrainDeltas);
+  expect(hook.result.current.adventure!.activeState.memoryProposals).toEqual([]);
+});
+it("keeps manual historical recovery separate from a later automatic buffer", async () => {
+  mockBrainWorker(); const initial = brainWorkerSeed();
+  initial.messages = [{ id: "historical", role: "assistant", content: "Mira learned the ward key.", createdAt: "2026-01-01",
+    memoryEvaluation: { turn: 0, attempts: 3, completedGroups: [], status: "quarantined" } }];
+  const hook = setup(initial); await workerTurn(hook);
+  const queued = hook.result.current.adventure!.activeState.pendingBrainDeltas;
+  provider.mockClear();
+  await act(async () => { await hook.result.current.runtime.evaluateMemorySources(["historical"]); });
+  expect(hook.result.current.adventure!.activeState.pendingBrainDeltas).toEqual(queued);
+  const generated = provider.mock.calls.find(([r]) => r.config.memoryRequest?.stage === "generation")![0];
+  expect(JSON.stringify(generated.messages)).not.toContain("Bounded Brain batch:");
+  expect(hook.result.current.adventure!.activeState.memoryProposals.find(p => p.proposedType === "brainUpdate")?.sourceTurnId).toBe("historical");
 });

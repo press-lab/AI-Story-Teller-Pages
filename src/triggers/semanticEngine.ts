@@ -9,6 +9,7 @@ import type {
   Adventure,
   AdventureAction,
   BrainEntry,
+  PendingBrainDelta,
   BrainPatch,
   ChatMessage,
   ComponentEntry,
@@ -109,12 +110,16 @@ function preview(text: string): string {
 
 const MEMORY_CHANGE_GUIDANCE = "For memory conditions, evaluate what CHANGED in latestTurn, using storyExcerpt only for attribution and continuity. Repeated mentions or continued actions are not new developments. Keep the player, narrator, and each named character distinct. A brain requires evidence the named character experienced or learned something; mentioning an absent character does not give them knowledge. Historical Lore records observable interactions and outcomes; Brains record only supported new private interpretations, intentions or changed perceptions. Significant advances, accepted/declined invitations, confessions and boundary-setting can support either independently, but an observable action alone does not prove a private change. Respect authored Brain conditions. Return no memory condition for uncertain identity.";
 
-function defaultBrainPrompt(brain: BrainEntry, turn: number): string {
+function defaultBrainPrompt(brain: BrainEntry, turn: number, batch?: PendingBrainDelta[]): string {
   const thoughtEntries = Object.entries(brain.thoughts);
   const existingBlock = thoughtEntries.length > 0
     ? `\n\nExisting thoughts (do NOT repeat these):\n${thoughtEntries.map(([k, v]) => `  ${k}: ${v}`).join("\n")}`
     : "";
-  return `You are recording one new thought, reaction, or private plan for ${brain.characterName} based on what just happened. Current turn: ${turn}.${existingBlock}
+  const batchInstructions = batch ? `
+Bounded Brain batch: ${JSON.stringify(batch)}
+Use the exact assessment deltas above, in chronological order, and their source IDs with the corresponding recent narrator evidence. Write only in ${brain.characterName}'s first-person perspective. Add one thought per materially distinct change, at most three thoughts; consolidate deltas describing one continuing reaction. Use unique snake_case thought keys that do not overwrite existing thoughts. Do not invent private knowledge, feelings, or events. Preserve every existing thought not explicitly archived. These batch instructions replace the single-thought limit below.
+` : "";
+  return `${batchInstructions}You are recording one new thought, reaction, or private plan for ${brain.characterName} based on what just happened. Current turn: ${turn}.${existingBlock}
 
 Return ONLY valid JSON. Only include keys that changed. Return {} when no supported change occurred.
 The first-person speaker is exclusively ${brain.characterName}, not the player or narrator. Do not copy player actions, messages, plans or feelings into this character's thoughts. An absent character cannot know events without an established means of learning them.
@@ -464,6 +469,8 @@ async function generatedActionsFor(
   accum?: { promptTokens: number; completionTokens: number },
   independent = false,
   memo?: import("../types/adventure").MemoryWorkDraft,
+  assessmentDraftDelta?: string,
+  brainBatch?: PendingBrainDelta[],
 ): Promise<{ actions: AdventureAction[]; generated?: GeneratedContentPreview; error?: string; rejected?: string; failure?: import("../types/adventure").MemoryWorkFailure }> {
   const requireApproval = adventure.semanticEvaluationSettings.requireApprovalForAutoUpdates;
   let received = false;
@@ -481,8 +488,18 @@ async function generatedActionsFor(
       if (!independent && adventure.activeState.memoryProposals.some((p) => p.status === "pending" && p.proposedType === "brainUpdate" && p.targetId === brain.id)) {
         return { actions: [] };
       }
-      const raw = await targeted(rule?.updatePrompt || brain.updatePrompt || defaultBrainPrompt(brain, adventure.activeState.turn));
-      if (/^(NONE|NO_CHANGE)$/i.test(raw.trim())) return { actions: [] };
+      if (brainBatch?.some(d => !adventure.messages.some(m => m.id === d.sourceId && m.content === d.sourceContent))) {
+        return { actions: [], error: "Brain batch establishing content changed; deltas retained for recovery." };
+      }
+      const authoredPrompt = rule?.updatePrompt || brain.updatePrompt;
+      const raw = await targeted(brainBatch
+        ? `${authoredPrompt ?? ""}
+${defaultBrainPrompt(brain, adventure.activeState.turn, brainBatch)}`
+        : authoredPrompt || defaultBrainPrompt(brain, adventure.activeState.turn));
+      if (/^(NONE|NO_CHANGE)$/i.test(raw.trim())) {
+        if (brainBatch) throw new Error("Brain batch returned no patch; deltas retained.");
+        return { actions: [] };
+      }
       const rawParsed = parseJsonResponse<unknown>(raw);
       const storyCardNote = rawParsed && typeof rawParsed === "object" && "storyCardNote" in rawParsed && typeof (rawParsed as Record<string, unknown>).storyCardNote === "string"
         ? (rawParsed as Record<string, unknown>).storyCardNote as string
@@ -492,9 +509,13 @@ async function generatedActionsFor(
       if ((record.thoughts !== undefined && (!record.thoughts || typeof record.thoughts !== "object" || Array.isArray(record.thoughts)
         || Object.values(record.thoughts).some(v => v !== null && (typeof v !== "string" || !v.trim()))))
         || ["currentState", "relationshipPressure", "emotionalInterpretation", "recentDevelopments", "notes"].some(key => record[key] !== undefined && typeof record[key] !== "string")) throw new Error("Invalid Brain patch fields.");
+      if (brainBatch && record.thoughts && (Object.keys(record.thoughts).filter(k => (record.thoughts as Record<string, unknown>)[k] !== null).length > 3
+        || Object.entries(record.thoughts).some(([k, v]) => v !== null && (!/^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/.test(k) || k in brain.thoughts)))) {
+        throw new Error("Invalid Brain batch thought keys or thought count.");
+      }
       const patch = sanitizeBrainPatch(rawParsed);
       if (Object.keys(patch).length === 0) {
-        if (rawParsed && typeof rawParsed === "object" && !Array.isArray(rawParsed) && Object.keys(rawParsed).length === 0) return { actions: [] };
+        if (!brainBatch && rawParsed && typeof rawParsed === "object" && !Array.isArray(rawParsed) && Object.keys(rawParsed).length === 0) return { actions: [] };
         throw new MemoryEvaluationError("invalid_model_output", "memory_model_output_invalid", "Brain update returned no recognized keys.");
       }
       // Remove unchanged fields locally before paying for semantic review. Null
@@ -506,10 +527,11 @@ async function generatedActionsFor(
         patch.thoughts = Object.fromEntries(Object.entries(patch.thoughts).filter(([key, value]) => value === null ? key in brain.thoughts : value !== brain.thoughts[key]));
         if (!Object.keys(patch.thoughts).length) delete patch.thoughts;
       }
-      if (!Object.keys(patch).length) return { actions: [] };
+      if (!Object.keys(patch).length) return brainBatch ? { actions: [], error: "Brain batch returned no changed patch; deltas retained." } : { actions: [] };
       const validation = await validateMemoryUpdate(adventure, providerConfig, "brain", brain.characterName,
-        JSON.stringify({ thoughts: brain.thoughts, currentState: brain.currentState }), JSON.stringify(patch), accum, false, false, { id: brain.id, type: "brain" }, memo ? memo.validationCache ??= {} : undefined);
-      if (!validation.changed) return { actions: [], error: independent && !validation.retryable ? undefined : validation.error, rejected: validation.error };
+        JSON.stringify({ thoughts: brain.thoughts, currentState: brain.currentState }), JSON.stringify(patch), accum, false, false, { id: brain.id, type: "brain" }, memo ? memo.validationCache ??= {} : undefined, brainBatch?.map(d => d.sourceId));
+      if (brainBatch && !validation.changed && memo) memo.validationCache = {};
+      if (!validation.changed) return { actions: [], error: brainBatch ? validation.error ?? "Brain batch validation did not accept the patch." : independent && !validation.retryable ? undefined : validation.error, rejected: validation.error };
       if (requireApproval) {
         const proposal = makeProposal(
           { proposedType: "brainUpdate", title: brain.characterName, content: JSON.stringify(patch), targetId: brain.id, rationale: `Auto-update for ${brain.characterName}.` },
@@ -564,10 +586,11 @@ async function generatedActionsFor(
       const card = adventure.storyCards.find((entry) => entry.id === triggerAction.storyCardId);
       if (!card) return { actions: [], error: `Story card not found: ${triggerAction.storyCardId}` };
       const prompt = storyCardPrompt(card);
-      const raw = await targeted(rule?.updatePrompt || prompt);
+      const assessmentDraft = card.type === "lore" && assessmentDraftDelta?.trim() ? assessmentDraftDelta : undefined;
+      const raw = assessmentDraft ?? await targeted(rule?.updatePrompt || prompt);
       if (!raw.trim() || /^(NONE|NO_CHANGE)$/i.test(raw.trim())) return { actions: [] };
       let content = raw, title = card.title, type = primaryStoryCardType(card.type), mode = card.memoryMode;
-      if (raw.trim().startsWith("{") || raw.trim().startsWith("```")) {
+      if (!assessmentDraft && (raw.trim().startsWith("{") || raw.trim().startsWith("```"))) {
         const parsed = JSON.parse(raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, ""));
         if (!parsed || typeof parsed.content !== "string" || typeof parsed.title !== "string"
           || !["character", "location", "lore", "custom"].includes(parsed.storyCardType)
@@ -1981,19 +2004,62 @@ export async function runMemoryCycle(
     const conditions = group === "discovery" ? [] : allConditions[group];
     const groupProvider = memoryGroupProvider(providerConfig, source.id, group, source.memoryEvaluation?.attempts ?? 0);
     const currentInputs = await assessmentInputs(snapshot, source.id, allConditions);
+    const chronologicalPending = (snapshot.activeState.pendingBrainDeltas ?? []).filter(d => snapshot.messages.some(m => m.id === d.sourceId));
     const workFingerprint = await fingerprint({ assessment: currentInputs.fingerprints[group],
+      ...(group === "brains" ? { pendingBrainDeltas: chronologicalPending, bufferedTargets: snapshot.brains.filter(b => chronologicalPending.some(d => d.brainId === b.id)) } : {}),
       references: memoryCanonMessages(snapshot, recentExcerpt(snapshot), JSON.stringify({ conditions, cards: currentInputs.currentCards, plot: currentInputs.currentPlot })) });
     const priorWork = source.memoryEvaluation?.groupWork?.[group];
     const work: import("../types/adventure").MemoryGroupWork = priorWork?.fingerprint === workFingerprint
       ? { ...priorWork, drafts: structuredClone(priorWork.drafts) } : { fingerprint: workFingerprint, drafts: {} };
+    // Recovery resumes this source's frozen selection, even when invoked manually.
+    // It never adds later queued sources to a historical batch.
+    const batches = new Map<string, PendingBrainDelta[]>();
+    let brainBatch = group === "brains" ? priorWork?.brainBatch : undefined;
+    if (brainBatch) work.brainBatch = brainBatch;
+    if (group === "brains" && !brainBatch && !options.manual && assessment) {
+      const key = (d: PendingBrainDelta) => `${d.sourceId}:${d.brainId}`;
+      const narrators = storyMemoryMessages(snapshot).filter(m => m.role === "assistant");
+      const sourceIndex = narrators.findIndex(m => m.id === source.id);
+      const enqueue: PendingBrainDelta[] = assessment.brains.targets.flatMap(target => {
+        const action = allConditions.brains.find(c => c.id === target.id)?.actionFactory(snapshot)
+          .find(a => a.type === "updateBrain" || a.type === "appendBrain");
+        return action && (action.type === "updateBrain" || action.type === "appendBrain") ? [{ brainId: action.brainId,
+          sourceId: source.id, sourceContent: source.content, sourceTurn: snapshot.activeState.turn,
+          delta: target.delta, evidenceMessageIds: target.evidenceMessageIds }] : [];
+      });
+      const pending = new Map((snapshot.activeState.pendingBrainDeltas ?? []).map(d => [key(d), d]));
+      for (const d of enqueue) if (!pending.has(key(d))) pending.set(key(d), d);
+      const selected: PendingBrainDelta[][] = [];
+      for (const brainId of new Set([...pending.values()].map(d => d.brainId))) {
+        // Reserve only the failed batch's keys. Later events retain their own
+        // bounded window while the original source owns its recovery checkpoint.
+        const reserved = new Set(adventure.messages.filter(m => m.id !== source.id)
+          .flatMap(m => m.memoryEvaluation?.groupWork?.brains?.brainBatch?.consumeKeys ?? []));
+        const events = [...pending.values()].filter(d => d.brainId === brainId && !reserved.has(key(d))
+          && narrators.some(m => m.id === d.sourceId)).sort((a, b) =>
+            narrators.findIndex(m => m.id === a.sourceId) - narrators.findIndex(m => m.id === b.sourceId));
+        const batch = events.slice(0, 3);
+        if (!batch.length) continue;
+        const oldest = narrators.findIndex(m => m.id === batch[0].sourceId);
+        if (batch.length >= 3 || sourceIndex - oldest >= 2 || !enqueue.some(d => d.brainId === brainId)) selected.push(batch);
+      }
+      brainBatch = { enqueue, consumeKeys: selected.flat().map(key), batches: selected };
+      work.brainBatch = brainBatch;
+    }
+    for (const batch of brainBatch?.batches ?? []) batches.set(batch[0].brainId, batch);
     logEntry.conditionsEvaluated.push(...conditions.map(({ id, label, condition, sourceType }) => ({ id, label, condition, sourceType })));
     const fired = conditions.filter(condition => group !== "discovery" && assessment?.[group].targets.some(t => t.id === condition.id));
     if (assessmentResult.reused) groupActions.push({ type: "RECORD_MEMORY_DIAGNOSTIC", entry: {
       id: createId("decision"), sourceId: source.id, createdAt: nowIso(), stage: "independent", group,
       outcome: "checkpoint_reused", reason: "Source assessment reused against unchanged dependencies; no provider request." } });
     logEntry.conditionsFired.push(...fired.map(condition => condition.id));
-    const tasks = fired.flatMap(condition => condition.actionFactory(snapshot).map(action => async () => {
-      const delta = group === "storyCards" ? assessment?.storyCards.targets.find(t => t.id === condition.id)?.delta : undefined;
+    const taskConditions = brainBatch ? brainBatch.batches.map(batch => ({
+      id: `brain:${batch[0].brainId}`, label: `Brain: ${batch[0].brainId}`,
+      actionFactory: () => [{ type: "updateBrain" as const, brainId: batch[0].brainId }],
+    })) : fired;
+    const tasks = taskConditions.flatMap(condition => condition.actionFactory(snapshot).map(action => async () => {
+      const assessmentTarget = group === "storyCards" ? assessment?.storyCards.targets.find(t => t.id === condition.id) : undefined;
+      const delta = assessmentTarget?.evidenceMessageIds.includes(source.id) ? assessmentTarget.delta : undefined;
       if (delta && action.type === "updateStoryCard") {
         const card = snapshot.storyCards.find(c => c.id === action.storyCardId)!;
         const draft = makeStoryCardSuggestion(snapshot, source.id, source.content, { title: card.title, content: delta,
@@ -2006,7 +2072,11 @@ export async function runMemoryCycle(
         }
       }
       const memo = work.drafts[condition.id] ??= {};
-      const result = memo.result ?? await generatedActionsFor(forcePropose, groupProvider, action, condition.id, undefined, accum, true, memo);
+      const batch = action.type === "updateBrain" || action.type === "appendBrain" ? batches.get(action.brainId) : undefined;
+      const targetProvider = batch
+        ? memoryGroupProvider(providerConfig, batch.at(-1)!.sourceId, group, source.memoryEvaluation?.attempts ?? 0) : groupProvider;
+      const result = memo.result ?? await generatedActionsFor(forcePropose, targetProvider,
+        action, condition.id, undefined, accum, true, memo, delta, batch);
       if (!result.error) memo.result = result;
       if (priorWork?.drafts[condition.id]) groupActions.push({ type: "RECORD_MEMORY_DIAGNOSTIC", entry: {
         id: createId("decision"), sourceId: source.id, createdAt: nowIso(), stage: "independent", group,
@@ -2042,7 +2112,8 @@ export async function runMemoryCycle(
     for (const action of groupActions) {
       if (action.type === "MARK_COMPONENT_UPDATED" || action.type === "MARK_STORY_CARD_UPDATED") continue;
       if (action.type !== "ADD_MEMORY_PROPOSAL") { routed.push(action); continue; }
-      let proposal = { ...action.proposal, sourceTurnId: source.id };
+      const batch = action.proposal.proposedType === "brainUpdate" ? batches.get(action.proposal.targetId ?? "") : undefined;
+      let proposal = { ...action.proposal, sourceTurnId: batch?.at(-1)?.sourceId ?? source.id };
       // Reuse is bound to meaningful reference/control projections. Refresh only
       // the full snapshot's incidental metadata after those dependencies match.
       if (proposal.placementValidation?.target && priorWork?.fingerprint === workFingerprint) proposal = { ...proposal,
@@ -2063,7 +2134,7 @@ export async function runMemoryCycle(
         : kind === "storyCard" ? snapshot.storyCards.find(item => item.id === proposal.targetId)?.protected
         : snapshot.components.find(item => item.id === proposal.targetId)?.protected;
       const finalTarget = proposal.targetId ? memoryTargetSnapshot(snapshot, kind, proposal.targetId) : undefined;
-      proposal.evaluationSource = { messages: dependencies, ...(finalTarget ? { target: finalTarget } : {}) };
+      proposal.evaluationSource = { messages: batch ? [...new Map([...dependencies, ...batch.map(d => ({ id: d.sourceId, content: d.sourceContent }))].map(m => [m.id, m])).values()] : dependencies, ...(finalTarget ? { target: finalTarget } : {}) };
       proposal.requiresReview = Boolean(proposal.requiresReview || protectedTarget || snapshot.semanticEvaluationSettings.requireApprovalForAutoUpdates);
       routed.push({ type: "ADD_MEMORY_PROPOSAL", proposal });
     }
@@ -2081,7 +2152,7 @@ export async function runMemoryCycle(
     }
     const commit: AdventureAction = { type: "COMMIT_MEMORY_EVALUATION_GROUP", source: { id: source.id, content: source.content },
       group, dependencies, targets, actions: routed, error: errors.length ? errors.join("; ") : undefined,
-      revision: source.memoryEvaluation?.revision, discoveryCheckpoint, assessment, groupWork: work, decisionState: memoryDecisionState(snapshot, source.id) };
+      revision: source.memoryEvaluation?.revision, discoveryCheckpoint, assessment, groupWork: work, brainBatch, decisionState: memoryDecisionState(snapshot, source.id) };
     actions.push(commit);
     working = adventureReducer(working, commit);
     if (options.onGroupComplete) {

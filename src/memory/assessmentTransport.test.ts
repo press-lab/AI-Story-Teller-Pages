@@ -62,7 +62,7 @@ it("retries the existing quarantined breakfast, appends to product Lore and neve
   expect(memoryCycleSources(a)).toEqual([]);
   const r = await cycle(a);
   expect(r.logEntry.errors).toEqual([]);
-  expect(http.spy).toHaveBeenCalledTimes(3);
+  expect(http.spy).toHaveBeenCalledTimes(2);
   expect(r.state.activeState.memoryProposals).toHaveLength(1);
   const proposal = r.state.activeState.memoryProposals[0];
   expect(proposal).toMatchObject({ cardOperation: "append", targetId: a.storyCards[0].id, storyCardType: "lore", content: sales });
@@ -74,7 +74,7 @@ it("retries the existing quarantined breakfast, appends to product Lore and neve
   const again = await cycle(approved);
   expect(again.state.storyCards).toEqual(approved.storyCards);
   expect(again.state.activeState.memoryProposals).toEqual(approved.activeState.memoryProposals);
-  expect(http.spy).toHaveBeenCalledTimes(3);
+  expect(http.spy).toHaveBeenCalledTimes(2);
 });
 it("resumes quarantined saved reviews without replaying assessment, generation or completed groups", async () => {
   const a = assessmentFixture("breakfast");
@@ -162,5 +162,21 @@ it.each([false, true])("attributes and accounts for both Anthropic assessment an
     r.state.activeState.memoryRecoveryStoryTurn = 100;
     expect(memoryCycleSources(r.state)).toEqual([]);
     expect(http.spy).toHaveBeenCalledTimes(2);
+  } finally { unsubscribe(); }
+});
+
+it("uses an existing Lore assessment delta without generation and retains source/stage/commit accounting", async () => {
+  const a = assessmentFixture("breakfast"), http = mockAssessmentHttp(a, "breakfast");
+  const records: ApiCallRecord[] = [], unsubscribe = subscribeApiCalls(call => records.push(call));
+  try {
+    const r = await cycle(a);
+    expect(http.requests).toHaveLength(2);
+    expect(http.requests.filter(req => JSON.stringify(req.body).includes("Append new durable facts about"))).toHaveLength(0);
+    const completed = records.filter(c => c.status === "succeeded");
+    expect(completed.map(c => c.memoryRequest?.stage)).toEqual(["assessment", "validation"]);
+    expect(completed.every(c => c.memoryRequest?.sourceId === a.messages.at(-1)!.id && Boolean(c.appCommit))).toBe(true);
+    expect(completed[1].memoryRequest?.group).toBe("storyCards");
+    expect(r.state.activeState.memoryProposals[0]).toMatchObject({ status: "pending", sourceTurnId: a.messages.at(-1)!.id, content: sales });
+    expect(r.state.storyCards).toEqual(a.storyCards);
   } finally { unsubscribe(); }
 });

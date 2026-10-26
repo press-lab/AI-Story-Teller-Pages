@@ -138,9 +138,9 @@ export function memoryDecisionState(adventure: Adventure, sourceId: string): str
   const cards = [...a.storyCards.filter(c => relevant.has(c.id)), ...a.storyCards.filter(c => !relevant.has(c.id) && !c.keys.length)].slice(0, 8);
   const meaningful = (entry: object) => Object.fromEntries(Object.entries(entry).filter(([key]) =>
     !["createdAt", "updatedAt", "lastMemoryUpdatedAt", "memoryUpdateHistory", "usageCount", "lastUsedTurn", "lastTriggeredTurn"].includes(key)));
-  return JSON.stringify({ version: 1, evidence,
+  return JSON.stringify({ version: 1, evidence, pendingBrainDeltas: a.activeState.pendingBrainDeltas ?? [],
     canon: memoryCanonMessages(a, excerpt, "Assess memory", true), cards: cards.map(meaningful),
-    brains: a.brains.filter(b => b.active && matchPatterns(excerpt, [b.characterName, ...b.triggers].filter(Boolean), "phrase").matched).map(meaningful),
+    brains: a.brains.filter(b => b.active && (a.activeState.pendingBrainDeltas?.some(d => d.brainId === b.id) || matchPatterns(excerpt, [b.characterName, ...b.triggers].filter(Boolean), "phrase").matched)).map(meaningful),
     plot: a.components.filter(c => c.active && ["plotEssentials", "activePressure", "currentArc"].includes(c.type)).map(meaningful),
     coverage: relevantProposalCoverage(a, excerpt, cards.map(c => c.id), evidence.map(m => m.id)),
     controls: { autoApprove: a.memoryAutoApprove, detection: a.memoryDetectionSettings, review: a.semanticEvaluationSettings.requireApprovalForAutoUpdates },

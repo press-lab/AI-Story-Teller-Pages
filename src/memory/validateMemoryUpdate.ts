@@ -6,7 +6,7 @@ import type { Adventure, ProviderConfig } from "../types/adventure";
 import { sendMemoryCompletion } from "../providers/memoryCompletion";
 import { latestMemoryTurn } from "./memoryUpdateEvidence";
 import { memoryCanonMessages } from "./memoryCanon";
-import { memoryEvidenceWindow } from "./memoryEvidenceWindow";
+import { storyMemoryMessages, memoryEvidenceWindow } from "./memoryEvidenceWindow";
 
 export interface StoryCardPlacementVerdict {
   kind: MemoryPlacementKind; newFact: string; reason: string; title: string; content: string;
@@ -40,6 +40,7 @@ async function validateMemoryUpdateUncached(
   appendOnly = false,
   reviewOnly = false,
   targetInfo?: { id?: string; type: string; memoryMode?: string; finalReview?: boolean },
+  brainSourceIds?: string[],
 ): Promise<MemoryValidationResult> {
   const normalize = (text: string) => text.toLocaleLowerCase().replace(/[\s•*-]+/g, " ").trim();
   if (!content.trim() || /^(NONE|NO_CHANGE)$/i.test(content.trim()) || normalize(content) === normalize(previous)) return { changed: false };
@@ -48,7 +49,12 @@ async function validateMemoryUpdateUncached(
   const latestSource = adventure.messages.at(-1);
   const messages = latestSource?.role === "assistant" ? memoryEvidenceWindow(adventure, latestSource.id)
     : adventure.messages.filter(m => m.role === "user" || m.role === "assistant").slice(-Math.max(8, adventure.semanticEvaluationSettings.messagesIncluded));
-  const latest = latestMemoryTurn(adventure);
+  const establishingIds = surface === "brain" ? brainSourceIds : undefined;
+  if (establishingIds && (!establishingIds.length || establishingIds.some(id =>
+    !messages.some(m => m.id === id && m.role === "assistant") || !storyMemoryMessages(adventure).some(m => m.id === id)))) {
+    return { changed: false, error: "Brain batch sources are not narrator messages in the current evidence window." };
+  }
+  const latest = establishingIds ? messages.filter(m => establishingIds.includes(m.id)) : latestMemoryTurn(adventure);
   const evidence = messages.map(m => `[${m.id}] ${m.role}: ${m.content}`).join("\n\n");
   let received = false;
   try {
@@ -69,8 +75,9 @@ For brain: review a PATCH, not a full replacement. Omitted fields remain unchang
 For brain and storyCard also return identityMatchesTarget: boolean. This means correct attribution to the chosen subject, not identity transformation. For Story Cards of every type, the title can name a topic or partnership. Correct attribution alone never authorizes an event recap on a Character card. Reject another person's actions or off-screen knowledge being attributed to this target. If a supported fact needs a different destination, return corrected placement with targetId or create; it will receive a separate review.
 For storyCard preserve the exact draft content when supported. On rejection you may return a focused corrected draft; it is not approved until separately reviewed. During finalReview, accept or reject the frozen proposed content; do not rewrite it.
 ${STORY_CARD_PLACEMENT_POLICY}
+${establishingIds ? "For this Brain batch, latestTurnMessageIds identifies the establishing narrator sources. Cite at least one of those sources in evidenceMessageIds. Every returned evidence ID must occur in recentEvidence. Review all materially distinct private changes without mixing characters or inventing private knowledge." : ""}
 Every meaningful change must be supported by supplied recent message IDs. Return accepted=false for unsupported certainty or invalid output, meaningfulChange=false for an unnecessary rewrite.` },
-        { role: "user", content: JSON.stringify({ surface, title, targetInfo: targetInfo ?? { type: surface === "brain" ? "brain" : surface }, previous, proposed: content, reviewOnly, operation: appendOnly ? "append new facts; previous facts are retained unchanged" : "replacement or Brain patch", recentEvidence: evidence, latestTurnMessageIds: latest.map(m => m.id) }) },
+        { role: "user", content: JSON.stringify({ surface, title, targetInfo: targetInfo ?? { type: surface === "brain" ? "brain" : surface }, previous, proposed: content, reviewOnly, operation: appendOnly ? "append new facts; previous facts are retained unchanged" : "replacement or Brain patch", recentEvidence: evidence, ...(establishingIds ? { brainSourceIds: establishingIds } : {}), latestTurnMessageIds: latest.map(m => m.id) }) },
       ], "validation");
     if (accum) {
       accum.promptTokens += response.usage?.promptTokens ?? 0;
@@ -149,15 +156,16 @@ export async function validateMemoryUpdate(
   accum?: { promptTokens: number; completionTokens: number }, appendOnly = false, reviewOnly = false,
   targetInfo?: { id?: string; type: string; memoryMode?: string; finalReview?: boolean },
   cache?: Record<string, string>,
+  brainSourceIds?: string[],
 ): Promise<MemoryValidationResult> {
-  const key = cache ? await fingerprint({ version: 1, placementVersion: PLACEMENT_VERSION, policy: STORY_CARD_PLACEMENT_POLICY, surface, title, previous, content, appendOnly, reviewOnly, targetInfo,
+  const key = cache ? await fingerprint({ version: 1, placementVersion: PLACEMENT_VERSION, policy: STORY_CARD_PLACEMENT_POLICY, surface, title, previous, content, appendOnly, reviewOnly, targetInfo, brainSourceIds: surface === "brain" ? brainSourceIds : undefined,
     evidence: memoryEvidenceWindow(adventure, adventure.messages.at(-1)?.id ?? "").map(({ id, content }) => ({ id, content })),
     references: memoryCanonMessages(adventure, memoryEvidenceWindow(adventure, adventure.messages.at(-1)?.id ?? "").map(m => m.content).join("\n"), `Review ${title}\nPrevious: ${previous}\nProposed: ${content}`),
   }) : undefined;
   if (key && cache?.[key]) {
     try { return JSON.parse(cache[key]) as MemoryValidationResult; } catch { /* Corrupt saved cache is unfinished work. */ }
   }
-  const result = await validateMemoryUpdateUncached(adventure, providerConfig, surface, title, previous, content, accum, appendOnly, reviewOnly, targetInfo);
+  const result = await validateMemoryUpdateUncached(adventure, providerConfig, surface, title, previous, content, accum, appendOnly, reviewOnly, targetInfo, brainSourceIds);
   if (key && cache && !result.retryable) cache[key] = JSON.stringify(result);
   return result;
 }

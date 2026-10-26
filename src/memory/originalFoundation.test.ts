@@ -41,7 +41,7 @@ function finding(a: Adventure, content = "Mira and Seth discovered the ward's hi
 }
 async function evaluate(a: Adventure, sourceId = "source") {
   const claimed = adventureReducer(a, { type: "CLAIM_MEMORY_EVALUATION", sourceId, turn: a.activeState.memoryRecoveryStoryTurn ?? 0, manual: true });
-  const result = await runMemoryCycle(claimed, config, { sourceId });
+  const result = await runMemoryCycle(claimed, config, { sourceId, manual: true });
   return { ...result, state: result.actions.reduce(adventureReducer, claimed), claimed };
 }
 beforeEach(() => {
@@ -50,7 +50,9 @@ beforeEach(() => {
   provider.mockImplementation(async request => {
     const text = request.messages.map(message => message.content).join("\n");
     let content = "[]";
-    if (isAssessment(request.messages)) { content = mockAssessment(request.messages, fired, discoveryNeeded);
+    if (isAssessment(request.messages)) { const decision = JSON.parse(mockAssessment(request.messages, fired, discoveryNeeded));
+      for (const target of decision.storyCards.targets) target.delta = "The coalition signed a binding charter.";
+      content = JSON.stringify(decision);
     } else if (text.includes("MEMORY UPDATE VALIDATION")) {
       if (fail === "validation") throw new Error("offline validation failure");
       const body = JSON.parse(request.messages.at(-1)!.content);

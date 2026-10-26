@@ -40,12 +40,12 @@ it.each([
 it("requires the establishing source for positive discovery too", () => {
   expect(() => parse({ ...negative(), discovery: { needed: true, reason: "New event", evidenceMessageIds: ["prior"] } })).toThrow("memory_assessment_missing_source_citation");
 });
-it("rejects duplicate targets and targets from unrequested groups", () => {
+it("rejects duplicate requested targets and ignores unrequested targets", () => {
   const target = { id: "plot:p", delta: "Changed premise", evidenceMessageIds: ["source"] };
   const value = { ...negative(), plot: { reason: "New premise", targets: [target, target] } };
   expect(() => parse(value)).toThrow("memory_assessment_duplicate_target_id");
   value.plot.targets.pop();
-  expect(() => parseMemoryAssessment(JSON.stringify(value), conditions, ["discovery"], ["source"], "source")).toThrow("memory_assessment_unrequested_group");
+  expect(parseMemoryAssessment(JSON.stringify(value), conditions, ["discovery"], ["source"], "source").plot).toEqual({ reason: "New premise", targets: [] });
 });
 
 it("fills only absent negative discovery evidence", () => {
@@ -60,4 +60,15 @@ it("does not normalize Plot IDs or match names, titles, or ambiguous condition I
   expect(() => parse({ ...negative(), plot: { reason: "Changed", targets: [{ id: "p", delta: "Change", evidenceMessageIds: ["source"] }] } })).toThrow("memory_assessment_unknown_target_id");
   const raw = JSON.stringify({ ...negative(), storyCards: { reason: "Changed", targets: [{ id: "c", delta: "Change", evidenceMessageIds: ["source"] }] } });
   expect(() => parseMemoryAssessment(raw, { ...conditions, storyCards: [...conditions.storyCards, ...conditions.storyCards] }, ["storyCards"], ["source"], "source")).toThrow("memory_assessment_unknown_target_id");
+});
+
+it.each(["plot", "storyCards", "brains"] as const)("clears positive unrequested %s targets before strict ID/evidence validation", group => {
+  const value = { ...negative(), [group]: { reason: "Retained model reason", targets: [{ id: "unknown", delta: "Unsupported", evidenceMessageIds: ["invented"] }] } };
+  expect(parseMemoryAssessment(JSON.stringify(value), conditions, ["discovery"], ["source"], "source")[group]).toEqual({ reason: "Retained model reason", targets: [] });
+});
+it("preserves requested positive targets and rejects unknown requested IDs", () => {
+  const target = { id: "brain:b", delta: "Supported private change", evidenceMessageIds: ["source"] };
+  const value = { ...negative(), brains: { reason: "Changed", targets: [target] } };
+  expect(parse(value).brains.targets).toEqual([target]);
+  expect(() => parse({ ...value, brains: { ...value.brains, targets: [{ ...target, id: "brain:unknown" }] } })).toThrow("memory_assessment_unknown_target_id");
 });

@@ -101,6 +101,8 @@ export interface MemoryWorkDraft {
   result?: { actions: AdventureAction[]; generated?: GeneratedContentPreview; rejected?: string; error?: string; failure?: MemoryWorkFailure };
 }
 export interface MemoryGroupWork {
+  // Frozen automatic selection retained with the existing failed-work checkpoint.
+  brainBatch?: { enqueue: PendingBrainDelta[]; consumeKeys: string[]; batches: PendingBrainDelta[][] };
   fingerprint: string;
   drafts: Record<string, MemoryWorkDraft>;
 }
@@ -809,7 +811,17 @@ export interface ApiCallTotals {
   completionTokens: number;
 }
 
+export interface PendingBrainDelta {
+  brainId: string;
+  sourceId: string;
+  sourceTurn: number;
+  sourceContent: string;
+  delta: string;
+  evidenceMessageIds: string[];
+}
+
 export interface ActiveState {
+  pendingBrainDeltas?: PendingBrainDelta[];
   /** Character list display order; does not change context priorities or Brain content. */
   brainOrder?: string[];
   turn: number;
@@ -1025,7 +1037,7 @@ export type AdventureAction =
   | { type: "RECORD_MEMORY_DIAGNOSTIC"; entry: MemoryDiagnostic }
   | { type: "QUEUE_MEMORY_EVALUATION"; sourceId: string; turn: number }
   | { type: "CLAIM_MEMORY_EVALUATION"; sourceId: string; turn: number; manual?: boolean }
-  | { type: "COMMIT_MEMORY_EVALUATION_GROUP"; source: { id: string; content: string }; group: MemoryEvaluationGroup; dependencies: Array<{ id: string; content: string }>; targets: MemoryTargetSnapshot[]; actions: AdventureAction[]; error?: string; revision?: string; discoveryCheckpoint?: MemoryDiscoveryCheckpoint; assessment?: MemoryAssessmentCheckpoint; groupWork?: MemoryGroupWork; decisionState?: string }
+  | { type: "COMMIT_MEMORY_EVALUATION_GROUP"; source: { id: string; content: string }; group: MemoryEvaluationGroup; dependencies: Array<{ id: string; content: string }>; targets: MemoryTargetSnapshot[]; actions: AdventureAction[]; error?: string; revision?: string; discoveryCheckpoint?: MemoryDiscoveryCheckpoint; assessment?: MemoryAssessmentCheckpoint; groupWork?: MemoryGroupWork; decisionState?: string; brainBatch?: { enqueue: PendingBrainDelta[]; consumeKeys: string[] } }
   | { type: "SCAN_STORY_CARD_EXCHANGE"; sourceMessageId: string; manual?: boolean }
   | { type: "SET_STORY_CLOCK"; clock: StoryClock }
   | { type: "SET_TITLE"; title: string }

@@ -1180,7 +1180,14 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
       const error = action.error;
       const terminalAssessmentFailure = action.actions.some(item => item.type === "RECORD_MEMORY_DIAGNOSTIC"
         && item.entry.requestStage === "assessment" && item.entry.failureCategory === "invalid_model_output");
-      const next = (error ? action.actions.filter(item => item.type === "RECORD_MEMORY_DIAGNOSTIC") : action.actions).reduce(adventureReducer, state);
+      let next = (error ? action.actions.filter(item => item.type === "RECORD_MEMORY_DIAGNOSTIC") : action.actions).reduce(adventureReducer, state);
+      if (!error && action.group === "brains" && action.brainBatch) {
+        const key = (delta: import("../types/adventure").PendingBrainDelta) => `${delta.sourceId}:${delta.brainId}`;
+        const pending = new Map((next.activeState.pendingBrainDeltas ?? []).map(delta => [key(delta), delta]));
+        for (const delta of action.brainBatch.enqueue) if (!pending.has(key(delta))) pending.set(key(delta), delta);
+        for (const consumed of action.brainBatch.consumeKeys) pending.delete(consumed);
+        next = { ...next, activeState: { ...next.activeState, pendingBrainDeltas: [...pending.values()] } };
+      }
       const completedGroups = [...(source.memoryEvaluation?.completedGroups ?? []), ...(!error ? [action.group] : [])];
       const complete = MEMORY_EVALUATION_GROUPS.every(group => completedGroups.includes(group));
       const updated = touchAdventure(next, { messages: next.messages.map(message => message.id === source.id
