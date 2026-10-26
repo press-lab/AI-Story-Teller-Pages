@@ -252,7 +252,7 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
             by relevant keywords — keeping the resolved arc as referenced backstory.
           </li>
           <li>
-            <strong>Automatic memory stays separate.</strong> Meaningful developments become reviewed Story Card suggestions; no automatic memory operation changes the arc log.
+            Automatic memory can propose an update to the Current Arc when the component is active, automatic updates are allowed, the cooldown has expired, and an Arc Premise exists. Approval settings determine when AIST applies the update.
           </li>
         </ul>
       </>
@@ -745,7 +745,7 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
           <li>"There is tension between Margo and Seth." (relationship state, not a story-level threat)</li>
           <li>"Setu is uncertain about what to do next." (internal state, not external force)</li>
         </ul>
-        <p>Edit Active Pressure directly or use its explicit generation tool. Automatic memory never updates Plot Components.</p>
+        <p>Automatic memory can propose an Active Pressure update when the component allows automatic evaluation. The evaluator checks for a meaningful change in an external threat or obligation. The global memory interval, component cooldown, and approval settings apply.</p>
       </>
     ),
   },

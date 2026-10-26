@@ -235,7 +235,7 @@ describe("side menu page smoke coverage", () => {
     expect(screen.getByText("Clean up existing cards")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Clean Up Cards" })).toBeInTheDocument();
     expect(screen.getByLabelText("Include AI semantic pass")).not.toBeChecked();
-    expect(screen.getByText(/Automatic memory can append new facts to any card/)).toBeInTheDocument();
+    expect(screen.getByText(/Automatic memory can suggest changes to relevant Story Cards/)).toBeInTheDocument();
     expect(screen.queryByLabelText("Memory Mode")).not.toBeInTheDocument();
     expect(screen.getByText("Story Card JSON")).toBeInTheDocument();
 
@@ -496,6 +496,12 @@ describe("side menu page smoke coverage", () => {
   it("covers Memory Inbox proposal creation and approval", async () => {
     const user = userEvent.setup();
     renderWithAdventure((adventure, dispatch) => <MemoryInboxPage adventure={adventure} dispatch={dispatch} />);
+
+    await user.click(screen.getByText("Memory Approval Rules", { selector: "summary" }));
+    expect(screen.getByText(/They do not control when AIST evaluates story turns/)).toBeVisible();
+    expect(screen.getByText(/Story Cards use relevance-based selection/)).toBeVisible();
+    await user.click(screen.getByLabelText("Story Cards", { exact: true }));
+    expect(screen.getByLabelText("Story Cards", { exact: true })).toBeChecked();
 
     await user.type(screen.getByLabelText("Source Text"), "Margo calls Seth hedge prince as a private joke.");
     await user.click(screen.getByRole("button", { name: "Create Suggestion" }));

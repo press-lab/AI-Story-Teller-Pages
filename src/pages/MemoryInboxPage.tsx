@@ -176,7 +176,7 @@ function MemorySuggestionsPage({ adventure, dispatch, onRegenerateProposal, onRe
       </div>
 
       <details className="panel editor-tools-panel">
-        <summary>Rules &amp; auto-approve</summary>
+        <summary>Memory Approval Rules</summary>
         <h3>Memory Suggestions</h3>
         <p className="muted">
           Memory Suggestions holds AI-proposed changes to your story data — new Story Cards, Character Self updates,
@@ -188,6 +188,7 @@ function MemorySuggestionsPage({ adventure, dispatch, onRegenerateProposal, onRe
           Be especially careful with Character Self and plot updates: approving emotional escalation or relationship milestones
           unchecked is how characters drift. Edit proposals before approving, or reject ones that pull the story somewhere you don't want.
         </p>
+        <p className="muted">These settings control whether AIST applies a memory suggestion automatically. They do not control when AIST evaluates story turns.</p>
         <div className="auto-approve-toggles">
           <span className="auto-approve-label muted">Auto-approve:</span>
           <CheckboxField label="Legacy Summary" checked={autoApprove.summaryUpdate} onChange={(v) => setAutoApprove({ summaryUpdate: v })} />
@@ -198,6 +199,7 @@ function MemorySuggestionsPage({ adventure, dispatch, onRegenerateProposal, onRe
           <CheckboxField label="Story Cards" checked={autoApprove.storyCard} onChange={(storyCard) => setAutoApprove({ storyCard })} />
           <CheckboxField label="Characters" checked={autoApprove.brainUpdate} onChange={(v) => setAutoApprove({ brainUpdate: v })} />
         </div>
+        <p className="muted">Settings controls evaluation frequency. Component and Brain controls set their cooldowns. Story Cards use relevance-based selection.</p>
       </details>
 
       <details className="panel">

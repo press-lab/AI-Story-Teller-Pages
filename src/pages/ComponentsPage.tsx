@@ -844,24 +844,26 @@ export function ComponentsPage({ adventure, dispatch, loading, onSuggestPlotUpda
                 <div className="grid two">
                   {component.type === "plotEssentials" && (
                     <CheckboxField
-                      label="Auto-suggest full replacements when current truth drifts"
+                      label="Allow automatic Plot Essentials updates"
                       checked={component.autoUpdate ?? false}
                       onChange={(autoUpdate) => dispatch({ type: "UPDATE_COMPONENT", componentId: component.id, patch: { autoUpdate } })}
                     />
                   )}
                     {component.type !== "plotEssentials" && <CheckboxField
-                      label={component.type === "currentArc" ? "Automatically evaluate arc developments" : "Automatically evaluate external pressure"}
+                      label={component.type === "currentArc" ? "Allow automatic Current Arc updates" : "Allow automatic Active Pressure updates"}
                       checked={component.autoUpdate !== false}
                       onChange={autoUpdate => dispatch({ type: "UPDATE_COMPONENT", componentId: component.id, patch: { autoUpdate } })}
                     />}
-                  <Field label="Auto-update cooldown (turns)">
+                  <Field label="Minimum turns between memory updates">
                     <NumberInput
                         value={component.autoUpdateCooldownTurns ?? (component.type === "activePressure" ? 0 : component.type === "currentArc" ? 4 : 3)}
                       min={0}
                       onChange={(value) => dispatch({ type: "UPDATE_COMPONENT", componentId: component.id, patch: { autoUpdateCooldownTurns: value } })}
                     />
                   </Field>
-                  <Field label="Last updated (turn)">
+                  <p className="muted">0 disables the cooldown. This interval applies to this component. The global evaluation schedule still applies. A cooldown does not force an update.</p>
+                  {component.type === "currentArc" && <p className="muted">Automatic arc evaluation requires an active component and an Arc Premise.</p>}
+                  <Field label="Recorded memory update turn">
                     <input value={component.lastAutoUpdateTurn ?? "Never"} readOnly />
                   </Field>
                 </div>

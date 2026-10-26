@@ -472,6 +472,7 @@ export function BrainsPage({ adventure, dispatch, loading, onUpdateBrainNow, onA
               </span>
             </summary>
             <div className="editor-card brain-inspector">
+              <p className="muted">The evaluator can group several meaningful developments before it generates a Brain update. The global memory interval and this Brain’s cooldown both affect eligibility.</p>
             <div className="panel-heading brain-inspector-heading">
               <div>
                 <p className="eyebrow">{brain.active ? "active" : "inactive"}{brain.pinned ? " · pinned" : ""}</p>
@@ -559,14 +560,15 @@ export function BrainsPage({ adventure, dispatch, loading, onUpdateBrainNow, onA
               </Field>
             </div>
             <div className="grid two">
-              <Field label="Capture thought every N turns (0 = every turn character appears)">
+              <Field label="Minimum turns between automatic Brain updates">
                 <NumberInput
                   value={brain.autoUpdateCooldownTurns ?? 0}
                   min={0}
                   onChange={(value) => dispatch({ type: "UPDATE_BRAIN", brainId: brain.id, patch: { autoUpdateCooldownTurns: value || undefined } })}
                 />
               </Field>
-              <Field label="Last updated (turn)">
+              <p className="muted">0 disables the cooldown. AIST checks this Brain when the character matches the recent story and passes its update condition. An appearance alone does not cause an update.</p>
+              <Field label="Last recorded Brain update turn">
                 <input readOnly value={brain.lastUpdatedTurn ?? "Never"} />
               </Field>
             </div>
@@ -594,7 +596,8 @@ export function BrainsPage({ adventure, dispatch, loading, onUpdateBrainNow, onA
             <details className="brain-secondary-details">
               <summary>Automation &amp; context settings</summary>
 
-              <Field label="Update Condition">
+              <p className="muted">AIST evaluates this condition when the Brain is eligible. The condition controls which changes qualify for memory. It does not set the evaluation interval.</p>
+              <Field label="Condition for a meaningful Brain change">
                 <textarea
                   rows={3}
                   value={brain.updateCondition}

@@ -551,7 +551,7 @@ export function StoryCardsPage({
         </details>
       )}
 
-      <p className="muted">Automatic memory can append new facts to any card. Set evaluation cadence and approval in Memory Suggestions.</p>
+      <p className="muted">Automatic memory can suggest changes to relevant Story Cards. AIST uses the global memory evaluation interval. Story Cards do not have a separate automatic update interval.</p>
 
       <details className="panel editor-tools-panel story-card-json-panel">
         <summary>Story Card JSON</summary>
@@ -777,6 +777,13 @@ export function StoryCardsPage({
                   )}
                   <details className="brain-secondary-details item-secondary-details">
                     <summary>Context, automation, and ordering</summary>
+                  <div className="notice">
+                    <h4>Automatic Memory Eligibility</h4>
+                    <p>AIST can evaluate this card when its subject is relevant to recent story events. The evaluator can select up to eight candidate cards. New, lasting facts can produce an update suggestion.</p>
+                    <p>Per-card update interval: Not configurable.</p>
+                    <p>Per-card automatic update switch: Not available in the current evaluator.</p>
+                    <p>Active, Pinned, and Inclusion Policy control when the storyteller receives this card. These settings do not set automatic memory update frequency. Protected cards require review before an automatic update can be applied.</p>
+                  </div>
                   <div className="grid four">
                     <Field label="Priority (higher = loaded first)">
                       <NumberInput
