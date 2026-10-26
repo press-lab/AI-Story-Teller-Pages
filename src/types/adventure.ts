@@ -125,6 +125,8 @@ export interface MemoryTargetSnapshot {
 
 /** Credential-free identity of the API request that produced generated content. */
 export interface GenerationMetadata {
+  /** App build shown in the UI when this request ran; save-only, never model context. */
+  appCommit?: string;
   provider?: string;
   api?: "chatCompletions" | "anthropicMessages" | "responses";
   model: string;

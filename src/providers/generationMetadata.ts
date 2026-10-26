@@ -13,5 +13,6 @@ export function generationMetadata(endpoint: string, config: Pick<ProviderConfig
   } catch { /* Invalid endpoints have no provider identity. */ }
   const model = raw && typeof raw === "object" && "model" in raw ? raw.model : undefined;
   return { provider, api, model: config.model,
+    appCommit: typeof __COMMIT_HASH__ === "string" ? __COMMIT_HASH__ : "dev",
     ...(typeof model === "string" && model.trim() ? { responseModel: model.slice(0, 120) } : {}) };
 }
