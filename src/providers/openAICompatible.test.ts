@@ -494,11 +494,12 @@ it("accounts for each actual retry and its reported usage", async () => {
   const records: ApiCallRecord[] = [];
   const unsubscribe = subscribeApiCalls(record => records.push(record));
   try {
-    const fetchMock = mockFetch(200, { choices: [{ finish_reason: "length", message: { content: null } }], usage: { prompt_tokens: 50, completion_tokens: 80, total_tokens: 130 } });
-    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ message: { content: "A final answer." } }], usage: { prompt_tokens: 55, completion_tokens: 20, total_tokens: 75 } })));
-    await sendOpenAICompatibleChatCompletion({ config: { ...config, model: "z-ai/glm-5.3-flash", sessionId: "test-adventure" }, messages: [], purpose: "narration" });
+    const fetchMock = mockFetch(200, { choices: [{ finish_reason: "length", message: { content: null } }], usage: { prompt_tokens: 50, completion_tokens: 80, total_tokens: 130, reasoning_tokens: 30, cost: 0.02 } });
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ message: { content: "A final answer." } }], usage: { prompt_tokens: 55, completion_tokens: 20, total_tokens: 75, reasoning_tokens: 10, cost: 0.01 } })));
+    const result = await sendOpenAICompatibleChatCompletion({ config: { ...config, model: "z-ai/glm-5.3-flash", sessionId: "test-adventure" }, messages: [], purpose: "narration" });
     const finished = records.filter(record => record.status !== "started");
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(result.usage).toMatchObject({ completionTokens: 100, reasoningTokens: 40, reportedCostUsd: 0.03 });
     expect(new Set(finished.map(record => record.id)).size).toBe(2);
     expect(finished.map(record => record.usage?.promptTokens)).toEqual([50, 55]);
     expect(finished.every(record => record.purpose === "narration" && record.sessionId === "test-adventure")).toBe(true);
@@ -538,4 +539,33 @@ it("preserves OpenAI text-block content and finish reason", async () => {
   const result = await sendOpenAICompatibleChatCompletion({ config, messages: [] });
   expect(result.content).toBe('Story.<memory_updates>{"updates":[]}</memory_updates>');
   expect(result.finishReason).toBe("stop");
+});
+
+it.each([
+  [{ completion_tokens_details: { reasoning_tokens: 7 }, output_tokens_details: { reasoning_tokens: 9 }, reasoning_tokens: 11, cost: 0.004 }, 7, 0.004],
+  [{ output_tokens_details: { reasoning_tokens: 9 }, reasoning_tokens: 11 }, 9, undefined],
+  [{ reasoning_tokens: 11, cost: 0 }, 11, 0],
+  [{ cost: -1 }, undefined, undefined],
+  [{}, undefined, undefined],
+])("preserves optional standard usage without adding reasoning to completion", async (details, reasoning, cost) => {
+  const records: ApiCallRecord[] = []; const unsubscribe = subscribeApiCalls(r => records.push(r));
+  try {
+    const fetch = mockFetch(200, { choices: [{ message: { content: "Done." } }], usage: { prompt_tokens: 70, completion_tokens: 15, total_tokens: 85, prompt_tokens_details: { cached_tokens: 20 }, ...details } });
+    const result = await sendOpenAICompatibleChatCompletion({ config, messages: [], retry: false });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(result.usage).toMatchObject({ promptTokens: 70, completionTokens: 15, totalTokens: 85, cacheReadTokens: 20 });
+    expect(result.usage?.reasoningTokens).toBe(reasoning); expect(result.usage?.reportedCostUsd).toBe(cost);
+    expect(records.at(-1)?.usage?.reasoningTokens).toBe(reasoning); expect(records.at(-1)?.usage?.reportedCostUsd).toBe(cost);
+  } finally { unsubscribe(); }
+});
+it("keeps missing token counts unknown in the normalized response", async () => {
+  mockFetch(200, { choices: [{ message: { content: "Done." } }], usage: {} });
+  expect((await sendOpenAICompatibleChatCompletion({ config, messages: [] })).usage).toBeUndefined();
+});
+
+it("keeps aggregate usage unknown when one retry response has no usage", async () => {
+  const fetchMock = mockFetch(200, { choices: [{ finish_reason: "length", message: { content: null } }] });
+  fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ message: { content: "Final answer." } }], usage: { prompt_tokens: 10, completion_tokens: 10, cost: 0.01, reasoning_tokens: 4 } })));
+  const result = await sendOpenAICompatibleChatCompletion({ config: { ...config, model: "z-ai/glm-5.3-flash" }, messages: [], purpose: "narration" });
+  expect(fetchMock).toHaveBeenCalledTimes(2); expect(result.usage).toBeUndefined();
 });

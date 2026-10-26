@@ -11,7 +11,7 @@ import { createId, nowIso } from "../utils/id";
 
 export function singlePassSourceError(a: Adventure, sourceId: string, checkpoint: SinglePassMemoryCheckpoint): string | undefined {
   const source = a.messages.find(m => m.id === sourceId);
-  if (!source || source.content !== checkpoint.sourceContent || source.memoryEvaluation?.revision !== checkpoint.sourceRevision) return "Source content or revision changed.";
+  if (!source || source.role !== "assistant" || source.inputMode === "comms" || source.content !== checkpoint.sourceContent || source.memoryEvaluation?.revision !== checkpoint.sourceRevision) return "Source content or revision changed.";
   const evidence = memoryEvidenceWindow(a, sourceId);
   if (JSON.stringify(evidence.map(({ id, content }) => ({ id, content }))) !== JSON.stringify(checkpoint.evidence)) return "Historical evidence changed.";
   return undefined;
@@ -69,7 +69,7 @@ export function toSinglePassProposal(a: Adventure, sourceId: string, checkpoint:
     // The extractor chooses placement. The helper still supplies chronology and established trigger generation.
     const choices = storyCardTargets(a, { title: f.title, content: f.content!, participants: f.participants, type: f.storyCardType });
     p = { ...p, content: f.content!, title: f.title, targetId: f.targetId ?? undefined, storyCardType: f.storyCardType, memoryMode: f.memoryMode,
-      cardOperation: f.operation, appendContent: f.operation === "append", requiresReview: review || choices.length > 1 || (!f.targetId && choices.length > 0),
+      cardOperation: f.operation, appendContent: f.operation === "append" ? true : undefined, requiresReview: review || choices.length > 1 || (!f.targetId && choices.length > 0),
       lore: f.storyCardType === "lore" ? { ...p.lore, status: f.eventStatus!, sourceMessageIds: ids } : undefined };
     if (p.storyCardReview) p.storyCardReview = { ...p.storyCardReview, candidateOnly: Boolean(p.requiresReview), operation: f.operation === "append" ? "update" : "create",
       additionalSources: checkpoint.evidence.filter(m => ids.includes(m.id) && m.id !== sourceId) };
@@ -105,5 +105,5 @@ export function validateSinglePassSource(a: Adventure, result: SinglePassMemoryS
     if (covered) suppressed.push(index);
     else proposals.push({ index, findingIndex, proposal });
   });
-  return { proposals, rejected, suppressed, failureReason: sourceError ?? result.failureReason };
+  return { proposals, rejected, suppressed, failureReason: sourceError ?? result.failureReason ?? (rejected.length ? "Invalid findings rejected; valid sibling proposals retained. Explicit Retry required." : undefined) };
 }

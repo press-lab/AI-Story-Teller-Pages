@@ -4,7 +4,7 @@ import { adventureReducer as reduce } from "../state/adventureReducer";
 import { makeStoryCardSuggestion } from "./storyCardSuggestions";
 import { regenerateProposalContent } from "./memoryDetection";
 import { validateStoryCardProposal } from "./validateStoryCardProposal";
-import { placementValidationError } from "./storyCardPlacement";
+import { bindPlacement, placementValidationError } from "./storyCardPlacement";
 import { sendMemoryCompletion } from "../providers/memoryCompletion";
 import { importAdventureJson, exportAdventureJson } from "../utils/json";
 import type { StoryCardType, StoryCardMemoryMode } from "../types/adventure";
@@ -106,4 +106,10 @@ it("regenerates an append without requiring a legacy memory mode", async () => {
   const p = await regenerateProposalContent(draft(a), a, config);
   expect(p).toMatchObject({ cardOperation: "append", targetId: "subject", appendContent: true, content: fact });
   expect(provider).toHaveBeenCalledTimes(2);
+});
+
+it("rejects a locally bound private Brain note on a Character profile without identity evidence", () => {
+  const a = seed("character"); const p = bindPlacement(a, { ...draft(a), requiresReview: true, storyCardType: "character", cardOperation: "append", appendContent: true },
+    { kind: "append", reason: "Private interpretation needs review.", newFact: fact }, ["source"]);
+  expect(placementValidationError(a, p)).toContain("enduring profile change"); expect(provider).not.toHaveBeenCalled();
 });

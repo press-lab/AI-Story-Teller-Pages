@@ -9,7 +9,7 @@ export interface MemoryDiagnostic {
     | "proposal_approved" | "proposal_rejected" | "proposal_ignored"
     | "recovery_queued" | "recovery_attempted" | "recovery_validated" | "recovery_completed" | "recovery_failed"
     | "evaluation_queued" | "evaluation_started" | "evaluation_completed" | "evaluation_failed" | "evaluation_stale"
-    | "discovery_summary" | "candidate_awaiting_retry" | "checkpoint_invalidated" | "checkpoint_reused" | "work_skipped";
+    | "finding_normalized" | "discovery_summary" | "candidate_awaiting_retry" | "checkpoint_invalidated" | "checkpoint_reused" | "work_skipped";
   retryable?: boolean;
   failureCategory?: "configuration" | "transport_api" | "invalid_model_output";
   failureCode?: string;
@@ -139,6 +139,7 @@ export interface SinglePassMemorySourceResult {
   sourceId: string;
   findings: SinglePassMemoryFinding[];
   findingIndexes?: number[];
+  diagnostics?: Array<{ index: number; reason: string }>;
   rejected: Array<{ index: number; reason: string }>;
   failureReason?: string;
 }
@@ -589,6 +590,8 @@ export type OpenRouterProviderSort = "price" | "throughput" | "latency";
 export type ResponseLengthHint = number;
 
 export interface ProviderUsage {
+  reasoningTokens?: number;
+  reportedCostUsd?: number;
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
@@ -852,7 +855,7 @@ export interface StoryEditHistoryEntry {
 
 export type ApiCallPurpose = "narration" | "correction" | "continuityCheck" | "memoryEvaluation" | "memoryRecovery" | "otherBackground";
 export interface ApiCallRecord extends GenerationMetadata {
-  partialUsage?: { inputTokens?: number; outputTokens?: number };
+  partialUsage?: Pick<ProviderUsage, "reasoningTokens" | "reportedCostUsd" | "cacheReadTokens"> & { inputTokens?: number; outputTokens?: number };
   httpStatus?: number;
   memoryRequest?: MemoryRequestAttribution;
   id: string;

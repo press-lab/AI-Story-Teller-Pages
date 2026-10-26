@@ -1,11 +1,11 @@
 import { reconcileBrainBatchState } from "../memory/brainBatchRecovery";
 import { assessMemory, assessmentInputs, fingerprint, memoryDecisionState } from "../memory/memoryAssessment";
-import { proposalCoverage, relevantProposalCoverage } from "../memory/factCoverage";
+import { factsCovered, proposalCoverage, relevantProposalCoverage } from "../memory/factCoverage";
 import { relevantStoryCardInventory } from "../memory/storyCardSuggestions";
 import { resolveMemoryEvaluationProviderConfig, safeMemoryFailure, MemoryEvaluationError } from "../providers/backgroundProvider";
 import { primaryStoryCardType, isHistoricalLore } from "../memory/storyCardArchitecture";
 import { latestMemoryTurn } from "../memory/memoryUpdateEvidence";
-import { validateMemoryUpdate } from "../memory/validateMemoryUpdate";
+import { memoryUpdateShapeError, validateMemoryUpdate } from "../memory/validateMemoryUpdate";
 import type {
   Adventure,
   AdventureAction,
@@ -49,7 +49,7 @@ import { sendMemoryCompletion, memoryGroupProvider } from "../providers/memoryCo
 import { brainBatchEvidenceMessages, memoryEvidenceWindow, storyMemoryMessages } from "../memory/memoryEvidenceWindow";
 import { MEMORY_EVALUATION_GROUPS, memoryTargetSnapshot } from "../memory/memoryCycleState";
 import { equivalentStoryCardSuggestions, makeStoryCardSuggestion } from "../memory/storyCardSuggestions";
-import { STORY_CARD_PLACEMENT_POLICY } from "../memory/storyCardPlacement";
+import { bindPlacement, placementValidationError, STORY_CARD_PLACEMENT_POLICY } from "../memory/storyCardPlacement";
 import { validateStoryCardProposal } from "../memory/validateStoryCardProposal";
 import { adventureReducer } from "../state/adventureReducer";
 
@@ -465,11 +465,19 @@ function makeProposal(
   };
 }
 
+function localComponentValidation(component: Adventure["components"][number] | undefined, kind: "plotEssentials" | "activePressure" | "currentArc", content: string) {
+  if (!component || component.type !== kind || !component.active) return { changed: false, error: "No eligible existing component.", retryable: false };
+  if (!content.trim() || /^(NONE|NO_CHANGE)$/i.test(content.trim()) || factsCovered(content, [component.content])) return { changed: false, retryable: false };
+  const error = memoryUpdateShapeError(kind, content);
+  return { changed: !error, error, retryable: false };
+}
+
 async function generatedActionsFor(
   adventure: Adventure,
   providerConfig: ProviderConfig,
   triggerAction: TriggerAction,
   conditionId: string,
+  validationPolicy: "local" | "legacy",
   rule?: TriggerRule,
   accum?: { promptTokens: number; completionTokens: number },
   independent = false,
@@ -478,6 +486,14 @@ async function generatedActionsFor(
   brainBatch?: PendingBrainDelta[],
 ): Promise<{ actions: AdventureAction[]; generated?: GeneratedContentPreview; error?: string; rejected?: string; failure?: import("../types/adventure").MemoryWorkFailure }> {
   const requireApproval = adventure.semanticEvaluationSettings.requireApprovalForAutoUpdates;
+  const bindLocalProposal = (p: MemoryProposal): MemoryProposal => {
+    if (validationPolicy === "legacy") return p;
+    const source = [...adventure.messages].reverse().find(m => m.role === "assistant" && m.inputMode !== "comms");
+    const kind = p.proposedType === "brainUpdate" ? "brain" : p.proposedType === "storyCard" ? "storyCard" : "component";
+    return { ...p, requiresReview: requireApproval || p.requiresReview, sourceTurnId: source?.id ?? p.sourceTurnId,
+      evaluationSource: source ? { messages: memoryEvidenceWindow(adventure, source.id).map(({ id, content }) => ({ id, content })),
+        target: p.targetId ? memoryTargetSnapshot(adventure, kind, p.targetId) : undefined } : undefined };
+  };
   let received = false;
   const targeted = async (prompt: string) => {
     if (memo?.raw !== undefined) { received = true; return memo.raw; }
@@ -524,7 +540,7 @@ ${defaultBrainPrompt(brain, adventure.activeState.turn, brainBatch)}`
         if (!brainBatch && rawParsed && typeof rawParsed === "object" && !Array.isArray(rawParsed) && Object.keys(rawParsed).length === 0) return { actions: [] };
         throw new MemoryEvaluationError("invalid_model_output", "memory_model_output_invalid", "Brain update returned no recognized keys.");
       }
-      // Remove unchanged fields locally before paying for semantic review. Null
+      // Remove unchanged fields before validation. Null
       // archives only an existing thought; it never invents retained text.
       for (const key of Object.keys(patch) as Array<keyof typeof patch>) {
         if (key !== "thoughts" && patch[key] === brain[key]) delete patch[key];
@@ -534,20 +550,69 @@ ${defaultBrainPrompt(brain, adventure.activeState.turn, brainBatch)}`
         if (!Object.keys(patch.thoughts).length) delete patch.thoughts;
       }
       if (!Object.keys(patch).length) return brainBatch ? { actions: [], error: "Brain batch returned no changed patch; deltas retained." } : { actions: [] };
-      const validation = await validateMemoryUpdate(adventure, providerConfig, "brain", brain.characterName,
+      if (validationPolicy === "local") {
+        if (!brain.active) throw new Error("No eligible active Brain target.");
+        for (const [key, value] of Object.entries(patch.thoughts ?? {})) {
+          if (!/^[a-z][a-z0-9_]*$/.test(key)) throw new Error("Thought keys must use snake_case.");
+          if (value !== null && key in brain.thoughts) throw new Error("Existing thoughts must not be overwritten.");
+          if (value === null && Object.values({ ...brain.thoughts, ...Object.fromEntries(Object.entries(patch.thoughts ?? {}).filter(([, v]) => v !== null)) }).join("\n").length <= (brain.condenseThreshold ?? 1600)) throw new Error("Thought archival threshold is not exceeded.");
+        }
+      }
+      if (validationPolicy === "local" && patch.thoughts) {
+        patch.thoughts = Object.fromEntries(Object.entries(patch.thoughts).filter(([, value]) => value === null || !factsCovered(value, Object.values(brain.thoughts))));
+        if (!Object.keys(patch.thoughts).length) delete patch.thoughts;
+        if (!Object.keys(patch).length) return { actions: [] };
+      }
+      const validation = validationPolicy === "local" ? { changed: true, error: undefined, retryable: false } : await validateMemoryUpdate(adventure, providerConfig, "brain", brain.characterName,
         JSON.stringify({ thoughts: brain.thoughts, currentState: brain.currentState }), JSON.stringify(patch), accum, false, false, { id: brain.id, type: "brain" }, memo ? memo.validationCache ??= {} : undefined, brainBatch?.map(d => d.sourceId));
       if (brainBatch && !validation.changed && memo && !validation.retryable) {
         // A manual retry must generate a corrected draft, not pay to reject the same text again.
         memo.raw = undefined; memo.validationCache = {};
       }
       if (!validation.changed) return { actions: [], error: brainBatch ? validation.error ?? "Brain batch validation did not accept the patch." : independent && !validation.retryable ? undefined : validation.error, rejected: validation.error };
-      if (requireApproval) {
+      const extraActions: AdventureAction[] = [];
+      if (validationPolicy === "local" && storyCardNote && !adventure.storyCards.some(c => c.id === brain.linkedStoryCardId)) {
+        extraActions.push({ type: "RECORD_MEMORY_DIAGNOSTIC", entry: { id: createId("decision"), createdAt: nowIso(),
+          sourceId: adventure.messages.at(-1)?.id ?? "manual", stage: "candidate", outcome: "validation_rejected", reason: "Brain note has no existing linked Story Card." } });
+      }
+      if (storyCardNote && brain.linkedStoryCardId && (validationPolicy === "local" || !requireApproval)) {
+        const card = adventure.storyCards.find((c) => c.id === brain.linkedStoryCardId);
+        const noteValidation = card && validationPolicy === "legacy" ? await validateMemoryUpdate(adventure, providerConfig, "storyCard", card.title,
+          storyCardContextContent(card), storyCardContextContent(card) + "\n" + storyCardNote, accum, false, false, { id: card.id, type: card.type, memoryMode: card.memoryMode }) : undefined;
+        if (card && (validationPolicy === "local" || noteValidation?.changed)) {
+          const scProposal = makeProposal(
+            {
+              proposedType: "storyCard",
+              title: card.title,
+              content: storyCardNote,
+              suggestedTriggers: card.keys,
+              targetId: card.id,
+              appendContent: true,
+              memoryMode: card.memoryMode,
+              rationale: validationPolicy === "legacy" ? `Brain thought for ${brain.characterName} revealed a stable character trait.` : `Review a private interpretation from ${brain.characterName}.`,
+            },
+            adventure,
+          );
+          if (validationPolicy === "legacy") extraActions.push({ type: "ADD_MEMORY_PROPOSAL", proposal: { ...scProposal, appendContent: true } });
+          else {
+            const source = [...adventure.messages].reverse().find(m => m.role === "assistant" && m.inputMode !== "comms");
+            const proposal = source ? bindPlacement(adventure, { ...scProposal, sourceTurnId: source.id, sourceText: source.content,
+              storyCardType: primaryStoryCardType(card.type), cardOperation: "append", requiresReview: true },
+              { kind: "append", reason: "Private Brain interpretation requires review.", newFact: storyCardNote }, [source.id]) : undefined;
+            const error = proposal ? placementValidationError(adventure, proposal) : "No establishing narrator source.";
+            if (proposal && !error) extraActions.push({ type: "ADD_MEMORY_PROPOSAL", proposal: bindLocalProposal(proposal) });
+            else extraActions.push({ type: "RECORD_MEMORY_DIAGNOSTIC", entry: { id: createId("decision"), createdAt: nowIso(), sourceId: source?.id ?? "",
+              stage: "candidate", outcome: "validation_rejected", reason: error ?? "Unsafe Brain note placement." } });
+          }
+        }
+      }
+      if (requireApproval || (validationPolicy === "local" && brain.protected)) {
         const proposal = makeProposal(
           { proposedType: "brainUpdate", title: brain.characterName, content: JSON.stringify(patch), targetId: brain.id, rationale: `Auto-update for ${brain.characterName}.` },
           adventure,
         );
         return {
-          actions: [{ type: "ADD_MEMORY_PROPOSAL", proposal }],
+          actions: [{ type: "ADD_MEMORY_PROPOSAL", proposal: bindLocalProposal(proposal) }, ...extraActions],
           generated: { targetType: "brain", targetId: brain.id, title: brain.characterName, preview: preview(raw) },
         };
       }
@@ -562,28 +627,6 @@ ${defaultBrainPrompt(brain, adventure.activeState.turn, brainBatch)}`
           preview: preview(raw),
         },
       ]);
-      const extraActions: AdventureAction[] = [];
-      if (storyCardNote && brain.linkedStoryCardId) {
-        const card = adventure.storyCards.find((c) => c.id === brain.linkedStoryCardId);
-        const noteValidation = card ? await validateMemoryUpdate(adventure, providerConfig, "storyCard", card.title,
-          storyCardContextContent(card), storyCardContextContent(card) + "\n" + storyCardNote, accum, false, false, { id: card.id, type: card.type, memoryMode: card.memoryMode }) : undefined;
-        if (card && noteValidation?.changed) {
-          const scProposal = makeProposal(
-            {
-              proposedType: "storyCard",
-              title: card.title,
-              content: storyCardNote,
-              suggestedTriggers: card.keys,
-              targetId: card.id,
-              appendContent: true,
-              memoryMode: card.memoryMode,
-              rationale: `Brain thought for ${brain.characterName} revealed a stable character trait.`,
-            },
-            adventure,
-          );
-          extraActions.push({ type: "ADD_MEMORY_PROPOSAL", proposal: { ...scProposal, appendContent: true } });
-        }
-      }
       return {
         actions: [...memoryUpdate.actions, ...extraActions],
         generated: { targetType: "brain", targetId: brain.id, title: brain.characterName, preview: preview(raw) },
@@ -599,22 +642,33 @@ ${defaultBrainPrompt(brain, adventure.activeState.turn, brainBatch)}`
       const raw = assessmentDraft ?? await targeted(rule?.updatePrompt || prompt);
       if (!raw.trim() || /^(NONE|NO_CHANGE)$/i.test(raw.trim())) return { actions: [] };
       let content = raw, title = card.title, type = primaryStoryCardType(card.type), mode = card.memoryMode;
+      let destination: string | null | undefined, identityChange: import("../types/adventure").MemoryPlacementValidation["identityChange"];
       if (!assessmentDraft && (raw.trim().startsWith("{") || raw.trim().startsWith("```"))) {
         const parsed = JSON.parse(raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, ""));
-        if (!parsed || typeof parsed.content !== "string" || typeof parsed.title !== "string"
-          || !["character", "location", "lore", "custom"].includes(parsed.storyCardType)
-         ) throw new Error("memory_model_output_invalid: Invalid placement draft.");
-        content = parsed.content; title = parsed.title; type = parsed.storyCardType; mode = parsed.memoryMode;
+        if (!parsed || typeof parsed.content !== "string" || (validationPolicy === "legacy" && (typeof parsed.title !== "string" || !["character", "location", "lore", "custom"].includes(parsed.storyCardType)))) throw new Error("memory_model_output_invalid: Invalid placement draft.");
+        content = parsed.content; title = typeof parsed.title === "string" ? parsed.title : card.title;
+        type = parsed.storyCardType ?? (typeof parsed.targetId === "string" ? primaryStoryCardType(adventure.storyCards.find(c => c.id === parsed.targetId)?.type ?? "lore") : "lore"); mode = parsed.memoryMode ?? "static";
+        if (!["character", "location", "lore", "custom"].includes(type)) throw new Error("Invalid Story Card type.");
+        destination = parsed.targetId; identityChange = parsed.identityChange;
       }
-      const source = [...adventure.messages].reverse().find(m => m.role === "assistant");
+      const source = [...adventure.messages].reverse().find(m => m.role === "assistant" && m.inputMode !== "comms");
       if (!source) return { actions: [], error: "No saved source for Story Card placement." };
+      if (validationPolicy === "local" && type === "character" && !identityChange) { type = "lore"; destination = null; }
+      if (validationPolicy === "local" && typeof destination === "string" && !adventure.storyCards.some(c => c.id === destination && c.type === type)) throw new Error("Invalid Story Card target.");
+      const selectedTarget = validationPolicy === "legacy" ? (type === card.type ? card.id : undefined) : destination === null ? undefined : destination ?? (type === card.type ? card.id : undefined);
       const draft = makeStoryCardSuggestion(adventure, source.id, source.content, {
-        title, content, type, targetId: type === card.type ? card.id : undefined,
+        title, content, type, targetId: selectedTarget,
         evidence: recentExcerpt(adventure), reason: `Auto-update check for "${card.title}".`, triggers: card.keys, evidenceReviewed: true,
       });
+      if (validationPolicy === "local") { draft.targetId = selectedTarget; draft.title = title; }
       draft.memoryMode = mode;
       draft.appendContent = draft.targetId ? true : undefined;
-      const validation = await validateStoryCardProposal(adventure, providerConfig, draft, accum, memo ? memo.validationCache ??= {} : undefined);
+      const local = validationPolicy === "local" ? bindPlacement(adventure, { ...draft, requiresReview: true, storyCardType: type,
+        cardOperation: draft.targetId ? "append" : "create", appendContent: draft.targetId ? true : undefined, content },
+        { kind: draft.targetId ? "append" : "create", reason: "Manual Story Card update requires review.", newFact: content, identityChange }, [source.id]) : undefined;
+      const localError = local && placementValidationError(adventure, local);
+      const validation = local ? { proposal: localError ? undefined : local, error: localError, retryable: false }
+        : await validateStoryCardProposal(adventure, providerConfig, draft, accum, memo ? memo.validationCache ??= {} : undefined);
       if (!validation.proposal) return { actions: [], error: independent && !validation.retryable ? undefined : validation.error, rejected: validation.error };
       return { actions: [{ type: "ADD_MEMORY_PROPOSAL", proposal: validation.proposal }],
         generated: { targetType: "storyCard", targetId: validation.proposal.targetId ?? "new", title: validation.proposal.title, preview: preview(validation.proposal.content) } };
@@ -624,28 +678,28 @@ ${defaultBrainPrompt(brain, adventure.activeState.turn, brainBatch)}`
       const component = adventure.components.find((entry) => entry.id === triggerAction.componentId);
       if (!component) return { actions: [], error: `Component not found: ${triggerAction.componentId}` };
       const content = await targeted(rule?.updatePrompt || componentPrompt(component));
-      const validation = await validateMemoryUpdate(adventure, providerConfig, "plotEssentials", component.title, component.content, content, accum, false, false, undefined, memo ? memo.validationCache ??= {} : undefined);
+      const validation = validationPolicy === "local" ? localComponentValidation(component, "plotEssentials", content) : await validateMemoryUpdate(adventure, providerConfig, "plotEssentials", component.title, component.content, content, accum, false, false, undefined, memo ? memo.validationCache ??= {} : undefined);
       if (!validation.changed) return { actions: [], error: independent && !validation.retryable ? undefined : validation.error, rejected: validation.error };
       const proposal = makeProposal(
         { proposedType: "plotEssentialsUpdate", title: component.title, content, targetId: component.id, rationale: `Auto-update for "${component.title}".` },
         adventure,
       );
       return {
-        actions: [{ type: "ADD_MEMORY_PROPOSAL", proposal }, { type: "MARK_COMPONENT_UPDATED", componentId: component.id, turn: adventure.activeState.turn }],
+        actions: [{ type: "ADD_MEMORY_PROPOSAL", proposal: bindLocalProposal(proposal) }, { type: "MARK_COMPONENT_UPDATED", componentId: component.id, turn: adventure.activeState.turn }],
         generated: { targetType: "component", targetId: component.id, title: component.title, preview: preview(content) },
       };
     }
 
     if (triggerAction.type === "updateComponentPressure") {
-      const pressureComp = adventure.components.find((c) => c.type === "activePressure");
+      const pressureComp = adventure.components.find((c) => c.type === "activePressure" && (triggerAction.componentId ? c.id === triggerAction.componentId : c.active));
       const content = await targeted(plotPressurePrompt(adventure));
-      const validation = await validateMemoryUpdate(adventure, providerConfig, "activePressure", "Active Pressure", pressureComp?.content ?? "", content, accum, false, false, undefined, memo ? memo.validationCache ??= {} : undefined);
+      const validation = validationPolicy === "local" ? localComponentValidation(pressureComp, "activePressure", content) : await validateMemoryUpdate(adventure, providerConfig, "activePressure", "Active Pressure", pressureComp?.content ?? "", content, accum, false, false, undefined, memo ? memo.validationCache ??= {} : undefined);
       if (!validation.changed) return { actions: [], error: independent && !validation.retryable ? undefined : validation.error, rejected: validation.error };
       const proposal = makeProposal(
         { proposedType: "plotPressureUpdate", title: "Active Pressure", content, targetId: pressureComp?.id, rationale: "Active Pressure update." },
         adventure,
       );
-      const actions: AdventureAction[] = [{ type: "ADD_MEMORY_PROPOSAL", proposal }];
+      const actions: AdventureAction[] = [{ type: "ADD_MEMORY_PROPOSAL", proposal: bindLocalProposal(proposal) }];
       if (pressureComp) actions.push({ type: "MARK_COMPONENT_UPDATED", componentId: pressureComp.id, turn: adventure.activeState.turn });
       return {
         actions,
@@ -658,15 +712,15 @@ ${defaultBrainPrompt(brain, adventure.activeState.turn, brainBatch)}`
       if (!arcComp) return { actions: [], error: `Current Arc component not found: ${triggerAction.componentId}` };
       const content = await targeted(arcUpdatePrompt(arcComp));
       if (!content.trim() || content.trim() === "NONE") return { actions: [] };
-      if (independent) {
-        const validation = await validateMemoryUpdate(adventure, providerConfig, "currentArc", arcComp.title, arcComp.content, content, accum, false, false, undefined, memo ? memo.validationCache ??= {} : undefined);
+      if (independent || validationPolicy === "local") {
+        const validation = validationPolicy === "local" ? localComponentValidation(arcComp, "currentArc", content) : await validateMemoryUpdate(adventure, providerConfig, "currentArc", arcComp.title, arcComp.content, content, accum, false, false, undefined, memo ? memo.validationCache ??= {} : undefined);
         if (!validation.changed) return { actions: [], error: validation.retryable ? validation.error : undefined, rejected: validation.error };
       }
       const proposal = makeProposal(
         { proposedType: "currentArcUpdate", title: arcComp.title, content, targetId: arcComp.id, rationale: "Arc event logged." },
         adventure,
       );
-      const actions: AdventureAction[] = [{ type: "ADD_MEMORY_PROPOSAL", proposal }];
+      const actions: AdventureAction[] = [{ type: "ADD_MEMORY_PROPOSAL", proposal: bindLocalProposal(proposal) }];
       actions.push({ type: "MARK_COMPONENT_UPDATED", componentId: arcComp.id, turn: adventure.activeState.turn });
       return {
         actions,
@@ -735,7 +789,7 @@ export async function runSemanticPostTurnEvaluation(
         continue;
       }
       if (isGeneratedAction(triggerAction)) {
-        generationTasks.push(() => generatedActionsFor(adventure, providerConfig, triggerAction, condition.id, sourceRule, accum));
+        generationTasks.push(() => generatedActionsFor(adventure, providerConfig, triggerAction, condition.id, "local", sourceRule, accum));
         actionsExecuted.push(`${condition.label}: ${triggerAction.type} (generated)`);
       } else {
         const mapped = immediateActionsFor(adventure, triggerAction);
@@ -792,6 +846,7 @@ export async function runManualBrainUpdate(
     providerConfig,
     { type: brain.updateMode === "append" ? "appendBrain" : "updateBrain", brainId },
     `manualBrain:${brainId}`,
+    "local",
   );
   const logEntry = {
     ...emptyLog,
@@ -832,7 +887,7 @@ export async function runManualPlotEssentialsUpdate(
   };
 
   const tasks = components.map((component) => () =>
-    generatedActionsFor(forcePropose, providerConfig, { type: "updateComponent", componentId: component.id }, `manualPlot:${component.id}`),
+    generatedActionsFor(forcePropose, providerConfig, { type: "updateComponent", componentId: component.id }, `manualPlot:${component.id}`, "local"),
   );
   const results = await runLimited(adventure.semanticEvaluationSettings.maxParallelUpdateCalls, tasks);
 
@@ -878,7 +933,7 @@ export async function runManualStoryCardsUpdate(
   };
 
   const tasks = cards.map((card) => () =>
-    generatedActionsFor(forcePropose, providerConfig, { type: "updateStoryCard", storyCardId: card.id }, `manualCard:${card.id}`),
+    generatedActionsFor(forcePropose, providerConfig, { type: "updateStoryCard", storyCardId: card.id }, `manualCard:${card.id}`, "local"),
   );
   const results = await runLimited(adventure.semanticEvaluationSettings.maxParallelUpdateCalls, tasks);
 
@@ -1694,21 +1749,20 @@ ${recent}`;
       };
       if (proposal.proposedType === "storyCard") {
         const narrator = [...adventure.messages].reverse().find(m => m.role === "assistant");
-        const reviewed = await validateStoryCardProposal(adventure, config, { ...proposal, sourceTurnId: narrator?.id ?? sourceTurnId,
-          storyCardType: proposal.storyCardType ?? adventure.storyCards.find(c => c.id === proposal.targetId)?.type });
-        if (!reviewed.proposal) {
-          const reason = reviewed.error ?? "No qualifying new fact.";
-          actions.push({ type: "RECORD_MEMORY_DIAGNOSTIC", entry: {
-            id: createId("decision"), sourceId: narrator?.id ?? sourceTurnId, createdAt: nowIso(), stage: "candidate",
-            outcome: "validation_rejected", reason: `Memory Reconcile: ${reason}`, failureCode: reviewed.failureCode,
-            providerCode: reviewed.providerCode, httpStatus: reviewed.httpStatus,
-            candidate: { kind: proposal.storyCardType ?? "storyCard", title: proposal.title, content: proposal.content,
-              evidence: proposal.sourceText, rationale: proposal.rationale, targetId: proposal.targetId },
-          } });
-          if (reviewed.retryable) errors.push(`Memory Reconcile ${proposal.title}: ${reason} Retry this reconciliation explicitly.`);
+        // Reconciliation is a manual draft. It does not buy a second interpretation.
+        const profile = proposal.storyCardType === "character";
+        const placed = narrator ? bindPlacement(adventure, { ...proposal, sourceTurnId: narrator.id,
+          requiresReview: true, storyCardType: profile ? "lore" : proposal.storyCardType ?? "lore",
+          targetId: profile ? undefined : proposal.targetId, storyCardPatch: undefined,
+          cardOperation: profile || !proposal.targetId ? "create" : "append", appendContent: !profile && proposal.targetId ? true : undefined },
+          { kind: profile || !proposal.targetId ? "create" : "append", reason: "Manual reconciliation requires review.", newFact: proposal.content }, [narrator.id]) : undefined;
+        const error = placed ? placementValidationError(adventure, placed) : "No establishing narrator source.";
+        if (!placed || error) {
+          actions.push({ type: "RECORD_MEMORY_DIAGNOSTIC", entry: { id: createId("decision"), sourceId: narrator?.id ?? sourceTurnId,
+            createdAt: nowIso(), stage: "candidate", outcome: "validation_rejected", reason: error ?? "Invalid local placement." } });
           continue;
         }
-        proposal = reviewed.proposal;
+        proposal = placed;
         const duplicate = actions.find(action => action.type === "ADD_MEMORY_PROPOSAL" && equivalentStoryCardSuggestions(action.proposal, proposal));
         if (duplicate?.type === "ADD_MEMORY_PROPOSAL") {
           actions.push({ type: "RECORD_MEMORY_DIAGNOSTIC", entry: { id: createId("decision"), sourceId: proposal.sourceTurnId,
@@ -1894,13 +1948,14 @@ export async function runManualPEComponentUpdate(
     errors: [],
   };
 
-  if (!component || (component.type !== "plotEssentials" && component.type !== "activePressure")) {
+  if (!component || (component.type !== "plotEssentials" && component.type !== "activePressure" && component.type !== "currentArc")) {
     const errorLog = { ...emptyLog, errors: [`Component not found or wrong type: ${componentId}`] };
     return { actions: [{ type: "LOG_EVALUATION_RESULT", entry: errorLog }], logEntry: errorLog };
   }
 
   const triggerAction = component.type === "activePressure"
     ? { type: "updateComponentPressure" as const, componentId }
+    : component.type === "currentArc" ? { type: "updateComponentArc" as const, componentId }
     : { type: "updateComponent" as const, componentId };
 
   const forcePropose = {
@@ -1913,6 +1968,7 @@ export async function runManualPEComponentUpdate(
     providerConfig,
     triggerAction,
     `manual${component.type === "activePressure" ? "Pressure" : "Arc"}:${componentId}`,
+    "local",
   );
 
   const logEntry: EvaluationLogEntry = {
@@ -2090,7 +2146,7 @@ export async function runMemoryCycle(
       const targetProvider = batch
         ? memoryGroupProvider(providerConfig, batch.at(-1)!.sourceId, group, source.memoryEvaluation?.attempts ?? 0) : groupProvider;
       const result = memo.result ?? await generatedActionsFor(forcePropose, targetProvider,
-        action, condition.id, undefined, accum, true, memo, delta, batch);
+        action, condition.id, "legacy", undefined, accum, true, memo, delta, batch);
       if (!result.error) memo.result = result;
       if (priorWork?.drafts[condition.id]) groupActions.push({ type: "RECORD_MEMORY_DIAGNOSTIC", entry: {
         id: createId("decision"), sourceId: source.id, createdAt: nowIso(), stage: "independent", group,

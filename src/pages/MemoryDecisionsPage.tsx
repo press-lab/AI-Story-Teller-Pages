@@ -5,6 +5,7 @@ import { useState } from "react";
 import type { Adventure, MemoryDiagnostic } from "../types/adventure";
 
 const labels: Record<string, string> = {
+  finding_normalized: "Local finding metadata",
   discovery_summary: "Discovery outcomes", candidate_awaiting_retry: "Candidate awaiting validation retry",
   checkpoint_invalidated: "Saved drafts invalidated", checkpoint_reused: "Saved work reused (no request)", work_skipped: "Work skipped by assessment",
   proposal_approved: "Suggestion approved", proposal_rejected: "Suggestion rejected", proposal_ignored: "Suggestion ignored",
@@ -184,8 +185,22 @@ function MemoryCostSummary({ adventure }: { adventure: Adventure }) {
     <table><thead><tr><th>Stage</th><th>HTTP requests</th></tr></thead><tbody>
       {Object.entries(summary.counts).map(([stage, count]) => <tr key={stage}><td>{stage}</td><td>{count}</td></tr>)}
     </tbody></table>
-    <p>{summary.input} reported input tokens · {summary.cached} reported cached input tokens · {summary.output} reported output tokens.</p>
+    <p>{summary.unknownUsage ? "Unknown total" : summary.input} reported input tokens · {summary.cachedKnown === summary.requests && summary.requests ? summary.cached : "Unknown"} reported cached input tokens · {summary.unknownUsage ? "Unknown total" : summary.output} reported output tokens.</p>
     <p>{summary.unknownUsage} requests with unknown usage · {summary.unpriced} requests with unpriced usage. {summary.priced ? `Estimated USD cost for ${summary.priced} priced requests: $${summary.estimatedCost.toFixed(6)}.` : "Estimated cost unavailable: no applicable verified provider/model tariff and complete cache usage."} Missing cache usage is unknown.</p>
+    <p>Reasoning tokens: {summary.reasoning ?? "Unknown"}. Visible-output tokens: {summary.visibleOutput ?? "Unknown"}.</p>
+    <p>Provider-reported USD cost: {summary.reportedCost === undefined ? "Unknown" : `$${summary.reportedCost.toFixed(6)}`}. Reported cost coverage: {summary.reportedCostKnown}/{summary.requests} requests.</p>
+    <table><thead><tr>{["Purpose", "Model", "Provider host", "Status", "Prompt tokens", "Cached input tokens", "Completion tokens", "Reasoning tokens", "Visible-output tokens", "Reported USD cost", "Estimated USD cost"].map(h => <th key={h}>{h}</th>)}</tr></thead><tbody>
+      {(adventure.activeState.apiCalls ?? []).map(call => {
+        const u = call.usage;
+        const metrics = u ?? call.partialUsage;
+        const completion = u?.completionTokens ?? call.partialUsage?.outputTokens;
+        const estimate = summarizeMemoryCosts([call], adventure.verifiedApiTariffs ?? []);
+        return <tr key={call.id}><td>{call.purpose}{call.memoryRequest?.stage ? ` (${call.memoryRequest.stage})` : ""}</td><td>{call.responseModel ?? call.model}</td><td>{call.provider ?? "Unknown"}</td><td>{call.status}</td>
+          <td>{u?.promptTokens ?? call.partialUsage?.inputTokens ?? "Unknown"}</td><td>{metrics?.cacheReadTokens ?? "Unknown"}</td><td>{u?.completionTokens ?? call.partialUsage?.outputTokens ?? "Unknown"}</td>
+          <td>{metrics?.reasoningTokens ?? "Unknown"}</td><td>{metrics?.reasoningTokens !== undefined && completion !== undefined && completion >= metrics.reasoningTokens ? completion - metrics.reasoningTokens : "Unknown"}</td>
+          <td>{metrics?.reportedCostUsd === undefined ? "Unknown" : `$${metrics.reportedCostUsd.toFixed(6)}`}</td><td>{estimate.priced ? `$${estimate.estimatedCost.toFixed(6)}` : "Unknown"}</td></tr>;
+      })}
+    </tbody></table>
     <p>Each batch HTTP request appears once. Continuity checks recorded before stage attribution was added remain in their historical category.</p>
     {lifetime > retained && <p>{lifetime - retained} older requests are outside the retained historical ledger. Stage and cache totals above cover retained records only.</p>}
   </details>;

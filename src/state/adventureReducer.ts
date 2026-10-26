@@ -1234,6 +1234,9 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
           const stored = next.activeState.memoryProposals.find(p => p.id === proposal.id);
           dispositions.push({ index, status: !stored ? "suppressed" : stored.status === "approved" ? "accepted" : "review", proposalId: stored?.id });
         }
+        for (const diagnostic of result.diagnostics ?? []) next = adventureReducer(next, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: {
+          id: createId("decision"), sourceId: result.sourceId, createdAt: nowIso(), stage: "independent", requestStage: "singlePass", outcome: "finding_normalized",
+          reason: `${diagnostic.index < 0 ? "Source record" : `Finding ${diagnostic.index}`}: ${diagnostic.reason}` } });
         const failureReason = validation.failureReason;
         const saved: import("../types/adventure").SinglePassMemoryCheckpoint = { ...checkpoint, findings: result.findings, dispositions,
           status: failureReason ? "failed" : "complete", failureReason,

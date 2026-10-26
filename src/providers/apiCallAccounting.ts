@@ -2,6 +2,17 @@ import type { ApiCallPurpose, ApiCallRecord, ProviderConfig, ProviderUsage } fro
 import { generationMetadata } from "./generationMetadata";
 import { createId, nowIso } from "../utils/id";
 
+/** Optional provider metrics. Missing values remain unknown. */
+export function optionalProviderUsage(raw: unknown): Pick<ProviderUsage, "reasoningTokens" | "reportedCostUsd"> {
+  if (!raw || typeof raw !== "object") return {};
+  const u = raw as { completion_tokens_details?: { reasoning_tokens?: unknown }; output_tokens_details?: { reasoning_tokens?: unknown }; reasoning_tokens?: unknown; cost?: unknown };
+  const valid = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n) && n >= 0;
+  return {
+    reasoningTokens: [u.completion_tokens_details?.reasoning_tokens, u.output_tokens_details?.reasoning_tokens, u.reasoning_tokens].find(valid) as number | undefined,
+    reportedCostUsd: valid(u.cost) ? u.cost : undefined,
+  };
+}
+
 // Includes receiving the response body. No automatic retry is added on timeout.
 export const PROVIDER_REQUEST_TIMEOUT_MS = 180_000;
 export class ProviderRequestTimeoutError extends Error {
@@ -74,10 +85,11 @@ export async function fetchWithAccounting(url: string, init: RequestInit, config
       }
       const raw = responseBody.usage;
       if (raw && (!Number.isFinite(raw.prompt_tokens ?? raw.input_tokens) || !Number.isFinite(raw.completion_tokens ?? raw.output_tokens))) {
-        partialUsage = { inputTokens: Number.isFinite(raw.prompt_tokens ?? raw.input_tokens) ? raw.prompt_tokens ?? raw.input_tokens : undefined,
+        partialUsage = { ...optionalProviderUsage(raw), cacheReadTokens: raw.cache_read_input_tokens ?? raw.prompt_tokens_details?.cached_tokens ?? raw.input_tokens_details?.cached_tokens, inputTokens: Number.isFinite(raw.prompt_tokens ?? raw.input_tokens) ? raw.prompt_tokens ?? raw.input_tokens : undefined,
           outputTokens: Number.isFinite(raw.completion_tokens ?? raw.output_tokens) ? raw.completion_tokens ?? raw.output_tokens : undefined };
       }
       if (raw && Number.isFinite(raw.prompt_tokens ?? raw.input_tokens) && Number.isFinite(raw.completion_tokens ?? raw.output_tokens)) usage = {
+        ...optionalProviderUsage(raw),
         promptTokens: raw.prompt_tokens ?? raw.input_tokens ?? 0,
         completionTokens: raw.completion_tokens ?? raw.output_tokens ?? 0,
         totalTokens: raw.total_tokens ?? ((raw.prompt_tokens ?? raw.input_tokens ?? 0) + (raw.completion_tokens ?? raw.output_tokens ?? 0)),

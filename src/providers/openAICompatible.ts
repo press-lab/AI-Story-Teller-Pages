@@ -1,6 +1,6 @@
 import { generationMetadata } from "./generationMetadata";
 import { memoryReasoningFields, assertMemoryReasoningDisabled } from "./memoryReasoning";
-import { fetchWithAccounting, ProviderRequestTimeoutError } from "./apiCallAccounting";
+import { optionalProviderUsage, fetchWithAccounting, ProviderRequestTimeoutError } from "./apiCallAccounting";
 import type { ApiCallPurpose, ChatMessage, GenerationMetadata, ProviderConfig, ProviderRequestThrottle, ProviderUsage } from "../types/adventure";
 
 type CacheBlock = { type: "text"; text: string; cache_control?: { type: "ephemeral" } };
@@ -187,9 +187,11 @@ function openAIReasoningFields(
 }
 
 function addUsage(a: ProviderUsage | undefined, b: ProviderUsage | undefined): ProviderUsage | undefined {
-  if (!a || !b) return a ?? b;
-  const sumOptional = (x?: number, y?: number) => (x === undefined && y === undefined ? undefined : (x ?? 0) + (y ?? 0));
+  if (!a || !b) return undefined;
+  const sumOptional = (x?: number, y?: number) => (x === undefined || y === undefined ? undefined : x + y);
   return {
+    reasoningTokens: a.reasoningTokens !== undefined && b.reasoningTokens !== undefined ? a.reasoningTokens + b.reasoningTokens : undefined,
+    reportedCostUsd: a.reportedCostUsd !== undefined && b.reportedCostUsd !== undefined ? a.reportedCostUsd + b.reportedCostUsd : undefined,
     promptTokens: a.promptTokens + b.promptTokens,
     completionTokens: a.completionTokens + b.completionTokens,
     totalTokens: a.totalTokens + b.totalTokens,
@@ -308,11 +310,12 @@ async function sendOpenAIRequestOnce(
     : suppliedContent;
   const finishReason = raw.choices?.[0]?.finish_reason;
 
-  const usage: ProviderUsage | undefined = raw.usage
+  const usage: ProviderUsage | undefined = raw.usage && Number.isFinite(raw.usage.prompt_tokens) && Number.isFinite(raw.usage.completion_tokens)
     ? {
+        ...optionalProviderUsage(raw.usage),
         promptTokens: raw.usage.prompt_tokens ?? 0,
         completionTokens: raw.usage.completion_tokens ?? 0,
-        totalTokens: raw.usage.total_tokens ?? 0,
+        totalTokens: raw.usage.total_tokens ?? (raw.usage.prompt_tokens ?? 0) + (raw.usage.completion_tokens ?? 0),
         cacheReadTokens: raw.usage.cache_read_input_tokens ?? raw.usage.prompt_tokens_details?.cached_tokens,
         cacheCreationTokens: raw.usage.cache_creation_input_tokens ?? raw.usage.prompt_tokens_details?.cache_write_tokens,
       }
@@ -385,8 +388,9 @@ async function sendAnthropicRequest(
   const content = raw.content?.filter(c => c.type === "text").map(c => c.text ?? "").join("");
   if (content == null) throw new Error(`Provider returned no content. Body: ${rawText.slice(0, 300)}`);
 
-  const usage: ProviderUsage | undefined = raw.usage
+  const usage: ProviderUsage | undefined = raw.usage && Number.isFinite(raw.usage.input_tokens) && Number.isFinite(raw.usage.output_tokens)
     ? {
+        ...optionalProviderUsage(raw.usage),
         promptTokens: raw.usage.input_tokens ?? 0,
         completionTokens: raw.usage.output_tokens ?? 0,
         totalTokens: (raw.usage.input_tokens ?? 0) + (raw.usage.output_tokens ?? 0),

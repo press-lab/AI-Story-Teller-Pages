@@ -14,7 +14,8 @@ import { storyCardContextContent } from "../memory/storyCardPolicy";
 import type { Adventure } from "../types/adventure";
 
 // These dispatch tests isolate provider generation; validation has real-provider-mock integration coverage.
-vi.mock("../memory/validateMemoryUpdate", () => ({
+vi.mock("../memory/validateMemoryUpdate", async importOriginal => ({
+  ...await importOriginal<typeof import("../memory/validateMemoryUpdate")>(),
   validateMemoryUpdate: vi.fn(async (a, _p, surface, title, previous, content, _accum, _append, _review, targetInfo) => ({
     changed: Boolean(content.trim()) && content !== previous && content !== "NONE", evidenceMessageIds: [a.messages.at(-1)?.id],
     placement: surface === "storyCard" ? mockPlacementVerdict({ title, proposed: content, targetInfo, latestTurnMessageIds: [a.messages.at(-1)?.id], recentEvidence: `[${a.messages.at(-1)?.id}] assistant: ${a.messages.at(-1)?.content}` }) : undefined })),

@@ -18,7 +18,7 @@ beforeEach(() => {
   provider.mockReset();
   provider.mockImplementation(async request => ({ raw: {}, content: request.messages.some(message => message.content.includes("MEMORY UPDATE VALIDATION"))
     ? JSON.stringify({ accepted: true, meaningfulChange: true, reason: "The supplied source supports this private reaction.", evidenceMessageIds: ["evidence"], identityMatchesTarget: true })
-    : JSON.stringify({ thoughts: { alpha: newest, ...(request.messages.some(m => m.content.includes("exceed 1 characters")) ? { zzz: null } : {}) } }) }));
+    : JSON.stringify({ thoughts: { recovered_ward: newest, ...(request.messages.some(m => m.content.includes("exceed 1 characters")) ? { zzz: null } : {}) } }) }));
 });
 afterEach(cleanup);
 
@@ -51,10 +51,10 @@ it.each([false, true])("shows the actual Update Now thought after collapsing, wi
   expect(preview).toHaveTextContent(newest);
   if (review) expect(preview).toHaveTextContent("Pending approval:");
   else expect(preview).not.toHaveTextContent("Pending approval:");
-  expect(provider).toHaveBeenCalledTimes(2);
+  expect(provider).toHaveBeenCalledTimes(1);
 });
 
-it("identifies an updated existing key even when another thought has the same turn", async () => {
+it("identifies a new key when earlier thoughts have the same turn", async () => {
   const a = seed(false);
   a.brains[0].thoughts = { alpha: "30 → My earlier interpretation.", zzz: "30 → Another thought from this turn." };
   const user = userEvent.setup(); render(<Editor initial={a} />);
@@ -84,7 +84,7 @@ it("preserves the new thought preview when Update Now also condenses the thought
   await screen.findByTitle(newest);
   await user.click(summary);
   expect(document.querySelector(".brain-summary-thought")).toHaveTextContent(newest);
-  expect(provider).toHaveBeenCalledTimes(2);
+  expect(provider).toHaveBeenCalledTimes(1);
 });
 
 

@@ -1749,3 +1749,17 @@ it("normalizes interrupted single-pass requests as explicit-retry failures while
   const legacy = { ...a, messages: a.messages.map(m => m.id === ids[0] ? { ...m, memoryEvaluation: { ...m.memoryEvaluation!, pipeline: undefined } } : m) };
   expect(normalizeAdventure(legacy).messages.find(m => m.id === ids[0])!.memoryEvaluation?.pipeline).toBeUndefined();
 });
+
+it("retains a committed single-pass sibling while its source fails and another source stays pending", async () => {
+  const { singlePassFixture, groundedFinding } = await import("../test/singlePassMemory");
+  const { prepareSinglePassMemoryBatch, parseSinglePassMemoryResponse } = await import("../memory/singlePassMemory");
+  let { a, ids } = singlePassFixture(); a.storyCards = []; a.semanticEvaluationSettings.requireApprovalForAutoUpdates = false; a.memoryAutoApprove.storyCard = true;
+  const sourceId = ids.at(-1)!; const batch = await prepareSinglePassMemoryBatch(a, [sourceId]);
+  a = adventureReducer(a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
+  const result = parseSinglePassMemoryResponse(JSON.stringify({ sources: [{ sourceId, findings: [groundedFinding(), { ...groundedFinding(), targetId: "missing", operation: "append" }] }] }), [sourceId], a).sources[0];
+  a = adventureReducer(a, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId, sources: [{ result, checkpoint: batch.checkpoints[0].checkpoint }] });
+  const evaluation = a.messages.find(m => m.id === sourceId)!.memoryEvaluation!;
+  expect(evaluation.status).toBe("failed"); expect(evaluation.singlePass?.dispositions.map(d => d.status).sort()).toEqual(["accepted", "rejected"]);
+  expect(a.storyCards).toHaveLength(1); expect(a.messages.find(m => m.id === ids[0])!.memoryEvaluation?.status).toBe("pending");
+  expect(normalizeAdventure(JSON.parse(JSON.stringify(a))).storyCards).toHaveLength(1);
+});

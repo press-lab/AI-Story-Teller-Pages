@@ -26,12 +26,6 @@ function seed() {
   a.memoryAutoApprove.storyCard = false;
   return a;
 }
-function verdict(identityMatchesTarget: boolean) {
-  return { accepted: true, meaningfulChange: true, identityMatchesTarget, evidenceMessageIds: [sourceId],
-    reason: "The observable exchange is supported; it does not change either person's identity.",
-    placement: { kind: "historicalLore", title: corridor.loreTitle, content: corridor.lore,
-      newFact: corridor.lore, reason: "Completed confrontation belongs in Lore, without biography or private interpretations." } };
-}
 function proposals(actions: AdventureAction[]) {
   return actions.filter((action): action is Extract<AdventureAction, { type: "ADD_MEMORY_PROPOSAL" }> => action.type === "ADD_MEMORY_PROPOSAL");
 }
@@ -40,54 +34,35 @@ beforeEach(() => {
   generate.mockResolvedValue(response({ updates: corridor.drafts }));
 });
 
-it("extracts both saved profile rewrites into one revalidated Lore finding and preserves both Characters", async () => {
-  review.mockImplementation(async (_a, _config, messages) => {
-    const body = JSON.parse(messages.at(-1)!.content);
-    return response(verdict(body.targetInfo.type === "lore"));
-  });
+it("keeps Character drafts as separate Lore candidates for explicit review without a paid judge", async () => {
   const a = seed(), result = await runMemoryReconcile(a, config, request);
   const added = proposals(result.actions);
-  expect(added).toHaveLength(1);
-  expect(review).toHaveBeenCalledTimes(4); // Each extraction gets its own final Lore attribution review.
-  expect(added[0].proposal).toMatchObject({ title: corridor.loreTitle, content: corridor.lore,
-    storyCardType: "lore", memoryMode: "static", targetId: undefined, storyCardPatch: undefined,
-    placementValidation: { kind: "create" }, storyCardReview: { sourceMessageId: sourceId } });
-  expect(result.actions.some(action => action.type === "RECORD_MEMORY_DIAGNOSTIC" && action.entry.outcome === "candidate_merged")).toBe(true);
-  let saved = result.actions.reduce(adventureReducer, a);
-  saved = adventureReducer(saved, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: added[0].proposal.id });
-  expect(saved.storyCards.filter(card => card.type === "character")).toEqual(a.storyCards);
-  expect(saved.storyCards.filter(card => card.type === "lore").map(card => card.content)).toEqual([corridor.lore]);
-  expect(generate.mock.calls[0][0].messages[0].content).toContain("append a factual delta");
-  expect(review.mock.calls[0][2].some(message => message.content.includes("Lore is the default destination"))).toBe(true);
-});
-
-it.each(["malformed placement", "unsupported facts", "failed final attribution"])("records %s in Decisions instead of publishing the original Character draft", async failure => {
-  review.mockImplementation(async (_a, _config, messages) => {
-    const body = JSON.parse(messages.at(-1)!.content);
-    const v = verdict(false);
-    if (failure === "malformed placement") return response({ ...v, placement: {} });
-    if (failure === "unsupported facts") return response({ ...v, accepted: false, reason: "The alleged formal challenge is unsupported." });
-    return response({ ...v, reason: body.targetInfo.type === "lore" ? "Participants are not verified." : v.reason });
-  });
-  const a = seed(), result = await runMemoryReconcile(a, config, request);
-  expect(proposals(result.actions)).toHaveLength(0);
-  const diagnostics = result.actions.filter(action => action.type === "RECORD_MEMORY_DIAGNOSTIC");
-  expect(diagnostics).toHaveLength(2);
-  expect(diagnostics.every(action => action.entry.outcome === "validation_rejected" && action.entry.candidate?.content)).toBe(true);
+  expect(added).toHaveLength(2); expect(review).not.toHaveBeenCalled(); expect(generate).toHaveBeenCalledOnce();
+  expect(added.map(action => action.proposal.content)).toEqual(corridor.drafts.map(d => d.content));
+  expect(added.every(action => action.proposal.storyCardType === "lore" && action.proposal.requiresReview && !action.proposal.targetId && !action.proposal.storyCardPatch)).toBe(true);
   const saved = result.actions.reduce(adventureReducer, a);
   expect(saved.storyCards).toEqual(a.storyCards);
-  expect(saved.activeState.memoryProposals).toHaveLength(0);
-  expect(saved.activeState.memoryDiagnostics).toHaveLength(2);
-  expect(review.mock.calls.length).toBeLessThanOrEqual(4);
+  expect(saved.activeState.memoryProposals.every(p => p.status === "pending")).toBe(true);
+  expect(generate.mock.calls[0][0].messages[0].content).toContain("append a factual delta");
 });
-
+it("does not use an unrelated validator response to establish semantic certainty", async () => {
+  review.mockResolvedValue(response({ accepted: false, reason: "Unsupported claim." }));
+  const a = seed(), result = await runMemoryReconcile(a, config, request);
+  expect(review).not.toHaveBeenCalled();
+  expect(result.actions.reduce(adventureReducer, a).storyCards).toEqual(a.storyCards);
+  expect(proposals(result.actions).every(action => action.proposal.requiresReview)).toBe(true);
+});
 it("uses a listed Character as a reference for direct Lore without inheriting its destination or controls", async () => {
   generate.mockResolvedValue(response({ updates: [{ ...corridor.drafts[0], storyCardType: "lore", memoryMode: "historical",
     title: corridor.loreTitle, content: corridor.lore, storyCardPatch: { pinned: true, protected: true, active: false } }] }));
-  review.mockResolvedValue(response(verdict(true)));
   const result = await runMemoryReconcile(seed(), config, request);
-  expect(review).toHaveBeenCalledOnce();
+  expect(review).not.toHaveBeenCalled(); expect(generate).toHaveBeenCalledOnce();
   expect(proposals(result.actions)[0].proposal).toMatchObject({ storyCardType: "lore", targetId: undefined,
-    storyCardPatch: undefined, memoryMode: "historical", content: corridor.lore });
-  expect(JSON.parse(review.mock.calls[0][2].at(-1)!.content).targetInfo).toEqual({ type: "lore", finalReview: false });
+    requiresReview: true, storyCardPatch: undefined, memoryMode: "historical", content: corridor.lore });
+});
+it("rejects local placement when no establishing narrator source exists", async () => {
+  const a = seed(); a.messages = a.messages.filter(m => m.role === "user");
+  const result = await runMemoryReconcile(a, config, { ...request, directive: a.storyCards.map(c => c.title).join(" ") });
+  expect(proposals(result.actions)).toHaveLength(0); expect(review).not.toHaveBeenCalled();
+  expect(result.actions.some(action => action.type === "RECORD_MEMORY_DIAGNOSTIC" && action.entry.reason?.includes("narrator source"))).toBe(true);
 });

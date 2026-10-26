@@ -134,3 +134,14 @@ it("retains a Draconia magical-rule development as retrievable Lore instead of b
   a = reduce(a, { type: "ADD_MESSAGE", role: "user", content: "I review Flemish binding theory and marriage-binding renegotiation." });
   expect(JSON.stringify(buildContext(a).messages)).toContain("The test's outcome remained unsettled.");
 });
+
+it("rejects existing Brain thought overwrites and empty patches locally", async () => {
+  const { makeBrain } = await import("../state/defaults");
+  const { normalizeSinglePassFinding } = await import("./singlePassMemory");
+  const { a, ids } = singlePassFixture(1);
+  const brain = makeBrain({ id: "brain", characterName: "Casey Vale", active: true, triggers: ["Casey"], thoughts: { workshop: "1: I need time to consider the agreement." } }); a.brains = [brain];
+  const batch = await prepareSinglePassMemoryBatch(a, ids);
+  const f = { ...groundedFinding(), kind: "brain" as const, targetId: brain.id, brainPatch: { thoughts: { workshop: "2: I have already agreed." } } };
+  expect(validateSinglePassFinding(a, ids[0], batch.checkpoints[0].checkpoint, f)).toMatch(/overwritten|eligible/);
+  for (const brainPatch of [{}, { thoughts: {} }, { notes: " " }]) expect(normalizeSinglePassFinding({ ...f, brainPatch }, ids[0], a)).toBeUndefined();
+});

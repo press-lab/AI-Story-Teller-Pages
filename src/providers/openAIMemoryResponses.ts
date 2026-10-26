@@ -1,6 +1,6 @@
 import { generationMetadata } from "./generationMetadata";
 import { memoryReasoningFields, assertMemoryReasoningDisabled } from "./memoryReasoning";
-import { fetchWithAccounting, ProviderRequestTimeoutError } from "./apiCallAccounting";
+import { optionalProviderUsage, fetchWithAccounting, ProviderRequestTimeoutError } from "./apiCallAccounting";
 import { waitForProviderThrottle, type ProviderResponse, type SendChatCompletionOptions } from "./openAICompatible";
 
 /** Transport schema only. Existing memory validators still decide evidence, targets and approval. */
@@ -82,7 +82,7 @@ export async function sendOpenAIMemoryResponse(options: SendChatCompletionOption
   }
   catch { throw new MemoryResponseError("provider_invalid_json"); }
   assertMemoryReasoningDisabled(raw);
-  const usage = raw.usage ? { promptTokens: raw.usage.input_tokens ?? 0, completionTokens: raw.usage.output_tokens ?? 0,
+  const usage = raw.usage && Number.isFinite(raw.usage.input_tokens) && Number.isFinite(raw.usage.output_tokens) ? { ...optionalProviderUsage(raw.usage), promptTokens: raw.usage.input_tokens ?? 0, completionTokens: raw.usage.output_tokens ?? 0,
     totalTokens: raw.usage.total_tokens ?? (raw.usage.input_tokens ?? 0) + (raw.usage.output_tokens ?? 0),
     cacheReadTokens: raw.usage.input_tokens_details?.cached_tokens } : undefined;
   if (typeof raw.status !== "string") throw new MemoryResponseError("provider_response_schema_invalid", undefined, usage);

@@ -84,3 +84,20 @@ vi.mock("../providers/memoryCompletion", async importOriginal => {
   return { ...actual, sendMemoryCompletion: vi.fn(async (...args: Parameters<typeof actual.sendMemoryCompletion>) =>
     offlinePlacementReview({ messages: args[2] }) ?? actual.sendMemoryCompletion(...args)) };
 });
+
+it("keeps a recovered source and duplicate dispositions without replaying failed siblings", async () => {
+  const { singlePassFixture, groundedFinding } = await import("../test/singlePassMemory");
+  const { prepareSinglePassMemoryBatch, parseSinglePassMemoryResponse } = await import("./singlePassMemory");
+  const { singlePassCycleSources } = await import("./memoryCycleState");
+  let { a, ids } = singlePassFixture(); const batch = await prepareSinglePassMemoryBatch(a, ids);
+  a = adventureReducer(a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
+  const first = JSON.stringify({ sourceId: ids[0], findings: [] });
+  const last = JSON.stringify({ sourceId: ids[2], findings: [groundedFinding(), groundedFinding()] });
+  const result = parseSinglePassMemoryResponse('{"sources":[' + first + ',' + last + ',{"sourceId":"cut', ids, a);
+  a = adventureReducer(a, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId, sources: result.sources.map(result => ({ result, checkpoint: batch.checkpoints.find(c => c.sourceId === result.sourceId)!.checkpoint })) });
+  expect(a.messages.find(m => m.id === ids[0])!.memoryEvaluation?.status).toBe("complete");
+  expect(a.messages.find(m => m.id === ids[1])!.memoryEvaluation?.status).toBe("failed");
+  expect(a.activeState.memoryProposals.filter(p => p.sourceTurnId === ids[2])).toHaveLength(1);
+  expect(a.messages.find(m => m.id === ids[2])!.memoryEvaluation?.singlePass?.suppressedCount).toBe(1);
+  expect(singlePassCycleSources(a)).toEqual([]); expect(provider).not.toHaveBeenCalled();
+});

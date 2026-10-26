@@ -65,3 +65,18 @@ describe("memory architecture smoke path", () => {
 
   });
 });
+
+it("keeps recovered single-pass metadata in the existing inbox until approval", async () => {
+  const { singlePassFixture, groundedFinding } = await import("../test/singlePassMemory");
+  const { prepareSinglePassMemoryBatch, parseSinglePassMemoryResponse } = await import("./singlePassMemory");
+  let { a, ids } = singlePassFixture(1); a.storyCards = [];
+  a.memoryAutoApprove.storyCard = true; a.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
+  const batch = await prepareSinglePassMemoryBatch(a, ids);
+  a = adventureReducer(a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
+  const f = groundedFinding();
+  const result = parseSinglePassMemoryResponse(JSON.stringify({ sources: [{ sourceId: ids[0], findings: [{ kind: f.kind, targetId: null, content: f.content, evidenceQuotes: f.evidenceQuotes }] }] }), ids, a).sources[0];
+  a = adventureReducer(a, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId, sources: [{ result, checkpoint: batch.checkpoints[0].checkpoint }] });
+  expect(a.storyCards).toHaveLength(0); const proposal = a.activeState.memoryProposals[0]; expect(proposal).toMatchObject({ status: "pending", requiresReview: true, storyCardType: "lore" });
+  a = adventureReducer(a, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id });
+  expect(a.storyCards[0].content).toContain(f.content); expect(a.storyCards[0].type).toBe("lore");
+});
