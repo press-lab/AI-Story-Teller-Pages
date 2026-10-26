@@ -80,7 +80,15 @@ export interface MemoryAssessmentDecision {
   targets: Array<{ id: string; delta: string; evidenceMessageIds: string[] }>;
   reason: string;
 }
+export interface MemoryAssessmentBatchSource {
+  sourceId: string;
+  sourceContent: string;
+  sourceRevision?: string;
+  evidence: Array<{ id: string; content: string }>;
+  assessment: MemoryAssessmentCheckpoint;
+}
 export interface MemoryAssessmentCheckpoint {
+  assessmentSourceFingerprint?: string;
   sourceFingerprint?: string;
   version: 1;
   fingerprints: Record<MemoryEvaluationGroup, string>;
@@ -486,6 +494,7 @@ export interface TokenBudgetSettings {
 }
 
 export interface MemoryRequestAttribution {
+  batchSourceIds?: string[];
   sourceId: string;
   group?: MemoryEvaluationGroup;
   stage: "assessment" | "generation" | "discovery" | "validation" | "repair" | "brainMaintenance";
@@ -1037,6 +1046,7 @@ export type BrainPatch = {
 export type AdventureAction =
   | { type: "RECORD_MEMORY_DIAGNOSTIC"; entry: MemoryDiagnostic }
   | { type: "QUEUE_MEMORY_EVALUATION"; sourceId: string; turn: number }
+  | { type: "STORE_MEMORY_ASSESSMENT_BATCH"; sources: MemoryAssessmentBatchSource[] }
   | { type: "CLAIM_MEMORY_EVALUATION"; sourceId: string; turn: number; manual?: boolean }
   | { type: "COMMIT_MEMORY_EVALUATION_GROUP"; source: { id: string; content: string }; group: MemoryEvaluationGroup; dependencies: Array<{ id: string; content: string }>; targets: MemoryTargetSnapshot[]; actions: AdventureAction[]; error?: string; revision?: string; discoveryCheckpoint?: MemoryDiscoveryCheckpoint; assessment?: MemoryAssessmentCheckpoint; groupWork?: MemoryGroupWork; decisionState?: string; brainBatch?: { enqueue: PendingBrainDelta[]; consumeKeys: string[] } }
   | { type: "SCAN_STORY_CARD_EXCHANGE"; sourceMessageId: string; manual?: boolean }

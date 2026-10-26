@@ -39,7 +39,9 @@ export function mockAssessmentHttp(a: Adventure, name: AssessmentCase, options: 
     const messages: ChatMessage[] = [{ role: "system", content: system }, ...body.messages];
     const text = messages.map(m => m.content).join("\n");
     let content = "[]";
-    if (system.includes("SHARED MEMORY ASSESSMENT")) {
+    if (system.includes("SHARED MEMORY ASSESSMENT BATCH")) {
+      content = mockAssessment(messages);
+    } else if (system.includes("SHARED MEMORY ASSESSMENT")) {
       const decision = JSON.parse(mockAssessment(messages, name === "breakfast" ? [`storyCard:${a.storyCards[0].id}`] : [], name === "potions" && options.potionsLore));
       if (name === "breakfast") decision.storyCards.targets[0].delta = sales;
       if (name === "charms" && options.covered) decision.storyCards.targets = [{ id: `storyCard:${a.storyCards[0].id}`, delta: a.storyCards[0].content, evidenceMessageIds: [source.id] }];

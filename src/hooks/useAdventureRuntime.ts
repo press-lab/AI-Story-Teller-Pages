@@ -1,3 +1,4 @@
+import { assessMemoryBatch } from "../memory/memoryAssessment";
 import { guardMemoryRequests } from "../providers/memoryCompletion";
 import { flushSync } from "react-dom";
 import { placementFingerprint } from "../memory/storyCardPlacement";
@@ -16,7 +17,7 @@ import { runStoryCardAudit, type AuditRecommendation } from "../memory/storyCard
 import { runComponentAudit, type ComponentAuditRecommendation } from "../memory/componentAudit";
 import { runBrainAudit, type BrainAuditRecommendation } from "../memory/brainAudit";
 import { sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
-import { resolveBackgroundProviderConfig, resolveMemoryEvaluationProviderConfig } from "../providers/backgroundProvider";
+import { safeMemoryFailure, resolveBackgroundProviderConfig, resolveMemoryEvaluationProviderConfig } from "../providers/backgroundProvider";
 import { adventureReducer } from "../state/adventureReducer";
 import {
   applyProviderResponse,
@@ -56,6 +57,9 @@ import type {
 } from "../types/adventure";
 import { createId, nowIso } from "../utils/id";
 import type { MemoryWorkStatus, RuntimeProviderSettings } from "../pages/pageTypes";
+
+export const ASSESSMENT_BATCH_SIZE = 3;
+export const ASSESSMENT_IDLE_FLUSH_MS = 120_000;
 
 function mergeProviderConfig(adventure: Adventure, settings: RuntimeProviderSettings): RuntimeProviderSettings {
   const sessionId = `ai-story-teller:${adventure.id}`.slice(0, 256);
@@ -184,6 +188,8 @@ export function useAdventureRuntime(
   const [loading, setLoading] = useState(false);
   const [memoryWorkState, setMemoryWork] = useState<MemoryWorkStatus>();
   const memoryWorkerRef = useRef<{ adventureId: string; promise: Promise<void> } | undefined>(undefined);
+  const assessmentIdleTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const idleFlushRef = useRef<() => void>(() => undefined);
   const memoryEpochRef = useRef(0);
   const isNarratingRef = useRef(false);
   const [error, setError] = useState<string | undefined>();
@@ -201,10 +207,12 @@ export function useAdventureRuntime(
 
   useEffect(() => { adventureRef.current = adventure; }, [adventure]);
   useEffect(() => {
+    clearTimeout(assessmentIdleTimerRef.current);
+    assessmentIdleTimerRef.current = undefined;
     memoryEpochRef.current += 1;
     memoryWorkerRef.current = undefined;
     setMemoryWork(undefined);
-    return () => { memoryEpochRef.current += 1; };
+    return () => { clearTimeout(assessmentIdleTimerRef.current); memoryEpochRef.current += 1; };
   }, [adventure?.id]);
   useEffect(() => { providerSettingsRef.current = providerSettings; }, [providerSettings]);
   useEffect(() => { globalMemorySettingsRef.current = globalMemorySettings; }, [globalMemorySettings]);
@@ -292,6 +300,8 @@ export function useAdventureRuntime(
   }
 
   async function prepareNarration() {
+    clearTimeout(assessmentIdleTimerRef.current);
+    assessmentIdleTimerRef.current = undefined;
     const current = adventureRef.current;
     if (!current) return;
     // The UI permits composing, but a new context cannot overtake the ordered worker.
@@ -302,12 +312,56 @@ export function useAdventureRuntime(
     return flushPendingBeforeContext(latest);
   }
 
-  function startIndependentMemory(initial: Adventure, sourceIds?: string[]): Promise<void> {
-    if (memoryWorkerRef.current?.adventureId === initial.id) return memoryWorkerRef.current.promise;
+  function armAssessmentIdleTimer() {
+    clearTimeout(assessmentIdleTimerRef.current);
+    assessmentIdleTimerRef.current = undefined;
+    if (!globalMemorySettingsRef.current.enabled || globalMemorySettingsRef.current.everyNTurns <= 0
+      || isNarratingRef.current || document.visibilityState === "hidden" || !adventureRef.current
+      || !memoryCycleSources(adventureRef.current).some(isFreshAssessment)) return;
+    assessmentIdleTimerRef.current = setTimeout(() => {
+      assessmentIdleTimerRef.current = undefined;
+      if (globalMemorySettingsRef.current.enabled && globalMemorySettingsRef.current.everyNTurns > 0
+        && !isNarratingRef.current && document.visibilityState !== "hidden" && adventureRef.current) {
+        if (memoryWorkerRef.current) void memoryWorkerRef.current.promise.then(() => idleFlushRef.current());
+        else void startIndependentMemory(adventureRef.current, undefined, true);
+      }
+    }, ASSESSMENT_IDLE_FLUSH_MS);
+  }
+  function isFreshAssessment(message: Adventure["messages"][number]) {
+    const evaluation = message.memoryEvaluation;
+    return evaluation?.attempts === 0 && !evaluation.assessment && evaluation.completedGroups.length === 0;
+  }
+  idleFlushRef.current = armAssessmentIdleTimer;
+  useEffect(() => {
+    const visibility = () => {
+      clearTimeout(assessmentIdleTimerRef.current);
+      assessmentIdleTimerRef.current = undefined;
+      if (document.visibilityState !== "hidden") idleFlushRef.current();
+    };
+    document.addEventListener("visibilitychange", visibility);
+    idleFlushRef.current();
+    return () => { document.removeEventListener("visibilitychange", visibility); clearTimeout(assessmentIdleTimerRef.current); };
+  }, [adventure?.id]);
+
+  function startIndependentMemory(initial: Adventure, sourceIds?: string[], idleFlush = false): Promise<void> {
+    if (memoryWorkerRef.current?.adventureId === initial.id) {
+      const active = memoryWorkerRef.current.promise;
+      if (!sourceIds) return active;
+      const epoch = memoryEpochRef.current;
+      return active.then(() => {
+        const latest = adventureRef.current;
+        if (memoryEpochRef.current === epoch && latest?.id === initial.id) return startIndependentMemory(latest, sourceIds);
+      });
+    }
+    const pending = memoryCycleSources(initial);
+    const fresh = pending.filter(isFreshAssessment);
+    const batch = !sourceIds && (fresh.length >= ASSESSMENT_BATCH_SIZE || idleFlush) ? fresh.slice(0, ASSESSMENT_BATCH_SIZE) : [];
+    if (!sourceIds && !batch.length && fresh.length) armAssessmentIdleTimer();
     const selected = sourceIds ? initial.messages.filter(message => sourceIds.includes(message.id)
       && message.role === "assistant" && message.inputMode !== "comms" && message.memoryEvaluation?.status !== "complete").slice(0, 10)
-      : memoryCycleSources(initial);
+      : batch.length ? batch : pending.filter(m => !isFreshAssessment(m));
     if (!selected.length) return Promise.resolve();
+    if (batch.length) { clearTimeout(assessmentIdleTimerRef.current); assessmentIdleTimerRef.current = undefined; }
     const epoch = memoryEpochRef.current;
     const currentJob = () => memoryEpochRef.current === epoch && adventureRef.current?.id === initial.id;
     const ids = selected.map(message => message.id);
@@ -334,18 +388,65 @@ export function useAdventureRuntime(
       return currentJob() ? adventureRef.current : undefined;
     };
     const promise = (async () => {
+      let scheduleRemainder = false;
       try {
+        let batchClaimed = false;
+        const deferredBatchSourceIds = new Set<string>();
+        if (batch.length) {
+          const snapshot = adventureRef.current!;
+          try { resolveMemoryEvaluationProviderConfig(snapshot, mergeProviderConfig(snapshot, providerSettingsRef.current)); }
+          catch (error) {
+            const failure = safeMemoryFailure(error);
+            await persistActions(batch.map(source => ({ type: "RECORD_MEMORY_DIAGNOSTIC" as const, entry: {
+              id: createId("decision"), sourceId: source.id, createdAt: nowIso(), stage: "independent" as const,
+              outcome: "not_attempted" as const, failureCategory: failure.category, failureCode: failure.code, reason: failure.message,
+            } })));
+            setMemoryWork({ adventureId: initial.id, status: "failed", sourceIds: ids, remaining: ids.length, error: failure.message });
+            return;
+          }
+          const claimed = await persistActions(batch.map(source => ({ type: "CLAIM_MEMORY_EVALUATION" as const,
+            sourceId: source.id, turn: snapshot.activeState.memoryRecoveryStoryTurn ?? 0 })));
+          if (!claimed || !currentJob()) return;
+          batchClaimed = true;
+          let result;
+          try {
+            result = await assessMemoryBatch(claimed, guardMemoryRequests(mergeProviderConfig(claimed, providerSettingsRef.current), currentJob), ids);
+          } catch (error) {
+            // A transport failure is one failed attempt for each claimed source. Never fan out.
+            if (!currentJob()) return;
+            await persistActions(batch.map(source => ({ type: "COMMIT_MEMORY_EVALUATION_GROUP" as const,
+              source: { id: source.id, content: source.content }, revision: source.memoryEvaluation?.revision,
+              group: "plot" as const, dependencies: [], targets: [], actions: [],
+              error: error instanceof Error ? error.message : "Batch assessment transport failed." })));
+            throw error;
+          }
+          if (!currentJob()) return;
+          await persistActions([{ type: "STORE_MEMORY_ASSESSMENT_BATCH", sources: result.sources },
+            { type: "ACCUMULATE_BACKGROUND_TOKENS", promptTokens: result.promptTokens, completionTokens: result.completionTokens }]);
+          if (result.error) {
+            const deferred = batch.filter(source => result.invalidSourceIds.includes(source.id));
+            deferred.forEach(source => deferredBatchSourceIds.add(source.id));
+            await persistActions(deferred.map(source => ({ type: "COMMIT_MEMORY_EVALUATION_GROUP" as const,
+              source: { id: source.id, content: source.content }, revision: source.memoryEvaluation?.revision,
+              group: "plot" as const, dependencies: [], targets: [], actions: [], error: result.error })));
+          }
+        }
         for (const [index, selectedSource] of selected.entries()) {
           if (!currentJob()) return;
           const snapshot = adventureRef.current!;
           const source = snapshot.messages.find(message => message.id === selectedSource.id);
-          if (!source || source.memoryEvaluation?.status === "complete") continue;
+          if (!source || source.memoryEvaluation?.status === "complete" || deferredBatchSourceIds.has(source.id)) continue;
+          if (batchClaimed && (source.content !== selectedSource.content || source.memoryEvaluation?.revision !== selectedSource.memoryEvaluation?.revision)) {
+            await persistActions([{ type: "RECORD_MEMORY_DIAGNOSTIC", entry: { id: createId("decision"), sourceId: source.id,
+              createdAt: nowIso(), stage: "independent", outcome: "evaluation_stale", reason: "Source changed during batch assessment; result discarded." } }]);
+            continue;
+          }
           setMemoryWork({ adventureId: initial.id, status: "running", sourceIds: ids, remaining: ids.length - index });
           let validConfig = true;
           try { resolveMemoryEvaluationProviderConfig(snapshot, mergeProviderConfig(snapshot, providerSettingsRef.current)); }
           catch { validConfig = false; }
           // Invalid configuration never consumes a claim or starts an HTTP request.
-          const claimed = validConfig ? await persistActions([{ type: "CLAIM_MEMORY_EVALUATION", sourceId: source.id,
+          const claimed = batchClaimed ? snapshot : validConfig ? await persistActions([{ type: "CLAIM_MEMORY_EVALUATION", sourceId: source.id,
             turn: snapshot.activeState.memoryRecoveryStoryTurn ?? 0, manual: Boolean(sourceIds) }]) : snapshot;
           if (!claimed || !currentJob()) return;
           const memoryConfig = guardMemoryRequests(mergeProviderConfig(claimed, providerSettingsRef.current), currentJob);
@@ -365,6 +466,7 @@ export function useAdventureRuntime(
           if (!validConfig) break;
         }
         if (!currentJob()) return;
+        scheduleRemainder = true;
         const unfinished = ids.filter(id => adventureRef.current!.messages.some(message => message.id === id
           && message.memoryEvaluation?.status !== "complete"));
         setMemoryWork(unfinished.length ? { adventureId: initial.id, status: "failed", sourceIds: unfinished,
@@ -373,7 +475,15 @@ export function useAdventureRuntime(
         if (currentJob()) setMemoryWork({ adventureId: initial.id, status: "failed", sourceIds: ids, remaining: ids.length,
           error: error instanceof Error ? error.message : "Memory evaluation failed; story saved." });
       } finally {
-        if (currentJob()) memoryWorkerRef.current = undefined;
+        if (currentJob()) {
+          memoryWorkerRef.current = undefined;
+          const remaining = adventureRef.current && memoryCycleSources(adventureRef.current).filter(m => !ids.includes(m.id) && isFreshAssessment(m)
+            && fresh.some(original => original.id === m.id && original.content === m.content && original.memoryEvaluation?.revision === m.memoryEvaluation?.revision));
+          if (!sourceIds && scheduleRemainder && remaining?.length) {
+            if (remaining.length >= ASSESSMENT_BATCH_SIZE && adventureRef.current) void startIndependentMemory(adventureRef.current);
+            else armAssessmentIdleTimer();
+          }
+        }
       }
     })();
     memoryWorkerRef.current = { adventureId: initial.id, promise };
@@ -394,6 +504,8 @@ export function useAdventureRuntime(
   }
 
   async function startPostTurnWork(snapshot: Adventure, includeArcContinuation = true) {
+    clearTimeout(assessmentIdleTimerRef.current);
+    assessmentIdleTimerRef.current = undefined;
     const epoch = memoryEpochRef.current;
     await startIndependentMemory(snapshot);
     if (epoch !== memoryEpochRef.current || adventureRef.current?.id !== snapshot.id) return;
@@ -546,6 +658,7 @@ export function useAdventureRuntime(
       setLoading(false);
       isSubmittingRef.current = false;
       isNarratingRef.current = false;
+      if (!assessmentIdleTimerRef.current && !memoryWorkerRef.current) armAssessmentIdleTimer();
       if (apiActionsRef.current.length) {
         const actions = apiActionsRef.current;
         apiActionsRef.current = [];
@@ -606,6 +719,7 @@ export function useAdventureRuntime(
       setLoading(false);
       isSubmittingRef.current = false;
       isNarratingRef.current = false;
+      if (!assessmentIdleTimerRef.current && !memoryWorkerRef.current) armAssessmentIdleTimer();
       if (apiActionsRef.current.length) {
         const actions = apiActionsRef.current;
         apiActionsRef.current = [];
@@ -669,6 +783,7 @@ export function useAdventureRuntime(
       setLoading(false);
       isSubmittingRef.current = false;
       isNarratingRef.current = false;
+      if (!assessmentIdleTimerRef.current && !memoryWorkerRef.current) armAssessmentIdleTimer();
       if (apiActionsRef.current.length) {
         const actions = apiActionsRef.current;
         apiActionsRef.current = [];

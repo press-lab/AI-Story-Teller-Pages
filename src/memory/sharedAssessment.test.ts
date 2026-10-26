@@ -1,3 +1,6 @@
+import { assessMemoryBatch, assessMemory } from "./memoryAssessment";
+import { parseMemoryAssessmentBatch } from "./assessmentValidation";
+import { buildMemoryAssessmentConditions } from "../triggers/semanticEngine";
 import { reconcileBrainBatchState } from "./brainBatchRecovery";
 import { brainBatchEvidenceMessages } from "./memoryEvidenceWindow";
 import { normalizeAdventure } from "../state/defaults";
@@ -39,7 +42,7 @@ beforeEach(() => {
     const text = request.messages.map(m => m.content).join("\n");
     if (isAssessment(request.messages)) {
       const decision = JSON.parse(mockAssessment(request.messages, fired, discovery));
-      for (const target of decision.storyCards.targets) target.delta = "Hermione accepted the invitation.";
+      for (const record of decision.sources ?? [decision]) for (const target of record.storyCards.targets) target.delta = "Hermione accepted the invitation.";
       return response(JSON.stringify(decision));
     }
     if (text.includes("MEMORY UPDATE VALIDATION")) {
@@ -232,8 +235,8 @@ it.each(["metadata", "thought", "evidence"])("binds reuse to actual dependencies
   if (kind === "thought") first.state.brains[0].thoughts.changed = "A relevant new interpretation.";
   if (kind === "evidence") first.state.messages[1].content = "I decline.";
   failValidation = undefined; provider.mockClear(); await cycle(first.state);
-  expect(counts().assessment).toBe(kind === "evidence" ? 1 : 0);
-  expect(counts().total).toBe(kind === "metadata" ? 1 : kind === "thought" ? 2 : 3);
+  expect(counts().assessment).toBe(kind === "evidence" || kind === "thought" ? 1 : 0);
+  expect(counts().total).toBe(kind === "metadata" ? 1 : kind === "thought" ? 3 : 3);
 });
 it("classifies local parsing after a response as invalid output and regenerates only the malformed draft on retry", async () => {
   const a = seed(); a.brains = [makeBrain({ id: "h", characterName: "Hermione", active: true })]; fired = ["brain:h"];
@@ -769,4 +772,159 @@ it("uses legacy full-fingerprint validation when a checkpoint has no source iden
   first.state.brains[0].thoughts.changed = "I reconsider an unrelated question.";
   failValidation = undefined; provider.mockClear(); await cycle(first.state);
   expect(counts().assessment).toBe(1);
+});
+
+function assessmentBatchSeed() {
+  const a = normalizeAdventure(seed()); a.messages = [];
+  const events = ["Hermione accepts Draconia's invitation to dinner.", "Draconia agrees to share the notebook as a separate research agreement.",
+    "Hermione attempts to kiss Draconia, but Draconia steps away before contact."];
+  for (let i = 0; i < 3; i++) a.messages.push({ id: `batch-${i}`, role: "assistant", content: events[i], createdAt: "2026-10-26",
+    memoryEvaluation: { turn: i + 1, attempts: 0, completedGroups: [], status: "pending", revision: `r${i}` } });
+  return a;
+}
+it("batches distinct invitation, research and attempted kiss sources without future evidence", async () => {
+  const a = assessmentBatchSeed();
+  provider.mockImplementation(async request => {
+    const payload = JSON.parse(request.messages.at(-1)!.content);
+    expect(payload.messagePool).toHaveLength(3);
+    for (let i = 0; i < 3; i++) expect(payload.sources[i].evidenceMessageIds).toEqual(a.messages.slice(0, i + 1).map(m => m.id));
+    return response(JSON.stringify({ sources: payload.sources.map((s: { sourceId: string }) => ({
+      ...JSON.parse(mockAssessment([{ role: "user", content: JSON.stringify({ sourceId: s.sourceId, conditions: { plot: [], storyCards: [], brains: [] } }) }])),
+      sourceId: s.sourceId, discovery: { needed: true, reason: a.messages.find(m => m.id === s.sourceId)!.content, evidenceMessageIds: [s.sourceId] },
+    })) }));
+  });
+  const batch = await assessMemoryBatch(a, config, ["batch-2", "batch-0", "batch-1"]);
+  expect(counts().assessment).toBe(1);
+  expect(batch.sources.map(s => s.sourceId)).toEqual(["batch-0", "batch-1", "batch-2"]);
+  expect(batch.sources.map(s => s.assessment.discovery.reason)).toEqual(a.messages.map(m => m.content));
+  expect(batch.sources.every(s => s.assessment.discovery.evidenceMessageIds.join() === s.sourceId)).toBe(true);
+});
+it("retains two valid siblings after one malformed batch record and one bounded repair", async () => {
+  const a = assessmentBatchSeed();
+  provider.mockImplementation(async request => {
+    if (isAssessment(request.messages)) {
+      const decision = JSON.parse(mockAssessment(request.messages)); delete decision.sources[1].brains;
+      return response(JSON.stringify(decision));
+    }
+    expect(JSON.stringify(request.messages)).not.toContain(a.messages[0].content);
+    return response("malformed repair");
+  });
+  const batch = await assessMemoryBatch(a, config, a.messages.map(m => m.id));
+  expect(batch.sources.map(s => s.sourceId)).toEqual(["batch-0", "batch-2"]);
+  expect(batch.invalidSourceIds).toEqual(["batch-1"]); expect(provider).toHaveBeenCalledTimes(2);
+});
+it("rejects duplicated IDs, missing sources, foreign evidence and duplicate source records independently", async () => {
+  const a = assessmentBatchSeed();
+  await expect(assessMemoryBatch(a, config, ["batch-0", "batch-0"])).rejects.toThrow();
+  await expect(assessMemoryBatch(a, config, ["absent"])).rejects.toThrow();
+  const conditions = { plot: [], storyCards: [], brains: [] };
+  const record = JSON.parse(mockAssessment([{ role: "user", content: JSON.stringify({ sourceId: "batch-0", conditions }) }], [], true));
+  const input = [{ sourceId: "batch-0", conditions, requestedGroups: ["discovery" as const], evidenceMessageIds: ["batch-0"] }];
+  expect(parseMemoryAssessmentBatch(JSON.stringify({ sources: [{ ...record, sourceId: "batch-0", discovery: { ...record.discovery, evidenceMessageIds: ["batch-2"] } }] }), input).invalidSourceIds).toEqual(["batch-0"]);
+  expect(parseMemoryAssessmentBatch(JSON.stringify({ sources: [{ ...record, sourceId: "batch-0" }, { ...record, sourceId: "batch-0" }] }), input).invalidSourceIds).toEqual(["batch-0"]);
+});
+it("persists valid siblings independently, rejects edits during flight and makes identical storage a no-op", async () => {
+  let a = assessmentBatchSeed();
+  const batch = await assessMemoryBatch(a, config, a.messages.map(m => m.id));
+  a = reduce(a, { type: "UPDATE_MESSAGE", messageId: "batch-1", content: "Corrected research outcome." });
+  a = reduce(a, { type: "STORE_MEMORY_ASSESSMENT_BATCH", sources: batch.sources });
+  expect(a.messages[0].memoryEvaluation?.assessment).toBeDefined();
+  expect(a.messages[1].memoryEvaluation?.assessment).toBeUndefined();
+  expect(a.messages[2].memoryEvaluation?.assessment).toBeUndefined();
+  expect(reduce(a, { type: "STORE_MEMORY_ASSESSMENT_BATCH", sources: batch.sources })).toBe(a);
+});
+it("reuses persisted batch checkpoints after reload and proposal status changes, invalidating edited sources and targets", async () => {
+  let a = assessmentBatchSeed(); const batch = await assessMemoryBatch(a, config, a.messages.map(m => m.id));
+  a = normalizeAdventure(JSON.parse(JSON.stringify(reduce(a, { type: "STORE_MEMORY_ASSESSMENT_BATCH", sources: batch.sources }))));
+  provider.mockClear();
+  const usage = { promptTokens: 0, completionTokens: 0 };
+  const sourceId = a.messages[0].id;
+  const snapshot = { ...a, messages: a.messages.slice(0, 1) };
+  expect((await assessMemory(snapshot, config, sourceId, buildMemoryAssessmentConditions(snapshot), usage)).reused).toBe(true);
+  expect(provider).not.toHaveBeenCalled(); expect(usage).toEqual({ promptTokens: 0, completionTokens: 0 });
+  snapshot.messages = [{ ...snapshot.messages[0], content: "Hermione declined the invitation." }];
+  expect((await assessMemory(snapshot, config, sourceId, buildMemoryAssessmentConditions(snapshot), usage)).reused).toBe(false);
+  expect(provider).toHaveBeenCalledTimes(1);
+});
+it("keeps Hermione and Draconia private targets separate and never grants absent Ron a target", async () => {
+  const a = assessmentBatchSeed();
+  a.brains = ["Hermione", "Draconia", "Ron"].map(name => makeBrain({ id: name.toLowerCase(), characterName: name, active: true }));
+  fired = ["brain:hermione", "brain:draconia", "brain:ron"];
+  const batch = await assessMemoryBatch(a, config, a.messages.map(m => m.id));
+  for (const source of batch.sources) {
+    expect(source.assessment.brains.targets.map(t => t.id)).toEqual(["brain:hermione", "brain:draconia"]);
+    expect(source.assessment.brains.targets.every(t => t.evidenceMessageIds.join() === source.sourceId)).toBe(true);
+  }
+});
+it("reuses a batch assessment after downstream failure without duplicating completed proposals", async () => {
+  let a = assessmentBatchSeed(); discovery = true;
+  const batch = await assessMemoryBatch(a, config, a.messages.map(m => m.id));
+  a = reduce(a, { type: "STORE_MEMORY_ASSESSMENT_BATCH", sources: batch.sources });
+  provider.mockImplementation(async request => { if (isAssessment(request.messages)) throw Error("Unexpected paid reassessment"); throw Error("Offline discovery failure"); });
+  let result = await runMemoryCycle(a, config, { sourceId: "batch-0" });
+  a = result.actions.reduce(reduce, a);
+  expect(a.messages[0].memoryEvaluation?.completedGroups).toEqual(["plot", "storyCards", "brains"]);
+  provider.mockImplementation(async request => { if (isAssessment(request.messages)) throw Error("Unexpected paid reassessment"); return response("[]"); });
+  result = await runMemoryCycle(a, config, { sourceId: "batch-0" }); a = result.actions.reduce(reduce, a);
+  expect(a.messages[0].memoryEvaluation?.status).toBe("complete");
+  const before = provider.mock.calls.length;
+  await runMemoryCycle(a, config, { sourceId: "batch-0" }); expect(provider).toHaveBeenCalledTimes(before);
+  expect(a.activeState.memoryProposals).toHaveLength(0);
+});
+
+it("a relevant target edit invalidates a persisted batch classification while incidental metadata does not", async () => {
+  let a = assessmentBatchSeed();
+  a.storyCards = [makeStoryCard({ id: "research", type: "lore", title: "Research", keys: ["research"], content: "The notebook was sealed." })];
+  const batch = await assessMemoryBatch(a, config, a.messages.map(m => m.id));
+  a = reduce(a, { type: "STORE_MEMORY_ASSESSMENT_BATCH", sources: batch.sources });
+  const id = a.messages[1].id;
+  a.messages = a.messages.slice(0, 2);
+  a.storyCards[0].updatedAt = "2030-01-01"; provider.mockClear();
+  expect((await assessMemory(a, config, id, buildMemoryAssessmentConditions(a), { promptTokens: 0, completionTokens: 0 })).reused).toBe(true);
+  expect(provider).not.toHaveBeenCalled();
+  a.storyCards[0].content = "The notebook archive is now open.";
+  expect((await assessMemory(a, config, id, buildMemoryAssessmentConditions(a), { promptTokens: 0, completionTokens: 0 })).reused).toBe(false);
+  expect(provider).toHaveBeenCalledTimes(1);
+});
+it("batch request guards prevent a cancelled provider request from reaching HTTP", async () => {
+  const { guardMemoryRequests } = await import("../providers/memoryCompletion");
+  const { sendMemoryCompletion } = await import("../providers/memoryCompletion");
+  const { memoryBatchProvider } = await import("../providers/memoryCompletion");
+  const a = assessmentBatchSeed();
+  const guarded = memoryBatchProvider(guardMemoryRequests({ ...config }, () => false), a.messages.map(m => m.id));
+  provider.mockClear();
+  await expect(sendMemoryCompletion(a, guarded, [], "assessment")).rejects.toThrow("memory_work_cancelled");
+  expect(provider).not.toHaveBeenCalled();
+});
+
+it("pools exact shared canon/card/plot reference bodies only once", async () => {
+  const a = assessmentBatchSeed();
+  a.components = [makeComponent({ id: "plot", type: "plotEssentials", title: "Research premise", content: "UNIQUE_PLOT_REFERENCE_BODY", autoUpdate: true })];
+  a.storyCards = [makeStoryCard({ id: "research", title: "Research", type: "lore", keys: ["research"], pinned: true, content: "UNIQUE_CARD_REFERENCE_BODY" })];
+  provider.mockImplementation(async r => response(mockAssessment(r.messages)));
+  const batch = await assessMemoryBatch(a, config, a.messages.map(m => m.id));
+  const payload = provider.mock.calls[0][0].messages.at(-1)!.content;
+  expect(payload.split("UNIQUE_PLOT_REFERENCE_BODY")).toHaveLength(2);
+  expect(payload.split("UNIQUE_CARD_REFERENCE_BODY")).toHaveLength(2);
+  expect(JSON.parse(payload).sources.every((s: { canonIds: string[]; cardIds: string[]; plotIds: string[] }) => s.canonIds.length && s.plotIds.length)).toBe(true);
+  expect(batch.invalidSourceIds).toEqual([]); expect(provider).toHaveBeenCalledTimes(1);
+});
+
+it("uses the same evidence window as runMemoryCycle for long histories and excludes OOC narrators", async () => {
+  let a = assessmentBatchSeed();
+  a.brains = [makeBrain({ id: "ron", characterName: "Ron", active: true })];
+  a.messages.unshift({ id: "old-ron", role: "assistant", content: "Ron learns the old secret.", createdAt: "2026-01-01" },
+    ...Array.from({ length: 6 }, (_, i) => ({ id: `old-routine-${i}`, role: "assistant" as const, content: "The room is quiet.", createdAt: "2026-01-01" })));
+  const ids = ["batch-0", "batch-1", "batch-2"];
+  const batch = await assessMemoryBatch(a, config, ids);
+  const payload = JSON.parse(provider.mock.calls[0][0].messages.at(-1)!.content);
+  expect(payload.sources.every((s: { eligibleConditions: { brains: unknown[] } }) => s.eligibleConditions.brains.length === 0)).toBe(true);
+  a = reduce(a, { type: "STORE_MEMORY_ASSESSMENT_BATCH", sources: batch.sources });
+  for (const id of ids) {
+    const result = await runMemoryCycle(a, config, { sourceId: id }); a = result.actions.reduce(reduce, a);
+  }
+  expect(counts().assessment).toBe(1);
+  a.messages.push({ id: "ooc-player", role: "user", inputMode: "comms", content: "Explain this.", createdAt: "2026-10-26" },
+    { id: "ooc-narrator", role: "assistant", content: "An explanation.", createdAt: "2026-10-26", memoryEvaluation: { turn: 4, attempts: 0, status: "pending", completedGroups: [] } });
+  await expect(assessMemoryBatch(a, config, ["ooc-narrator"])).rejects.toThrow();
 });

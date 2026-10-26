@@ -168,3 +168,92 @@ it("measures recovery and assessment retry request counts with mocked HTTP", asy
   }
   console.log("BRAIN_RECOVERY_REQUEST_COUNTS", JSON.stringify({ baseline, metrics }));
 });
+
+it("compares identical three-source standalone and batched assessment HTTP usage", async () => {
+  const { createDefaultAdventure, makeStoryCard, makeComponent, normalizeAdventure } = await import("../state/defaults");
+  const { assessMemoryBatch } = await import("./memoryAssessment");
+  const { mockAssessment } = await import("../test/memoryAssessment");
+  const { mockPlacementVerdict } = await import("../test/memoryPlacement");
+  const { approximateTokenCount } = await import("../tokenizer/approximateTokenCount");
+  const metrics = [];
+  for (const scenario of ["three-durable-events", "three-no-change", "two-idle", "one-manual", "one-invalid-record"]) {
+    const base = createDefaultAdventure(); base.components = [makeComponent({ type: "custom", title: "Research canon", alwaysOn: true,
+      content: "Research records are public agreements; private interpretations remain with each character. ".repeat(20) })];
+    base.brains = []; base.storyCards = [makeStoryCard({ id: "research", type: "lore", title: "Research agreements", keys: ["research"],
+      content: "The research room contains an agreed notebook archive. ".repeat(20) })];
+    base.messages = ["Hermione accepted the research dinner invitation.", "Draconia signed a separate research notebook sharing agreement.",
+      "Hermione attempted a kiss during research, but stepped back before contact."].map((content, i) => ({ id: `cost-${i}`, role: "assistant" as const,
+        content, createdAt: "2026-10-26", memoryEvaluation: { turn: i + 1, attempts: 0, completedGroups: [], status: "pending" as const } }));
+    base.memoryDetectionSettings.enabled = true; base.memoryDetectionSettings.everyNTurns = 1;
+    base.semanticEvaluationSettings.requireApprovalForAutoUpdates = true;
+    base.memoryAutoApprove.storyCard = false;
+    const count = scenario === "two-idle" ? 2 : scenario === "one-manual" ? 1 : 3;
+    base.messages = base.messages.slice(0, count);
+    const measurements = [];
+    for (const batched of [false, true]) {
+      let a = normalizeAdventure(structuredClone(base));
+      const requests: Array<{ stage: string; input: number; output: number }> = [];
+      let malformed = "";
+      const http = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+        const body = JSON.parse(String(init?.body));
+        const system = typeof body.system === "string" ? body.system : body.system.map((b: { text: string }) => b.text).join("\n");
+        const messages = [{ role: "system" as const, content: system }, ...body.messages];
+        let content: string, stage: string;
+        if (system.includes("SHARED MEMORY ASSESSMENT")) {
+          stage = "assessment";
+          const decision = JSON.parse(mockAssessment(messages, scenario === "three-no-change" ? [] : ["storyCard:research"]));
+          for (const record of decision.sources ?? [{ ...decision, sourceId: JSON.parse(messages.at(-1)!.content).sourceId }]) {
+            for (const t of record.storyCards.targets) t.delta = base.messages.find(m => m.id === record.sourceId)!.content;
+            if (!decision.sources) decision.storyCards = record.storyCards;
+          }
+          if (decision.sources && scenario === "one-invalid-record") delete decision.sources[1].brains;
+          content = JSON.stringify(decision); if (decision.sources) malformed = content;
+        } else if (system.includes("ASSESSMENT BATCH FORMAT REPAIR")) { stage = "repair"; content = malformed; }
+        else if (system.includes("MEMORY UPDATE VALIDATION")) {
+          stage = "validation"; const p = JSON.parse(messages.at(-1)!.content);
+          content = JSON.stringify({ accepted: true, meaningfulChange: true, identityMatchesTarget: true,
+            reason: "Offline supported event", evidenceMessageIds: p.latestTurnMessageIds, placement: mockPlacementVerdict(p) });
+        } else throw Error("Unexpected downstream generation; existing Lore delta should be reused");
+        const input = approximateTokenCount(JSON.stringify({ system: body.system, messages: body.messages }));
+        const output = approximateTokenCount(content); requests.push({ stage, input, output });
+        return new Response(JSON.stringify({ content: [{ type: "text", text: content }], stop_reason: "end_turn",
+          usage: { input_tokens: input, output_tokens: output } }), { status: 200 });
+      });
+      const ids = a.messages.map(m => m.id);
+      let batchUsage = { promptTokens: 0, completionTokens: 0 };
+      if (batched && scenario !== "one-manual") {
+        const batch = await assessMemoryBatch(a, assessmentConfig, ids); batchUsage = batch;
+        a = reduce(a, { type: "STORE_MEMORY_ASSESSMENT_BATCH", sources: batch.sources });
+      }
+      let totalInput = batchUsage.promptTokens, totalOutput = batchUsage.completionTokens;
+      for (const id of ids) {
+        a = reduce(a, { type: "CLAIM_MEMORY_EVALUATION", sourceId: id, turn: 3, manual: scenario === "one-manual" });
+        const result = await runMemoryCycle(a, assessmentConfig, { sourceId: id, manual: scenario === "one-manual" });
+        totalInput += result.tokenUsage!.promptTokens; totalOutput += result.tokenUsage!.completionTokens;
+        a = result.actions.reduce(reduce, a);
+      }
+      expect(a.messages.every(m => m.memoryEvaluation?.status === "complete")).toBe(true);
+      expect(totalInput).toBe(requests.reduce((sum, r) => sum + r.input, 0));
+      expect(totalOutput).toBe(requests.reduce((sum, r) => sum + r.output, 0));
+      const assessments = requests.filter(r => r.stage === "assessment");
+      measurements.push({ mode: batched ? "batch" : "standalone", assessmentHttp: assessments.length,
+        repairHttp: requests.filter(r => r.stage === "repair").length, downstreamHttp: requests.filter(r => r.stage === "validation").length,
+        assessmentInput: assessments.reduce((sum, r) => sum + r.input, 0), assessmentOutput: assessments.reduce((sum, r) => sum + r.output, 0),
+        totalInput, totalOutput, suggestions: a.activeState.memoryProposals.map(p => ({ source: p.sourceTurnId, type: p.proposedType, content: p.content })) });
+      http.mockRestore();
+    }
+    const [before, after] = measurements;
+    expect(after.assessmentHttp).toBe(scenario === "one-invalid-record" ? 2 : 1);
+    expect(after.repairHttp).toBe(scenario === "one-invalid-record" ? 1 : 0);
+    expect(after.downstreamHttp).toBe(before.downstreamHttp);
+    expect(after.suggestions).toEqual(before.suggestions);
+    if (count === 3 && scenario !== "one-invalid-record") expect(after.assessmentInput).toBeLessThan(before.assessmentInput);
+    // Explicit synthetic rates used identically on both sides; these are not provider pricing or billed savings.
+    const syntheticRates = { inputPerMillion: 1, outputPerMillion: 2 };
+    metrics.push({ scenario, before, after, inputDifference: after.assessmentInput - before.assessmentInput,
+      outputDifference: after.assessmentOutput - before.assessmentOutput,
+      totalTokenDifference: after.totalInput + after.totalOutput - before.totalInput - before.totalOutput,
+      syntheticRates, mockedCostDifference: ((after.totalInput - before.totalInput) + 2 * (after.totalOutput - before.totalOutput)) / 1_000_000 });
+  }
+  console.log("ASSESSMENT_BATCH_COMPARISON", JSON.stringify(metrics));
+});

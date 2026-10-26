@@ -9,7 +9,7 @@ import type { Adventure } from "../types/adventure";
 import { useAdventureRuntime } from "./useAdventureRuntime";
 
 vi.mock("../db/adventureDb", () => ({ saveAdventure: vi.fn(async () => undefined) }));
-afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.clearAllMocks(); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.clearAllMocks(); vi.useRealTimers(); });
 
 function setup(saved?: Adventure) {
   const initial = saved ?? createDefaultAdventure("HTTP accounting");
@@ -22,13 +22,16 @@ function setup(saved?: Adventure) {
       vi.fn(), vi.fn(), vi.fn(), async () => undefined, settings) };
   });
 }
+const nativeTimeout = globalThis.setTimeout;
+async function settleHttp() { await new Promise<void>(resolve => nativeTimeout(resolve, 100)); }
 function reply(content: string, prompt = 100, completion = 10) {
   return new Response(JSON.stringify({ choices: [{ message: { content } }],
     usage: { prompt_tokens: prompt, completion_tokens: completion, total_tokens: prompt + completion } }));
 }
 
 describe("actual HTTP call accounting", () => {
-  it("measures 20 narration plus 20 shared assessment HTTP requests, with separate reported usage", async () => {
+  it("measures 20 narration plus seven batched assessment HTTP requests, with separate reported usage", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
       const body = JSON.parse(init!.body as string);
       if (body.model === "arbitrary-evaluator") {
@@ -39,19 +42,22 @@ describe("actual HTTP call accounting", () => {
       return reply("Mira waits beside the gate.", 2000, 100);
     });
     const { result } = setup();
-    for (let i = 0; i < 20; i++) await act(async () => { await result.current.runtime.submitTurn("I listen."); });
-    await waitFor(() => expect(result.current.runtime.memoryWork?.status).not.toBe("running"));
-    expect(fetchMock).toHaveBeenCalledTimes(40);
+    for (let i = 0; i < 20; i++) await act(async () => { await result.current.runtime.submitTurn("I listen."); await settleHttp(); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(120_000); });
+    vi.useRealTimers();
+    await waitFor(() => expect(result.current.adventure!.messages.filter(m => m.role === "assistant").every(m => m.memoryEvaluation?.status === "complete")).toBe(true));
+    expect(fetchMock).toHaveBeenCalledTimes(27);
     expect(result.current.adventure!.activeState.apiCallTotals).toEqual({
       narration: { requests: 20, failedRequests: 0, unreportedUsage: 0, promptTokens: 40000, completionTokens: 2000 },
-      memoryEvaluation: { requests: 20, failedRequests: 0, unreportedUsage: 0, promptTokens: 16000, completionTokens: 1600 },
+      memoryEvaluation: { requests: 7, failedRequests: 0, unreportedUsage: 0, promptTokens: 5600, completionTokens: 560 },
     });
-    expect(result.current.adventure!.activeState.apiCalls).toHaveLength(40);
+    expect(result.current.adventure!.activeState.apiCalls).toHaveLength(27);
     expect(result.current.adventure!.activeState.apiCalls!.filter(c => c.purpose === "memoryEvaluation").every(c =>
-      c.memoryRequest?.sourceId && c.memoryRequest.stage === "assessment" && c.memoryRequest.attempt === 1)).toBe(true);
+      c.memoryRequest?.sourceId && c.memoryRequest.batchSourceIds?.length && c.memoryRequest.stage === "assessment" && c.memoryRequest.attempt === 1)).toBe(true);
   });
 
   it("persists independent failures without replaying calls on reload", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     let evaluations = 0;
     vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
       const body = JSON.parse(init!.body as string);
@@ -63,14 +69,17 @@ describe("actual HTTP call accounting", () => {
       return reply("Mira waits beside the gate.");
     });
     let hook = setup();
-    await act(async () => { await hook.result.current.runtime.continueTurn(); });
+    await act(async () => { await hook.result.current.runtime.continueTurn(); await settleHttp(); await vi.advanceTimersByTimeAsync(120_000); });
+    vi.useRealTimers();
     await waitFor(() => expect(hook.result.current.runtime.memoryWork?.status).toBe("failed"));
     const saved = normalizeAdventure(JSON.parse(JSON.stringify(vi.mocked(saveAdventure).mock.calls.at(-1)![0])));
     expect(saved.messages.at(-1)?.memoryEvaluation?.status).toBe("failed");
     expect(saved.activeState.apiCallTotals!.memoryEvaluation).toMatchObject({ requests: 1, failedRequests: 1, unreportedUsage: 1 });
     hook.unmount(); hook = setup(saved); await act(async () => {});
     expect(evaluations).toBe(1);
-    await act(async () => { await hook.result.current.runtime.continueTurn(); });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    await act(async () => { await hook.result.current.runtime.continueTurn(); await settleHttp(); await vi.advanceTimersByTimeAsync(120_000); });
+    vi.useRealTimers();
     await waitFor(() => expect(hook.result.current.runtime.memoryWork?.status).not.toBe("running"));
     expect(hook.result.current.adventure!.messages.filter(message => message.role === "assistant").every(message => message.memoryEvaluation?.status === "complete")).toBe(true);
     expect(hook.result.current.adventure!.activeState.apiCallTotals!.memoryEvaluation).toMatchObject({ requests: 3, failedRequests: 1 });
@@ -81,7 +90,7 @@ describe("actual HTTP call accounting", () => {
       .mockResolvedValueOnce(reply("You agree to the bargain.", 400, 20))
       .mockRejectedValueOnce(new Error("Correction disconnected"));
     const { result } = setup();
-    await act(async () => { await result.current.runtime.submitTurn("I listen."); });
+    await act(async () => { await result.current.runtime.submitTurn("I listen."); await settleHttp(); });
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(result.current.adventure!.activeState.apiCallTotals).toMatchObject({
       narration: { requests: 1, promptTokens: 400, completionTokens: 20 },

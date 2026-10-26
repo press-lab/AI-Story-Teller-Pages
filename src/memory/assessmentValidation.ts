@@ -96,3 +96,27 @@ export function parseMemoryAssessment(content: string, conditions: AssessmentCon
     reason: string(field(d, "reason", "$.discovery"), "$.discovery.reason", 1200),
     evidenceMessageIds: evidence(field(d, "evidenceMessageIds", "$.discovery"), "$.discovery.evidenceMessageIds", needed) } };
 }
+
+/** Validate independently: malformed siblings cannot erase accepted decisions. */
+export function parseMemoryAssessmentBatch(content: string, sourceInputs: readonly {
+  sourceId: string; conditions: AssessmentConditions; requestedGroups: readonly MemoryEvaluationGroup[]; evidenceMessageIds: readonly string[];
+}[]): { valid: Array<{ sourceId: string; decision: ReturnType<typeof parseMemoryAssessment> }>; invalidSourceIds: string[] } {
+  let records: unknown[];
+  try {
+    const raw = JSON.parse(content.replace(/<think>[\s\S]*?<\/think>/gi, "").trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, ""));
+    records = array(field(object(raw, "$"), "sources", "$"), "$.sources");
+  } catch { return { valid: [], invalidSourceIds: sourceInputs.map(s => s.sourceId) }; }
+  const valid: Array<{ sourceId: string; decision: ReturnType<typeof parseMemoryAssessment> }> = [];
+  const invalidSourceIds: string[] = records.flatMap(r => r && typeof r === "object" && "sourceId" in r
+    && typeof r.sourceId === "string" && !sourceInputs.some(s => s.sourceId === r.sourceId) ? [r.sourceId] : []);
+  // Unknown records are rejected; they never supply evidence or decisions to a sibling.
+  for (const input of sourceInputs) {
+    const matches = records.filter(r => r && typeof r === "object" && "sourceId" in r && r.sourceId === input.sourceId);
+    if (matches.length !== 1) { invalidSourceIds.push(input.sourceId); continue; }
+    try {
+      valid.push({ sourceId: input.sourceId, decision: parseMemoryAssessment(JSON.stringify(matches[0]), input.conditions,
+        input.requestedGroups, input.evidenceMessageIds, input.sourceId) });
+    } catch { invalidSourceIds.push(input.sourceId); }
+  }
+  return { valid, invalidSourceIds };
+}

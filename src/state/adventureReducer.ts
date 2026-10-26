@@ -1180,6 +1180,20 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
         id: createId("decision"), sourceId: action.sourceId, createdAt: nowIso(), stage: "independent", outcome: "evaluation_queued",
       } });
     }
+    case "STORE_MEMORY_ASSESSMENT_BATCH": {
+      let changed = false;
+      const messages = state.messages.map(message => {
+        const source = action.sources.find(s => s.sourceId === message.id);
+        const evaluation = message.memoryEvaluation;
+        if (!source || !evaluation || evaluation.completedGroups.length === 4
+          || message.content !== source.sourceContent || evaluation.revision !== source.sourceRevision
+          || source.evidence.some(e => !state.messages.some(m => m.id === e.id && m.content === e.content))
+          || JSON.stringify(evaluation.assessment) === JSON.stringify(source.assessment)) return message;
+        changed = true;
+        return { ...message, memoryEvaluation: { ...evaluation, assessment: source.assessment } };
+      });
+      return changed ? touchAdventure(state, { messages }) : state;
+    }
     case "CLAIM_MEMORY_EVALUATION": {
       if (backgroundProviderConfigIssue(state)) return state;
       const source = state.messages.find(message => message.id === action.sourceId);

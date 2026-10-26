@@ -10,8 +10,9 @@ import { sendOpenAICompatibleChatCompletion } from "../providers/openAICompatibl
 import { approximateTokenCount } from "../tokenizer/approximateTokenCount";
 vi.mock("../db/adventureDb", () => ({ saveAdventure: vi.fn(async () => undefined) }));
 vi.mock("../providers/openAICompatible", async original => ({ ...await original<typeof import("../providers/openAICompatible")>(), sendOpenAICompatibleChatCompletion: vi.fn() }));
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.useRealTimers(); });
 it.each(["plain", "legacy-envelope", "large-archive"])("reports independent offline request costs for twenty %s turns", async kind => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   const a = createDefaultAdventure(); a.components = [];
   if (kind === "large-archive") {
     a.brains = [makeBrain({ characterName: "Mira", active: true, thoughts: { old: "I distrust the duke." } })];
@@ -24,11 +25,13 @@ it.each(["plain", "legacy-envelope", "large-archive"])("reports independent offl
     return useAdventureRuntime(adventure, setAdventure, { ...defaultModelConfig, apiKey: "offline-test" }, vi.fn(), vi.fn(), vi.fn(), async () => undefined, { enabled: true, generateContent: true, everyNTurns: 1 });
   });
   for (let turn = 0; turn < 20; turn++) await act(async () => { await hook.result.current.submitTurn("I listen to Mira."); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(120_000); });
+  vi.useRealTimers();
   await waitFor(() => expect(hook.result.current.memoryWork).toBeUndefined());
   const calls = provider.mock.calls.map(([request]) => request);
   const narration = calls.filter(request => !request.memoryEvaluation), evaluation = calls.filter(request => request.memoryEvaluation);
   expect(narration).toHaveLength(20);
-  expect(evaluation).toHaveLength(20);
+  expect(evaluation).toHaveLength(7);
   expect(narration.every(request => !request.messages.some(message => message.content.includes("[ONE-PASS MEMORY]")))).toBe(true);
   expect(calls.every(request => !request.messages.some(message => message.content.includes("Unrelated archived subject")))).toBe(true);
   console.log("FOUNDATION_OFFLINE_COST", kind, JSON.stringify({ narration: narration.length, evaluation: evaluation.length,

@@ -7,6 +7,7 @@ import { makeMemoryProposal } from "../test/goldenAdventure";
 const testedActionTypes = [
   "SCAN_STORY_CARD_EXCHANGE",
   "QUEUE_MEMORY_EVALUATION",
+  "STORE_MEMORY_ASSESSMENT_BATCH",
   "CLAIM_MEMORY_EVALUATION",
   "COMMIT_MEMORY_EVALUATION_GROUP",
   "SET_STORY_CLOCK",

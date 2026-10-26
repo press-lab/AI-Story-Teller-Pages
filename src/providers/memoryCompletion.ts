@@ -11,6 +11,12 @@ export function memoryGroupProvider(provider: ProviderConfig, sourceId: string, 
   if (guard) requestGuards.set(config, guard);
   return config;
 }
+export function memoryBatchProvider(provider: ProviderConfig, sourceIds: string[]): ProviderConfig {
+  const config: ProviderConfig = { ...provider, memoryRequest: { sourceId: sourceIds[0], batchSourceIds: [...sourceIds], stage: "assessment", attempt: 1 } };
+  const guard = requestGuards.get(provider);
+  if (guard) requestGuards.set(config, guard);
+  return config;
+}
 export function guardMemoryRequests(config: ProviderConfig, shouldSend: () => boolean): ProviderConfig {
   requestGuards.set(config, shouldSend);
   return config;

@@ -12,6 +12,12 @@ import { useAdventureRuntime } from "./useAdventureRuntime";
 
 vi.mock("../db/adventureDb", () => ({ saveAdventure: vi.fn(async () => undefined) }));
 vi.mock("../providers/openAICompatible", async original => ({ ...await original<typeof import("../providers/openAICompatible")>(), sendOpenAICompatibleChatCompletion: vi.fn() }));
+const nativeTimeout = globalThis.setTimeout;
+async function tickIdle() { await new Promise<void>(resolve => nativeTimeout(resolve, 10)); }
+function fastIdleDeadline() {
+  vi.spyOn(globalThis, "setTimeout").mockImplementation(((callback: TimerHandler, delay?: number, ...args: unknown[]) =>
+    nativeTimeout(callback, delay === 120_000 ? 0 : delay, ...args)) as typeof setTimeout);
+}
 const provider = vi.mocked(sendOpenAICompatibleChatCompletion);
 const story = "Mira waits beside the gate.";
 let assessmentMessages: Parameters<typeof mockAssessment>[0];
@@ -32,15 +38,15 @@ function setup(saved?: Adventure, keepComponents = false) {
       { enabled: true, everyNTurns: 1, generateContent: true }) };
   });
 }
-beforeEach(() => { vi.clearAllMocks(); provider.mockReset();
+beforeEach(() => { vi.restoreAllMocks(); fastIdleDeadline(); vi.clearAllMocks(); provider.mockReset();
   provider.mockImplementation(async request => response(request.memoryEvaluation ? mockAssessment(request.messages) : story)); });
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
 it("releases narration loading while discovery waits and persists earlier groups before the outstanding request", async () => {
   const pending = deferred();
   provider.mockImplementation(request => !request.memoryEvaluation ? Promise.resolve(response(story)) : isAssessment(request.messages) ? Promise.resolve(response(mockAssessment(request.messages, [], true))) : pending.promise);
   const hook = setup();
-  await act(async () => { await hook.result.current.runtime.submitTurn("I listen."); });
+  await act(async () => { await hook.result.current.runtime.submitTurn("I listen."); await tickIdle(); });
   await waitFor(() => expect(provider.mock.calls.filter(([request]) => request.memoryEvaluation)).toHaveLength(2));
   expect(hook.result.current.runtime.loading).toBe(false);
   expect(hook.result.current.runtime.memoryWork).toMatchObject({ status: "running", group: "discovery", remaining: 1 });
@@ -56,11 +62,11 @@ it("builds the next prompt only after the existing worker commits and blocks dup
   const pending = deferred(); let evaluations = 0;
   provider.mockImplementation(request => request.memoryEvaluation && evaluations++ === 0 ? (assessmentMessages = request.messages, pending.promise)
     : Promise.resolve(response(request.memoryEvaluation ? mockAssessment(request.messages) : story)));
-  const hook = setup(); await act(async () => { await hook.result.current.runtime.submitTurn("First turn."); });
+  const hook = setup(); await act(async () => { await hook.result.current.runtime.submitTurn("First turn."); await tickIdle(); });
   await waitFor(() => expect(provider.mock.calls.some(([request]) => request.memoryEvaluation)).toBe(true));
   let next!: Promise<boolean>;
   await act(async () => { next = hook.result.current.runtime.submitTurn("Second turn."); });
-  await act(async () => { await hook.result.current.runtime.submitTurn("Duplicate."); });
+  await act(async () => { await hook.result.current.runtime.submitTurn("Duplicate."); await tickIdle(); });
   await waitFor(() => expect(provider.mock.calls.some(([request]) => request.memoryEvaluation)).toBe(true));
   expect(provider).toHaveBeenCalledTimes(2);
   await act(async () => { pending.resolve(response()); await next; });
@@ -73,23 +79,23 @@ it("builds the next prompt only after the existing worker commits and blocks dup
 it("keeps failed memory advisory while explicit retry spends only one unfinished request", async () => {
   let fail = true;
   provider.mockImplementation(async request => response(request.memoryEvaluation ? fail ? "invalid" : mockAssessment(request.messages) : story));
-  const hook = setup(); await act(async () => { await hook.result.current.runtime.continueTurn(); });
+  const hook = setup(); await act(async () => { await hook.result.current.runtime.continueTurn(); await tickIdle(); });
   await waitFor(() => expect(hook.result.current.runtime.memoryWork?.status).toBe("failed"));
   expect(hook.result.current.runtime.loading).toBe(false);
   expect(hook.result.current.openTab).not.toHaveBeenCalled();
-  expect(provider).toHaveBeenCalledTimes(2);
+  expect(provider).toHaveBeenCalledTimes(4); // Batch, compact repair, bounded individual fallback, plus narration.
   fail = false; await act(async () => { await hook.result.current.runtime.retryMemory(); });
-  expect(provider).toHaveBeenCalledTimes(3);
+  expect(provider).toHaveBeenCalledTimes(5);
   expect(hook.result.current.adventure!.messages.at(-1)?.memoryEvaluation).toMatchObject({ status: "complete", attempts: 2 });
   expect(hook.result.current.runtime.memoryWork).toBeUndefined();
 });
 
 it("allows successive turns after memory failures without a choice and retains unfinished sources", async () => {
   provider.mockImplementation(async request => response(request.memoryEvaluation ? "invalid" : story));
-  const hook = setup(); await act(async () => { await hook.result.current.runtime.continueTurn(); });
+  const hook = setup(); await act(async () => { await hook.result.current.runtime.continueTurn(); await tickIdle(); });
   await waitFor(() => expect(provider.mock.calls.some(([request]) => request.memoryEvaluation)).toBe(true));
   const sourceId = hook.result.current.adventure!.messages.at(-1)!.id;
-  await act(async () => { expect(await hook.result.current.runtime.submitTurn("I keep playing.")).toBe(true); });
+  await act(async () => { expect(await hook.result.current.runtime.submitTurn("I keep playing.")).toBe(true); await tickIdle(); });
   await waitFor(() => expect(provider.mock.calls.some(([request]) => request.memoryEvaluation)).toBe(true));
   expect(provider.mock.calls.filter(([request]) => !request.memoryEvaluation)).toHaveLength(2);
   await waitFor(() => expect(hook.result.current.runtime.memoryWork?.status).not.toBe("running"));
@@ -100,7 +106,7 @@ it("allows successive turns after memory failures without a choice and retains u
 it("retains an edit made during a paid evaluation, rejects the stale group and adds no automatic retry", async () => {
   const pending = deferred();
   provider.mockImplementation(request => request.memoryEvaluation ? (assessmentMessages = request.messages, pending.promise) : Promise.resolve(response(story)));
-  const hook = setup(); await act(async () => { await hook.result.current.runtime.continueTurn(); });
+  const hook = setup(); await act(async () => { await hook.result.current.runtime.continueTurn(); await tickIdle(); });
   await waitFor(() => expect(provider.mock.calls.some(([request]) => request.memoryEvaluation)).toBe(true));
   const id = hook.result.current.adventure!.messages.at(-1)!.id;
   act(() => hook.result.current.setAdventure(current => adventureReducer(current!, { type: "UPDATE_MESSAGE", messageId: id, content: "Mira left the gate." })));
@@ -116,7 +122,7 @@ it("retains an edit made during a paid evaluation, rejects the stale group and a
 it("keeps unrelated user edits made while evaluation waits", async () => {
   const pending = deferred();
   provider.mockImplementation(request => request.memoryEvaluation ? (assessmentMessages = request.messages, pending.promise) : Promise.resolve(response(story)));
-  const hook = setup(); await act(async () => { await hook.result.current.runtime.continueTurn(); });
+  const hook = setup(); await act(async () => { await hook.result.current.runtime.continueTurn(); await tickIdle(); });
   await waitFor(() => expect(provider.mock.calls.some(([request]) => request.memoryEvaluation)).toBe(true));
   act(() => hook.result.current.setAdventure(current => adventureReducer(current!, { type: "SET_TITLE", title: "Edited title" })));
   await act(async () => { pending.resolve(response()); });
@@ -129,7 +135,7 @@ it("keeps unrelated user edits made while evaluation waits", async () => {
 it("does not write an old result into a switched adventure or replay pending work when switched back", async () => {
   const pending = deferred();
   provider.mockImplementation(request => request.memoryEvaluation ? (assessmentMessages = request.messages, pending.promise) : Promise.resolve(response(story)));
-  const hook = setup(); await act(async () => { await hook.result.current.runtime.continueTurn(); });
+  const hook = setup(); await act(async () => { await hook.result.current.runtime.continueTurn(); await tickIdle(); });
   await waitFor(() => expect(provider.mock.calls.some(([request]) => request.memoryEvaluation)).toBe(true));
   const original = normalizeAdventure(JSON.parse(JSON.stringify(hook.result.current.adventure)));
   const other = createDefaultAdventure("Other");
@@ -148,7 +154,7 @@ it("does not write an old result into a switched adventure or replay pending wor
 it("shares an outstanding worker with manual evaluation instead of issuing duplicate calls", async () => {
   const pending = deferred();
   provider.mockImplementation(request => request.memoryEvaluation ? (assessmentMessages = request.messages, pending.promise) : Promise.resolve(response(story)));
-  const hook = setup(); await act(async () => { await hook.result.current.runtime.continueTurn(); });
+  const hook = setup(); await act(async () => { await hook.result.current.runtime.continueTurn(); await tickIdle(); });
   await waitFor(() => expect(provider.mock.calls.some(([request]) => request.memoryEvaluation)).toBe(true));
   let manual!: Promise<void>;
   await act(async () => { manual = hook.result.current.runtime.evaluateMemorySources([hook.result.current.adventure!.messages.at(-1)!.id]); });
@@ -174,14 +180,14 @@ it("includes a committed automatic memory update in the next prompt without addi
     if (text.includes("updating the Active Pressure")) return response("The council demands the signed charter.");
     return response("[]");
   });
-  const hook = setup(initial, true); await act(async () => { await hook.result.current.runtime.submitTurn("I listen."); });
+  const hook = setup(initial, true); await act(async () => { await hook.result.current.runtime.submitTurn("I listen."); await tickIdle(); });
   expect(hook.result.current.runtime.memoryWork?.status).toBe("running");
   await waitFor(() => expect(sourceIds.length).toBeGreaterThan(0));
   let next!: Promise<boolean>;
   await act(async () => { next = hook.result.current.runtime.submitTurn("I answer."); });
   expect(provider.mock.calls.filter(([request]) => !request.memoryEvaluation)).toHaveLength(1);
   await act(async () => { validation.resolve(response(JSON.stringify({ accepted: true, meaningfulChange: true,
-    evidenceMessageIds: sourceIds, reason: "An established external obligation.", pressureChange: "changed_obligation" }))); await next; });
+    evidenceMessageIds: sourceIds, reason: "An established external obligation.", pressureChange: "changed_obligation" }))); await next; await tickIdle(); });
   await waitFor(() => expect(hook.result.current.runtime.memoryWork?.status).not.toBe("running"));
   const narration = provider.mock.calls.filter(([request]) => !request.memoryEvaluation);
   expect(narration[1][0].messages.map(message => message.content).join("\n")).toContain("The council demands the signed charter.");
@@ -203,7 +209,7 @@ it("rejects a destination edited while validation is outstanding and retains the
     }
     return response("The council demands the signed charter.");
   });
-  const hook = setup(initial, true); await act(async () => { await hook.result.current.runtime.continueTurn(); });
+  const hook = setup(initial, true); await act(async () => { await hook.result.current.runtime.continueTurn(); await tickIdle(); });
   await waitFor(() => expect(sourceIds.length).toBeGreaterThan(0));
   act(() => hook.result.current.setAdventure(current => adventureReducer(current!, {
     type: "UPDATE_COMPONENT", componentId: "pressure", patch: { content: "The player corrected the threat." },
@@ -229,7 +235,7 @@ it("opens and reopens a save with the reported historical failure counts without
   let hook = setup(saved); await act(async () => {});
   expect(provider).not.toHaveBeenCalled(); expect(hook.result.current.runtime.memoryWork).toBeUndefined();
   expect(hook.result.current.openTab).not.toHaveBeenCalled();
-  await act(async () => { expect(await hook.result.current.runtime.submitTurn("A new turn.")).toBe(true); });
+  await act(async () => { expect(await hook.result.current.runtime.submitTurn("A new turn.")).toBe(true); await tickIdle(); });
   await waitFor(() => expect(hook.result.current.runtime.memoryWork?.status).not.toBe("running"));
   expect(hook.result.current.openTab).not.toHaveBeenCalled();
   expect(provider).toHaveBeenCalledTimes(2); // One narration and one new-source discovery; no historical replay.
@@ -240,20 +246,19 @@ it("opens and reopens a save with the reported historical failure counts without
   expect(hook.result.current.openTab).not.toHaveBeenCalled();
 });
 
-it("continues a queued submission after quarantining invalid assessment output", async () => {
+it("continues a queued submission after compact batch format repair", async () => {
   const pending = deferred(); let first = true;
   provider.mockImplementation(request => request.memoryEvaluation && first ? (first = false, assessmentMessages = request.messages, pending.promise)
-    : Promise.resolve(response(request.memoryEvaluation ? mockAssessment(request.messages) : story)));
-  const hook = setup(); await act(async () => { await hook.result.current.runtime.submitTurn("First turn."); });
+    : Promise.resolve(response(request.memoryEvaluation ? mockAssessment(request.messages.some(m => m.content.includes("ASSESSMENT BATCH FORMAT REPAIR")) ? assessmentMessages : request.messages) : story)));
+  const hook = setup(); await act(async () => { await hook.result.current.runtime.submitTurn("First turn."); await tickIdle(); });
   await waitFor(() => expect(provider).toHaveBeenCalledTimes(2));
   let next!: Promise<boolean>; await act(async () => { next = hook.result.current.runtime.submitTurn("Second turn."); });
-  await act(async () => { pending.resolve(response("malformed")); expect(await next).toBe(true); });
+  await act(async () => { pending.resolve(response("malformed")); expect(await next).toBe(true); await tickIdle(); });
   await waitFor(() => expect(hook.result.current.runtime.memoryWork?.status).not.toBe("running"));
   expect(hook.result.current.adventure!.messages.map(message => message.content)).toEqual(["First turn.", story, "Second turn.", story]);
-  expect(hook.result.current.adventure!.messages[1].memoryEvaluation).toMatchObject({ status: "quarantined", attempts: 1 });
-  expect(hook.result.current.adventure!.activeState.memoryDiagnostics).toContainEqual(expect.objectContaining({ outcome: "evaluation_failed", requestStage: "assessment", failureCode: "memory_assessment_invalid_json", fieldPath: "$" }));
-  expect(hook.result.current.adventure!.activeState.memoryDiagnostics?.filter(d => d.outcome === "evaluation_failed")).toHaveLength(1);
-  expect(provider).toHaveBeenCalledTimes(4); // Two narration calls, one quarantined assessment and the new source assessment.
+  expect(hook.result.current.adventure!.messages[1].memoryEvaluation).toMatchObject({ status: "complete", attempts: 1 });
+  expect(provider.mock.calls.filter(([r]) => r.messages.some(m => m.content.includes("ASSESSMENT BATCH FORMAT REPAIR")))).toHaveLength(1);
+  expect(provider).toHaveBeenCalledTimes(5); // Two narration, two assessments, one compact repair.
   expect(hook.result.current.openTab).not.toHaveBeenCalled();
 });
 
@@ -277,7 +282,7 @@ function mockBrainWorker(waiting?: ReturnType<typeof deferred>) {
   });
 }
 async function workerTurn(hook: ReturnType<typeof setup>) {
-  await act(async () => { await hook.result.current.runtime.continueTurn(); });
+  await act(async () => { await hook.result.current.runtime.continueTurn(); await tickIdle(); });
   await waitFor(() => expect(hook.result.current.runtime.memoryWork?.status).not.toBe("running"));
 }
 it("batches through startIndependentMemory and resumes a saved buffer after runtime reload", async () => {
@@ -301,7 +306,7 @@ it("does not consume pending deltas when the worker stops during validation", as
   mockBrainWorker(); const hook = setup(brainWorkerSeed());
   await workerTurn(hook); await workerTurn(hook);
   const pending = deferred(); mockBrainWorker(pending);
-  await act(async () => { await hook.result.current.runtime.continueTurn(); });
+  await act(async () => { await hook.result.current.runtime.continueTurn(); await tickIdle(); });
   await waitFor(() => expect(provider.mock.calls.some(([r]) => r.config.memoryRequest?.stage === "validation")).toBe(true));
   const saved = normalizeAdventure(JSON.parse(JSON.stringify(hook.result.current.adventure)));
   expect(saved.activeState.pendingBrainDeltas).toHaveLength(2);
@@ -354,7 +359,7 @@ it("rejects a generated Brain patch if establishing evidence is edited while gen
   const prior = hook.result.current.adventure!;
   const pending = deferred(); const original = provider.getMockImplementation()!;
   provider.mockImplementation(r => r.config.memoryRequest?.stage === "generation" ? pending.promise : original(r));
-  await act(async () => { await hook.result.current.runtime.continueTurn(); });
+  await act(async () => { await hook.result.current.runtime.continueTurn(); await tickIdle(); });
   await waitFor(() => expect(provider.mock.calls.some(([r]) => r.config.memoryRequest?.stage === "generation")).toBe(true));
   const editedId = prior.messages[0].id;
   act(() => hook.result.current.setAdventure(current => adventureReducer(current!, { type: "UPDATE_MESSAGE", messageId: editedId, content: "Mira never learned the key." })));
@@ -366,4 +371,135 @@ it("rejects a generated Brain patch if establishing evidence is edited while gen
   expect(current.activeState.pendingBrainDeltas?.some(d => d.sourceId === editedId)).toBe(false);
   expect(provider.mock.calls.filter(([r]) => isAssessment(r.messages))).toHaveLength(3);
   expect(provider.mock.calls.filter(([r]) => r.config.memoryRequest?.stage === "generation")).toHaveLength(1);
+});
+
+// These scheduler tests use the production deadline with a controlled clock.
+function controlledBatchClock() {
+  vi.restoreAllMocks();
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+}
+async function settleWorker(hook: ReturnType<typeof setup>) {
+  for (let i = 0; i < 100; i++) {
+    await act(async () => { await tickIdle(); });
+    if (hook.result.current.runtime.memoryWork?.status !== "running") return;
+  }
+  throw new Error("Memory worker did not settle");
+}
+it("three narrator turns start exactly one assessment batch and count its usage once", async () => {
+  controlledBatchClock();
+  provider.mockImplementation(async r => ({ content: r.memoryEvaluation ? mockAssessment(r.messages) : story, raw: {},
+    usage: { promptTokens: 17, completionTokens: 9, totalTokens: 26 } }));
+  const hook = setup();
+  for (let i = 0; i < 3; i++) {
+    await act(async () => { await hook.result.current.runtime.continueTurn(); });
+    if (i < 2) expect(provider.mock.calls.filter(([r]) => r.memoryEvaluation)).toHaveLength(0);
+  }
+  await settleWorker(hook);
+  const calls = provider.mock.calls.filter(([r]) => r.memoryEvaluation);
+  expect(calls).toHaveLength(1);
+  expect(calls[0][0].config.memoryRequest).toMatchObject({ batchSourceIds: hook.result.current.adventure!.messages.map(m => m.id), stage: "assessment", attempt: 1 });
+  expect(hook.result.current.adventure!.messages.every(m => m.memoryEvaluation?.status === "complete")).toBe(true);
+  expect(hook.result.current.adventure!.activeState.backgroundTokenUsage).toEqual({ promptTokens: 17, completionTokens: 9 });
+});
+it("a new narrator resets the idle deadline and two queued sources flush together", async () => {
+  controlledBatchClock(); const hook = setup();
+  await act(async () => { await hook.result.current.runtime.continueTurn(); await vi.advanceTimersByTimeAsync(100_000); });
+  await act(async () => { await hook.result.current.runtime.continueTurn(); await vi.advanceTimersByTimeAsync(20_000); });
+  expect(provider.mock.calls.filter(([r]) => r.memoryEvaluation)).toHaveLength(0);
+  await act(async () => { await vi.advanceTimersByTimeAsync(99_999); });
+  expect(provider.mock.calls.filter(([r]) => r.memoryEvaluation)).toHaveLength(0);
+  await act(async () => { await vi.advanceTimersByTimeAsync(1); }); await settleWorker(hook);
+  expect(provider.mock.calls.filter(([r]) => r.memoryEvaluation)).toHaveLength(1);
+  expect(hook.result.current.adventure!.messages.every(m => m.memoryEvaluation?.status === "complete")).toBe(true);
+});
+it("manual selection starts immediately and leaves an unrelated pending source queued", async () => {
+  controlledBatchClock(); const hook = setup();
+  await act(async () => { await hook.result.current.runtime.continueTurn(); await hook.result.current.runtime.continueTurn(); });
+  const ids = hook.result.current.adventure!.messages.map(m => m.id);
+  await act(async () => { await hook.result.current.runtime.evaluateMemorySources([ids[0]]); });
+  expect(provider.mock.calls.filter(([r]) => r.memoryEvaluation)).toHaveLength(1);
+  expect(provider.mock.calls.find(([r]) => r.memoryEvaluation)![0].config.memoryRequest?.batchSourceIds).toBeUndefined();
+  expect(hook.result.current.adventure!.messages[1].memoryEvaluation).toMatchObject({ status: "pending", attempts: 0 });
+  await act(async () => { await vi.advanceTimersByTimeAsync(120_000); }); await settleWorker(hook);
+  expect(provider.mock.calls.filter(([r]) => r.memoryEvaluation)).toHaveLength(2);
+});
+it("adventure changes cancel idle timers and reload retains tracked queued work only", async () => {
+  controlledBatchClock(); let hook = setup();
+  await act(async () => { await hook.result.current.runtime.continueTurn(); });
+  const saved = normalizeAdventure(JSON.parse(JSON.stringify(hook.result.current.adventure)));
+  act(() => hook.result.current.setAdventure(createDefaultAdventure("Other")));
+  await act(async () => { await vi.advanceTimersByTimeAsync(120_000); });
+  expect(provider.mock.calls.filter(([r]) => r.memoryEvaluation)).toHaveLength(0);
+  hook.unmount(); saved.messages.unshift({ id: "untracked", role: "assistant", content: "Old historical narration.", createdAt: "2026-01-01" });
+  hook = setup(saved); await act(async () => { await vi.advanceTimersByTimeAsync(120_000); }); await settleWorker(hook);
+  expect(provider.mock.calls.filter(([r]) => r.memoryEvaluation)).toHaveLength(1);
+  expect(hook.result.current.adventure!.messages[0].memoryEvaluation).toBeUndefined();
+});
+it("batch transport failure retains all three sources for backoff without individual fan-out", async () => {
+  controlledBatchClock();
+  provider.mockImplementation(async r => { if (r.memoryEvaluation) throw Error("Disconnected"); return response(story); });
+  const hook = setup();
+  for (let i = 0; i < 3; i++) await act(async () => { await hook.result.current.runtime.continueTurn(); });
+  await settleWorker(hook);
+  expect(provider.mock.calls.filter(([r]) => r.memoryEvaluation)).toHaveLength(1);
+  expect(hook.result.current.adventure!.messages.every(m => m.memoryEvaluation?.status === "failed" && m.memoryEvaluation.attempts === 1)).toBe(true);
+  await act(async () => { await vi.advanceTimersByTimeAsync(240_000); });
+  expect(provider.mock.calls.filter(([r]) => r.memoryEvaluation)).toHaveLength(1);
+});
+it("hidden pages cancel the deadline and start a new one when visible", async () => {
+  controlledBatchClock(); const hook = setup();
+  await act(async () => { await hook.result.current.runtime.continueTurn(); });
+  const visibility = vi.spyOn(document, "visibilityState", "get"); visibility.mockReturnValue("hidden");
+  act(() => document.dispatchEvent(new Event("visibilitychange")));
+  await act(async () => { await vi.advanceTimersByTimeAsync(240_000); });
+  expect(provider.mock.calls.filter(([r]) => r.memoryEvaluation)).toHaveLength(0);
+  visibility.mockReturnValue("visible"); act(() => document.dispatchEvent(new Event("visibilitychange")));
+  await act(async () => { await vi.advanceTimersByTimeAsync(119_999); });
+  expect(provider.mock.calls.filter(([r]) => r.memoryEvaluation)).toHaveLength(0);
+  await act(async () => { await vi.advanceTimersByTimeAsync(1); }); await settleWorker(hook);
+  expect(provider.mock.calls.filter(([r]) => r.memoryEvaluation)).toHaveLength(1);
+});
+
+it("a story edit during a three-source HTTP batch blocks stale sibling commits", async () => {
+  controlledBatchClock(); const pending = deferred();
+  provider.mockImplementation(r => r.memoryEvaluation ? (assessmentMessages = r.messages, pending.promise) : Promise.resolve(response(story)));
+  const hook = setup();
+  for (let i = 0; i < 3; i++) await act(async () => { await hook.result.current.runtime.continueTurn(); });
+  // Wait for asynchronous input fingerprints before editing the in-flight request.
+  for (let i = 0; i < 20 && !provider.mock.calls.some(([r]) => r.memoryEvaluation); i++) await act(async () => { await tickIdle(); });
+  const id = hook.result.current.adventure!.messages[1].id;
+  act(() => hook.result.current.setAdventure(a => adventureReducer(a!, { type: "UPDATE_MESSAGE", messageId: id, content: "Corrected narrator event." })));
+  await act(async () => { pending.resolve(response()); }); await settleWorker(hook);
+  const sources = hook.result.current.adventure!.messages;
+  expect(sources[0].memoryEvaluation?.status).toBe("complete");
+  expect(sources[1].memoryEvaluation?.assessment).toBeUndefined();
+  expect(sources[2].memoryEvaluation?.assessment).toBeUndefined();
+  expect(sources[1].memoryEvaluation?.completedGroups).toEqual([]);
+  expect(provider.mock.calls.filter(([r]) => r.memoryEvaluation)).toHaveLength(1);
+});
+it("an active narration request suspends the idle timer until its successful narrator is saved", async () => {
+  controlledBatchClock(); const hook = setup();
+  await act(async () => { await hook.result.current.runtime.continueTurn(); });
+  const narration = deferred(); provider.mockImplementation(r => r.memoryEvaluation ? Promise.resolve(response(mockAssessment(r.messages))) : narration.promise);
+  let turn!: Promise<void>;
+  await act(async () => { turn = hook.result.current.runtime.continueTurn(); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(240_000); });
+  expect(provider.mock.calls.filter(([r]) => r.memoryEvaluation)).toHaveLength(0);
+  await act(async () => { narration.resolve(response(story)); await turn; });
+  await act(async () => { await vi.advanceTimersByTimeAsync(120_000); }); await settleWorker(hook);
+  expect(provider.mock.calls.filter(([r]) => r.memoryEvaluation)).toHaveLength(1);
+});
+
+it("a transport failure during compact repair does not fan out into individual assessments", async () => {
+  controlledBatchClock();
+  provider.mockImplementation(async r => {
+    if (!r.memoryEvaluation) return response(story);
+    if (isAssessment(r.messages)) return response('{"sources":[]}');
+    throw Error("Disconnected during compact repair");
+  });
+  const hook = setup();
+  for (let i = 0; i < 3; i++) await act(async () => { await hook.result.current.runtime.continueTurn(); });
+  await settleWorker(hook);
+  expect(provider.mock.calls.filter(([r]) => r.memoryEvaluation)).toHaveLength(2);
+  expect(hook.result.current.adventure!.messages.every(m => m.memoryEvaluation?.status === "failed" && m.memoryEvaluation.attempts === 1)).toBe(true);
 });

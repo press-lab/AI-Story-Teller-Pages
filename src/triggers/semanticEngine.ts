@@ -1919,6 +1919,10 @@ export async function runManualPEComponentUpdate(
   return { actions: [...result.actions, { type: "LOG_EVALUATION_RESULT", entry: logEntry }], logEntry };
 }
 
+export function buildMemoryAssessmentConditions(adventure: Adventure) {
+  return { plot: buildPlotMemoryConditions(adventure), storyCards: buildStoryCardMemoryConditions(adventure), brains: buildCharacterMemoryConditions(adventure) };
+}
+
 /** Original independent condition → targeted update architecture, with Pages transactions. */
 export async function runMemoryCycle(
   adventure: Adventure,
@@ -1962,7 +1966,7 @@ export async function runMemoryCycle(
     semanticEvaluationSettings: { ...adventure.semanticEvaluationSettings, messagesIncluded: evidence.length } };
   logEntry.actionsExecuted.push(`Memory source: ${source.id}`, "Independent memory: original foundation");
 
-  const allConditions = { plot: buildPlotMemoryConditions(working), storyCards: buildStoryCardMemoryConditions(working), brains: buildCharacterMemoryConditions(working) };
+  const allConditions = buildMemoryAssessmentConditions(working);
   const assessmentResult = await assessMemory(working, providerConfig, source.id, allConditions, accum);
   const assessment = assessmentResult.assessment;
   logEntry.actionsExecuted.push(assessmentResult.reused ? "Shared assessment: checkpoint reused (no request)" : "Shared assessment: requested");
