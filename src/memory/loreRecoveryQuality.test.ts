@@ -213,3 +213,19 @@ vi.mock("../providers/memoryCompletion", async importOriginal => {
   return { ...actual, sendMemoryCompletion: vi.fn(async (...args: Parameters<typeof actual.sendMemoryCompletion>) =>
     offlinePlacementReview({ messages: args[2] }) ?? actual.sendMemoryCompletion(...args)) };
 });
+
+it("single-pass repeated Lore respects a prior rejection and preserves distinct deltas", async () => {
+  const { singlePassFixture, groundedFinding } = await import("../test/singlePassMemory");
+  const { prepareSinglePassMemoryBatch } = await import("./singlePassMemory");
+  const { validateSinglePassSource } = await import("./singlePassMemoryValidation");
+  let { a, ids } = singlePassFixture(1);
+  const batch = await prepareSinglePassMemoryBatch(a, ids);
+  const result = { sourceId: ids[0], findings: [groundedFinding()], rejected: [] };
+  const draft = validateSinglePassSource(a, result, batch.checkpoints[0].checkpoint).proposals[0].proposal;
+  a = reduce(a, { type: "ADD_MEMORY_PROPOSAL", proposal: draft });
+  a = reduce(a, { type: "REJECT_MEMORY_PROPOSAL", proposalId: draft.id });
+  const repeated = validateSinglePassSource(a, result, batch.checkpoints[0].checkpoint);
+  expect(repeated.proposals).toHaveLength(0); expect(repeated.suppressed).toHaveLength(1);
+  const separate = { ...groundedFinding(), title: "A future workshop tour", content: "Blair Reed will arrange a workshop tour later.", evidenceQuotes: [{ messageId: ids[0], quote: "Blair Reed will arrange a workshop tour later." }] };
+  expect(validateSinglePassSource(a, { ...result, findings: [separate] }, batch.checkpoints[0].checkpoint).proposals).toHaveLength(1);
+});

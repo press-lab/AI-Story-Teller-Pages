@@ -1,3 +1,4 @@
+import { normalizeAdventure } from "./defaults";
 import { describe, expect, it } from "vitest";
 import type { Adventure, AdventureAction, RawImportEntry, TriggerLogEntry } from "../types/adventure";
 import { createDefaultAdventure, makeBrain, makeComponent, makeStoryCard, makeTriggerRule } from "./defaults";
@@ -5,6 +6,7 @@ import { adventureReducer } from "./adventureReducer";
 import { makeMemoryProposal } from "../test/goldenAdventure";
 
 const testedActionTypes = [
+  "CLAIM_SINGLE_PASS_MEMORY_BATCH", "COMMIT_SINGLE_PASS_MEMORY_BATCH", "FAIL_SINGLE_PASS_MEMORY_BATCH",
   "SCAN_STORY_CARD_EXCHANGE",
   "QUEUE_MEMORY_EVALUATION",
   "STORE_MEMORY_ASSESSMENT_BATCH",
@@ -1735,4 +1737,15 @@ describe("adventureReducer", () => {
     expect(get().arcState?.threadEngagement).toEqual({});
     expect(get().arcState?.tier).toBe(0);
   });
+});
+
+it("normalizes interrupted single-pass requests as explicit-retry failures while preserving legacy exports", async () => {
+  const { singlePassFixture } = await import("../test/singlePassMemory");
+  const { prepareSinglePassMemoryBatch } = await import("../memory/singlePassMemory");
+  const { a, ids } = singlePassFixture(1); const batch = await prepareSinglePassMemoryBatch(a, ids);
+  const claimed = adventureReducer(a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
+  const restored = normalizeAdventure(JSON.parse(JSON.stringify(claimed)));
+  expect(restored.messages.find(m => m.id === ids[0])?.memoryEvaluation).toMatchObject({ status: "failed", attempts: 1, singlePass: { status: "failed", batchId: batch.batchId } });
+  const legacy = { ...a, messages: a.messages.map(m => m.id === ids[0] ? { ...m, memoryEvaluation: { ...m.memoryEvaluation!, pipeline: undefined } } : m) };
+  expect(normalizeAdventure(legacy).messages.find(m => m.id === ids[0])!.memoryEvaluation?.pipeline).toBeUndefined();
 });

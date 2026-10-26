@@ -22,7 +22,7 @@ it.each(["plain", "legacy-envelope", "large-archive"])("reports independent offl
   provider.mockImplementation(async request => ({ content: request.memoryEvaluation ? mockAssessment(request.messages) : "Mira waits at the gate." + (kind === "legacy-envelope" ? '<memory_updates>{"updates":[]}</memory_updates>' : ""), raw: {} }));
   const hook = renderHook(() => {
     const [adventure, setAdventure] = useState<Adventure | undefined>(a);
-    return useAdventureRuntime(adventure, setAdventure, { ...defaultModelConfig, apiKey: "offline-test" }, vi.fn(), vi.fn(), vi.fn(), async () => undefined, { enabled: true, generateContent: true, everyNTurns: 1 });
+    return useAdventureRuntime(adventure, setAdventure, { ...defaultModelConfig, apiKey: "offline-test" }, vi.fn(), vi.fn(), vi.fn(), async () => undefined, { pipeline: "legacy", enabled: true, generateContent: true, everyNTurns: 1 });
   });
   for (let turn = 0; turn < 20; turn++) await act(async () => { await hook.result.current.submitTurn("I listen to Mira."); });
   await act(async () => { await vi.advanceTimersByTimeAsync(120_000); });

@@ -35,7 +35,7 @@ function setup(saved?: Adventure, keepComponents = false) {
     const [adventure, setAdventure] = useState<Adventure | undefined>(initial);
     return { adventure, setAdventure, openTab, runtime: useAdventureRuntime(adventure, setAdventure,
       { ...defaultModelConfig, apiKey: "offline-test" }, vi.fn(), vi.fn(), openTab, async () => undefined,
-      { enabled: true, everyNTurns: 1, generateContent: true }) };
+      { pipeline: "legacy", enabled: true, everyNTurns: 1, generateContent: true }) };
   });
 }
 beforeEach(() => { vi.restoreAllMocks(); fastIdleDeadline(); vi.clearAllMocks(); provider.mockReset();
@@ -423,7 +423,7 @@ it("manual selection starts immediately and leaves an unrelated pending source q
   await act(async () => { await vi.advanceTimersByTimeAsync(120_000); }); await settleWorker(hook);
   expect(provider.mock.calls.filter(([r]) => r.memoryEvaluation)).toHaveLength(2);
 });
-it("adventure changes cancel idle timers and reload retains tracked queued work only", async () => {
+it("adventure changes cancel idle timers and reload does not start historical queued work", async () => {
   controlledBatchClock(); let hook = setup();
   await act(async () => { await hook.result.current.runtime.continueTurn(); });
   const saved = normalizeAdventure(JSON.parse(JSON.stringify(hook.result.current.adventure)));
@@ -432,7 +432,7 @@ it("adventure changes cancel idle timers and reload retains tracked queued work 
   expect(provider.mock.calls.filter(([r]) => r.memoryEvaluation)).toHaveLength(0);
   hook.unmount(); saved.messages.unshift({ id: "untracked", role: "assistant", content: "Old historical narration.", createdAt: "2026-01-01" });
   hook = setup(saved); await act(async () => { await vi.advanceTimersByTimeAsync(120_000); }); await settleWorker(hook);
-  expect(provider.mock.calls.filter(([r]) => r.memoryEvaluation)).toHaveLength(1);
+  expect(provider.mock.calls.filter(([r]) => r.memoryEvaluation)).toHaveLength(0);
   expect(hook.result.current.adventure!.messages[0].memoryEvaluation).toBeUndefined();
 });
 it("batch transport failure retains all three sources for backoff without individual fan-out", async () => {

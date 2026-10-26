@@ -1,3 +1,4 @@
+import { summarizeMemoryCosts } from "../providers/memoryCostSummary";
 import { placementValidationError, proposalDestinationLabel } from "../memory/storyCardPlacement";
 import { backgroundProviderConfigIssue } from "../providers/backgroundProvider";
 import { useState } from "react";
@@ -52,6 +53,8 @@ export function MemoryDecisionsPage({ adventure, onSuggestions, onEvaluateMemory
   }).slice(0, 100);
   return <section className="page editor-surface" aria-label="Memory decisions" style={{ overflowWrap: "anywhere", minWidth: 0 }}>
     <h2>Memory decisions</h2>
+    <MemoryCostSummary adventure={adventure} />
+    <p>Selected pipeline: {adventure.memoryDetectionSettings.pipeline ?? "singlePass"}.</p>
     {backgroundProviderConfigIssue(adventure) && <p role="alert">{backgroundProviderConfigIssue(adventure)}</p>}
     <p>Observed pipeline decisions. Zero candidates does not explain what the model considered important. Diagnostics retain the latest 600 events; older stages may be unavailable.</p>
     <p>Use Retry for failed entries. New story turns do not retry failed requests.</p>
@@ -81,7 +84,15 @@ export function MemoryDecisionsPage({ adventure, onSuggestions, onEvaluateMemory
         <p><strong>Source:</strong> {message.id} Â· <time>{message.createdAt}</time></p>
         <p>{message.content.slice(0, 240)}{message.content.length > 240 ? "â€¦" : ""}</p>
         {linked.filter(p => p.proposedType === "storyCard").map(p => <p key={p.id}>{proposalDestinationLabel(adventure, p)} Â· {p.status === "pending" ? placementValidationError(adventure, p) ?? p.placementValidation?.reason : p.placementValidation?.reason}</p>)}
+        {message.memoryEvaluation?.singlePass && <div>
+          <h3>Single-pass evaluation</h3>
+          <p>Batch: {message.memoryEvaluation.singlePass.batchId}. Source: {message.memoryEvaluation.status === "failed" ? "evaluation failed" : message.memoryEvaluation.singlePass.reviewCount ? "awaiting review" : message.memoryEvaluation.status === "complete" ? message.memoryEvaluation.singlePass.findings.length ? "evaluation complete" : "valid evaluation with zero findings" : "pending evaluation"}.</p>
+          <p>{message.memoryEvaluation.singlePass.findings.length} returned · {message.memoryEvaluation.singlePass.acceptedCount} accepted · {message.memoryEvaluation.singlePass.suppressedCount} suppressed · {message.memoryEvaluation.singlePass.rejectedCount} rejected · {message.memoryEvaluation.singlePass.reviewCount} review required.</p>
+          {message.memoryEvaluation.singlePass.findings.map((f, i) => <details key={i}><summary>{f.kind}: {f.title}</summary><p>{f.content ?? JSON.stringify(f.brainPatch)}</p><p>{f.reason}</p>{f.evidenceQuotes.map((q, j) => <blockquote key={j}>[{q.messageId}] {q.quote}</blockquote>)}</details>)}
+          {message.memoryEvaluation.singlePass.dispositions.map((d, i) => <p key={i}>Finding {d.index + 1}: {d.status}. {d.reason}</p>)}
+        </div>}
         <h3>Independent evaluation</h3>
+        <p>Pipeline: {message.memoryEvaluation?.pipeline ?? "legacy"}.</p>
         <p>Status: {message.memoryEvaluation?.status ?? "not recorded; older sources are evaluated only on request"}. Attempts: {message.memoryEvaluation?.attempts ?? 0}. Completed groups: {message.memoryEvaluation?.completedGroups.join(", ") || "none"}.</p>
         {message.memoryEvaluation?.assessment && <details><summary>Shared assessment decisions</summary>
           {(["plot", "storyCards", "brains"] as const).map(group => <div key={group}>
@@ -104,7 +115,7 @@ export function MemoryDecisionsPage({ adventure, onSuggestions, onEvaluateMemory
           {log.generatedContent.map((item, index) => <p key={index}>{item.targetType}: {item.title} ({item.targetId ?? "new destination"}) â€” {item.preview}</p>)}
           {log.errors.map((error, index) => <p key={index}>{error}</p>)}
         </details>)}
-        {onEvaluateMemory && message.memoryEvaluation?.status !== "complete" && <button type="button" disabled={loading} onClick={() => void onEvaluateMemory([message.id])}>Evaluate this source independently</button>}
+        {onEvaluateMemory && message.memoryEvaluation?.status !== "complete" && <button type="button" disabled={loading} onClick={() => void onEvaluateMemory([message.id])}>{message.memoryEvaluation?.pipeline === "singlePass" ? "Retry single-pass source (one paid request)" : "Evaluate legacy source (potentially several paid requests)"}</button>}
         <h3>A. Inline evaluation</h3>
         <p>{message.memoryEvaluation ? "Independent evaluation owns memory for this source; narrator metadata is not used." : inline ? label(inline.outcome) : "Diagnostics unavailable for older turns. No conclusion about evaluation can be drawn from missing metadata."}</p>
         {inline && ["envelope_missing", "envelope_malformed", "instruction_omitted", "draft_discarded"].includes(inline.outcome) && <p>Memory evaluation failed; no decision is available.</p>}
@@ -163,4 +174,19 @@ function Candidate({ entry }: { entry: MemoryDiagnostic }) {
     <p>{entry.origin ? `${entry.origin} evaluation: ` : ""}{label(entry.outcome)}. {explanation(entry.reason)}</p>
     <details><summary>Technical classification</summary><p>{entry.stage}: {entry.outcome}</p><p>{entry.reason}</p></details>
   </article>;
+}
+
+function MemoryCostSummary({ adventure }: { adventure: Adventure }) {
+  const summary = summarizeMemoryCosts(adventure.activeState.apiCalls ?? [], adventure.verifiedApiTariffs ?? []);
+  const retained = summary.requests;
+  const lifetime = Object.values(adventure.activeState.apiCallTotals ?? {}).reduce((n, t) => n + (t?.requests ?? 0), 0);
+  return <details><summary>Actual request counts and cost summary</summary>
+    <table><thead><tr><th>Stage</th><th>HTTP requests</th></tr></thead><tbody>
+      {Object.entries(summary.counts).map(([stage, count]) => <tr key={stage}><td>{stage}</td><td>{count}</td></tr>)}
+    </tbody></table>
+    <p>{summary.input} reported input tokens · {summary.cached} reported cached input tokens · {summary.output} reported output tokens.</p>
+    <p>{summary.unknownUsage} requests with unknown usage · {summary.unpriced} requests with unpriced usage. {summary.priced ? `Estimated USD cost for ${summary.priced} priced requests: $${summary.estimatedCost.toFixed(6)}.` : "Estimated cost unavailable: no applicable verified provider/model tariff and complete cache usage."} Missing cache usage is unknown.</p>
+    <p>Each batch HTTP request appears once. Continuity checks recorded before stage attribution was added remain in their historical category.</p>
+    {lifetime > retained && <p>{lifetime - retained} older requests are outside the retained historical ledger. Stage and cache totals above cover retained records only.</p>}
+  </details>;
 }

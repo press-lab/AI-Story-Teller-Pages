@@ -90,6 +90,7 @@ export const defaultSemanticEvaluationSettings: SemanticEvaluationSettings = {
 };
 
 export const defaultMemoryDetectionSettings: MemoryDetectionSettings = {
+  pipeline: "singlePass",
   evaluator: "independent",
   enabled: true,
   generateContent: true,
@@ -509,7 +510,13 @@ export function sanitizeAdventureForPersistence(adventure: Adventure): Adventure
 
 export function normalizeAdventure(adventure: Adventure): Adventure {
   const baseline = createDefaultAdventure(adventure.title || "Untitled Adventure");
-  const messages = removeMirroredOpeningMessage(adventure);
+  const messages = removeMirroredOpeningMessage(adventure).map(message => {
+    const evaluation = message.memoryEvaluation;
+    if (evaluation?.pipeline !== "singlePass" || evaluation.status !== "running") return message;
+    const reason = "Extraction interrupted before commit. Explicit Retry required; the provider may have billed the request.";
+    return { ...message, memoryEvaluation: { ...evaluation, status: "failed" as const, attempts: Math.max(1, evaluation.attempts), lastError: reason,
+      singlePass: evaluation.singlePass ? { ...evaluation.singlePass, status: "failed" as const, failureReason: reason } : undefined } };
+  });
   const migrateGuardedStoryCards = !adventure.activeState?.stateFlags?.compactStoryCardsMigrated;
   return reconcileBrainBatchState({
     ...baseline,
@@ -629,6 +636,7 @@ export function normalizeAdventure(adventure: Adventure): Adventure {
     memoryDetectionSettings: {
       ...defaultMemoryDetectionSettings,
       ...(adventure.memoryDetectionSettings ?? {}),
+      pipeline: adventure.memoryDetectionSettings?.pipeline === "legacy" ? "legacy" : "singlePass",
     },
     systemTriggers: {
       ...defaultSystemTriggerSettings,

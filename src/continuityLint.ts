@@ -60,7 +60,7 @@ export async function runContinuityCheck(
 
   try {
     const response = await sendOpenAICompatibleChatCompletion({
-      purpose: "correction",
+      purpose: "continuityCheck",
       config: resolvedProviderConfig(adventure, providerConfig),
       messages: [
         { role: "system", content: systemPrompt },

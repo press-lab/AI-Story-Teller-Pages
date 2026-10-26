@@ -58,6 +58,7 @@ export async function fetchWithAccounting(url: string, init: RequestInit, config
   try {
     const { response, text } = await readResponse(url, init);
     let usage: ProviderUsage | undefined;
+    let partialUsage: ApiCallRecord["partialUsage"];
     let finishReason: string | undefined;
     let responseModel: string | undefined;
     let memoryEnvelope: ApiCallRecord["memoryEnvelope"];
@@ -72,7 +73,11 @@ export async function fetchWithAccounting(url: string, init: RequestInit, config
         memoryEnvelope = !visible.includes("<memory_updates") ? "missing" : visible.includes("</memory_updates>") ? "present" : "incomplete";
       }
       const raw = responseBody.usage;
-      if (raw) usage = {
+      if (raw && (!Number.isFinite(raw.prompt_tokens ?? raw.input_tokens) || !Number.isFinite(raw.completion_tokens ?? raw.output_tokens))) {
+        partialUsage = { inputTokens: Number.isFinite(raw.prompt_tokens ?? raw.input_tokens) ? raw.prompt_tokens ?? raw.input_tokens : undefined,
+          outputTokens: Number.isFinite(raw.completion_tokens ?? raw.output_tokens) ? raw.completion_tokens ?? raw.output_tokens : undefined };
+      }
+      if (raw && Number.isFinite(raw.prompt_tokens ?? raw.input_tokens) && Number.isFinite(raw.completion_tokens ?? raw.output_tokens)) usage = {
         promptTokens: raw.prompt_tokens ?? raw.input_tokens ?? 0,
         completionTokens: raw.completion_tokens ?? raw.output_tokens ?? 0,
         totalTokens: raw.total_tokens ?? ((raw.prompt_tokens ?? raw.input_tokens ?? 0) + (raw.completion_tokens ?? raw.output_tokens ?? 0)),
@@ -80,7 +85,7 @@ export async function fetchWithAccounting(url: string, init: RequestInit, config
         cacheCreationTokens: raw.cache_creation_input_tokens ?? raw.prompt_tokens_details?.cache_write_tokens,
       };
     } catch { /* Missing usage stays unknown; it is never estimated as zero consumption. */ }
-    publish({ ...record, status: response.ok ? "succeeded" : "failed", usage, finishReason, responseModel, memoryEnvelope });
+    publish({ ...record, partialUsage, httpStatus: response.status, status: response.ok ? "succeeded" : "failed", usage, finishReason, responseModel, memoryEnvelope });
     return { ok: response.ok, status: response.status, text: async () => text };
   } catch (error) {
     publish({ ...record, status: "failed" });

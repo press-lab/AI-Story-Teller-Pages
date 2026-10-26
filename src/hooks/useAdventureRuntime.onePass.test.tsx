@@ -24,7 +24,7 @@ function setup(saved?: Adventure, overrides: Partial<MemoryDetectionSettings> = 
   return renderHook(() => {
     const [adventure, setAdventure] = useState<Adventure | undefined>(initial);
     const runtime = useAdventureRuntime(adventure, setAdventure, { ...defaultModelConfig, apiKey: "offline-test" }, vi.fn(), vi.fn(), vi.fn(), async () => undefined,
-      { enabled: true, everyNTurns: 1, generateContent: true, ...overrides });
+      { pipeline: "legacy", enabled: true, everyNTurns: 1, generateContent: true, ...overrides });
     return { adventure, runtime, setAdventure };
   });
 }

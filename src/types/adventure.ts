@@ -117,7 +117,54 @@ export interface MemoryGroupWork {
   fingerprint: string;
   drafts: Record<string, MemoryWorkDraft>;
 }
+export type MemoryPipelineMode = "singlePass" | "legacy";
+export interface SinglePassMemoryFinding {
+  kind: "storyCard" | "brain" | "plotEssentials" | "activePressure" | "currentArc";
+  targetId: string | null;
+  title: string;
+  content?: string;
+  brainPatch?: BrainPatch;
+  reason: string;
+  evidenceQuotes: Array<{ messageId: string; quote: string }>;
+  candidateOnly: boolean;
+  storyCardType?: StoryCardType;
+  operation?: "append" | "create";
+  memoryMode?: StoryCardMemoryMode;
+  eventStatus?: "completed" | "ongoing" | "unresolved";
+  suggestedTriggers?: string[];
+  participants?: string[];
+  identityChange?: MemoryPlacementValidation["identityChange"];
+}
+export interface SinglePassMemorySourceResult {
+  sourceId: string;
+  findings: SinglePassMemoryFinding[];
+  findingIndexes?: number[];
+  rejected: Array<{ index: number; reason: string }>;
+  failureReason?: string;
+}
+export interface SinglePassMemoryBatchResult {
+  sources: SinglePassMemorySourceResult[];
+  usage?: ProviderUsage;
+}
+export interface SinglePassMemoryCheckpoint {
+  batchId: string;
+  sourceContent: string;
+  sourceRevision?: string;
+  evidence: Array<{ id: string; content: string }>;
+  referenceState: string;
+  status: "running" | "complete" | "failed";
+  findings: SinglePassMemoryFinding[];
+  dispositions: Array<{ index: number; status: "accepted" | "suppressed" | "rejected" | "review"; reason?: string; proposalId?: string }>;
+  acceptedCount: number;
+  rejectedCount: number;
+  reviewCount: number;
+  suppressedCount: number;
+  failureReason?: string;
+}
+
 export interface MemoryEvaluationState {
+  pipeline?: MemoryPipelineMode;
+  singlePass?: SinglePassMemoryCheckpoint;
   assessment?: MemoryAssessmentCheckpoint;
   groupWork?: Partial<Record<MemoryEvaluationGroup, MemoryGroupWork>>;
   revision?: string;
@@ -497,9 +544,10 @@ export interface TokenBudgetSettings {
 
 export interface MemoryRequestAttribution {
   batchSourceIds?: string[];
+  batchId?: string;
   sourceId: string;
   group?: MemoryEvaluationGroup;
-  stage: "assessment" | "generation" | "discovery" | "validation" | "repair" | "brainMaintenance";
+  stage: "singlePass" | "assessment" | "generation" | "discovery" | "validation" | "repair" | "brainMaintenance";
   attempt: number;
 }
 export interface ProviderConfig {
@@ -577,6 +625,7 @@ export interface SemanticEvaluationSettings {
 
 
 export interface MemoryDetectionSettings {
+  pipeline?: MemoryPipelineMode;
   /** Legacy narrator/dedicated values remain readable; independent evaluation now owns normal play. */
   evaluator?: "independent" | "narrator" | "dedicated";
   enabled: boolean;
@@ -801,8 +850,10 @@ export interface StoryEditHistoryEntry {
   redo: StoryEditPatch;
 }
 
-export type ApiCallPurpose = "narration" | "correction" | "memoryEvaluation" | "memoryRecovery" | "otherBackground";
+export type ApiCallPurpose = "narration" | "correction" | "continuityCheck" | "memoryEvaluation" | "memoryRecovery" | "otherBackground";
 export interface ApiCallRecord extends GenerationMetadata {
+  partialUsage?: { inputTokens?: number; outputTokens?: number };
+  httpStatus?: number;
   memoryRequest?: MemoryRequestAttribution;
   id: string;
   sessionId?: string;
@@ -870,6 +921,8 @@ export interface ActiveState {
 }
 
 export interface Adventure {
+  /** Optional explicitly verified USD tariffs; never inferred from a model name. */
+  verifiedApiTariffs?: import("../providers/memoryCostSummary").VerifiedTariff[];
   id: string;
   title: string;
   openingScene: string;
@@ -1046,6 +1099,10 @@ export type BrainPatch = {
 };
 
 export type AdventureAction =
+  | { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH"; checkpoints: Array<{ sourceId: string; checkpoint: SinglePassMemoryCheckpoint }>; manual?: boolean }
+  | { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH"; batchId: string; sources: Array<{ result: SinglePassMemorySourceResult; checkpoint: SinglePassMemoryCheckpoint }> }
+  | { type: "FAIL_SINGLE_PASS_MEMORY_BATCH"; batchId: string; sourceIds: string[]; reason: string }
+
   | { type: "RECORD_MEMORY_DIAGNOSTIC"; entry: MemoryDiagnostic }
   | { type: "QUEUE_MEMORY_EVALUATION"; sourceId: string; turn: number }
   | { type: "STORE_MEMORY_ASSESSMENT_BATCH"; sources: MemoryAssessmentBatchSource[] }

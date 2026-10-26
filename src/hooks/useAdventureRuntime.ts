@@ -1,3 +1,5 @@
+import { prepareSinglePassMemoryBatch, runSinglePassMemoryBatch } from "../memory/singlePassMemory";
+import { validateSinglePassSource } from "../memory/singlePassMemoryValidation";
 import { assessMemoryBatch } from "../memory/memoryAssessment";
 import { guardMemoryRequests } from "../providers/memoryCompletion";
 import { flushSync } from "react-dom";
@@ -10,7 +12,7 @@ import { buildContext } from "../contextBuilder/contextBuilder";
 import { saveAdventure } from "../db/adventureDb";
 import { scanEventMemories } from "../memory/eventMemoryScan";
 import { regenerateProposalContent } from "../memory/memoryDetection";
-import { memoryCycleSources } from "../memory/memoryCycleState";
+import { memoryCycleSources, singlePassCycleSources } from "../memory/memoryCycleState";
 import { generateArcContinuations, generateArcDirector, generateArcFromHistory, generateBrainFromName as generateBrainEntry, generateComponentContent, pickConvergentContinuation } from "../ai/generators";
 import { PLOT_ESSENTIALS_BEST_PRACTICES } from "../ai/authoringBestPractices";
 import { runStoryCardAudit, type AuditRecommendation } from "../memory/storyCardAudit";
@@ -196,6 +198,7 @@ export function useAdventureRuntime(
   const adventureRef = useRef<Adventure | undefined>(adventure);
   const providerSettingsRef = useRef(providerSettings);
   const globalMemorySettingsRef = useRef(globalMemorySettings);
+  const memorySessionDemandRef = useRef(new Set<string>());
   const isSubmittingRef = useRef(false);
   const semanticInFlight = useRef(new Set<string>());
   const arcInFlight = useRef(new Set<string>());
@@ -317,13 +320,14 @@ export function useAdventureRuntime(
     assessmentIdleTimerRef.current = undefined;
     if (!globalMemorySettingsRef.current.enabled || globalMemorySettingsRef.current.everyNTurns <= 0
       || isNarratingRef.current || document.visibilityState === "hidden" || !adventureRef.current
-      || !memoryCycleSources(adventureRef.current).some(isFreshAssessment)) return;
+      || !memorySessionDemandRef.current.has(adventureRef.current.id)
+      || !automaticMemorySources(adventureRef.current).some(isFreshAssessment)) return;
     assessmentIdleTimerRef.current = setTimeout(() => {
       assessmentIdleTimerRef.current = undefined;
       if (globalMemorySettingsRef.current.enabled && globalMemorySettingsRef.current.everyNTurns > 0
         && !isNarratingRef.current && document.visibilityState !== "hidden" && adventureRef.current) {
         if (memoryWorkerRef.current) void memoryWorkerRef.current.promise.then(() => idleFlushRef.current());
-        else void startIndependentMemory(adventureRef.current, undefined, true);
+        else void startConfiguredMemory(adventureRef.current, true);
       }
     }, ASSESSMENT_IDLE_FLUSH_MS);
   }
@@ -343,6 +347,92 @@ export function useAdventureRuntime(
     return () => { document.removeEventListener("visibilitychange", visibility); clearTimeout(assessmentIdleTimerRef.current); };
   }, [adventure?.id]);
 
+  function automaticMemorySources(snapshot: Adventure) {
+    return (snapshot.memoryDetectionSettings.pipeline ?? "singlePass") === "singlePass" ? singlePassCycleSources(snapshot)
+      : memoryCycleSources(snapshot).filter(m => m.memoryEvaluation?.pipeline === "legacy");
+  }
+  function startConfiguredMemory(snapshot: Adventure, idleFlush = false) {
+    return (snapshot.memoryDetectionSettings.pipeline ?? "singlePass") === "singlePass"
+      ? startSinglePassMemory(snapshot, undefined, idleFlush) : startIndependentMemory(snapshot, undefined, idleFlush);
+  }
+  function startSinglePassMemory(initial: Adventure, sourceIds?: string[], idleFlush = false): Promise<void> {
+    if (memoryWorkerRef.current) {
+      const epoch = memoryEpochRef.current;
+      return sourceIds ? memoryWorkerRef.current.promise.then(() => {
+        if (memoryEpochRef.current === epoch && adventureRef.current?.id === initial.id) return startSinglePassMemory(adventureRef.current, sourceIds, idleFlush);
+      }) : memoryWorkerRef.current.promise;
+    }
+    const pending = singlePassCycleSources(initial);
+    const selected = sourceIds ? initial.messages.filter(m => sourceIds.includes(m.id) && m.memoryEvaluation?.pipeline === "singlePass"
+      && m.memoryEvaluation.status !== "complete").slice(0, 3) : pending.length >= 3 || idleFlush ? pending : [];
+    if (!selected.length) { if (!sourceIds && pending.length) armAssessmentIdleTimer(); return Promise.resolve(); }
+    clearTimeout(assessmentIdleTimerRef.current);
+    assessmentIdleTimerRef.current = undefined;
+    const epoch = memoryEpochRef.current;
+    const currentJob = () => memoryEpochRef.current === epoch && adventureRef.current?.id === initial.id;
+    const ids = selected.map(m => m.id);
+    setMemoryWork({ adventureId: initial.id, status: "running", sourceIds: ids, remaining: ids.length });
+    const persistActions = async (actions: AdventureAction[]) => {
+      if (!currentJob()) return;
+      let committed: Adventure | undefined;
+      const pendingActions = apiActionsRef.current;
+      apiActionsRef.current = [];
+      const pendingUpdates = queuedUpdatesRef.current;
+      queuedUpdatesRef.current = [];
+      const allActions: AdventureAction[] = [...pendingActions,
+        ...pendingUpdates.map(update => ({ type: "QUEUE_PENDING_UPDATE" as const, update })), ...actions];
+      // Read the latest React state (including user edits) before persisting a group.
+      // Drain queues once, outside the pure updater, including under StrictMode.
+      flushSync(() => setAdventure(current => {
+        if (!currentJob() || current?.id !== initial.id) return current;
+        committed = reduceActions(current, allActions);
+        return committed;
+      }));
+      if (!committed) return;
+      adventureRef.current = committed;
+      await saveAdventure(committed);
+      return currentJob() ? adventureRef.current : undefined;
+    };
+    const promise = (async () => {
+      let batch: Awaited<ReturnType<typeof prepareSinglePassMemoryBatch>> | undefined;
+      try {
+        // A cancelled worker can leave a saved running claim. The shared worker gate above ensures it is abandoned.
+        if (sourceIds) for (const source of selected) {
+          const old = source.memoryEvaluation;
+          if (old?.status === "running" && old.singlePass) {
+            const cleared = await persistActions([{ type: "FAIL_SINGLE_PASS_MEMORY_BATCH", batchId: old.singlePass.batchId,
+              sourceIds: [source.id], reason: "Previous extraction was interrupted. Explicit Retry requested." }]);
+            if (!cleared) return;
+            initial = cleared;
+          }
+        }
+        batch = await prepareSinglePassMemoryBatch(initial, ids);
+        if (!currentJob()) return;
+        const claimed = await persistActions([{ type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints, manual: Boolean(sourceIds) }]);
+        if (!claimed || !currentJob() || !ids.every(id => claimed.messages.find(m => m.id === id)?.memoryEvaluation?.singlePass?.batchId === batch!.batchId)) return;
+        const result = await runSinglePassMemoryBatch(claimed, guardMemoryRequests(mergeProviderConfig(claimed, providerSettingsRef.current), currentJob), batch);
+        if (!currentJob()) return;
+        // Pure local validation before reducer revalidation. It never starts further requests.
+        for (const source of result.sources) validateSinglePassSource(claimed, source, batch.checkpoints.find(c => c.sourceId === source.sourceId)!.checkpoint);
+        await persistActions([{ type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId,
+          sources: result.sources.map(result => ({ result, checkpoint: batch!.checkpoints.find(c => c.sourceId === result.sourceId)!.checkpoint })) },
+          ...(result.usage ? [{ type: "ACCUMULATE_BACKGROUND_TOKENS" as const, promptTokens: result.usage.promptTokens, completionTokens: result.usage.completionTokens }] : [])]);
+        const failed = ids.filter(id => adventureRef.current?.messages.find(m => m.id === id)?.memoryEvaluation?.status !== "complete");
+        setMemoryWork(failed.length ? { adventureId: initial.id, status: "failed", sourceIds: failed, remaining: failed.length,
+          error: "Single-pass extraction failed for some sources. Saved findings remain available. Retry explicitly to make another paid request." } : undefined);
+      } catch (error) {
+        if (!currentJob()) return;
+        const reason = safeMemoryFailure(error).message;
+        if (batch) await persistActions([{ type: "FAIL_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId, sourceIds: ids, reason }]);
+        setMemoryWork({ adventureId: initial.id, status: "failed", sourceIds: ids, remaining: ids.length, error: reason });
+      } finally {
+        if (currentJob()) { memoryWorkerRef.current = undefined; armAssessmentIdleTimer(); }
+      }
+    })();
+    memoryWorkerRef.current = { adventureId: initial.id, promise };
+    return promise;
+  }
+
   function startIndependentMemory(initial: Adventure, sourceIds?: string[], idleFlush = false): Promise<void> {
     if (memoryWorkerRef.current?.adventureId === initial.id) {
       const active = memoryWorkerRef.current.promise;
@@ -353,7 +443,7 @@ export function useAdventureRuntime(
         if (memoryEpochRef.current === epoch && latest?.id === initial.id) return startIndependentMemory(latest, sourceIds);
       });
     }
-    const pending = memoryCycleSources(initial);
+    const pending = memoryCycleSources(initial).filter(m => m.memoryEvaluation?.pipeline === "legacy");
     const fresh = pending.filter(isFreshAssessment);
     const batch = !sourceIds && (fresh.length >= ASSESSMENT_BATCH_SIZE || idleFlush) ? fresh.slice(0, ASSESSMENT_BATCH_SIZE) : [];
     if (!sourceIds && !batch.length && fresh.length) armAssessmentIdleTimer();
@@ -498,7 +588,13 @@ export function useAdventureRuntime(
     const snapshot = adventureRef.current;
     if (!snapshot || loading || isSubmittingRef.current) return;
     if (!sourceIds.length || sourceIds.length > 10) throw new Error("Select one to ten completed sources.");
-    await startIndependentMemory(snapshot, sourceIds);
+    const single = sourceIds.filter(id => snapshot.messages.find(m => m.id === id)?.memoryEvaluation?.pipeline === "singlePass");
+    const legacy = sourceIds.filter(id => !single.includes(id));
+    for (let i = 0; i < single.length; i += 3) {
+      if (adventureRef.current?.id !== snapshot.id) return;
+      await startSinglePassMemory(adventureRef.current, single.slice(i, i + 3));
+    }
+    if (legacy.length && adventureRef.current?.id === snapshot.id) await startIndependentMemory(adventureRef.current, legacy);
   }
 
   async function retryMemory() {
@@ -511,7 +607,8 @@ export function useAdventureRuntime(
     clearTimeout(assessmentIdleTimerRef.current);
     assessmentIdleTimerRef.current = undefined;
     const epoch = memoryEpochRef.current;
-    await startIndependentMemory(snapshot);
+    memorySessionDemandRef.current.add(snapshot.id);
+    await startConfiguredMemory(snapshot);
     if (epoch !== memoryEpochRef.current || adventureRef.current?.id !== snapshot.id) return;
     const latest = adventureRef.current;
     void startSemanticEvaluation(latest);

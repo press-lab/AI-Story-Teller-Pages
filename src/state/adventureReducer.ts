@@ -1,3 +1,5 @@
+import { singlePassReferenceState } from "../memory/singlePassMemory";
+import { singlePassSourceError, validateSinglePassSource, toSinglePassProposal } from "../memory/singlePassMemoryValidation";
 import { reconcileBrainBatchState } from "../memory/brainBatchRecovery";
 import { memoryDecisionState, rebaseAutomaticAssessments } from "../memory/memoryAssessment";
 import { factsCovered, hasFactOverlap, proposalCoverage } from "../memory/factCoverage";
@@ -539,8 +541,8 @@ function reconcileStoryHistory(previous: Adventure, next: Adventure): Adventure 
     const before = memoryEvidenceWindow(previous, message.id).map(m => [m.id, m.content]);
     const after = memoryEvidenceWindow(recovered, message.id).map(m => [m.id, m.content]);
     if (JSON.stringify(before) === JSON.stringify(after)) return message;
-    return { ...message, memoryEvaluation: { turn: message.memoryEvaluation.turn,
-      revision: createId("memoryRevision"), status: "pending" as const, attempts: 0, completedGroups: [] } };
+    return { ...message, memoryEvaluation: { ...(message.memoryEvaluation.pipeline === "singlePass" ? { ...message.memoryEvaluation, lastError: "Source evidence changed. Explicit Retry required.", singlePass: message.memoryEvaluation.singlePass ? { ...message.memoryEvaluation.singlePass, status: "failed" as const, failureReason: "Source evidence changed." } : undefined } : {}), turn: message.memoryEvaluation.turn,
+      revision: createId("memoryRevision"), status: message.memoryEvaluation.pipeline === "singlePass" ? "failed" as const : "pending" as const, attempts: message.memoryEvaluation.pipeline === "singlePass" ? Math.max(1, message.memoryEvaluation.attempts) : 0, completedGroups: [] } };
   });
   return { ...recovered, messages };
 }
@@ -1178,9 +1180,77 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
 
 function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
   switch (action.type) {
+    case "CLAIM_SINGLE_PASS_MEMORY_BATCH": {
+      if (action.checkpoints.length < 1 || action.checkpoints.length > 3 || new Set(action.checkpoints.map(c => c.sourceId)).size !== action.checkpoints.length) return state;
+      const valid = action.checkpoints.filter(({ sourceId, checkpoint }) => {
+        const source = state.messages.find(m => m.id === sourceId);
+        const e = source?.memoryEvaluation;
+        return source?.role === "assistant" && e?.pipeline === "singlePass" && e.status !== "complete" && e.status !== "running"
+          && (action.manual || e.status === "pending" && e.attempts === 0)
+          && !singlePassSourceError(state, sourceId, checkpoint) && checkpoint.referenceState === singlePassReferenceState(state, sourceId);
+      });
+      if (valid.length !== action.checkpoints.length) return state;
+      return touchAdventure(state, { messages: state.messages.map(message => {
+        const claim = valid.find(c => c.sourceId === message.id);
+        return claim ? { ...message, memoryEvaluation: { ...message.memoryEvaluation!, status: "running" as const,
+          attempts: message.memoryEvaluation!.attempts + 1, singlePass: claim.checkpoint } } : message;
+      }) });
+    }
+    case "FAIL_SINGLE_PASS_MEMORY_BATCH": {
+      let next = state;
+      for (const sourceId of action.sourceIds) {
+        const e = next.messages.find(m => m.id === sourceId)?.memoryEvaluation;
+        if (e?.status !== "running" || e.singlePass?.batchId !== action.batchId) continue;
+        next = touchAdventure(next, { messages: next.messages.map(m => m.id === sourceId ? { ...m, memoryEvaluation: { ...e,
+          status: "failed" as const, lastError: action.reason, singlePass: { ...e.singlePass!, status: "failed" as const, failureReason: action.reason } } } : m) });
+        next = adventureReducer(next, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: { id: createId("decision"), sourceId,
+          createdAt: nowIso(), stage: "independent", requestStage: "singlePass", outcome: "evaluation_failed", reason: action.reason, retryable: false } });
+      }
+      return next;
+    }
+    case "COMMIT_SINGLE_PASS_MEMORY_BATCH": {
+      // Verify ALL dependencies against the same pre-commit state, before any automatic sibling write.
+      const verified = action.sources.map(({ result, checkpoint }) => {
+        const e = state.messages.find(m => m.id === result.sourceId)?.memoryEvaluation;
+        if (e?.status !== "running" || e.singlePass?.batchId !== action.batchId || checkpoint.batchId !== action.batchId
+          || JSON.stringify(e.singlePass) !== JSON.stringify(checkpoint)) return undefined;
+        const stale = singlePassSourceError(state, result.sourceId, checkpoint)
+          ?? (checkpoint.referenceState !== singlePassReferenceState(state, result.sourceId) ? "Memory references or author controls changed during extraction." : undefined);
+        return { result, checkpoint, validation: stale ? undefined : validateSinglePassSource(state, result, checkpoint), stale };
+      }).filter((entry): entry is NonNullable<typeof entry> => Boolean(entry))
+        .sort((x, y) => state.messages.findIndex(m => m.id === x.result.sourceId) - state.messages.findIndex(m => m.id === y.result.sourceId));
+      let next = state;
+      for (const { result, checkpoint, validation, stale } of verified) {
+        if (stale || !validation) {
+          next = adventureReducer(next, { type: "FAIL_SINGLE_PASS_MEMORY_BATCH", batchId: action.batchId, sourceIds: [result.sourceId], reason: stale ?? "Validation failed." });
+          continue;
+        }
+        const dispositions: import("../types/adventure").SinglePassMemoryCheckpoint["dispositions"] = validation.rejected.map(r => ({ ...r, status: "rejected" as const }));
+        for (const index of validation.suppressed) dispositions.push({ index, status: "suppressed", reason: "Factual delta already recorded or considered." });
+        for (const { index, findingIndex } of validation.proposals) {
+          // Rebind only after all external author edits were ruled out above. Existing reducer handles duplicate/approval policy.
+          const proposal = toSinglePassProposal(next, result.sourceId, checkpoint, result.findings[findingIndex]);
+          next = adventureReducer(next, { type: "ADD_MEMORY_PROPOSAL", proposal });
+          const stored = next.activeState.memoryProposals.find(p => p.id === proposal.id);
+          dispositions.push({ index, status: !stored ? "suppressed" : stored.status === "approved" ? "accepted" : "review", proposalId: stored?.id });
+        }
+        const failureReason = validation.failureReason;
+        const saved: import("../types/adventure").SinglePassMemoryCheckpoint = { ...checkpoint, findings: result.findings, dispositions,
+          status: failureReason ? "failed" : "complete", failureReason,
+          acceptedCount: dispositions.filter(d => d.status === "accepted").length, rejectedCount: dispositions.filter(d => d.status === "rejected").length,
+          reviewCount: dispositions.filter(d => d.status === "review").length, suppressedCount: dispositions.filter(d => d.status === "suppressed").length };
+        next = touchAdventure(next, { messages: next.messages.map(m => m.id === result.sourceId ? { ...m, memoryEvaluation: { ...m.memoryEvaluation!,
+          singlePass: saved, status: saved.status, lastError: failureReason } } : m) });
+        next = adventureReducer(next, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: { id: createId("decision"), sourceId: result.sourceId,
+          createdAt: nowIso(), stage: "independent", requestStage: "singlePass", outcome: failureReason ? "evaluation_failed" : "evaluation_completed",
+          reason: failureReason ?? (result.findings.length ? "All returned findings have recorded dispositions." : "Valid evaluation with zero findings."),
+          counts: { returned: result.findings.length + result.rejected.length, accepted: saved.acceptedCount, rejected: saved.rejectedCount, suppressed: saved.suppressedCount, retryPending: 0 } } });
+      }
+      return next;
+    }
     case "QUEUE_MEMORY_EVALUATION": {
       const next = touchAdventure(state, { messages: state.messages.map(message => message.id === action.sourceId && !message.memoryEvaluation
-        ? { ...message, memoryEvaluation: { turn: action.turn, status: "pending" as const, attempts: 0, completedGroups: [] } } : message) });
+        ? { ...message, memoryEvaluation: { pipeline: state.memoryDetectionSettings.pipeline ?? "singlePass", ...((state.memoryDetectionSettings.pipeline ?? "singlePass") === "singlePass" ? { revision: createId("memoryRevision") } : {}), turn: action.turn, status: "pending" as const, attempts: 0, completedGroups: [] } } : message) });
       return adventureReducer(next, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: {
         id: createId("decision"), sourceId: action.sourceId, createdAt: nowIso(), stage: "independent", outcome: "evaluation_queued",
       } });
@@ -1343,8 +1413,8 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
           messages: state.messages.map((message) =>
             message.id === action.messageId || tracked(message) && memoryEvidenceWindow(state, message.id).some(evidence => evidence.id === action.messageId)
               ? { ...message, ...(message.id === action.messageId ? { content: action.content } : {}),
-                memoryEvaluation: tracked(message) ? { turn: message.memoryEvaluation?.turn ?? state.activeState.turn, revision: createId("memoryRevision"),
-                  status: "pending" as const, attempts: 0, completedGroups: [] } : undefined }
+                memoryEvaluation: tracked(message) ? { ...(message.memoryEvaluation?.pipeline === "singlePass" ? { ...message.memoryEvaluation, lastError: "Source evidence changed. Explicit Retry required.", singlePass: message.memoryEvaluation.singlePass ? { ...message.memoryEvaluation.singlePass, status: "failed" as const, failureReason: "Source evidence changed." } : undefined } : {}), turn: message.memoryEvaluation?.turn ?? state.activeState.turn, revision: createId("memoryRevision"),
+                  status: message.memoryEvaluation?.pipeline === "singlePass" ? "failed" as const : "pending" as const, attempts: message.memoryEvaluation?.pipeline === "singlePass" ? Math.max(1, message.memoryEvaluation.attempts) : 0, completedGroups: [] } : undefined }
               : message,
           ),
         },
@@ -1923,7 +1993,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
         promptTokens: old.promptTokens + (record.usage?.promptTokens ?? 0),
         completionTokens: old.completionTokens + (record.usage?.completionTokens ?? 0) };
       return touchAdventure(state, { activeState: { ...state.activeState,
-        apiCalls: [record, ...calls.filter(call => call.id !== record.id)].slice(0, 500),
+        apiCalls: [record, ...calls.filter(call => call.id !== record.id)],
         apiCallTotals: { ...state.activeState.apiCallTotals, [record.purpose]: totals } } });
     }
     case "ADVANCE_MEMORY_RECOVERY_TURN":

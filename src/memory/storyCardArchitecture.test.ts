@@ -233,3 +233,22 @@ describe("Moody placement regressions", () => {
     expect(state.activeState.memoryProposals.find(p => p.id === "misplaced")?.status).toBe("approved");
   });
 });
+
+it("single-pass sibling appends preserve original Lore, history and both source IDs", async () => {
+  const { singlePassFixture, groundedFinding } = await import("../test/singlePassMemory");
+  const { prepareSinglePassMemoryBatch } = await import("./singlePassMemory");
+  let { a, ids } = singlePassFixture(2);
+  const card = makeStoryCard({ title: "Workshop agreements", type: "lore", content: "Original authored workshop facts.", keys: ["workshop agreements"] });
+  a.storyCards.push(card); a.memoryAutoApprove.storyCard = true; a.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
+  const batch = await prepareSinglePassMemoryBatch(a, ids);
+  a = reduce(a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
+  const contents = ["Avery proposed sharing sales proceeds for custom designs.", "Avery Stone shook Casey Vale's hand to confirm the agreement."];
+  a = reduce(a, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId, sources: batch.checkpoints.map(({ sourceId, checkpoint }, i) => ({ checkpoint,
+    result: { sourceId, rejected: [], findings: [{ ...groundedFinding(), targetId: card.id, title: card.title, operation: "append", content: contents[i],
+      evidenceQuotes: [{ messageId: sourceId, quote: a.messages.find(m => m.id === sourceId)!.content }] }] } })) });
+  const changed = a.storyCards.find(c => c.id === card.id)!;
+  expect(changed.content).toContain(card.content);
+  for (const content of contents) expect(changed.content).toContain(content);
+  expect(changed.memoryUpdateHistory?.map(h => h.sourceTurnId)).toEqual(expect.arrayContaining(ids));
+  expect(a.messages.filter(m => ids.includes(m.id)).every(m => m.memoryEvaluation?.status === "complete")).toBe(true);
+});

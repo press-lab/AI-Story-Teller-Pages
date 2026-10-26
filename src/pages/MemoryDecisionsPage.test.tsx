@@ -126,7 +126,7 @@ it("keeps quarantined drafts visible and retryable without presenting them as ac
   render(<MemoryDecisionsPage adventure={a} onSuggestions={vi.fn()} onEvaluateMemory={retry} />);
   expect(screen.getByText(/Saved discovery drafts \(1\)/)).toBeDefined();
   expect(screen.getByText(/not active memories or narration context/)).toBeDefined();
-  fireEvent.click(screen.getByRole("button", { name: "Evaluate this source independently" }));
+  fireEvent.click(screen.getByRole("button", { name: "Evaluate legacy source (potentially several paid requests)" }));
   expect(retry).toHaveBeenCalledWith(["source"]);
 });
 
@@ -179,4 +179,22 @@ it("shows memory progress and recovery choices only inside the Memory submenu", 
   fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
   expect(retry).toHaveBeenCalledTimes(1);
   expect(bypass).toHaveBeenCalledTimes(1);
+});
+
+it("shows single-pass empty, failed and review states and counts a shared batch HTTP request once", async () => {
+  const { prepareSinglePassMemoryBatch } = await import("../memory/singlePassMemory");
+  const { singlePassFixture, groundedFinding } = await import("../test/singlePassMemory");
+  let { a, ids } = singlePassFixture();
+  const batch = await prepareSinglePassMemoryBatch(a, ids);
+  a = adventureReducer(a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
+  a = adventureReducer(a, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId, sources: batch.checkpoints.map(({ sourceId, checkpoint }, i) => ({ checkpoint,
+    result: { sourceId, findings: i === 2 ? [groundedFinding()] : [], rejected: [], ...(i === 1 ? { failureReason: "Missing source result." } : {}) } })) });
+  a = adventureReducer(a, { type: "RECORD_API_CALL", record: { id: "single-http", purpose: "memoryEvaluation", model: "fixture", status: "succeeded", startedAt: "2000-01-01",
+    memoryRequest: { sourceId: ids[0], batchId: batch.batchId, batchSourceIds: ids, stage: "singlePass", attempt: 1 }, usage: { promptTokens: 300, completionTokens: 50, totalTokens: 350 } } });
+  render(<MemoryDecisionsPage adventure={a} onSuggestions={vi.fn()} />);
+  expect(screen.getByText(/valid evaluation with zero findings/)).toBeTruthy();
+  expect(screen.getByText(/Source: evaluation failed/)).toBeTruthy();
+  expect(screen.getByText(/Source: awaiting review/)).toBeTruthy();
+  expect(screen.getByText(/300 reported input tokens/)).toBeTruthy();
+  expect(screen.getAllByText(/Batch:/)).toHaveLength(3);
 });

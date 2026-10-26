@@ -1,4 +1,3 @@
-import { mockAssessment } from "../test/memoryAssessment";
 /** @vitest-environment jsdom */
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { useState } from "react";
@@ -30,14 +29,14 @@ function reply(content: string, prompt = 100, completion = 10) {
 }
 
 describe("actual HTTP call accounting", () => {
-  it("measures 20 narration plus seven batched assessment HTTP requests, with separate reported usage", async () => {
+  it("measures 20 narration plus seven single-pass extraction HTTP requests, with separate reported usage", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
       const body = JSON.parse(init!.body as string);
       if (body.model === "arbitrary-evaluator") {
         const saved = vi.mocked(saveAdventure).mock.calls.at(-1)![0];
         expect(saved.messages.at(-1)?.memoryEvaluation?.attempts).toBeGreaterThan(0);
-        return reply(mockAssessment(body.messages), 800, 80);
+        return reply(JSON.stringify({ sources: JSON.parse(body.messages.at(-1).content).sources.map((s: { sourceId: string }) => ({ sourceId: s.sourceId, findings: [] })) }), 800, 80);
       }
       return reply("Mira waits beside the gate.", 2000, 100);
     });
@@ -53,7 +52,7 @@ describe("actual HTTP call accounting", () => {
     });
     expect(result.current.adventure!.activeState.apiCalls).toHaveLength(27);
     expect(result.current.adventure!.activeState.apiCalls!.filter(c => c.purpose === "memoryEvaluation").every(c =>
-      c.memoryRequest?.sourceId && c.memoryRequest.batchSourceIds?.length && c.memoryRequest.stage === "assessment" && c.memoryRequest.attempt === 1)).toBe(true);
+      c.memoryRequest?.sourceId && c.memoryRequest.batchSourceIds?.length && c.memoryRequest.stage === "singlePass" && c.memoryRequest.attempt === 1)).toBe(true);
   });
 
   it("persists independent failures without replaying calls on reload", async () => {
@@ -64,7 +63,7 @@ describe("actual HTTP call accounting", () => {
       if (body.model === "arbitrary-evaluator") {
         evaluations++;
         if (evaluations === 1) throw new Error("Disconnected");
-        return reply(mockAssessment(body.messages));
+        return reply(JSON.stringify({ sources: JSON.parse(body.messages.at(-1).content).sources.map((s: { sourceId: string }) => ({ sourceId: s.sourceId, findings: [] })) }));
       }
       return reply("Mira waits beside the gate.");
     });

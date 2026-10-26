@@ -130,3 +130,24 @@ vi.mock("../providers/memoryCompletion", async importOriginal => {
   return { ...actual, sendMemoryCompletion: vi.fn(async (...args: Parameters<typeof actual.sendMemoryCompletion>) =>
     offlinePlacementReview({ messages: args[2] }) ?? actual.sendMemoryCompletion(...args)) };
 });
+
+it("single-pass findings preserve source chronology and the existing Hogwarts identities", async () => {
+  const { prepareSinglePassMemoryBatch } = await import("./singlePassMemory");
+  const { validateSinglePassSource } = await import("./singlePassMemoryValidation");
+  const a = fixture();
+  const ids = ["message_mvlticbp_e1un3cjq", "message_mvluhvfk_stfz13f9", harrySource];
+  for (const id of ids) a.messages.find(m => m.id === id)!.memoryEvaluation = { pipeline: "singlePass", status: "pending", attempts: 0, turn: 1, completedGroups: [] };
+  const batch = await prepareSinglePassMemoryBatch(a, ids.reverse());
+  expect(batch.checkpoints.map(c => c.sourceId)).toEqual([...batch.checkpoints.map(c => c.sourceId)].sort((x, y) => a.messages.findIndex(m => m.id === x) - a.messages.findIndex(m => m.id === y)));
+  for (const { sourceId, checkpoint } of batch.checkpoints) {
+    const source = a.messages.find(m => m.id === sourceId)!;
+    const finding = { kind: "storyCard" as const, targetId: null, title: sourceId, content: sourceId === harrySource ? recognitionUpdate().content : sourceId.includes("mvluhvfk") ? "Hermione expressed interest in executable runic arrays." : "Seth was Sorted into Gryffindor.",
+      reason: "Grounded fixture development.", evidenceQuotes: [{ messageId: sourceId, quote: source.content }], candidateOnly: true, storyCardType: "lore" as const, operation: "create" as const,
+      memoryMode: "historical" as const, eventStatus: "completed" as const, suggestedTriggers: ["Gryffindor developments", "Seth Press at Hogwarts", "executable runic arrays"], participants: [] };
+    const result = validateSinglePassSource(a, { sourceId, findings: [finding], rejected: [] }, checkpoint);
+    expect(result.rejected).toEqual([]); expect(result.proposals).toHaveLength(1);
+    expect(result.proposals[0].proposal.storyCardType).toBe("lore");
+    expect(checkpoint.evidence.every(e => a.messages.findIndex(m => m.id === e.id) <= a.messages.indexOf(source))).toBe(true);
+  }
+  expect(a.storyCards.map(c => c.content)).toEqual(fixture().storyCards.map(c => c.content));
+});

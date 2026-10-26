@@ -24,3 +24,12 @@ export function memoryTargetSnapshot(adventure: Adventure, kind: MemoryTargetSna
 export function memoryTargetMatches(adventure: Adventure, target: MemoryTargetSnapshot) {
   return memoryTargetSnapshot(adventure, target.kind, target.id)?.value === target.value;
 }
+
+/** New marked sources only. Terminal or interrupted work always requires explicit Retry. */
+export function singlePassCycleSources(adventure: Adventure) {
+  const cadence = Math.max(0, Math.floor(adventure.memoryDetectionSettings.everyNTurns));
+  const turn = adventure.activeState.memoryRecoveryStoryTurn ?? 0;
+  if (!adventure.memoryDetectionSettings.enabled || !cadence || turn % cadence !== 0) return [];
+  return storyMemoryMessages(adventure).filter(m => m.role === "assistant" && m.memoryEvaluation?.pipeline === "singlePass"
+    && m.memoryEvaluation.status === "pending" && m.memoryEvaluation.attempts === 0 && !m.memoryEvaluation.singlePass).slice(0, 3);
+}

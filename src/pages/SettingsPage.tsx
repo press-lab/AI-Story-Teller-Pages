@@ -592,11 +592,13 @@ export function SettingsPage({
         {advanced && (
           <article className="panel settings-card">
             <h3>Memory Detection</h3>
-            <p className="muted">
-              Independent evaluation checks plot developments, existing Story Cards, character Brains and missing durable memories after the story is saved. It works without a narrator memory appendix and uses targeted background calls on your chosen schedule.
-            </p>
-            <p className="muted">Evaluator: original independent memory foundation. Legacy narrator/dedicated preferences are retained in exports; both now use independent evaluation.</p>
-            <p className="muted">Uses Background Provider in LLM Evaluation. Each source uses one shared assessment, then generation, validation and additional discovery only when needed. Up to ten queued sources run per cadence window. Failed evaluations retry at most three times with backoff. Loading an adventure makes no memory requests. Retry a source explicitly in Memory Suggestions → Decisions.</p>
+            <p className="muted">Single pass uses one paid extraction per batch of up to three narrator sources. Validation is local. No automatic paid repair or retry runs. Legacy mode can make several requests per source. Loading an adventure makes no memory requests.</p>
+            <Field label="Automatic memory pipeline">
+              <select value={globalAdventureSettings.memoryDetectionSettings.pipeline ?? "singlePass"}
+                onChange={e => updateMemoryDetection({ pipeline: e.target.value as "singlePass" | "legacy" })}>
+                <option value="singlePass">Single pass (default)</option><option value="legacy">Legacy multi-call</option>
+              </select>
+            </Field>
             <Field label="Memory evaluation API">
               <select value={activeSettings.semanticEvaluationSettings.memoryEvaluationApi ?? "chat"}
                 onChange={e => updateSemanticSettings({ memoryEvaluationApi: e.target.value as "chat" | "openaiResponses" })}>
