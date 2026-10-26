@@ -123,12 +123,21 @@ export interface MemoryTargetSnapshot {
   value: string;
 }
 
+/** Credential-free identity of the API request that produced generated content. */
+export interface GenerationMetadata {
+  provider?: string;
+  api?: "chatCompletions" | "anthropicMessages" | "responses";
+  model: string;
+  responseModel?: string;
+}
+
 export interface Message {
   id: string;
   role: MessageRole;
   content: string;
   inputMode?: InputMode;
   usage?: ProviderUsage;
+  generation?: GenerationMetadata;
   /** Persisted on the final narrative; old saves need no migration. */
   storyTime?: StoryTime;
   /** Local scanner version and source fingerprint; never a fictional timestamp. */
@@ -777,14 +786,11 @@ export interface StoryEditHistoryEntry {
 }
 
 export type ApiCallPurpose = "narration" | "correction" | "memoryEvaluation" | "memoryRecovery" | "otherBackground";
-export interface ApiCallRecord {
+export interface ApiCallRecord extends GenerationMetadata {
   memoryRequest?: MemoryRequestAttribution;
   id: string;
   sessionId?: string;
   purpose: ApiCallPurpose;
-  model: string;
-  provider?: string;
-  responseModel?: string;
   outputTokenLimit?: number;
   memoryInstructionPresent?: boolean;
   memoryEnvelope?: "present" | "missing" | "incomplete";
@@ -1023,7 +1029,7 @@ export type AdventureAction =
   | { type: "SET_TITLE"; title: string }
   | { type: "SET_OPENING_SCENE"; content: string }
   | { type: "UPDATE_METADATA"; metadata: JsonObject }
-  | { type: "ADD_MESSAGE"; role: MessageRole; content: string; id?: string; createdAt?: ISODateString; inputMode?: InputMode; usage?: ProviderUsage }
+  | { type: "ADD_MESSAGE"; role: MessageRole; content: string; id?: string; createdAt?: ISODateString; inputMode?: InputMode; usage?: ProviderUsage; generation?: GenerationMetadata }
   | { type: "UPDATE_MESSAGE"; messageId: string; content: string }
   | { type: "DELETE_MESSAGE"; messageId: string }
   | { type: "DELETE_LAST_MESSAGE" }

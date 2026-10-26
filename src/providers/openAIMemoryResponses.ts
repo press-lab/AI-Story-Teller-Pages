@@ -1,3 +1,4 @@
+import { generationMetadata } from "./generationMetadata";
 import { memoryReasoningFields, assertMemoryReasoningDisabled } from "./memoryReasoning";
 import { fetchWithAccounting, ProviderRequestTimeoutError } from "./apiCallAccounting";
 import { waitForProviderThrottle, type ProviderResponse, type SendChatCompletionOptions } from "./openAICompatible";
@@ -97,5 +98,5 @@ export async function sendOpenAIMemoryResponse(options: SendChatCompletionOption
     }
   }
   if (!content.length) throw new MemoryResponseError("provider_empty_response", undefined, usage);
-  return { content: content.join(""), raw, usage, finishReason: raw.status };
+  return { content: content.join(""), raw, usage, finishReason: raw.status, generation: generationMetadata(endpoint.toString(), config, raw) };
 }

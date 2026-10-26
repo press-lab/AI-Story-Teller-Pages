@@ -8,6 +8,7 @@ import type {
   ChatMessage,
   ContextBuildResult,
   InputMode,
+  GenerationMetadata,
   ProviderConfig,
   ProviderUsage,
 } from "../types/adventure";
@@ -15,6 +16,7 @@ import { createId, nowIso } from "../utils/id";
 import { adventureReducer } from "./adventureReducer";
 
 export interface MockableProviderResponse {
+  generation?: GenerationMetadata;
   content: string;
   usage?: ProviderUsage;
   finishReason?: string;
@@ -102,12 +104,14 @@ export async function applyProviderResponse({
   // Continuity lint: scan for risky claims and, if found, run a targeted LLM check.
   // Uses only the last 8 messages as context to keep tokens low.
   let finalContent = thoughtCleanContent;
+  let generation = response.generation;
   let continuityCorrected = false;
   if (mode !== "comms" && providerConfig && scanForRiskyClaims(rawContentForLint)) {
     const lintAccum = { promptTokens: 0, completionTokens: 0 };
     const lintResult = await runContinuityCheck(next, providerConfig, rawContentForLint, lintAccum);
     if (lintResult.correctedText) {
       finalContent = lintResult.correctedText;
+      generation = lintResult.generation;
       continuityCorrected = true;
     }
     if (lintAccum.promptTokens > 0 || lintAccum.completionTokens > 0) {
@@ -124,6 +128,7 @@ export async function applyProviderResponse({
     id: messageId,
     createdAt,
     usage: response.usage,
+    generation,
   });
   if (mode !== "comms" && incrementTurn) {
     next = adventureReducer(next, { type: "ADVANCE_MEMORY_RECOVERY_TURN" });

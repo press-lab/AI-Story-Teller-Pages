@@ -1,4 +1,5 @@
 import type { ApiCallPurpose, ApiCallRecord, ProviderConfig, ProviderUsage } from "../types/adventure";
+import { generationMetadata } from "./generationMetadata";
 import { createId, nowIso } from "../utils/id";
 
 // Includes receiving the response body. No automatic retry is added on timeout.
@@ -50,9 +51,7 @@ export async function fetchWithAccounting(url: string, init: RequestInit, config
   const requestMessages = (body.messages ?? body.input) as Array<{ content?: unknown }> | undefined;
   const memoryInstructionPresent = Boolean(requestMessages?.some(message => JSON.stringify(message.content ?? "").includes("[ONE-PASS MEMORY]"))
     || JSON.stringify(body.system ?? "").includes("[ONE-PASS MEMORY]"));
-  let provider: string | undefined;
-  try { provider = new URL(url).hostname; } catch { /* No URL or credentials are logged. */ }
-  const record: ApiCallRecord = { memoryRequest: config.memoryRequest, provider, outputTokenLimit: Number(body.max_tokens ?? body.max_output_tokens) || undefined,
+  const record: ApiCallRecord = { ...generationMetadata(url, config), memoryRequest: config.memoryRequest, outputTokenLimit: Number(body.max_tokens ?? body.max_output_tokens) || undefined,
     memoryInstructionPresent, id: createId("api"), sessionId: config.sessionId,
     purpose, model: config.model, startedAt: nowIso(), status: "started" };
   publish(record);

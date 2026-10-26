@@ -122,7 +122,7 @@ async function sendStoryCompletionWithGuard({
   config: RuntimeProviderSettings;
   responseLengthHint: number;
   playerInput: string;
-}): Promise<{ content: string; usage?: ProviderUsage; finishReason?: string; memoryDiscarded?: boolean; narrationRewritten?: boolean }> {
+}): Promise<import("../state/turnPipeline").MockableProviderResponse> {
   const response = await sendOpenAICompatibleChatCompletion({ messages, config, purpose: "narration" });
   const guard = evaluateStoryResponseGuard(response.content, responseLengthHint, playerInput);
   if (!guard.needsCorrection) return response;
@@ -149,7 +149,7 @@ async function sendStoryCompletionWithGuard({
     thinking: "disabled",
     purpose: "correction",
   });
-  return { narrationRewritten: true, content: corrected.content, finishReason: corrected.finishReason, memoryDiscarded: !hasMemoryInstruction, usage: combineProviderUsage(response.usage, corrected.usage) };
+  return { narrationRewritten: true, generation: corrected.generation, content: corrected.content, finishReason: corrected.finishReason, memoryDiscarded: !hasMemoryInstruction, usage: combineProviderUsage(response.usage, corrected.usage) };
 }
 
 function stripThinkTags(text: string): string {

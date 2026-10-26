@@ -465,6 +465,7 @@ function addMessage(state: Adventure, action: Extract<AdventureAction, { type: "
     content: action.content,
     inputMode: action.inputMode,
     usage: action.usage,
+    generation: action.generation,
     createdAt: action.createdAt ?? nowIso(),
   };
 }

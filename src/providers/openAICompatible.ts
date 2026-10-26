@@ -1,6 +1,7 @@
+import { generationMetadata } from "./generationMetadata";
 import { memoryReasoningFields, assertMemoryReasoningDisabled } from "./memoryReasoning";
 import { fetchWithAccounting, ProviderRequestTimeoutError } from "./apiCallAccounting";
-import type { ApiCallPurpose, ChatMessage, ProviderConfig, ProviderRequestThrottle, ProviderUsage } from "../types/adventure";
+import type { ApiCallPurpose, ChatMessage, GenerationMetadata, ProviderConfig, ProviderRequestThrottle, ProviderUsage } from "../types/adventure";
 
 type CacheBlock = { type: "text"; text: string; cache_control?: { type: "ephemeral" } };
 type CacheableContent = string | CacheBlock[];
@@ -48,6 +49,7 @@ export interface SendChatCompletionOptions {
 }
 
 export interface ProviderResponse {
+  generation?: GenerationMetadata;
   content: string;
   raw: unknown;
   finishReason?: string;
@@ -430,7 +432,7 @@ export async function sendOpenAICompatibleChatCompletion({
     ? await sendAnthropicRequest(endpoint, messages, config, signal, thinking, purpose)
     : await sendOpenAIRequest(endpoint, messages, config, signal, responseFormat, thinking, purpose, retry);
   if (memoryEvaluation && !memoryUsesLowReasoning) assertMemoryReasoningDisabled(result.raw);
-  return result;
+  return { ...result, generation: generationMetadata(endpoint, config, result.raw) };
 }
 
 export function isNativeDeepSeekProvider(config: Pick<ProviderConfig, "baseUrl">): boolean {
