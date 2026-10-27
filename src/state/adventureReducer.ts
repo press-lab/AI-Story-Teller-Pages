@@ -731,7 +731,7 @@ function routedProposal(state: Adventure, proposal: MemoryProposal): MemoryPropo
   }
   // This pipeline already verified and ranked destinations. Do not run a second fuzzy resolver
   // that can override an explicit CREATE choice or an ambiguous set of review options.
-  if (proposal.storyCardReview || proposal.placementValidation) return proposal;
+  if (proposal.storyCardReview || proposal.placementValidation || proposal.evaluationSource) return proposal;
   const routed = resolveMemoryTarget(state, {
     proposedType: proposal.proposedType,
     storyCardType: proposal.storyCardType ? primaryStoryCardType(proposal.storyCardType) : undefined,
@@ -965,7 +965,11 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal,
   }
 
   if (proposal.proposedType === "plotMomentumUpdate") {
-    return {};
+    // Review-only legacy destination. Never create or guess a Momentum target.
+    const target = state.components.find(c => c.id === proposal.targetId && c.type === "immediateMomentum" && c.active && c.autoUpdate !== false);
+    if (!manualApproval || !target || !proposal.evaluationSource || !suggestionSourceValid(state, proposal) || !proposal.content.trim()) return {};
+    return { components: upsertById(state.components, recordComponentMemoryUpdate(target,
+      { ...target, content: proposal.content, lastAutoUpdateTurn: state.activeState.turn }, proposalMemoryMeta("replace"))) };
   }
 
   if (proposal.proposedType === "plotPressureUpdate") {
@@ -1240,6 +1244,8 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
         const failureReason = validation.failureReason;
         const saved: import("../types/adventure").SinglePassMemoryCheckpoint = { ...checkpoint, findings: result.findings, dispositions,
           status: failureReason ? "failed" : "complete", failureReason,
+          parsedCount: result.parsedCount ?? result.findings.length + result.rejected.length,
+          routedCount: result.routedCount ?? result.findings.length, proposedCount: dispositions.filter(d => d.status === "accepted" || d.status === "review").length,
           acceptedCount: dispositions.filter(d => d.status === "accepted").length, rejectedCount: dispositions.filter(d => d.status === "rejected").length,
           reviewCount: dispositions.filter(d => d.status === "review").length, suppressedCount: dispositions.filter(d => d.status === "suppressed").length };
         next = touchAdventure(next, { messages: next.messages.map(m => m.id === result.sourceId ? { ...m, memoryEvaluation: { ...m.memoryEvaluation!,
@@ -1247,7 +1253,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
         next = adventureReducer(next, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: { id: createId("decision"), sourceId: result.sourceId,
           createdAt: nowIso(), stage: "independent", requestStage: "singlePass", outcome: failureReason ? "evaluation_failed" : "evaluation_completed",
           reason: failureReason ?? (result.findings.length ? "All returned findings have recorded dispositions." : "Valid evaluation with zero findings."),
-          counts: { returned: result.findings.length + result.rejected.length, accepted: saved.acceptedCount, rejected: saved.rejectedCount, suppressed: saved.suppressedCount, retryPending: 0 } } });
+          counts: { returned: saved.parsedCount!, parsed: saved.parsedCount, routed: saved.routedCount, proposed: saved.proposedCount, review: saved.reviewCount, accepted: saved.acceptedCount, rejected: saved.rejectedCount, suppressed: saved.suppressedCount, retryPending: 0 } } });
       }
       return next;
     }
@@ -1823,6 +1829,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
       const duplicatesCard =
         clean.proposedType === "storyCard" &&
         !clean.targetId &&
+        !(clean.requiresReview && clean.storyCardReview?.targetCandidates.length) &&
         state.storyCards.some((c) => normalizeProposalTitle(c.title) === normTitle);
       // Similarity can deduplicate event retellings, but must not merge distinct character identities.
       const duplicatesStoryCardContent = clean.proposedType === "storyCard" && clean.storyCardType !== "character"

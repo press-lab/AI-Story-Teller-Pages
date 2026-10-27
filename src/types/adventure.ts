@@ -21,7 +21,7 @@ export interface MemoryDiagnostic {
   cardOperation?: "append" | "create";
   candidateIndex?: number;
   evaluationAttempt?: number;
-  counts?: { returned: number; accepted: number; rejected: number; suppressed: number; retryPending: number };
+  counts?: { returned: number; accepted: number; rejected: number; suppressed: number; retryPending: number; parsed?: number; routed?: number; proposed?: number; review?: number };
   group?: MemoryEvaluationGroup;
   origin?: "inline" | "recovery";
   instructionSupplied?: boolean;
@@ -119,7 +119,7 @@ export interface MemoryGroupWork {
 }
 export type MemoryPipelineMode = "singlePass" | "legacy";
 export interface SinglePassMemoryFinding {
-  kind: "storyCard" | "brain" | "plotEssentials" | "activePressure" | "currentArc";
+  kind: "storyCard" | "brain" | "plotEssentials" | "activePressure" | "currentArc" | "immediateMomentum";
   targetId: string | null;
   title: string;
   content?: string;
@@ -128,7 +128,8 @@ export interface SinglePassMemoryFinding {
   evidenceQuotes: Array<{ messageId: string; quote: string }>;
   candidateOnly: boolean;
   storyCardType?: StoryCardType;
-  operation?: "append" | "create";
+  operation?: "append" | "create" | "replace" | "patch";
+  destinationCandidates?: string[];
   memoryMode?: StoryCardMemoryMode;
   eventStatus?: "completed" | "ongoing" | "unresolved";
   suggestedTriggers?: string[];
@@ -137,6 +138,9 @@ export interface SinglePassMemoryFinding {
 }
 export interface SinglePassMemorySourceResult {
   sourceId: string;
+  parsedCount?: number;
+  routedCount?: number;
+  suppressedIndexes?: number[];
   findings: SinglePassMemoryFinding[];
   findingIndexes?: number[];
   diagnostics?: Array<{ index: number; reason: string }>;
@@ -156,6 +160,9 @@ export interface SinglePassMemoryCheckpoint {
   status: "running" | "complete" | "failed";
   findings: SinglePassMemoryFinding[];
   dispositions: Array<{ index: number; status: "accepted" | "suppressed" | "rejected" | "review"; reason?: string; proposalId?: string }>;
+  parsedCount?: number;
+  routedCount?: number;
+  proposedCount?: number;
   acceptedCount: number;
   rejectedCount: number;
   reviewCount: number;

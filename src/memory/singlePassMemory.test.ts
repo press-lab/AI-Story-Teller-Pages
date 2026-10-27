@@ -190,7 +190,7 @@ describe("simple memory command protocol", () => {
     [memoryCommand("S1 storyCard C2", "PROFILE transformation"), "Invalid PROFILE"],
   ])("isolates invalid command: %s", (invalid, reason) => {
     const r = complete(memoryCommand() + "\n" + invalid + "\n" + memoryCommand()).sources[0];
-    expect(r.findings).toHaveLength(2); expect(r.findingIndexes).toEqual([0, 2]); expect(r.rejected).toEqual([{ index: 1, reason: expect.stringContaining(reason) }]); expect(r.failureReason).toBeTruthy();
+    expect(r.findings).toHaveLength(2); expect(r.findingIndexes).toEqual([0, 2]); expect(r.rejected).toEqual([{ index: 1, reason: expect.stringContaining(reason) }]); expect(r.failureReason).toBeUndefined();
   });
   it("rejects unknown sources without guessing attribution", () => {
     const r = complete(memoryCommand("S99 storyCard NEW"));

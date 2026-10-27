@@ -95,7 +95,9 @@ it("opening pending historical legacy or marked single-pass sources starts no re
 it("retains valid siblings in the existing Memory Inbox without paid repair", async () => {
   const calls = mockHttp("siblings"); const hook = setup();
   for (let i = 0; i < 3; i++) await act(async () => { await hook.result.current.runtime.continueTurn(); await settle(); });
-  await waitFor(() => expect(hook.result.current.runtime.memoryWork?.status).toBe("failed"));
+  await waitFor(() => expect(hook.result.current.adventure!.messages.filter(m => m.role === "assistant").every(m => m.memoryEvaluation?.status === "complete")).toBe(true));
+  expect(hook.result.current.runtime.memoryWork).toBeUndefined();
+  expect(hook.result.current.adventure!.messages.filter(m => m.role === "assistant").at(-1)!.memoryEvaluation!.singlePass!.dispositions).toContainEqual(expect.objectContaining({ status: "rejected", reason: expect.any(String) }));
   expect(calls()).toBe(1);
   expect(hook.result.current.adventure!.activeState.memoryProposals).toContainEqual(expect.objectContaining({ title: "Gate sanctuary", status: "pending" }));
   await act(async () => { await hook.result.current.runtime.continueTurn(); await settle(); });
@@ -146,4 +148,31 @@ it("explicitly retries the three October 27 sources in one HTTP request and pres
   expect(fetch).toHaveBeenCalledTimes(1);
   await act(async () => { await hook.result.current.runtime.evaluateMemorySources(ids); await settle(); });
   expect(fetch).toHaveBeenCalledTimes(1);
+});
+
+it("delivers all six loose operations to the Memory Inbox with one HTTP extraction and no paid repair", async () => {
+  const { looseMemoryFixture, looseResponse, looseNarrations } = await import("../test/looseMemory");
+  const { expectSixLooseProposals } = await import("../test/looseMemoryAssertions");
+  const { a } = looseMemoryFixture(false);
+  const originalCards = structuredClone(a.storyCards), originalBrains = structuredClone(a.brains), originalComponents = structuredClone(a.components);
+  const forbidden = [vi.spyOn(semantic, "runMemoryCycle"), vi.spyOn(assessment, "assessMemoryBatch"), vi.spyOn(assessment, "assessMemory"),
+    vi.spyOn(discovery, "detectStoryCardProposals"), vi.spyOn(review, "validateMemoryUpdate"), vi.spyOn(cardReview, "validateStoryCardProposal")];
+  let memoryCalls = 0, narrationCalls = 0;
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+    const body = JSON.parse(init!.body as string);
+    const memory = body.model === "evaluator";
+    const content = memory ? (++memoryCalls, looseResponse) : looseNarrations[narrationCalls++];
+    return new Response(JSON.stringify({ choices: [{ message: { content } }], usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 } }));
+  });
+  const hook = setup(a);
+  for (let i = 0; i < 3; i++) await act(async () => { await hook.result.current.runtime.continueTurn(); await settle(); });
+  await waitFor(() => expect(hook.result.current.adventure!.activeState.memoryProposals).toHaveLength(6));
+  const saved = hook.result.current.adventure!;
+  const ids = saved.messages.filter(m => m.role === "assistant").map(m => m.id);
+  expectSixLooseProposals(saved, ids);
+  expect(saved.storyCards).toEqual(originalCards); expect(saved.brains).toEqual(originalBrains); expect(saved.components).toEqual(originalComponents);
+  expect(memoryCalls).toBe(1); expect(narrationCalls).toBe(3);
+  for (const spy of forbidden) expect(spy).not.toHaveBeenCalled();
+  expect(saved.activeState.apiCalls!.filter(c => c.memoryRequest?.stage === "singlePass")).toHaveLength(1);
+  expect(saved.activeState.apiCalls!.filter(c => c.memoryRequest && c.memoryRequest.stage !== "singlePass")).toEqual([]);
 });

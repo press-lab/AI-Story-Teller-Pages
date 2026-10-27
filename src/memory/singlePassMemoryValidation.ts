@@ -1,7 +1,7 @@
 import type { Adventure, MemoryProposal, SinglePassMemoryCheckpoint, SinglePassMemoryFinding, SinglePassMemorySourceResult } from "../types/adventure";
 import { bindPlacement, characterProfileChangeError, placementValidationError } from "./storyCardPlacement";
 import { makeStoryCardSuggestion, storyCardTargets } from "./storyCardSuggestions";
-import { proposalCoverage, factsCovered } from "./factCoverage";
+import { proposalCoverage, factsCovered, factKey, facts } from "./factCoverage";
 import { memoryEvidenceWindow } from "./memoryEvidenceWindow";
 import { memoryTargetSnapshot } from "./memoryCycleState";
 import { singlePassFindingSchemaError } from "./singlePassMemory";
@@ -24,7 +24,7 @@ export function validateSinglePassFinding(a: Adventure, sourceId: string, checkp
   const evidence = memoryEvidenceWindow(a, sourceId);
   if (f.evidenceQuotes.some(q => !evidence.some(m => m.id === q.messageId && m.content.includes(q.quote)))) return "Quote is not verbatim in the permitted historical evidence.";
   if (!f.evidenceQuotes.some(q => q.messageId === sourceId)) return "Missing establishing narrator evidence.";
-  const shapeError = memoryUpdateShapeError(f.kind, f.content ?? "");
+  const shapeError = memoryUpdateShapeError(f.kind === "immediateMomentum" ? "currentArc" : f.kind, f.content ?? "");
   if (shapeError) return shapeError;
   if (f.kind === "storyCard") {
     const words = f.content!.trim().split(/\s+/).length;
@@ -46,7 +46,7 @@ export function validateSinglePassFinding(a: Adventure, sourceId: string, checkp
       }
     } else {
       const target = a.components.find(c => c.id === f.targetId && c.type === f.kind && c.active);
-      if (!target || !conditions.plot.some(c => c.id.endsWith(`:${target.id}`))) return "No eligible active Plot destination.";
+      if (!target || (f.kind !== "immediateMomentum" && !conditions.plot.some(c => c.id.endsWith(`:${target.id}`)))) return "No eligible active Plot destination.";
       if (target.type === "plotEssentials" ? target.autoUpdate !== true : target.autoUpdate === false) return "Plot destination opted out.";
     }
   }
@@ -61,25 +61,27 @@ export function toSinglePassProposal(a: Adventure, sourceId: string, checkpoint:
     : f.kind === "brain" ? a.brains.find(b => b.id === f.targetId)?.protected : a.components.find(c => c.id === f.targetId)?.protected;
   // These cues can require review, never prove a claim. Semantic certainty still requires author judgment.
   const interpretive = /\b(attempt(?:s|ed|ing)?|kiss(?:es|ed|ing)?|romantic|romance|date|yesterday|last week|previously|completed event|invitation|invited|withdrawn|withdrew|unconfirmed|relationship|privately|secretly|felt|feels?|thought|knew|learned|realized|understood|interprets?|believes?|assumes?|might|perhaps|uncertain|unconfirmed)\b/i.test(`${f.content ?? ""} ${JSON.stringify(f.brainPatch ?? {})} ${f.reason} ${f.evidenceQuotes.map(q => q.quote).join(" ")}`);
-  const review = f.candidateOnly || Boolean(protectedTarget) || f.storyCardType === "character" || f.eventStatus === "unresolved" || interpretive
+  const review = f.kind === "immediateMomentum" || f.candidateOnly || Boolean(protectedTarget) || f.storyCardType === "character" || f.eventStatus === "unresolved" || interpretive
     || a.semanticEvaluationSettings.requireApprovalForAutoUpdates;
   let p: MemoryProposal;
   if (f.kind === "storyCard") {
     p = makeStoryCardSuggestion(a, sourceId, checkpoint.sourceContent, { title: f.title, content: f.content!, evidence: f.evidenceQuotes.map(q => q.quote).join("\n"),
       reason: f.reason, type: f.storyCardType, targetId: f.targetId ?? undefined, triggers: f.suggestedTriggers, participants: f.participants,
       candidateOnly: review, evidenceReviewed: true, origin: "model" });
-    // The extractor chooses placement. The helper still supplies chronology and established trigger generation.
-    const choices = storyCardTargets(a, { title: f.title, content: f.content!, participants: f.participants, type: f.storyCardType });
+    // Routing chooses placement. The helper supplies chronology and established trigger generation.
+    const choices = f.destinationCandidates ?? storyCardTargets(a, { title: f.title, content: f.content!, participants: f.participants, targetId: f.targetId ?? undefined, type: f.storyCardType }).filter(id => a.storyCards.some(c => c.id === id && c.type === f.storyCardType));
     p = { ...p, content: f.content!, title: f.title, targetId: f.targetId ?? undefined, storyCardType: f.storyCardType, memoryMode: f.memoryMode,
-      cardOperation: f.operation, appendContent: f.operation === "append" ? true : undefined, requiresReview: review || choices.length > 1 || (!f.targetId && choices.length > 0),
+      cardOperation: f.operation === "append" ? "append" : "create", appendContent: f.operation === "append" ? true : undefined, requiresReview: review || choices.length > 1 || (!f.targetId && choices.length > 0),
       lore: f.storyCardType === "lore" ? { ...p.lore, status: f.eventStatus!, sourceMessageIds: ids } : undefined };
     if (p.storyCardReview) p.storyCardReview = { ...p.storyCardReview, candidateOnly: Boolean(p.requiresReview), operation: f.operation === "append" ? "update" : "create",
+      targetCandidates: choices,
       additionalSources: checkpoint.evidence.filter(m => ids.includes(m.id) && m.id !== sourceId) };
-    p = bindPlacement(a, p, { kind: f.operation!, reason: f.reason, newFact: f.content!, identityChange: f.identityChange }, ids);
+    p = bindPlacement(a, p, { kind: f.operation === "append" ? "append" : "create", reason: f.reason, newFact: f.content!, identityChange: f.identityChange }, ids);
   } else {
-    const types = { brain: "brainUpdate", plotEssentials: "plotEssentialsUpdate", activePressure: "plotPressureUpdate", currentArc: "currentArcUpdate" } as const;
+    const types = { brain: "brainUpdate", plotEssentials: "plotEssentialsUpdate", activePressure: "plotPressureUpdate", currentArc: "currentArcUpdate", immediateMomentum: "plotMomentumUpdate" } as const;
     p = { id: createId("proposal"), sourceTurnId: sourceId, sourceText: f.evidenceQuotes.map(q => q.quote).join("\n"), proposedType: types[f.kind],
       title: f.title, content: f.kind === "brain" ? JSON.stringify(f.brainPatch) : f.content!, targetId: f.targetId!,
+      appendContent: f.kind === "currentArc" ? true : undefined,
       suggestedTriggers: [], confidence: review ? 0.45 : 0.8, rationale: f.reason, status: "pending", requiresReview: review, createdAt: nowIso(), updatedAt: nowIso() };
   }
   p.evaluationSource = { messages: checkpoint.evidence, target };
@@ -89,7 +91,7 @@ export function validateSinglePassSource(a: Adventure, result: SinglePassMemoryS
   const sourceError = singlePassSourceError(a, result.sourceId, checkpoint);
   const rejected = [...result.rejected];
   const proposals: Array<{ index: number; findingIndex: number; proposal: MemoryProposal }> = [];
-  const suppressed: number[] = [];
+  const suppressed: number[] = [...(result.suppressedIndexes ?? [])];
   result.findings.forEach((finding, findingIndex) => {
     const index = result.findingIndexes?.[findingIndex] ?? findingIndex;
     const error = sourceError ?? validateSinglePassFinding(a, result.sourceId, checkpoint, finding);
@@ -100,12 +102,14 @@ export function validateSinglePassSource(a: Adventure, result: SinglePassMemoryS
     const brain = finding.kind === "brain" ? a.brains.find(b => b.id === finding.targetId) : undefined;
     const component = a.components.find(c => c.id === finding.targetId);
     const brainValues = finding.kind === "brain" ? Object.values(finding.brainPatch ?? {}).flatMap(v => typeof v === "string" ? [v] : Object.values(v).filter((t): t is string => typeof t === "string")) : [];
-    const priorBrain = brain ? [brain.currentState, brain.relationshipPressure, brain.emotionalInterpretation, brain.recentDevelopments, brain.notes, ...Object.values(brain.thoughts)] : [];
-    const covered = proposalCoverage(a, proposal) || (finding.kind === "brain" && brainValues.length > 0
-      && brainValues.every(value => factsCovered(value, priorBrain)))
+    const priorBrain = brain ? [brain.currentState, brain.relationshipPressure, brain.emotionalInterpretation, brain.recentDevelopments, brain.notes, ...Object.values(brain.thoughts), ...Object.values(brain.archivedThoughts)] : [];
+    const thoughtText = (value: string) => value.replace(/^\s*\d+\s*(?:\u2192|:)\s*/, "");
+    const card = finding.kind === "storyCard" ? a.storyCards.find(c => c.id === finding.targetId) : undefined;
+    const covered = proposalCoverage(a, proposal) || (Boolean(card) && facts(finding.content!).every(fact => (" " + factKey(card!.content) + " ").includes(" " + fact + " "))) || (finding.kind === "brain" && brainValues.length > 0
+      && brainValues.every(value => factsCovered(thoughtText(value), priorBrain.map(thoughtText))))
       || (!["brain", "storyCard"].includes(finding.kind) && Boolean(component) && factsCovered(finding.content!, [component!.content]));
     if (covered) suppressed.push(index);
     else proposals.push({ index, findingIndex, proposal });
   });
-  return { proposals, rejected, suppressed, failureReason: sourceError ?? result.failureReason ?? (rejected.length ? "Invalid findings rejected; valid sibling proposals retained. Explicit Retry required." : undefined) };
+  return { proposals, rejected, suppressed, failureReason: sourceError ?? result.failureReason ?? (rejected.length && !proposals.length && !suppressed.length ? "All recognized operations rejected: " + rejected.map(r => `${r.index}: ${r.reason}`).join("; ") : undefined) };
 }

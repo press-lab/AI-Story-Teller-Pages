@@ -153,3 +153,29 @@ it.each([0, 1, 2])("retains October 27 fixture case %i with one extraction reque
   expect(send).toHaveBeenCalledTimes(1);
   send.mockRestore();
 });
+
+it("runs the six-result loose parser to router to validation to reducer production path in one request", async () => {
+  const { looseMemoryFixture, looseResponse } = await import("../test/looseMemory");
+  const { expectSixLooseProposals } = await import("../test/looseMemoryAssertions");
+  const { prepareSinglePassMemoryBatch, runSinglePassMemoryBatch } = await import("./singlePassMemory");
+  const { validateSinglePassSource } = await import("./singlePassMemoryValidation");
+  const transport = await import("../providers/memoryCompletion");
+  let { a, ids } = looseMemoryFixture();
+  const originalCards = structuredClone(a.storyCards), originalBrains = structuredClone(a.brains), originalComponents = structuredClone(a.components);
+  const batch = await prepareSinglePassMemoryBatch(a, ids);
+  a = adventureReducer(a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
+  const send = vi.spyOn(transport, "sendMemoryCompletion").mockResolvedValue({ raw: {}, content: looseResponse });
+  const result = await runSinglePassMemoryBatch(a, config, batch);
+  for (const source of result.sources) {
+    const validated = validateSinglePassSource(a, source, batch.checkpoints.find(c => c.sourceId === source.sourceId)!.checkpoint);
+    expect(validated.rejected).toEqual([]); expect(validated.proposals).toHaveLength(2);
+  }
+  const commit = { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH" as const, batchId: batch.batchId,
+    sources: result.sources.map(result => ({ result, checkpoint: batch.checkpoints.find(c => c.sourceId === result.sourceId)!.checkpoint })) };
+  a = adventureReducer(a, commit);
+  expectSixLooseProposals(a, ids);
+  expect(a.storyCards).toEqual(originalCards); expect(a.brains).toEqual(originalBrains); expect(a.components).toEqual(originalComponents);
+  expect(adventureReducer(a, commit)).toBe(a);
+  expect(send).toHaveBeenCalledTimes(1); expect(send.mock.calls[0][3]).toBe("singlePass");
+  send.mockRestore();
+});
