@@ -130,6 +130,23 @@ export async function applyProviderResponse({
     usage: response.usage,
     generation,
   });
+  if (mode !== "comms") {
+    const cardIds = new Set(adventure.storyCards.map(card => card.id));
+    const sorted = (ids: string[]) => [...new Set(ids.filter(id => cardIds.has(id)))].sort();
+    const summary = {
+      matchedStoryCardIds: sorted(preProviderContext.triggeredThreadIds),
+      includedStoryCardIds: sorted(preProviderContext.sections.filter(section => section.id === "storyCards").flatMap(section => section.items.map(item => item.id))),
+      budgetDroppedStoryCardIds: sorted(preProviderContext.excludedItems.filter(item => item.reason === "budget_exceeded").map(item => item.id)),
+      truncatedStoryCardIds: sorted(preProviderContext.decisions.filter(item => item.action === "truncated").map(item => item.itemId)),
+      contextEstimatedTokens: preProviderContext.totalEstimatedTokens,
+      contextBudgetTokens: adventure.tokenBudgetSettings.maxContextTokens,
+      allowSystemToDropUnpinnedTriggeredCards: adventure.tokenBudgetSettings.allowSystemToDropUnpinnedTriggeredCards,
+    };
+    next = adventureReducer(next, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: {
+      id: createId("decision"), sourceId: messageId, createdAt: nowIso(),
+      stage: "context", outcome: "context_selection", reason: JSON.stringify(summary),
+    } });
+  }
   if (mode !== "comms" && incrementTurn) {
     next = adventureReducer(next, { type: "ADVANCE_MEMORY_RECOVERY_TURN" });
   }

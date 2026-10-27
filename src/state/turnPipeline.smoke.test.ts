@@ -597,3 +597,53 @@ describe("full turn smoke path", () => {
     expect(result.postTurnContext.messages[0].content).not.toContain("Do not resolve the argument yet.");
   });
 });
+
+describe("saved narrator context selection diagnostics", () => {
+  const id = "lore_hu_played_20010901_weasley_products";
+  it.each(["included", "dropped", "truncated", "unrelated", "pinned"])("records actual final context: %s", async state => {
+    const { runTurnPipeline: run } = await import("./turnPipeline");
+    const { normalizeAdventure } = await import("./defaults");
+    const a = createDefaultAdventure();
+    a.storyCards = [makeStoryCard({ id, title: "Products", type: "lore", memoryMode: "static",
+      content: state === "truncated" ? "Production plans and tattoo pricing. ".repeat(300) : "The twins agreed on production.",
+      keys: ["Fred and George"], active: true, pinned: state === "pinned", tokenBudget: state === "truncated" ? 40 : 1000 })];
+    a.tokenBudgetSettings.maxContextTokens = state === "dropped" ? 10 : 32000;
+    a.tokenBudgetSettings.allowSystemToDropUnpinnedTriggeredCards = true;
+    const result = await run({ adventure: a, text: ["unrelated", "pinned"].includes(state) ? "I visit the lake." : "Fred and George discuss production.",
+      assistantMessageId: "saved-narrator", sendChatCompletion: vi.fn().mockResolvedValue({ content: "The discussion continues." }) });
+    const entries = result.adventure.activeState.memoryDiagnostics!.filter(d => d.stage === "context");
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({ sourceId: "saved-narrator", outcome: "context_selection" });
+    const summary = JSON.parse(entries[0].reason!);
+    expect(summary.matchedStoryCardIds).toEqual(["unrelated", "pinned"].includes(state) ? [] : [id]);
+    expect(summary.includedStoryCardIds).toEqual(["dropped", "unrelated"].includes(state) ? [] : [id]);
+    expect(summary.budgetDroppedStoryCardIds).toEqual(state === "dropped" ? [id] : []);
+    expect(summary.truncatedStoryCardIds).toEqual(state === "truncated" ? [id] : []);
+    expect(summary.contextEstimatedTokens).toBe(result.preProviderContext.totalEstimatedTokens);
+    expect(summary.contextBudgetTokens).toBe(a.tokenBudgetSettings.maxContextTokens);
+    expect(summary.allowSystemToDropUnpinnedTriggeredCards).toBe(true);
+    expect(normalizeAdventure(JSON.parse(JSON.stringify(result.adventure))).activeState.memoryDiagnostics).toContainEqual(entries[0]);
+    expect(entries[0].reason).not.toContain("The twins agreed");
+  });
+  it("does not record context for comms or failed requests", async () => {
+    const { runTurnPipeline: run } = await import("./turnPipeline");
+    const a = createDefaultAdventure();
+    const result = await run({ adventure: a, text: "Hello", mode: "comms", sendChatCompletion: async () => ({ content: "Hello." }) });
+    expect(result.adventure.activeState.memoryDiagnostics?.filter(d => d.stage === "context")).toEqual([]);
+    await expect(run({ adventure: a, text: "Hello", sendChatCompletion: async () => { throw new Error("offline"); } })).rejects.toThrow("offline");
+    expect(a.activeState.memoryDiagnostics?.filter(d => d.stage === "context") ?? []).toEqual([]);
+  });
+});
+
+it("uses final Story Card sections for inclusion and sorts unique diagnostic IDs", async () => {
+  const { applyProviderResponse } = await import("./turnPipeline");
+  const a = createDefaultAdventure();
+  a.storyCards = ["z-card", "a-card"].map(id => makeStoryCard({ id, title: id, content: "Saved facts.", active: true, pinned: true }));
+  const context = buildContext(a);
+  context.triggeredThreadIds = ["z-card", "a-card", "z-card", "not-a-card"];
+  context.excludedItems.push({ id: "a-card", sourceType: "storyCard", title: "Earlier decision", reason: "not_triggered" });
+  const result = await applyProviderResponse({ adventure: a, mode: "story", preProviderContext: context, response: { content: "The conversation continues." } });
+  const entries = result.adventure.activeState.memoryDiagnostics!.filter(d => d.stage === "context");
+  expect(entries).toHaveLength(1);
+  expect(JSON.parse(entries[0].reason!)).toMatchObject({ matchedStoryCardIds: ["a-card", "z-card"], includedStoryCardIds: ["a-card", "z-card"], budgetDroppedStoryCardIds: [] });
+});

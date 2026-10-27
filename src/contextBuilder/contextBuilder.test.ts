@@ -893,3 +893,17 @@ describe("buildContext", () => {
     expect(instruction).toContain("one-off banter");
   });
 });
+
+it.each(["included", "dropped", "truncated", "unrelated", "pinned"])("exposes products Lore final selection: %s", state => {
+  const a = createDefaultAdventure();
+  const id = "lore_hu_played_20010901_weasley_products";
+  a.storyCards = [makeStoryCard({ id, type: "lore", title: "Active Magical Products", keys: ["Fred and George"], active: true,
+    pinned: state === "pinned", content: "Product supply and pricing plans. ".repeat(state === "truncated" ? 300 : 1), tokenBudget: state === "truncated" ? 40 : 1000 })];
+  a.tokenBudgetSettings.maxContextTokens = state === "dropped" ? 10 : 32000;
+  a.tokenBudgetSettings.allowSystemToDropUnpinnedTriggeredCards = true;
+  const context = buildContext(a, { currentInput: ["unrelated", "pinned"].includes(state) ? "The lake is quiet." : "Fred and George discuss supply." });
+  expect(context.triggeredThreadIds.includes(id)).toBe(!["unrelated", "pinned"].includes(state));
+  expect(context.sections.find(s => s.id === "storyCards")!.items.some(i => i.id === id)).toBe(!["dropped", "unrelated"].includes(state));
+  expect(context.excludedItems.some(i => i.id === id && i.reason === "budget_exceeded")).toBe(state === "dropped");
+  expect(context.decisions.some(i => i.itemId === id && i.action === "truncated")).toBe(state === "truncated");
+});

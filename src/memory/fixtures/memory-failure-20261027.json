@@ -1,0 +1,94 @@
+{
+  "fixturePurpose": "AIST single-pass 2026-10-27 regression reproduction. Extracted from user-provided export, not raw model HTTP bodies. No fabricated model transcript.",
+  "baselineCommit": "bc12ad38b274adf4b9ca4deaee2479ee6713e164",
+  "existingLoreTarget": {
+    "id": "lore_hu_played_20010901_weasley_products",
+    "title": "Fred and George — Active Magical Products, September 2001",
+    "type": "lore"
+  },
+  "cases": [
+    {
+      "id": "case-1",
+      "narratorSourceId": "message_mvq1anac_h1y8ckcz",
+      "narratorContent": "George slides the stack of paper over. \"This. You cast runes onto a whole stack of blank tattoo paper at once. All identical. Which means we're not limited to making things one at a time.\" His eyes are bright. \"So the question is — how many? If you can do a hundred like that, we're not a stall anymore. We're a *supplier*.\"\n\nFred leans in. \"And suppliers, mate, get to name their own prices.\"",
+      "precedingPlayer": {
+        "id": "msg_mvq1acjr_2r7ep8of",
+        "content": "You “Hey guys” I sit “what’s up?”"
+      },
+      "originalFailure": [
+        {
+          "index": 0,
+          "reason": "Quote is not verbatim in the permitted historical evidence.",
+          "status": "rejected"
+        }
+      ],
+      "originalModelFindings": [
+        {
+          "kind": "storyCard",
+          "targetId": "lore_hu_played_20010901_weasley_products",
+          "content": "In the Gryffindor common room on 4 September 2001, George showed Seth the stack of rune-marked blank tattoo paper and proposed that casting identical runes onto whole stacks at once could scale them from a stall to a supplier able to name their own prices; George asked how many Seth could produce in one go, and Seth's answer was not yet given.",
+          "evidenceQuotes": [
+            {
+              "messageId": "message_mvq1anac_h1y8ckcz",
+              "quote": "This. You cast runes onto a whole stack of blank tattoo paper at once. All identical. Which means we're not limited to making things one at a time. ... So the question is — how many? If you can do a hundred like that, we're not a stall anymore. We're a *supplier*."
+            }
+          ]
+        }
+      ],
+      "expected": "Evidence alias resolution must yield exact source text and permit a normal existing-Lore proposal, without an LLM validation call."
+    },
+    {
+      "id": "case-2",
+      "narratorSourceId": "message_mvq6w7ht_uj7221wo",
+      "narratorContent": "George's eyebrows go up.\n\n\"A hundred,\" he repeats. \"Easy.\" He looks at Fred, and Fred's grin has gone wide and slightly dangerous.\n\n\"Right,\" Fred says. \"First batch of each design stays with us — for testing. Every product gets tested before it sells, that's the rule, and it's *your* name on the rune work.\" He pulls a quill toward him. \"So. First designs. What are we running? Because we've got the Fainting Fancy fix, but one product's not a season.\"\n\nGeorge leans back. \"And we should probably talk about the *paper shortage* story, because if we're raising prices, we need a reason people will believe.\"",
+      "precedingPlayer": {
+        "id": "msg_mvq6vwov_nmxozrc1",
+        "content": "You “100 easy my man. You stay me to the first batch for each design”"
+      },
+      "originalFailure": [
+        {
+          "index": 0,
+          "reason": "Character profile update requires PROFILE kind | enduring-change reason.",
+          "status": "rejected"
+        }
+      ],
+      "originalModelFindings": [],
+      "expected": "Character destination without PROFILE must produce a review-required Lore proposal (never update Character), or a clear error only if no valid factual/evidence content is available.",
+      "recordedCommandHeader": "MEM S2 storyCard C5"
+    },
+    {
+      "id": "case-3",
+      "narratorSourceId": "message_mvq70xv3_x27kl5e3",
+      "narratorContent": "Fred's doing the maths on his fingers.\n\n\"Twenty-four of each, four designs, that's ninety-six units. At three galleons a low end —\" he whistles. \"That's two hundred and eighty-eight galleons. In a *week*.\" He looks at George. \"We made forty selling rubbish to first years all last year.\"\n\n\"Because we were selling rubbish,\" George says. \"These are different.\" He looks at you. \"Twenty-four's a good number. Enough to look like supply, not enough to flood the market. And we're sold out of twelve already — that's word of mouth doing its job.\"\n\nFred leans in. \"Question is which one we lead with. The Liar's the flashy one. Everyone wants to catch someone out.\" He pauses. \"But the Placebo Confidence one's the real genius, because it's free to make, does nothing, and people will *swear* it works.\"",
+      "precedingPlayer": {
+        "id": "msg_mvq70jr4_721imoy2",
+        "content": "You “ so what’s the plan for tomorrow guys? Are we gonna loosen up supply maybe bring 24 of each? 3 to 5 gallons per it’s pretty healthy price “ I grin"
+      },
+      "originalFailure": [
+        {
+          "index": 0,
+          "reason": "Quote is not verbatim in the permitted historical evidence.",
+          "status": "rejected"
+        }
+      ],
+      "originalModelFindings": [
+        {
+          "kind": "storyCard",
+          "targetId": "lore_hu_played_20010901_weasley_products",
+          "content": "On 4 September 2001, Seth proposed loosening supply to 24 of each of the four designs (liar-detection, mood colours, rune pet, placebo confidence) at 3–5 galleons each. Fred calculated 96 units at three galleons minimum as roughly 288 galleons a week, against last year's forty. George endorsed 24 as enough to look like supply without flooding the market, noting the twelve already sold were generating word of mouth. Fred noted the liar-detection design is the flashy lead and the placebo confidence design is nearly free to make. The plan is agreed in principle for tomorrow, not yet executed.",
+          "evidenceQuotes": [
+            {
+              "messageId": "msg_mvq70jr4_721imoy2",
+              "quote": "You “ so what’s the plan for tomorrow guys? Are we gonna loosen up supply maybe bring 24 of each? 3 to 5 gallons per it’s pretty healthy price “"
+            },
+            {
+              "messageId": "message_mvq70xv3_x27kl5e3",
+              "quote": "Fred's doing the maths on his fingers. Twenty-four of each, four designs, that's ninety-six units. At three galleons a low end — That's two hundred and eighty-eight galleons. In a *week*."
+            }
+          ]
+        }
+      ],
+      "expected": "Keep the 98-word original fact without hidden truncation; route for review under 120-word review-only cap, never auto-apply."
+    }
+  ]
+}

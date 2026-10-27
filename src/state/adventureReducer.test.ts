@@ -1763,3 +1763,15 @@ it("retains a committed single-pass sibling while its source fails and another s
   expect(a.storyCards).toHaveLength(1); expect(a.messages.find(m => m.id === ids[0])!.memoryEvaluation?.status).toBe("pending");
   expect(normalizeAdventure(JSON.parse(JSON.stringify(a))).storyCards).toHaveLength(1);
 });
+
+it("retains the latest 600 context diagnostics across JSON reload", () => {
+  let a = createDefaultAdventure();
+  for (let i = 0; i < 605; i++) a = adventureReducer(a, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: {
+    id: "context-" + i, sourceId: "narrator-" + i, createdAt: "2026-10-27T00:00:00Z",
+    stage: "context", outcome: "context_selection", reason: JSON.stringify({ includedStoryCardIds: [] }),
+  } });
+  const restored = normalizeAdventure(JSON.parse(JSON.stringify(a)));
+  expect(restored.activeState.memoryDiagnostics).toHaveLength(600);
+  expect(restored.activeState.memoryDiagnostics![0].id).toBe("context-5");
+  expect(restored.activeState.memoryDiagnostics!.at(-1)!.id).toBe("context-604");
+});

@@ -2,7 +2,7 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, it, expect, vi } from "vitest";
-import { createDefaultAdventure, defaultModelConfig, normalizeAdventure } from "../state/defaults";
+import { createDefaultAdventure, defaultModelConfig, normalizeAdventure, makeStoryCard } from "../state/defaults";
 import type { Adventure } from "../types/adventure";
 import { useAdventureRuntime } from "./useAdventureRuntime";
 import * as semantic from "../triggers/semanticEngine";
@@ -101,4 +101,49 @@ it("retains valid siblings in the existing Memory Inbox without paid repair", as
   await act(async () => { await hook.result.current.runtime.continueTurn(); await settle(); });
   expect(calls()).toBe(1);
 });
+});
+
+it("explicitly retries the three October 27 sources in one HTTP request and preserves pending proposals", async () => {
+  const fixture = (await import("../memory/fixtures/memory-failure-20261027.json")).default;
+  const a = createDefaultAdventure();
+  a.memoryDetectionSettings.pipeline = "singlePass";
+  a.memoryAutoApprove.storyCard = true;
+  a.storyCards = [
+    makeStoryCard({ ...fixture.existingLoreTarget, type: "lore", content: "The products have four designs.", keys: ["production", "supply", "tattoo paper"] }),
+    makeStoryCard({ id: "twins", title: "Fred and George", type: "character", content: "The twins are students." }),
+  ];
+  a.messages = fixture.cases.flatMap((c, index) => [
+    { ...c.precedingPlayer, role: "user" as const, createdAt: "2026-10-27T00:00:00Z", inputMode: "story" as const },
+    { id: c.narratorSourceId, content: c.narratorContent, role: "assistant" as const, createdAt: "2026-10-27T00:00:01Z", inputMode: "story" as const,
+      memoryEvaluation: { pipeline: "singlePass" as const, status: "failed" as const, attempts: 1, turn: index + 1, revision: "original", completedGroups: [] } },
+  ]);
+  const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+    const body = JSON.parse(init!.body as string);
+    const payload = JSON.parse(body.messages.at(-1).content);
+    const commands = Object.entries(payload.outputAliases).map(([sourceAlias, value], index) => {
+      const manifest = value as { sourceId: string; cards: Record<string, { id: string }>; evidence: Record<string, { id: string }> };
+      const c = fixture.cases.find(c => c.narratorSourceId === manifest.sourceId)!;
+      const target = Object.entries(manifest.cards).find(([, v]) => v.id === (index === 1 ? "twins" : fixture.existingLoreTarget.id))![0];
+      const content = c.originalModelFindings[0]?.content ?? "Fred and George discussed production testing, product designs, and a paper shortage explanation for higher prices.";
+      const evidence = Object.entries(manifest.evidence).filter(([, e]) => [c.narratorSourceId, c.precedingPlayer.id].includes(e.id)).map(([alias]) => "E " + alias).join("\n");
+      return "MEM " + sourceAlias + " storyCard " + target + "\nTITLE " + (index === 1 ? "Production testing and paper shortage" : fixture.existingLoreTarget.title)
+        + "\n" + evidence + "\nTEXT\n" + content + "\nEND\nDONE " + sourceAlias;
+    }).join("\n");
+    return new Response(JSON.stringify({ choices: [{ message: { content: commands } }], usage: { prompt_tokens: 100, completion_tokens: 10, total_tokens: 110 } }));
+  });
+  const hook = setup(a);
+  await act(async () => { await settle(); });
+  expect(fetch).not.toHaveBeenCalled();
+  const ids = fixture.cases.map(c => c.narratorSourceId);
+  await act(async () => { await hook.result.current.runtime.evaluateMemorySources(ids); await settle(); });
+  await waitFor(() => expect(hook.result.current.adventure!.messages.filter(m => ids.includes(m.id)).every(m => m.memoryEvaluation?.status === "complete")).toBe(true));
+  const saved = hook.result.current.adventure!;
+  expect(saved.storyCards).toEqual(a.storyCards);
+  expect(saved.activeState.memoryProposals.filter(p => ids.includes(p.sourceTurnId!))).toHaveLength(3);
+  expect(saved.activeState.memoryProposals.every(p => p.status === "pending" && p.requiresReview)).toBe(true);
+  expect(saved.activeState.memoryProposals.find(p => p.sourceTurnId === ids[2])!.content).toBe(fixture.cases[2].originalModelFindings[0].content);
+  expect(saved.messages.filter(m => ids.includes(m.id)).every(m => m.memoryEvaluation?.singlePass?.dispositions.some(d => d.index === 0))).toBe(true);
+  expect(fetch).toHaveBeenCalledTimes(1);
+  await act(async () => { await hook.result.current.runtime.evaluateMemorySources(ids); await settle(); });
+  expect(fetch).toHaveBeenCalledTimes(1);
 });

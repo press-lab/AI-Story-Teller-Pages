@@ -101,3 +101,55 @@ it("keeps a recovered source and duplicate dispositions without replaying failed
   expect(a.messages.find(m => m.id === ids[2])!.memoryEvaluation?.singlePass?.suppressedCount).toBe(1);
   expect(singlePassCycleSources(a)).toEqual([]); expect(provider).not.toHaveBeenCalled();
 });
+
+it.each([0, 1, 2])("retains October 27 fixture case %i with one extraction request", async index => {
+  const fixture = (await import("./fixtures/memory-failure-20261027.json")).default;
+  const { makeStoryCard } = await import("../state/defaults");
+  const { prepareSinglePassMemoryBatch, runSinglePassMemoryBatch } = await import("./singlePassMemory");
+  const { validateSinglePassSource } = await import("./singlePassMemoryValidation");
+  const transport = await import("../providers/memoryCompletion");
+  const c = fixture.cases[index];
+  let a = createDefaultAdventure();
+  a.memoryDetectionSettings.pipeline = "singlePass";
+  a.memoryAutoApprove.storyCard = true;
+  a.storyCards = [
+    makeStoryCard({ ...fixture.existingLoreTarget, type: "lore", content: "Four product designs exist.", keys: ["production", "supply", "tattoo paper"] }),
+    makeStoryCard({ id: "twins", title: "Fred and George", type: "character", content: "The twins are students." }),
+  ];
+  a.messages = [
+    { ...c.precedingPlayer, role: "user", createdAt: "2026-10-27T00:00:00Z", inputMode: "story" },
+    { id: c.narratorSourceId, content: c.narratorContent, role: "assistant", createdAt: "2026-10-27T00:00:01Z", inputMode: "story",
+      memoryEvaluation: { pipeline: "singlePass", status: "pending", attempts: 0, turn: 1, revision: "original", completedGroups: [] } },
+  ];
+  const batch = await prepareSinglePassMemoryBatch(a, [c.narratorSourceId]);
+  const manifest = batch.outputAliases.S1;
+  const target = Object.entries(manifest.cards).find(([, v]) => v.id === (index === 1 ? "twins" : fixture.existingLoreTarget.id))![0];
+  // Case 2 has no exported finding body. This deterministic event is based on its saved narration.
+  const content = c.originalModelFindings[0]?.content ?? "Fred and George discussed production testing, product designs, and a paper shortage explanation for higher prices.";
+  const evidence = Object.entries(manifest.evidence).map(([alias]) => "E " + alias).join("\n");
+  const send = vi.spyOn(transport, "sendMemoryCompletion").mockResolvedValue({ raw: {}, content:
+    "MEM S1 storyCard " + target + "\nTITLE " + (index === 1 ? "Production testing and paper shortage" : fixture.existingLoreTarget.title) + "\n" + evidence + "\nTEXT\n" + content + "\nEND\nDONE S1" });
+  const result = await runSinglePassMemoryBatch(a, defaultModelConfig, batch);
+  const validated = validateSinglePassSource(a, result.sources[0], batch.checkpoints[0].checkpoint);
+  expect(validated.rejected).toEqual([]);
+  expect(validated.proposals).toHaveLength(1);
+  expect(validated.proposals[0]).toMatchObject({ index: 0, findingIndex: 0, proposal: { content, status: "pending", requiresReview: true } });
+  const proposal = validated.proposals[0].proposal;
+  if (index === 1) {
+    expect(result.sources[0].findings[0].targetId).toBeNull();
+    expect(proposal.targetId).toBeUndefined();
+    expect(proposal.storyCardReview?.targetCandidates).toContain(fixture.existingLoreTarget.id);
+  } else expect(proposal.targetId).toBe(fixture.existingLoreTarget.id);
+  if (index === 2) expect(content.split(/\s+/)).toHaveLength(98);
+  const cards = structuredClone(a.storyCards);
+  a = adventureReducer(a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
+  const commit = { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH" as const, batchId: batch.batchId, sources: [{ result: result.sources[0], checkpoint: batch.checkpoints[0].checkpoint }] };
+  a = adventureReducer(a, commit);
+  expect(a.storyCards).toEqual(cards);
+  expect(a.messages[1].memoryEvaluation?.singlePass?.status).toBe("complete");
+  expect(adventureReducer(a, commit)).toBe(a);
+  if (index !== 1) expect(validateSinglePassSource(a, result.sources[0], batch.checkpoints[0].checkpoint).suppressed).toEqual([0]);
+  expect(a.activeState.memoryProposals.filter(p => p.sourceTurnId === c.narratorSourceId)).toHaveLength(1);
+  expect(send).toHaveBeenCalledTimes(1);
+  send.mockRestore();
+});

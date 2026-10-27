@@ -101,7 +101,14 @@ Do not infer unknown events, consent, private knowledge, or permanent character 
 Command grammar (one control per line):
 MEM S1 storyCard NEW (create Lore by default) or MEM S1 storyCard C1 (append).
 MEM S1 brain B1, MEM S1 plotEssentials P1, MEM S1 activePressure P1, MEM S1 currentArc P1.
-E E2 | exact quote from that source's evidence. Repeat E for additional quotes. Cite the establishing narrator and necessary player exchange. Do not add quotation delimiters unless they occur in the evidence.
+Use E followed by an exact evidence alias.
+Example:
+E E2
+Do not copy or summarize source quotations.
+The application attaches exact evidence text.
+Cite the establishing narrator source.
+Cite the relevant player message when needed.
+Use only evidence aliases supplied for that source.
 Optional lines before TEXT:
 TITLE short title
 TYPE lore|character|location|custom (new cards only)
@@ -118,7 +125,7 @@ DONE S1
 Complete output examples (illustrative only: use each alias only when present in the supplied outputAliases, with exact evidence from that source):
 New Lore:
 MEM S1 storyCard NEW
-E E2 | The bridge collapsed.
+E E2
 TEXT
 The bridge collapsed.
 END
@@ -127,7 +134,7 @@ DONE S1
 Existing Brain thought:
 MEM S1 brain B1
 FIELD thought
-E E2 | Mira thought the signal was a trap.
+E E2
 TEXT
 I suspect the signal is a trap.
 END
@@ -139,12 +146,12 @@ DONE S2
 DONE S3
 
 Use actual aliases in outputAliases. Evidence and targets are scoped to each source. Reference indexes locate pooled content. Canon prefix/reference entries mean prefix plus referenced content. Never borrow later evidence or another private perspective.
-Keep Story Card deltas at most 70 words. Do not supply triggers; the application generates them.
+Keep ordinary Story Card deltas at most 70 words. Include only the new factual development. Do not repeat established background facts. Separate genuinely independent developments. If a single supported development cannot be expressed within 70 words, keep it factual and concise. The application can send a proposal of up to 120 words to manual review. Do not supply triggers; the application generates them.
 Brains require an eligible existing perspective. Return one first-person thought or one string-field delta. Do not supply thought keys, delete thoughts, record scene presence or stable traits, or create a missing Brain. Never give an absent NPC knowledge without evidence of acquisition.
 Plot Essentials requires explicit autoUpdate=true and changes only for premise/constraints (180 words). Active Pressure is an immediate unresolved external threat or obligation (one sentence, 45 words), never an old resolved event. Both use replacement text. Current Arc is an append-only delta within the established arc (500 words); never change Director phases. Respect active targets, opt-outs, authored conditions and approval controls.
 Use REVIEW yes for uncertain relationship outcomes, attempted intimacy, enduring traits, ambiguous destinations, private interpretations, protected targets or conflicting certainty. Preserve attributed claims and uncertainty. Research collaboration is not romance. Never turn one action into a permanent trait.
 ${STORY_CARD_PLACEMENT_POLICY.split("\n").filter(line => !line.startsWith("For APPEND") && !line.startsWith("placement.kind:")).join("\n")}
-For Character appends use PROFILE kind | reason and exact E quotes supporting the enduring fact. New Character cards require a missing durable identity. TYPE defaults to lore for new cards. Use target aliases for appends and preserve target type.
+For Character appends use PROFILE kind | reason and E aliases supporting the enduring fact. New Character cards require a missing durable identity. TYPE defaults to lore for new cards. Use target aliases for appends and preserve target type.
 ${SHARED_STORY_MEMORY_POLICY}`;
 export function buildSinglePassMemoryMessages(batch: PreparedSinglePassMemoryBatch): ChatMessage[] {
   return [{ role: "system", content: POLICY }, { role: "user", content: JSON.stringify({ ...batch.payload, outputAliases: batch.outputAliases }) }];
@@ -172,6 +179,10 @@ export function normalizeSinglePassFinding(v: unknown, sourceId: string, adventu
   missing("reason", `Extracted from narrator source ${sourceId}.`);
   missing("candidateOnly", true);
   if (f.kind === "storyCard") {
+    if (words.length > 70 && words.length <= 120) {
+      f.candidateOnly = true;
+      diagnostics.push("Story Card exceeds 70 words; manual review required.");
+    }
     const card = adventure?.storyCards.find(c => c.id === f.targetId);
     missing("operation", f.targetId === null ? "create" : "append");
     missing("storyCardType", card?.type ?? (f.targetId === null ? "lore" : undefined));
@@ -292,7 +303,7 @@ export function parseSinglePassMemoryCommands(text: string, aliases: PreparedSin
     result: { sourceId: manifest.sourceId, findings: [], findingIndexes: [], rejected: [], diagnostics: [] } as SinglePassMemorySourceResult }));
   const stateFor = (alias: string) => states.find(s => s.alias === alias || s.alias === alias.toUpperCase());
   type Command = { state?: typeof states[number]; index: number; header: string; sourceAlias: string; kind: string; target: string; metadata: Record<string, string>;
-    evidence: Array<{ messageId: string; quote: string }>; lines: string[]; inText: boolean; errors: string[] };
+    evidence: Array<{ messageId: string; quote: string }>; lines: string[]; inText: boolean; errors: string[]; evidenceRecovered?: boolean };
   let current: Command | undefined;
   const diagnostic = (reason: string) => states.forEach(s => s.result.diagnostics!.push({ index: -1, reason }));
   const reject = (c: Command, reason: string) => {
@@ -321,22 +332,22 @@ export function parseSinglePassMemoryCommands(text: string, aliases: PreparedSin
     if (!isNew && !card && !brain && !(plot && plot.type === kind)) c.errors.push("Invalid target alias for memory kind.");
     if (!c.inText || !content) c.errors.push("Missing usable factual content after TEXT.");
     if (!c.evidence.length) c.errors.push("Missing evidence.");
-    if (card?.type === "character" && !meta.PROFILE) c.errors.push("Character profile update requires PROFILE kind | enduring-change reason.");
+    const recoverCharacterEvent = kind === "storyCard" && card?.type === "character" && !meta.PROFILE && Boolean(content) && c.evidence.length > 0;
     if (meta.PROFILE && !/^(correction|transformation|profile)\s*\|\s*\S[\s\S]*$/i.test(meta.PROFILE)) c.errors.push("Invalid PROFILE kind or missing enduring-change reason.");
     const field = ["thought", "currentState", "relationshipPressure", "emotionalInterpretation", "recentDevelopments", "notes"].find(f => f.toLowerCase() === meta.FIELD?.toLowerCase());
     if (kind === "brain" && !field) c.errors.push("Invalid or missing Brain FIELD.");
     if (c.errors.length) { reject(c, c.errors.join(" ")); return; }
-    const targetId = card?.id ?? brain?.id ?? plot?.id ?? null;
+    const targetId = recoverCharacterEvent ? null : card?.id ?? brain?.id ?? plot?.id ?? null;
     const base: Record<string, unknown> = { kind, targetId, content, evidenceQuotes: c.evidence };
     if (meta.TITLE) base.title = meta.TITLE;
     if (meta.REASON) base.reason = meta.REASON;
     if (meta.REVIEW) base.candidateOnly = meta.REVIEW.toLowerCase() === "yes";
     if (kind === "storyCard") {
-      base.operation = isNew ? "create" : "append";
-      base.storyCardType = card?.type ?? meta.TYPE?.toLowerCase() ?? "lore";
-      if (meta.MODE || card?.memoryMode) base.memoryMode = meta.MODE?.toLowerCase() ?? card?.memoryMode;
+      base.operation = isNew || recoverCharacterEvent ? "create" : "append";
+      base.storyCardType = recoverCharacterEvent ? "lore" : card?.type ?? meta.TYPE?.toLowerCase() ?? "lore";
+      if (meta.MODE || (!recoverCharacterEvent && card?.memoryMode)) base.memoryMode = meta.MODE?.toLowerCase() ?? card?.memoryMode;
       if (meta.STATUS) base.eventStatus = meta.STATUS.toLowerCase();
-      if (card?.type === "character") {
+      if (card?.type === "character" && !recoverCharacterEvent) {
         const separator = meta.PROFILE.indexOf("|");
         base.identityChange = { targetId, kind: meta.PROFILE.slice(0, separator).trim().toLowerCase(),
           reason: meta.PROFILE.slice(separator + 1).trim(), fact: content, evidenceQuotes: c.evidence };
@@ -356,6 +367,8 @@ export function parseSinglePassMemoryCommands(text: string, aliases: PreparedSin
 
     }
     const diagnostics: string[] = [];
+    if (c.evidenceRecovered || recoverCharacterEvent) base.candidateOnly = true;
+    if (recoverCharacterEvent) diagnostics.push("Character event routed to review-required Lore proposal; no PROFILE justification.");
     const finding = normalizeSinglePassFinding(base, manifest.sourceId, adventure, diagnostics);
     result.diagnostics!.push(...diagnostics.map(reason => ({ index: c.index, reason })));
     if (!finding) reject(c, singlePassFindingSchemaError(base) ?? "Invalid finding metadata.");
@@ -402,12 +415,24 @@ export function parseSinglePassMemoryCommands(text: string, aliases: PreparedSin
     if (!current) { if (line) diagnostic("Rejected text outside a memory command."); continue; }
     if (/^TEXT$/i.test(line)) { current.inText = true; continue; }
     if (/^END$/i.test(line)) { finish(current); current = undefined; continue; }
-    const evidence = /^E\s+(\S+)\s*\|([\s\S]*)$/i.exec(line);
+    const evidence = /^E\s+([^\s|]+)(?:\s*\|([\s\S]*))?$/i.exec(line);
     if (evidence) {
       const table = current.state?.manifest.evidence;
-      const entry = table && Object.hasOwn(table, evidence[1]) ? table[evidence[1]] : undefined, quote = evidence[2].trim();
-      if (!entry || !quote) current.errors.push("Invalid evidence alias or empty quote.");
-      else current.evidence.push({ messageId: entry.id, quote });
+      const entry = table && Object.hasOwn(table, evidence[1]) ? table[evidence[1]] : undefined;
+      const message = entry && adventure?.messages.find(m => m.id === entry.id);
+      if (!entry) current.errors.push("Invalid evidence alias.");
+      else if (!message || !message.content.trim()) current.errors.push("Missing or empty original evidence message.");
+      else {
+        const suppliedQuote = evidence[2]?.trim();
+        const exact = Boolean(suppliedQuote && message.content.includes(suppliedQuote));
+        current.evidence.push({ messageId: entry.id, quote: exact ? suppliedQuote! : message.content });
+        if (!exact) {
+          current.evidenceRecovered = true;
+          current.state!.result.diagnostics!.push({ index: current.index, reason: suppliedQuote
+            ? "Nonverbatim quote replaced by exact source evidence; review required."
+            : "Alias-based evidence resolution attached exact source evidence; review required." });
+        }
+      }
       continue;
     }
     const optional = /^(TITLE|TYPE|MODE|STATUS|REVIEW|REASON|FIELD|PROFILE)\s+(.+)$/i.exec(line);

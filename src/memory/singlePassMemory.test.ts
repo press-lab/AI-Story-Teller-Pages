@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { syntheticMemoryAdventure, partnershipSourceId, confirmationQuote } from "./fixtures/syntheticMemoryAdventure";
-import { defaultModelConfig, normalizeAdventure } from "../state/defaults";
+import { defaultModelConfig, normalizeAdventure, createDefaultAdventure } from "../state/defaults";
 import { adventureReducer as reduce } from "../state/adventureReducer";
 import { singlePassCycleSources } from "./memoryCycleState";
 import { prepareSinglePassMemoryBatch, runSinglePassMemoryBatch, parseSinglePassMemoryResponse, normalizeSinglePassFinding, parseSinglePassMemoryCommands, buildSinglePassMemoryMessages } from "./singlePassMemory";
@@ -134,14 +134,19 @@ const commandAliases = {
 };
 const memoryCommand = (header = "S1 storyCard NEW", meta = "", content = "The spell held.", evidence = 'E E2 | "The spell held."') =>
   `MEM ${header}\n${meta ? meta + "\n" : ""}${evidence}\nTEXT\n${content}\nEND`;
-const commands = (text: string) => parseSinglePassMemoryCommands(text, commandAliases);
+const commandAdventure = createDefaultAdventure("Command evidence");
+commandAdventure.messages = ["Narrator-One", "two", "three", "player"].map(id => ({
+  id, role: id === "player" ? "user" as const : "assistant" as const, createdAt: "2026-10-27T00:00:00Z",
+  content: id === "player" ? "player words" : '\"The spell held.\" \"a | b\": {}',
+}));
+const commands = (text: string) => parseSinglePassMemoryCommands(text, commandAliases, commandAdventure);
 const complete = (text: string) => commands(text + "\nDONE S1\nDONE S2\nDONE S3");
 describe("simple memory command protocol", () => {
   it("constructs the exact normalized new Lore finding", () => {
     expect(complete(memoryCommand()).sources[0].findings).toEqual([{
       kind: "storyCard", targetId: null, title: "The spell", content: "The spell held.", reason: "Extracted from narrator source Narrator-One.",
       evidenceQuotes: [{ messageId: "Narrator-One", quote: '\"The spell held.\"' }], candidateOnly: true,
-      operation: "create", storyCardType: "lore", memoryMode: "static", eventStatus: "unresolved", participants: [], suggestedTriggers: [],
+      operation: "create", storyCardType: "lore", memoryMode: "static", eventStatus: "unresolved", participants: [], suggestedTriggers: ["spell", "spell held"],
     }]);
   });
   it("appends using the existing type and mode", () => {
@@ -182,7 +187,7 @@ describe("simple memory command protocol", () => {
     [memoryCommand("S1 brain B1", "FIELD delete"), "Brain FIELD"],
     [memoryCommand("S1 storyCard NEW", "", ""), "Missing usable factual content"],
     [memoryCommand("S1 storyCard NEW", "INVALID data"), "Invalid command syntax"],
-    [memoryCommand("S1 storyCard C2"), "requires PROFILE"],
+    [memoryCommand("S1 storyCard C2", "PROFILE transformation"), "Invalid PROFILE"],
   ])("isolates invalid command: %s", (invalid, reason) => {
     const r = complete(memoryCommand() + "\n" + invalid + "\n" + memoryCommand()).sources[0];
     expect(r.findings).toHaveLength(2); expect(r.findingIndexes).toEqual([0, 2]); expect(r.rejected).toEqual([{ index: 1, reason: expect.stringContaining(reason) }]); expect(r.failureReason).toBeTruthy();
@@ -220,9 +225,9 @@ describe("simple memory command protocol", () => {
   });
   it("dispatches legacy root sources JSON and never extracts JSON from command content", () => {
     const legacy = JSON.stringify({ sources: [{ sourceId: "Narrator-One", findings: [groundedFinding()] }] });
-    expect(parseSinglePassMemoryResponse(legacy, ["Narrator-One"], undefined, commandAliases).sources[0].findings).toEqual([groundedFinding()]);
+    expect(parseSinglePassMemoryResponse(legacy, ["Narrator-One"], commandAdventure, commandAliases).sources[0].findings).toEqual([groundedFinding()]);
     const text = memoryCommand("S1 storyCard NEW", "", legacy) + "\nDONE S1";
-    expect(parseSinglePassMemoryResponse(text, ["Narrator-One"], undefined, commandAliases).sources[0].findings[0].content).toBe(legacy);
+    expect(parseSinglePassMemoryResponse(text, ["Narrator-One"], commandAdventure, commandAliases).sources[0].findings[0].content).toBe(legacy);
   });
   it("pools aliases without text copies or persisted aliases", async () => {
     const { a, ids } = singlePassFixture(); const before = JSON.stringify(a);
@@ -318,5 +323,31 @@ describe("command header compatibility", () => {
     expect(result.rejected[0].reason).toContain("Invalid evidence alias");
     expect(JSON.stringify(result)).not.toContain("PRIVATE_BODY");
     expect(JSON.stringify(result)).not.toContain("PRIVATE_QUOTE");
+  });
+});
+
+
+describe("source alias evidence recovery", () => {
+  it.each(["E E2", "E E2 | paraphrased spell", 'E E2 | The spell ... {}'])("attaches complete original evidence for %s", evidence => {
+    const result = complete(memoryCommand("S1 storyCard NEW", "REVIEW no", "The spell held.", evidence)).sources[0];
+    expect(result.rejected).toEqual([]);
+    expect(result.findings[0].evidenceQuotes).toEqual([{ messageId: "Narrator-One", quote: commandAdventure.messages[0].content }]);
+    expect(result.findings[0].candidateOnly).toBe(true);
+    expect(result.diagnostics?.some(d => d.reason.includes("review required"))).toBe(true);
+  });
+  it("keeps exact spans and two original IDs", () => {
+    const f = complete(memoryCommand("S1 storyCard NEW", "", "The spell held.", 'E E2 | "The spell held."\nE E1')).sources[0].findings[0];
+    expect(f.evidenceQuotes).toEqual([{ messageId: "Narrator-One", quote: '"The spell held."' }, { messageId: "player", quote: "player words" }]);
+  });
+  it.each(["unknown", "other-source", "empty", "missing"])("rejects %s evidence without inventing IDs", mode => {
+    const a = structuredClone(commandAdventure);
+    const aliases = structuredClone(commandAliases);
+    let evidence = "E E2";
+    if (mode === "unknown") evidence = "E E99";
+    if (mode === "other-source") { aliases.S2.evidence = { E9: { id: "two", reference: 8 } } as never; evidence = "E E9"; }
+    if (mode === "empty") a.messages[0].content = " ";
+    if (mode === "missing") a.messages.shift();
+    const r = parseSinglePassMemoryCommands(memoryCommand("S1 storyCard NEW", "", "The spell held.", evidence) + "\nDONE S1", aliases, a).sources[0];
+    expect(r.findings).toEqual([]); expect(r.rejected).toHaveLength(1);
   });
 });

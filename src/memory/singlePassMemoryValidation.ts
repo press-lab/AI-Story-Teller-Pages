@@ -27,7 +27,9 @@ export function validateSinglePassFinding(a: Adventure, sourceId: string, checkp
   const shapeError = memoryUpdateShapeError(f.kind, f.content ?? "");
   if (shapeError) return shapeError;
   if (f.kind === "storyCard") {
-    if (f.content!.trim().split(/\s+/).length > 70) return "Story Card delta exceeds 70 words.";
+    const words = f.content!.trim().split(/\s+/).length;
+    if (words > 120) return "Story Card delta exceeds 120 words.";
+    if (words > 70 && f.candidateOnly !== true) return "Story Card delta exceeds 70 words; manual review required.";
     const target = a.storyCards.find(c => c.id === f.targetId);
     if (f.targetId && (!target || target.type !== f.storyCardType || f.operation !== "append")) return "Invalid destination type or append operation.";
     if (!f.targetId && f.operation !== "create") return "New Story Cards require create.";

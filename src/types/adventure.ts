@@ -2,8 +2,8 @@ export interface MemoryDiagnostic {
   id: string;
   sourceId: string;
   createdAt: string;
-  stage: "inline" | "candidate" | "reducer" | "recovery" | "independent";
-  outcome: "not_attempted" | "instruction_omitted" | "envelope_missing" | "envelope_malformed" | "draft_discarded"
+  stage: "context" | "inline" | "candidate" | "reducer" | "recovery" | "independent";
+  outcome: "context_selection" | "not_attempted" | "instruction_omitted" | "envelope_missing" | "envelope_malformed" | "draft_discarded"
     | "zero_candidates" | "candidates_produced" | "validation_accepted" | "validation_rejected"
     | "candidate_suppressed" | "candidate_merged" | "proposal_accepted" | "automatically_approved"
     | "proposal_approved" | "proposal_rejected" | "proposal_ignored"
