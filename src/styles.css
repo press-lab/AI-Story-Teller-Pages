@@ -4704,6 +4704,12 @@ summary {
     padding-top: 4px;
   }
 
+  .app-nav .nav-hide-button {
+    margin-left: auto;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+
   .main-content {
     overflow-y: visible;
   }

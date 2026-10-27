@@ -654,6 +654,11 @@ export default function App() {
             Edit
             {pendingProposalCount > 0 && <span className="nav-badge">{pendingProposalCount > 99 ? "99+" : pendingProposalCount}</span>}
           </button>
+          {activeTab === "play" && (
+            <button type="button" className="nav-hide-button" onClick={() => setNavForceVisible(false)} title="Hide navigation bar">
+              ↑ Hide
+            </button>
+          )}
         </nav>
         <div className="header-meta">
           <AppUpdateButton
@@ -666,11 +671,6 @@ export default function App() {
             }}
           />
           {adventure && <span className="status-pill">{saveStatus}</span>}
-          {activeTab === "play" && (
-            <button type="button" className="theme-toggle" onClick={() => setNavForceVisible(false)} title="Hide navigation bar">
-              ↑ Hide
-            </button>
-          )}
           <button
             type="button"
             className={activeTopTab === "settings" ? "theme-toggle active" : "theme-toggle"}
