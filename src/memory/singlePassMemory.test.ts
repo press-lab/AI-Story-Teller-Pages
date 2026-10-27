@@ -214,9 +214,9 @@ describe("simple memory command protocol", () => {
     const r = commands("<think>\n" + memoryCommand() + "\nDONE S1").sources[0];
     expect(r.findings).toEqual([]); expect(r.failureReason).toContain("Missing DONE");
   });
-  it("accepts case-insensitive keywords with exact aliases", () => {
+  it("accepts case-insensitive keywords and manifest aliases", () => {
     expect(complete(memoryCommand().replace("MEM", "mem").replace("TEXT", "text").replace("END", "end")).sources[0].findings).toHaveLength(1);
-    expect(complete(memoryCommand("s1 storyCard NEW")).sources[0].findings).toHaveLength(0);
+    expect(complete(memoryCommand("s1 storyCard NEW")).sources[0].findings).toHaveLength(1);
   });
   it("dispatches legacy root sources JSON and never extracts JSON from command content", () => {
     const legacy = JSON.stringify({ sources: [{ sourceId: "Narrator-One", findings: [groundedFinding()] }] });
@@ -270,4 +270,53 @@ it("does not honor REVIEW no when metadata needs recovery", () => {
 it("does not resolve cross-kind Plot aliases or recover malformed PROFILE", () => {
   expect(complete(memoryCommand("S1 activePressure P1")).sources[0].rejected[0].reason).toContain("Invalid target alias");
   expect(complete(memoryCommand("S1 storyCard C2", "PROFILE transformation")).sources[0].rejected[0].reason).toContain("Invalid PROFILE");
+});
+
+
+describe("command header compatibility", () => {
+  it.each(["storyCard", "storycard", "STORYCARD", "story card", "StOrY   CaRd", "lore", "LORE"])("normalizes %s for new and existing cards", kind => {
+    for (const target of ["NEW", "C1", "c1"]) {
+      expect(complete(memoryCommand(`s1   ${kind}   ${target}`)).sources[0].findings[0]).toMatchObject({
+        kind: "storyCard", targetId: target === "NEW" ? null : "lore", operation: target === "NEW" ? "create" : "append",
+      });
+    }
+  });
+  it.each([["BRAIN", "b1", "brain"], ["PLOTESSENTIALS", "p1", "plotEssentials"], ["ACTIVEPRESSURE", "p2", "activePressure"], ["CURRENTARC", "p3", "currentArc"]])("normalizes %s and manifest target case", (label, target, kind) => {
+    expect(complete(memoryCommand(`s1\t${label}\t${target}`, kind === "brain" ? "FIELD thought" : "")).sources[0].findings[0].kind).toBe(kind);
+  });
+  it("normalizes lowercase DONE source aliases", () => {
+    expect(commands("done  s1\nDONE\ts2\nDONE s3").sources.every(s => !s.failureReason)).toBe(true);
+  });
+  it.each(["S1 unknown NEW", "S1 lore B1", "S1 lore C99", "S1 brain NEW", "S1 brain b99", "S1 plotEssentials P99", "S1 activePressure p1", "S1 story card", "S1 storyCard NEW extra"])("rejects %s while retaining siblings", header => {
+    const result = complete(memoryCommand(header) + "\n" + memoryCommand()).sources[0];
+    expect(result.rejected).toHaveLength(1);
+    expect(result.findings).toHaveLength(1);
+    expect(result.diagnostics?.some(d => d.reason.includes("Rejected MEM header:") && d.reason.includes("source=") && d.reason.includes("kind=") && d.reason.includes("target="))).toBe(true);
+  });
+  it("bounds original header diagnostics and excludes response bodies from persistence", async () => {
+    const { a, ids } = singlePassFixture(1);
+    const batch = await prepareSinglePassMemoryBatch(a, ids);
+    const header = "MEM s1 unknown " + "X".repeat(250);
+    const response = header + "\nE E2 | PRIVATE_EVIDENCE_SENTINEL\nTEXT\nPRIVATE_BODY_SENTINEL\nEND\nDONE s1";
+    const send = vi.spyOn(transport, "sendMemoryCompletion").mockResolvedValue({ raw: { secret: "PROVIDER_SENTINEL" }, content: response });
+    const parsed = await runSinglePassMemoryBatch(a, defaultModelConfig, batch);
+    expect(send).toHaveBeenCalledTimes(1);
+    const detail = parsed.sources[0].diagnostics!.find(d => d.reason.includes("Rejected MEM header:"))!.reason;
+    const savedHeader = /header=("(?:[^"\\]|\\.)*"); kind=/.exec(detail)!;
+    expect(JSON.parse(savedHeader[1])).toBe(header.slice(0, 160));
+    expect(detail).toContain("Unknown memory kind.");
+    const claimed = reduce(a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
+    const committed = reduce(claimed, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId,
+      sources: [{ result: parsed.sources[0], checkpoint: batch.checkpoints[0].checkpoint }] });
+    const persisted = JSON.stringify(committed);
+    for (const sentinel of ["PRIVATE_EVIDENCE_SENTINEL", "PRIVATE_BODY_SENTINEL", "PROVIDER_SENTINEL"]) expect(persisted).not.toContain(sentinel);
+    expect(persisted).toContain("Rejected MEM header:");
+  });
+  it("does not recover invalid evidence through header normalization", () => {
+    const result = complete(memoryCommand("s1 STORY CARD c1", "", "PRIVATE_BODY", "E E99 | PRIVATE_QUOTE")).sources[0];
+    expect(result.findings).toHaveLength(0);
+    expect(result.rejected[0].reason).toContain("Invalid evidence alias");
+    expect(JSON.stringify(result)).not.toContain("PRIVATE_BODY");
+    expect(JSON.stringify(result)).not.toContain("PRIVATE_QUOTE");
+  });
 });

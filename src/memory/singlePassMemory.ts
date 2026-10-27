@@ -115,6 +115,29 @@ TEXT
 One factual delta, with multiple lines if needed.
 END
 DONE S1
+Complete output examples (illustrative only: use each alias only when present in the supplied outputAliases, with exact evidence from that source):
+New Lore:
+MEM S1 storyCard NEW
+E E2 | The bridge collapsed.
+TEXT
+The bridge collapsed.
+END
+DONE S1
+
+Existing Brain thought:
+MEM S1 brain B1
+FIELD thought
+E E2 | Mira thought the signal was a trap.
+TEXT
+I suspect the signal is a trap.
+END
+DONE S1
+
+Three sources with zero findings:
+DONE S1
+DONE S2
+DONE S3
+
 Use actual aliases in outputAliases. Evidence and targets are scoped to each source. Reference indexes locate pooled content. Canon prefix/reference entries mean prefix plus referenced content. Never borrow later evidence or another private perspective.
 Keep Story Card deltas at most 70 words. Do not supply triggers; the application generates them.
 Brains require an eligible existing perspective. Return one first-person thought or one string-field delta. Do not supply thought keys, delete thoughts, record scene presence or stable traits, or create a missing Brain. Never give an absent NPC knowledge without evidence of acquisition.
@@ -267,22 +290,29 @@ export function parseSinglePassMemoryResponse(text: string, sourceIds: readonly 
 export function parseSinglePassMemoryCommands(text: string, aliases: PreparedSinglePassMemoryBatch["outputAliases"], adventure?: Adventure): SinglePassMemoryBatchResult {
   const states = Object.entries(aliases).map(([alias, manifest]) => ({ alias, manifest, done: false, nextIndex: 0,
     result: { sourceId: manifest.sourceId, findings: [], findingIndexes: [], rejected: [], diagnostics: [] } as SinglePassMemorySourceResult }));
-  const stateFor = (alias: string) => states.find(s => s.alias === alias);
-  type Command = { state?: typeof states[number]; index: number; kind: string; target: string; metadata: Record<string, string>;
+  const stateFor = (alias: string) => states.find(s => s.alias === alias || s.alias === alias.toUpperCase());
+  type Command = { state?: typeof states[number]; index: number; header: string; sourceAlias: string; kind: string; target: string; metadata: Record<string, string>;
     evidence: Array<{ messageId: string; quote: string }>; lines: string[]; inText: boolean; errors: string[] };
   let current: Command | undefined;
   const diagnostic = (reason: string) => states.forEach(s => s.result.diagnostics!.push({ index: -1, reason }));
   const reject = (c: Command, reason: string) => {
-    if (c.state) c.state.result.rejected.push({ index: c.index, reason });
-    else diagnostic(reason);
+    const detail = `Rejected MEM header: source=${JSON.stringify(c.sourceAlias.slice(0, 160))}; header=${JSON.stringify(c.header)}; kind=${JSON.stringify(c.kind.slice(0, 160))}; target=${JSON.stringify(c.target.slice(0, 160))}; ${reason}`;
+    if (c.state) {
+      c.state.result.diagnostics!.push({ index: c.index, reason: detail });
+      c.state.result.rejected.push({ index: c.index, reason });
+    }
+    else diagnostic(detail);
   };
   const finish = (c: Command) => {
     if (!c.state) { reject(c, "Unknown source alias; no attribution inferred."); return; }
     const { manifest, result } = c.state;
     const content = c.lines.join("\n").trim(), meta = c.metadata;
     const kinds = ["storyCard", "brain", "plotEssentials", "activePressure", "currentArc"] as const;
-    const kind = kinds.find(k => k.toLowerCase() === c.kind.toLowerCase());
-    const lookup = <T,>(table: Record<string, T>, alias: string): T | undefined => Object.hasOwn(table, alias) ? table[alias] : undefined;
+    const label = c.kind.toLowerCase().replace(/\s+/g, " ");
+    const cardAlias = Object.hasOwn(manifest.cards, c.target) ? c.target : c.target.toUpperCase();
+    const kind = label === "story card" || (label === "lore" && (c.target === "NEW" || Object.hasOwn(manifest.cards, cardAlias)))
+      ? "storyCard" : kinds.find(k => k.toLowerCase() === label);
+    const lookup = <T,>(table: Record<string, T>, alias: string): T | undefined => Object.hasOwn(table, alias) ? table[alias] : Object.hasOwn(table, alias.toUpperCase()) ? table[alias.toUpperCase()] : undefined;
     const card = kind === "storyCard" ? lookup(manifest.cards, c.target) : undefined;
     const brain = kind === "brain" ? lookup(manifest.brains, c.target) : undefined;
     const plot = kind && !["storyCard", "brain"].includes(kind) ? lookup(manifest.plot, c.target) : undefined;
@@ -343,11 +373,11 @@ export function parseSinglePassMemoryCommands(text: string, aliases: PreparedSin
       if (/^END$/i.test(line)) { finish(current); current = undefined; continue; }
       current.lines.push(raw); continue;
     }
-    const mem = /^MEM\s+(\S+)\s+(\S+)\s+(\S+)$/i.exec(line);
+    const mem = /^MEM\s+(\S+)\s+(story\s+card|\S+)\s+(\S+)$/i.exec(line);
     if (mem) {
       if (current) reject(current, "Incomplete memory command: missing TEXT or END.");
       const state = stateFor(mem[1]);
-      current = { state, index: state ? state.nextIndex++ : -1, kind: mem[2], target: mem[3], metadata: {}, evidence: [], lines: [], inText: false,
+      current = { state, index: state ? state.nextIndex++ : -1, header: raw.slice(0, 160), sourceAlias: mem[1], kind: mem[2], target: mem[3], metadata: {}, evidence: [], lines: [], inText: false,
         errors: state?.done ? ["Command after DONE."] : [] };
       continue;
     }
@@ -355,7 +385,9 @@ export function parseSinglePassMemoryCommands(text: string, aliases: PreparedSin
     if (malformedMem) {
       if (current) reject(current, "Incomplete memory command: missing END.");
       const state = malformedMem[1] ? stateFor(malformedMem[1]) : undefined;
-      current = { state, index: state ? state.nextIndex++ : -1, kind: "", target: "", metadata: {}, evidence: [], lines: [], inText: false, errors: ["Invalid MEM syntax."] };
+      const partial = /^MEM\s+\S+(?:\s+(story\s+card|\S+))?(?:\s+(\S+))?/i.exec(line);
+      current = { state, index: state ? state.nextIndex++ : -1, header: raw.slice(0, 160), sourceAlias: malformedMem[1] ?? "",
+        kind: partial?.[1] ?? "", target: partial?.[2] ?? "", metadata: {}, evidence: [], lines: [], inText: false, errors: ["Invalid MEM syntax."] };
       continue;
     }
     const done = /^DONE\s+(\S+)$/i.exec(line);
