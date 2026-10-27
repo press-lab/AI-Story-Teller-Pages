@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { useState } from "react";
-import { afterEach, it, expect, vi } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { createDefaultAdventure, defaultModelConfig, normalizeAdventure } from "../state/defaults";
 import type { Adventure } from "../types/adventure";
 import { useAdventureRuntime } from "./useAdventureRuntime";
@@ -23,17 +23,29 @@ function setup(initial = createDefaultAdventure()) {
       { pipeline: "singlePass", enabled: true, everyNTurns: 1, generateContent: true }) };
   });
 }
+describe.each(["json", "commands"])("runtime %s response compatibility", format => {
 function mockHttp(mode = "empty") {
   let memoryCalls = 0;
   vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
     const body = JSON.parse(init!.body as string);
     const memory = body.model === "evaluator";
-    let content = "Mira waits beside the gate.";
+    let content = mode === "siblings" ? "Mira marked the gate as a sanctuary." : "Mira waits beside the gate.";
     if (memory) {
       memoryCalls++;
       if (mode === "timeout") throw new Error("network");
-      const ids = JSON.parse(body.messages.at(-1).content).sources.map((s: { sourceId: string }) => s.sourceId);
+      const payload = JSON.parse(body.messages.at(-1).content);
+      const ids = payload.sources.map((s: { sourceId: string }) => s.sourceId);
       content = mode === "invalid" ? "{" : JSON.stringify({ sources: (mode === "missing" ? ids.slice(1) : ids).map((sourceId: string) => ({ sourceId, findings: [] })) });
+      if (format === "commands") content = mode === "invalid" ? "MEM invalid" : Object.keys(payload.outputAliases).slice(mode === "missing" ? 1 : 0).map(s => `DONE ${s}`).join("\n");
+      if (mode === "siblings") {
+        const sourceId = ids.at(-1);
+        const source = Object.entries(payload.outputAliases).find(([, v]) => (v as { sourceId: string }).sourceId === sourceId)!;
+        const manifest = source[1] as { evidence: Record<string, { id: string }> };
+        const e = Object.entries(manifest.evidence).find(([, v]) => v.id === sourceId)![0];
+        const finding = { kind: "storyCard", targetId: null, title: "Gate sanctuary", content: "Mira marked the gate as a sanctuary.", evidenceQuotes: [{ messageId: sourceId, quote: "Mira marked the gate as a sanctuary." }] };
+        content = format === "json" ? JSON.stringify({ sources: ids.map((id: string) => ({ sourceId: id, findings: id === sourceId ? [finding, {}] : [] })) })
+          : `MEM ${source[0]} storyCard NEW\nTITLE Gate sanctuary\nE ${e} | Mira marked the gate as a sanctuary.\nTEXT\nMira marked the gate as a sanctuary.\nEND\nMEM ${source[0]} brain INVALID\nE ${e} | Mira marked the gate as a sanctuary.\nFIELD thought\nTEXT\nI suspect a secret.\nEND\n${content}`;
+      }
     }
     return new Response(JSON.stringify({ choices: [{ message: { content } }], usage: { prompt_tokens: 100, completion_tokens: 10, total_tokens: 110 } }));
   });
@@ -78,4 +90,15 @@ it("opening pending historical legacy or marked single-pass sources starts no re
   const calls = mockHttp(); const a = createDefaultAdventure();
   a.messages = ["legacy", "singlePass"].map((id, i) => ({ id, role: "assistant", content: "Mira waits.", createdAt: "2000-01-01", memoryEvaluation: { pipeline: i ? "singlePass" : undefined, turn: 1, attempts: 0, status: "pending", completedGroups: [] } }));
   setup(a); await act(async () => { await settle(); }); expect(calls()).toBe(0);
+});
+
+it("retains valid siblings in the existing Memory Inbox without paid repair", async () => {
+  const calls = mockHttp("siblings"); const hook = setup();
+  for (let i = 0; i < 3; i++) await act(async () => { await hook.result.current.runtime.continueTurn(); await settle(); });
+  await waitFor(() => expect(hook.result.current.runtime.memoryWork?.status).toBe("failed"));
+  expect(calls()).toBe(1);
+  expect(hook.result.current.adventure!.activeState.memoryProposals).toContainEqual(expect.objectContaining({ title: "Gate sanctuary", status: "pending" }));
+  await act(async () => { await hook.result.current.runtime.continueTurn(); await settle(); });
+  expect(calls()).toBe(1);
+});
 });

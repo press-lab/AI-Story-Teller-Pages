@@ -18,6 +18,11 @@ export function singlePassReferenceState(a: Adventure, sourceId: string): string
 export interface PreparedSinglePassMemoryBatch {
   batchId: string;
   checkpoints: Array<{ sourceId: string; checkpoint: SinglePassMemoryCheckpoint }>;
+  outputAliases: Record<string, { sourceId: string; sourceTurn: number;
+    evidence: Record<string, { id: string; reference: number }>;
+    cards: Record<string, { id: string; reference: number; type: string; memoryMode?: SinglePassMemoryFinding["memoryMode"] }>;
+    brains: Record<string, { id: string; reference: number; type: "brain" }>;
+    plot: Record<string, { id: string; reference: number; type: string }> }>;
   payload: { references: unknown[]; sources: unknown[] };
 }
 export async function prepareSinglePassMemoryBatch(a: Adventure, ids: readonly string[]): Promise<PreparedSinglePassMemoryBatch> {
@@ -38,6 +43,7 @@ export async function prepareSinglePassMemoryBatch(a: Adventure, ids: readonly s
   };
   const checkpoints: PreparedSinglePassMemoryBatch["checkpoints"] = [];
   const sources: unknown[] = [];
+  const outputAliases: PreparedSinglePassMemoryBatch["outputAliases"] = {};
   for (const source of ordered) {
     const snapshot = { ...a, messages: a.messages.slice(0, a.messages.indexOf(source) + 1),
       activeState: { ...a.activeState, turn: source.memoryEvaluation!.turn },
@@ -47,6 +53,13 @@ export async function prepareSinglePassMemoryBatch(a: Adventure, ids: readonly s
     checkpoints.push({ sourceId: source.id, checkpoint: { batchId, sourceContent: source.content, sourceRevision: source.memoryEvaluation?.revision,
       evidence: inputs.evidence.map(({ id, content }) => ({ id, content })), referenceState: singlePassReferenceState(a, source.id),
       status: "running", findings: [], dispositions: [], acceptedCount: 0, rejectedCount: 0, suppressedCount: 0, reviewCount: 0 } });
+    outputAliases[`S${sources.length + 1}`] = {
+      sourceId: source.id, sourceTurn: source.memoryEvaluation!.turn,
+      evidence: Object.fromEntries(inputs.evidence.map((e, i) => [`E${i + 1}`, { id: e.id, reference: pool(e) }])),
+      cards: Object.fromEntries(inputs.currentCards.map((c, i) => [`C${i + 1}`, { id: c.id, reference: pool(c), type: c.type, memoryMode: c.memoryMode }])),
+      brains: Object.fromEntries(inputs.currentBrains.map((b, i) => [`B${i + 1}`, { id: b.id, reference: pool(b), type: "brain" as const }])),
+      plot: Object.fromEntries(inputs.currentPlot.map((p, i) => [`P${i + 1}`, { id: p.id, reference: pool(p), type: p.type }])),
+    };
     sources.push({ sourceId: source.id, conditions,
       evidence: inputs.evidence.map(pool), canon: inputs.canon.map(entry => {
         const card = inputs.currentCards.find(c => entry.content === "Canon story card: " + c.title + "\n" + c.content);
@@ -57,19 +70,61 @@ export async function prepareSinglePassMemoryBatch(a: Adventure, ids: readonly s
       }), cards: inputs.currentCards.map(pool),
       brains: inputs.currentBrains.map(pool), plot: inputs.currentPlot.map(pool), consideredSuggestionsNotCanon: inputs.coverage.map(pool) });
   }
-  return { batchId, checkpoints, payload: { references, sources } };
+  return { batchId, checkpoints, outputAliases, payload: { references, sources } };
 }
-const POLICY = `SINGLE PASS MEMORY EXTRACTION. Identify, classify, generate and select destinations for ALL eligible factual deltas. Return exactly one JSON object: {"sources":[{"sourceId":"supplied ID","findings":[]}]}.
-Return one source record for each supplied sourceId, including sources with no findings. Do not return duplicate or unknown source IDs. Each source is independent. Use ONLY its named reference indexes. Canon entries with prefix and reference are reconstructed as prefix plus the referenced entry content. Evidence ends at that narrator; never borrow later evidence or private perspectives. Earlier exchanges resolve attribution; each finding must cite the establishing source and necessary player exchange.
-Every finding requires kind (storyCard|brain|plotEssentials|activePressure|currentArc), targetId (existing exact ID or null ONLY for new Story Cards), evidenceQuotes:[{messageId,quote}] with verbatim nonempty quotes, and complete usable content (or brainPatch for brain). Do not return classification without content. No per-source finding quota. Distinct developments stay distinct even with the same participants. Empty findings is a valid evaluation.
-Optional Story Card metadata: storyCardType (lore|character|location|custom), operation (append|create), memoryMode (static|living|historical), eventStatus (completed|ongoing|unresolved), suggestedTriggers (reusable specific topic phrases), participants (array). title, reason and candidateOnly are optional. Character appends require identityChange as defined below. Maximum 70 words per Story Card delta.
-Brains require an existing eligible Brain ID and structured brainPatch with only currentState, relationshipPressure, emotionalInterpretation, recentDevelopments, notes (strings), thoughts (object of string or null values). Preserve first-person private state and the existing perspective. Thoughts use unique snake_case keys with a turn-prefixed first-person observation, reaction or plan. Do not overwrite existing thoughts. Archive stale old thoughts with null only when the existing condenseThreshold is exceeded, retaining all other old text verbatim. Do not record scene location, presence or stable traits in Brains. No missing-Brain fallback. Never give an absent NPC knowledge without direct evidence of acquisition.
-Plot Essentials changes only when premise/constraints change and explicit autoUpdate=true. Active Pressure is immediate unresolved EXTERNAL threat/obligation, never old events. Current Arc is progress within the established arc; never change Director phases. Respect active targets, opt-outs, authored conditions, limits and approval controls. Plot components are operating facts, not event archives. Limits: Plot Essentials 180 words, Active Pressure one sentence at most 45 words, Current Arc at most 500 words. Plot Essentials and Active Pressure use complete replacement text; Current Arc uses only the new eligible arc delta. Respect each surface word limit.
-Uncertain relationship outcomes, attempted intimate actions without confirmed outcomes, new enduring traits, ambiguous destinations, private NPC interpretations, protected targets and conflicting certainty require candidateOnly=true. Preserve attributed claims and uncertainty; never invent consent or completed outcomes. An accepted invitation is an agreement, not a completed meeting. Research collaboration is not romance. Never turn one action into a permanent trait.
-${STORY_CARD_PLACEMENT_POLICY}
+const POLICY = `SINGLE PASS MEMORY EXTRACTION.
+Read all supplied sources and canon.
+Find meaningful factual changes.
+Produce zero or more simple memory commands for each source.
+A command contains one memory change.
+Use the supplied source, evidence, and target aliases.
+Do not write JSON.
+Do not copy database IDs.
+Do not write analysis or introductory text.
+Use MEM to start one command.
+Use E to cite exact evidence.
+Use TEXT for the factual memory.
+Use END to finish the command.
+Use DONE to finish each source.
+Write DONE for every supplied source, including sources with no changes.
+Keep important distinct developments separate.
+Do not invent changes to fill an empty source.
+A planned meeting is not a completed meeting.
+An attempted kiss is not a completed kiss.
+Private interpretations belong in eligible Brains.
+Shared developments and events belong in Lore.
+Enduring Character profile changes require explicit PROFILE justification.
+Plot Components are instructions and current operating facts, not event archives.
+Use only eligible destinations.
+Do not infer unknown events, consent, private knowledge, or permanent character traits.
+
+Command grammar (one control per line):
+MEM S1 storyCard NEW (create Lore by default) or MEM S1 storyCard C1 (append).
+MEM S1 brain B1, MEM S1 plotEssentials P1, MEM S1 activePressure P1, MEM S1 currentArc P1.
+E E2 | exact quote from that source's evidence. Repeat E for additional quotes. Cite the establishing narrator and necessary player exchange. Do not add quotation delimiters unless they occur in the evidence.
+Optional lines before TEXT:
+TITLE short title
+TYPE lore|character|location|custom (new cards only)
+MODE static|living|historical
+STATUS completed|ongoing|unresolved
+REVIEW yes|no
+REASON short explanation
+FIELD thought|currentState|relationshipPressure|emotionalInterpretation|recentDevelopments|notes (required for Brain)
+PROFILE correction|transformation|profile | specific enduring-change explanation (required for existing Character)
+TEXT
+One factual delta, with multiple lines if needed.
+END
+DONE S1
+Use actual aliases in outputAliases. Evidence and targets are scoped to each source. Reference indexes locate pooled content. Canon prefix/reference entries mean prefix plus referenced content. Never borrow later evidence or another private perspective.
+Keep Story Card deltas at most 70 words. Do not supply triggers; the application generates them.
+Brains require an eligible existing perspective. Return one first-person thought or one string-field delta. Do not supply thought keys, delete thoughts, record scene presence or stable traits, or create a missing Brain. Never give an absent NPC knowledge without evidence of acquisition.
+Plot Essentials requires explicit autoUpdate=true and changes only for premise/constraints (180 words). Active Pressure is an immediate unresolved external threat or obligation (one sentence, 45 words), never an old resolved event. Both use replacement text. Current Arc is an append-only delta within the established arc (500 words); never change Director phases. Respect active targets, opt-outs, authored conditions and approval controls.
+Use REVIEW yes for uncertain relationship outcomes, attempted intimacy, enduring traits, ambiguous destinations, private interpretations, protected targets or conflicting certainty. Preserve attributed claims and uncertainty. Research collaboration is not romance. Never turn one action into a permanent trait.
+${STORY_CARD_PLACEMENT_POLICY.split("\n").filter(line => !line.startsWith("For APPEND") && !line.startsWith("placement.kind:")).join("\n")}
+For Character appends use PROFILE kind | reason and exact E quotes supporting the enduring fact. New Character cards require a missing durable identity. TYPE defaults to lore for new cards. Use target aliases for appends and preserve target type.
 ${SHARED_STORY_MEMORY_POLICY}`;
 export function buildSinglePassMemoryMessages(batch: PreparedSinglePassMemoryBatch): ChatMessage[] {
-  return [{ role: "system", content: POLICY }, { role: "user", content: JSON.stringify(batch.payload) }];
+  return [{ role: "system", content: POLICY }, { role: "user", content: JSON.stringify({ ...batch.payload, outputAliases: batch.outputAliases }) }];
 }
 const object = (v: unknown): v is Record<string, unknown> => Boolean(v) && typeof v === "object" && !Array.isArray(v);
 const nonempty = (v: unknown): v is string => typeof v === "string" && Boolean(v.trim());
@@ -130,7 +185,7 @@ function unwrapResponse(text: string): string {
   let fenceRemoved = false;
   do {
     previous = value;
-    const fence = /^```(?:json)?\s*\n?([\s\S]*?)\n?```$/i.exec(value);
+    const fence = /^```(?:json|text|plaintext)?\s*\n?([\s\S]*?)\n?```$/i.exec(value);
     if (fence && !fenceRemoved) { value = fence[1].trim(); fenceRemoved = true; }
     if (value.startsWith("<think>")) {
       const end = value.indexOf("</think>");
@@ -183,8 +238,9 @@ function recoverSourceRecords(text: string): unknown[] {
   }
   return records;
 }
-export function parseSinglePassMemoryResponse(text: string, sourceIds: readonly string[], adventure?: Adventure): SinglePassMemoryBatchResult {
+export function parseSinglePassMemoryResponse(text: string, sourceIds: readonly string[], adventure?: Adventure, aliases?: PreparedSinglePassMemoryBatch["outputAliases"]): SinglePassMemoryBatchResult {
   const clean = unwrapResponse(text);
+  if (aliases && !clean.startsWith("{")) return parseSinglePassMemoryCommands(text, aliases, adventure);
   let records: unknown[];
   try {
     const parsed: unknown = JSON.parse(clean);
@@ -207,13 +263,147 @@ export function parseSinglePassMemoryResponse(text: string, sourceIds: readonly 
     return result;
   }) };
 }
+/** Translate commands locally. Existing validation remains the authority. */
+export function parseSinglePassMemoryCommands(text: string, aliases: PreparedSinglePassMemoryBatch["outputAliases"], adventure?: Adventure): SinglePassMemoryBatchResult {
+  const states = Object.entries(aliases).map(([alias, manifest]) => ({ alias, manifest, done: false, nextIndex: 0,
+    result: { sourceId: manifest.sourceId, findings: [], findingIndexes: [], rejected: [], diagnostics: [] } as SinglePassMemorySourceResult }));
+  const stateFor = (alias: string) => states.find(s => s.alias === alias);
+  type Command = { state?: typeof states[number]; index: number; kind: string; target: string; metadata: Record<string, string>;
+    evidence: Array<{ messageId: string; quote: string }>; lines: string[]; inText: boolean; errors: string[] };
+  let current: Command | undefined;
+  const diagnostic = (reason: string) => states.forEach(s => s.result.diagnostics!.push({ index: -1, reason }));
+  const reject = (c: Command, reason: string) => {
+    if (c.state) c.state.result.rejected.push({ index: c.index, reason });
+    else diagnostic(reason);
+  };
+  const finish = (c: Command) => {
+    if (!c.state) { reject(c, "Unknown source alias; no attribution inferred."); return; }
+    const { manifest, result } = c.state;
+    const content = c.lines.join("\n").trim(), meta = c.metadata;
+    const kinds = ["storyCard", "brain", "plotEssentials", "activePressure", "currentArc"] as const;
+    const kind = kinds.find(k => k.toLowerCase() === c.kind.toLowerCase());
+    const lookup = <T,>(table: Record<string, T>, alias: string): T | undefined => Object.hasOwn(table, alias) ? table[alias] : undefined;
+    const card = kind === "storyCard" ? lookup(manifest.cards, c.target) : undefined;
+    const brain = kind === "brain" ? lookup(manifest.brains, c.target) : undefined;
+    const plot = kind && !["storyCard", "brain"].includes(kind) ? lookup(manifest.plot, c.target) : undefined;
+    const isNew = kind === "storyCard" && c.target === "NEW";
+    if (!kind) c.errors.push("Unknown memory kind.");
+    if (!isNew && !card && !brain && !(plot && plot.type === kind)) c.errors.push("Invalid target alias for memory kind.");
+    if (!c.inText || !content) c.errors.push("Missing usable factual content after TEXT.");
+    if (!c.evidence.length) c.errors.push("Missing evidence.");
+    if (card?.type === "character" && !meta.PROFILE) c.errors.push("Character profile update requires PROFILE kind | enduring-change reason.");
+    if (meta.PROFILE && !/^(correction|transformation|profile)\s*\|\s*\S[\s\S]*$/i.test(meta.PROFILE)) c.errors.push("Invalid PROFILE kind or missing enduring-change reason.");
+    const field = ["thought", "currentState", "relationshipPressure", "emotionalInterpretation", "recentDevelopments", "notes"].find(f => f.toLowerCase() === meta.FIELD?.toLowerCase());
+    if (kind === "brain" && !field) c.errors.push("Invalid or missing Brain FIELD.");
+    if (c.errors.length) { reject(c, c.errors.join(" ")); return; }
+    const targetId = card?.id ?? brain?.id ?? plot?.id ?? null;
+    const base: Record<string, unknown> = { kind, targetId, content, evidenceQuotes: c.evidence };
+    if (meta.TITLE) base.title = meta.TITLE;
+    if (meta.REASON) base.reason = meta.REASON;
+    if (meta.REVIEW) base.candidateOnly = meta.REVIEW.toLowerCase() === "yes";
+    if (kind === "storyCard") {
+      base.operation = isNew ? "create" : "append";
+      base.storyCardType = card?.type ?? meta.TYPE?.toLowerCase() ?? "lore";
+      if (meta.MODE || card?.memoryMode) base.memoryMode = meta.MODE?.toLowerCase() ?? card?.memoryMode;
+      if (meta.STATUS) base.eventStatus = meta.STATUS.toLowerCase();
+      if (card?.type === "character") {
+        const separator = meta.PROFILE.indexOf("|");
+        base.identityChange = { targetId, kind: meta.PROFILE.slice(0, separator).trim().toLowerCase(),
+          reason: meta.PROFILE.slice(separator + 1).trim(), fact: content, evidenceQuotes: c.evidence };
+        base.candidateOnly = true;
+      }
+    }
+    if (kind === "brain") {
+      if (field === "thought") {
+        const slug = manifest.sourceId.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+        const key = `memory_${slug}_${c.index + 1}`;
+        const existing = adventure?.brains.find(b => b.id === targetId);
+        if (existing && (key in existing.thoughts || key in existing.archivedThoughts)) {
+          reject(c, "Generated Brain thought key already exists; existing thoughts must not be overwritten."); return;
+        }
+        base.brainPatch = { thoughts: { [key]: `${manifest.sourceTurn} \u2192 ${content}` } };
+      } else base.brainPatch = { [field!]: content };
+
+    }
+    const diagnostics: string[] = [];
+    const finding = normalizeSinglePassFinding(base, manifest.sourceId, adventure, diagnostics);
+    result.diagnostics!.push(...diagnostics.map(reason => ({ index: c.index, reason })));
+    if (!finding) reject(c, singlePassFindingSchemaError(base) ?? "Invalid finding metadata.");
+    else {
+      if (kind === "brain") delete finding.content;
+      result.findings.push(finding); result.findingIndexes!.push(c.index);
+    }
+  };
+  const clean = unwrapResponse(text);
+  const blocked = clean.startsWith("<think>") || clean.startsWith("```");
+  if (blocked) diagnostic("Incomplete response wrapper; no commands parsed.");
+  for (const raw of blocked ? [] : clean.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (current?.inText) {
+      if (/^END$/i.test(line)) { finish(current); current = undefined; continue; }
+      current.lines.push(raw); continue;
+    }
+    const mem = /^MEM\s+(\S+)\s+(\S+)\s+(\S+)$/i.exec(line);
+    if (mem) {
+      if (current) reject(current, "Incomplete memory command: missing TEXT or END.");
+      const state = stateFor(mem[1]);
+      current = { state, index: state ? state.nextIndex++ : -1, kind: mem[2], target: mem[3], metadata: {}, evidence: [], lines: [], inText: false,
+        errors: state?.done ? ["Command after DONE."] : [] };
+      continue;
+    }
+    const malformedMem = /^MEM(?:\s+(\S+))?(?:\s.*)?$/i.exec(line);
+    if (malformedMem) {
+      if (current) reject(current, "Incomplete memory command: missing END.");
+      const state = malformedMem[1] ? stateFor(malformedMem[1]) : undefined;
+      current = { state, index: state ? state.nextIndex++ : -1, kind: "", target: "", metadata: {}, evidence: [], lines: [], inText: false, errors: ["Invalid MEM syntax."] };
+      continue;
+    }
+    const done = /^DONE\s+(\S+)$/i.exec(line);
+    if (done) {
+      if (current) { reject(current, "Incomplete memory command: missing END."); current = undefined; }
+      const state = stateFor(done[1]);
+      if (!state) diagnostic("Unknown source alias in DONE; no attribution inferred.");
+      else if (state.done) { state.result.failureReason = "Duplicate DONE marker. Explicit Retry required."; state.result.diagnostics!.push({ index: -1, reason: "Duplicate DONE marker." }); }
+      else state.done = true;
+      continue;
+    }
+    if (!current) { if (line) diagnostic("Rejected text outside a memory command."); continue; }
+    if (/^TEXT$/i.test(line)) { current.inText = true; continue; }
+    if (/^END$/i.test(line)) { finish(current); current = undefined; continue; }
+    const evidence = /^E\s+(\S+)\s*\|([\s\S]*)$/i.exec(line);
+    if (evidence) {
+      const table = current.state?.manifest.evidence;
+      const entry = table && Object.hasOwn(table, evidence[1]) ? table[evidence[1]] : undefined, quote = evidence[2].trim();
+      if (!entry || !quote) current.errors.push("Invalid evidence alias or empty quote.");
+      else current.evidence.push({ messageId: entry.id, quote });
+      continue;
+    }
+    const optional = /^(TITLE|TYPE|MODE|STATUS|REVIEW|REASON|FIELD|PROFILE)\s+(.+)$/i.exec(line);
+    if (optional) {
+      const key = optional[1].toUpperCase();
+      if (key in current.metadata) current.errors.push(`Duplicate ${key} field.`);
+      current.metadata[key] = optional[2].trim();
+      const choices: Record<string, string[]> = { TYPE: ["lore", "character", "location", "custom"], MODE: ["static", "living", "historical"], STATUS: ["completed", "ongoing", "unresolved"], REVIEW: ["yes", "no"] };
+      if (choices[key] && !choices[key].includes(optional[2].trim().toLowerCase())) current.errors.push(`Invalid ${key} value.`);
+      continue;
+    }
+    if (line) current.errors.push("Invalid command syntax before TEXT.");
+  }
+  if (current) reject(current, "Incomplete memory command: missing END.");
+  for (const state of states) {
+    if (!state.done) state.result.failureReason = "Missing DONE; source evaluation unfinished. Explicit Retry required.";
+    else if (state.result.rejected.length) state.result.failureReason = "Invalid commands rejected; valid sibling findings retained. Explicit Retry required.";
+  }
+  return { sources: states.map(s => s.result) };
+}
+
 export async function runSinglePassMemoryBatch(a: Adventure, provider: ProviderConfig, batch: PreparedSinglePassMemoryBatch): Promise<SinglePassMemoryBatchResult> {
   const config = memoryBatchProvider(provider, batch.checkpoints.map(s => s.sourceId));
   // Bounded extraction output, independent of narration settings. Cancellation guard stays on this exact config.
   config.memoryRequest = { ...config.memoryRequest!, batchId: batch.batchId, attempt: Math.max(1, ...batch.checkpoints.map(c => a.messages.find(m => m.id === c.sourceId)?.memoryEvaluation?.attempts ?? 1)) };
   config.maxOutputTokens = Math.min(8192, Math.max(provider.maxOutputTokens || 0, 1024 + batch.checkpoints.length * 2048));
   const response = await sendMemoryCompletion(a, config, buildSinglePassMemoryMessages(batch), "singlePass");
-  const result = parseSinglePassMemoryResponse(response.content, batch.checkpoints.map(s => s.sourceId), a);
+  const result = parseSinglePassMemoryResponse(response.content, batch.checkpoints.map(s => s.sourceId), a, batch.outputAliases);
   return { ...result, usage: response.usage };
 }
 

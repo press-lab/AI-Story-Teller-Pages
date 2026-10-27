@@ -1,10 +1,10 @@
 import { it, expect } from "vitest";
 import { singlePassFixture, groundedFinding } from "../test/singlePassMemory";
-import { prepareSinglePassMemoryBatch } from "./singlePassMemory";
+import { prepareSinglePassMemoryBatch, parseSinglePassMemoryCommands } from "./singlePassMemory";
 import { validateSinglePassFinding, validateSinglePassSource } from "./singlePassMemoryValidation";
 import { partnershipSourceId } from "./fixtures/syntheticMemoryAdventure";
 import { adventureReducer as reduce } from "../state/adventureReducer";
-import { makeStoryCard } from "../state/defaults";
+import { makeStoryCard, makeBrain, makeComponent } from "../state/defaults";
 
 it("rejects forged, future and nonverbatim evidence without changing siblings", async () => {
   const { a, ids } = singlePassFixture();
@@ -144,4 +144,115 @@ it("rejects existing Brain thought overwrites and empty patches locally", async 
   const f = { ...groundedFinding(), kind: "brain" as const, targetId: brain.id, brainPatch: { thoughts: { workshop: "2: I have already agreed." } } };
   expect(validateSinglePassFinding(a, ids[0], batch.checkpoints[0].checkpoint, f)).toMatch(/overwritten|eligible/);
   for (const brainPatch of [{}, { thoughts: {} }, { notes: " " }]) expect(normalizeSinglePassFinding({ ...f, brainPatch }, ids[0], a)).toBeUndefined();
+});
+
+
+async function commandValidationFixture(evidence: string) {
+  const { a, ids } = singlePassFixture(1);
+  a.messages.find(m => m.id === ids[0])!.content = evidence;
+  a.memoryAutoApprove.storyCard = true; a.memoryAutoApprove.brainUpdate = true; a.memoryAutoApprove.plotPressureUpdate = true;
+  a.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
+  a.brains = [makeBrain({ id: "casey-brain", characterName: "Casey Vale", active: true, triggers: ["Casey"], thoughts: {} })];
+  a.components = [makeComponent({ id: "pressure", title: "Pressure", type: "activePressure", active: true, autoUpdate: true, content: "No immediate pressure." })];
+  const batch = await prepareSinglePassMemoryBatch(a, ids);
+  const manifest = batch.outputAliases.S1;
+  const e = Object.entries(manifest.evidence).find(([, v]) => v.id === ids[0])![0];
+  const parse = (kind: string, target: string, content: string, metadata = "") => parseSinglePassMemoryCommands(
+    `MEM S1 ${kind} ${target}\nTITLE Development\nREASON Evidence records a change.\nREVIEW no\nMODE historical\nSTATUS completed\n${metadata}\nE ${e} | ${evidence}\nTEXT\n${content}\nEND\nDONE S1`, batch.outputAliases, a).sources[0];
+  const commit = (result: ReturnType<typeof parse>, state = a) => {
+    state = reduce(state, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
+    return reduce(state, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId, sources: [{ checkpoint: batch.checkpoints[0].checkpoint, result }] });
+  };
+  return { a, ids, batch, manifest, parse, commit };
+}
+it.each([
+  ["Casey attempted a kiss but withdrew before contact.", "Casey attempted a kiss; no kiss occurred."],
+  ["Casey accepted tomorrow's invitation; the meeting has not occurred.", "Casey accepted the invitation to meet tomorrow."],
+])("command-derived uncertainty preserves the evidenced outcome: %s", async (evidence, content) => {
+  const f = await commandValidationFixture(evidence);
+  const r = f.parse("storyCard", "NEW", content);
+  expect(validateSinglePassFinding(f.a, f.ids[0], f.batch.checkpoints[0].checkpoint, r.findings[0])).toBeUndefined();
+  const state = f.commit(r);
+  expect(state.activeState.memoryProposals[0]).toMatchObject({ content, storyCardType: "lore", requiresReview: true, status: "pending" });
+});
+it("command-derived private interpretation stays in an existing Brain", async () => {
+  const f = await commandValidationFixture("Casey privately interpreted the offer as trust.");
+  const b = Object.keys(f.manifest.brains)[0]; expect(b).toBeDefined();
+  const r = f.parse("brain", b, "I believe the offer means trust.", "FIELD thought");
+  const v = validateSinglePassSource(f.a, r, f.batch.checkpoints[0].checkpoint);
+  expect(v.rejected).toEqual([]); expect(v.proposals[0].proposal).toMatchObject({ proposedType: "brainUpdate", requiresReview: true });
+  expect(f.commit(r).storyCards).toEqual(f.a.storyCards);
+});
+it("command-derived absent NPC knowledge cannot auto-apply", async () => {
+  const f = await commandValidationFixture("Casey was absent and did not witness Avery's private agreement.");
+  const r = f.parse("brain", Object.keys(f.manifest.brains)[0], "I learned Avery's private agreement.", "FIELD thought");
+  const state = f.commit(r);
+  expect(state.brains[0].thoughts).toEqual({});
+  expect(state.activeState.memoryProposals.every(p => p.status === "pending")).toBe(true);
+});
+it("commands route a research agreement to Lore and reject scene-only Character appends", async () => {
+  const f = await commandValidationFixture("Casey Vale and Avery agreed to share research results.");
+  const c = Object.entries(f.manifest.cards).find(([, v]) => v.type === "character")![0];
+  const invalid = f.parse("storyCard", c, "Casey agreed to share research results.");
+  expect(invalid.rejected[0].reason).toContain("requires PROFILE");
+  const r = f.parse("storyCard", "NEW", "Casey and Avery agreed to share research results.");
+  const v = validateSinglePassSource(f.a, r, f.batch.checkpoints[0].checkpoint);
+  expect(v.proposals[0].proposal.storyCardType).toBe("lore");
+});
+it("commands construct the evidenced enduring profile exception and force review", async () => {
+  const content = "Casey permanently gained the ability to see magical wards.";
+  const f = await commandValidationFixture(content);
+  const [alias, target] = Object.entries(f.manifest.cards).find(([, v]) => v.id === f.a.storyCards[0].id)!;
+  const r = f.parse("storyCard", alias, content, "PROFILE transformation | An explicit permanent capability changes the enduring profile.");
+  expect(r.findings[0].identityChange).toEqual({ targetId: target.id, kind: "transformation", fact: content,
+    reason: "An explicit permanent capability changes the enduring profile.", evidenceQuotes: [{ messageId: f.ids[0], quote: content }] });
+  expect(validateSinglePassFinding(f.a, f.ids[0], f.batch.checkpoints[0].checkpoint, r.findings[0])).toBeUndefined();
+  expect(f.commit(r).activeState.memoryProposals[0]).toMatchObject({ requiresReview: true, status: "pending", targetId: target.id });
+});
+it("command-derived duplicate facts are suppressed by existing validation", async () => {
+  const content = "Casey Vale and Avery agreed to share research results.";
+  const f = await commandValidationFixture(content);
+  const r = f.parse("storyCard", "NEW", content);
+  const first = f.commit(r);
+  const v = validateSinglePassSource(first, r, f.batch.checkpoints[0].checkpoint);
+  expect(v.proposals).toEqual([]); expect(v.suppressed).toEqual([0]);
+});
+it("command-derived protected Story Card appends stay in the Inbox", async () => {
+  const f = await commandValidationFixture("Casey Vale and Avery agreed to share research results.");
+  // Prepare again after adding the protected destination so the checkpoint includes it.
+  f.a.storyCards.push(makeStoryCard({ id: "protected-lore", title: "Research results", type: "lore", keys: ["research"], content: "Research is underway.", protected: true }));
+  const batch = await prepareSinglePassMemoryBatch(f.a, f.ids);
+  const alias = Object.entries(batch.outputAliases.S1.cards).find(([, v]) => v.id === "protected-lore")![0];
+  const e = Object.entries(batch.outputAliases.S1.evidence).find(([, v]) => v.id === f.ids[0])![0];
+  const result = parseSinglePassMemoryCommands(`MEM S1 storyCard ${alias}\nE ${e} | Casey Vale and Avery agreed to share research results.\nTEXT\nCasey and Avery agreed to share research results.\nEND\nDONE S1`, batch.outputAliases, f.a).sources[0];
+  let state = reduce(f.a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
+  state = reduce(state, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId, sources: [{ result, checkpoint: batch.checkpoints[0].checkpoint }] });
+  expect(state.activeState.memoryProposals[0]).toMatchObject({ status: "pending", requiresReview: true });
+  expect(state.storyCards.find(c => c.id === "protected-lore")!.content).toBe("Research is underway.");
+});
+it.each(["source", "destination"])("command-derived findings fail stale %s checkpoint checks", async edit => {
+  const f = await commandValidationFixture("Casey Vale and Avery agreed to share research results.");
+  const r = f.parse("storyCard", "NEW", "Casey and Avery agreed to share research results.");
+  const state = reduce(f.a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: f.batch.checkpoints });
+  if (edit === "source") state.messages.find(m => m.id === f.ids[0])!.content = "Author correction.";
+  else state.storyCards[0].content = "Author correction.";
+  const committed = reduce(state, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: f.batch.batchId, sources: [{ result: r, checkpoint: f.batch.checkpoints[0].checkpoint }] });
+  expect(committed.activeState.memoryProposals).toEqual([]);
+  expect(committed.messages.find(m => m.id === f.ids[0])!.memoryEvaluation?.status).toBe("failed");
+});
+it("rejects a command's colliding thought key and retains validator overwrite protection", async () => {
+  const f = await commandValidationFixture("Casey privately considered the research offer.");
+  const key = `memory_${f.ids[0].replace(/[^a-z0-9]+/g, "_")}_1`;
+  f.a.brains[0].thoughts[key] = "Earlier thought.";
+  const r = f.parse("brain", Object.keys(f.manifest.brains)[0], "I suspect the offer is incomplete.", "FIELD thought");
+  expect(r.rejected[0].reason).toContain("must not be overwritten");
+  const finding = { ...groundedFinding(), kind: "brain" as const, targetId: f.a.brains[0].id, evidenceQuotes: [{ messageId: f.ids[0], quote: f.a.messages.at(-1)!.content }], brainPatch: { thoughts: { [key]: "A changed thought." } } };
+  expect(validateSinglePassFinding(f.a, f.ids[0], f.batch.checkpoints[0].checkpoint, finding)).toContain("must not be overwritten");
+});
+it("command-derived resolved history does not auto-apply as Active Pressure", async () => {
+  const f = await commandValidationFixture("Yesterday Casey resolved the workshop debt.");
+  const r = f.parse("activePressure", Object.keys(f.manifest.plot)[0], "Yesterday's resolved workshop debt threatens Casey.");
+  const state = f.commit(r);
+  expect(state.components[0].content).toBe("No immediate pressure.");
+  expect(state.activeState.memoryProposals.every(p => p.status === "pending")).toBe(true);
 });

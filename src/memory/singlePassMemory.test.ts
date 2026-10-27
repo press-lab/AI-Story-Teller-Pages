@@ -3,7 +3,7 @@ import { syntheticMemoryAdventure, partnershipSourceId, confirmationQuote } from
 import { defaultModelConfig, normalizeAdventure } from "../state/defaults";
 import { adventureReducer as reduce } from "../state/adventureReducer";
 import { singlePassCycleSources } from "./memoryCycleState";
-import { prepareSinglePassMemoryBatch, runSinglePassMemoryBatch, parseSinglePassMemoryResponse, normalizeSinglePassFinding } from "./singlePassMemory";
+import { prepareSinglePassMemoryBatch, runSinglePassMemoryBatch, parseSinglePassMemoryResponse, normalizeSinglePassFinding, parseSinglePassMemoryCommands, buildSinglePassMemoryMessages } from "./singlePassMemory";
 import * as transport from "../providers/memoryCompletion";
 import type { SinglePassMemoryFinding } from "../types/adventure";
 
@@ -121,4 +121,153 @@ it("does not strip unmatched thought tags to recover a source from private reaso
 });
 it("does not identify a later array from an earlier sources string", () => {
   expect(parseSinglePassMemoryResponse('{"sources":"invalid","other":[{"sourceId":"a","findings":[]}', ["a"]).sources[0].failureReason).toBeTruthy();
+});
+
+
+const commandAliases = {
+  S1: { sourceId: "Narrator-One", sourceTurn: 12, evidence: { E1: { id: "player", reference: 0 }, E2: { id: "Narrator-One", reference: 1 } },
+    cards: { C1: { id: "lore", type: "lore", memoryMode: "historical" as const, reference: 2 }, C2: { id: "person", type: "character", memoryMode: "static" as const, reference: 3 } },
+    brains: { B1: { id: "brain", type: "brain" as const, reference: 4 } },
+    plot: { P1: { id: "premise", type: "plotEssentials", reference: 5 }, P2: { id: "pressure", type: "activePressure", reference: 6 }, P3: { id: "arc", type: "currentArc", reference: 7 } } },
+  S2: { sourceId: "two", sourceTurn: 13, evidence: { E2: { id: "two", reference: 8 } }, cards: {}, brains: {}, plot: {} },
+  S3: { sourceId: "three", sourceTurn: 14, evidence: { E2: { id: "three", reference: 9 } }, cards: {}, brains: {}, plot: {} },
+};
+const memoryCommand = (header = "S1 storyCard NEW", meta = "", content = "The spell held.", evidence = 'E E2 | "The spell held."') =>
+  `MEM ${header}\n${meta ? meta + "\n" : ""}${evidence}\nTEXT\n${content}\nEND`;
+const commands = (text: string) => parseSinglePassMemoryCommands(text, commandAliases);
+const complete = (text: string) => commands(text + "\nDONE S1\nDONE S2\nDONE S3");
+describe("simple memory command protocol", () => {
+  it("constructs the exact normalized new Lore finding", () => {
+    expect(complete(memoryCommand()).sources[0].findings).toEqual([{
+      kind: "storyCard", targetId: null, title: "The spell", content: "The spell held.", reason: "Extracted from narrator source Narrator-One.",
+      evidenceQuotes: [{ messageId: "Narrator-One", quote: '\"The spell held.\"' }], candidateOnly: true,
+      operation: "create", storyCardType: "lore", memoryMode: "static", eventStatus: "unresolved", participants: [], suggestedTriggers: [],
+    }]);
+  });
+  it("appends using the existing type and mode", () => {
+    expect(complete(memoryCommand("S1 storyCard C1")).sources[0].findings[0]).toMatchObject({ targetId: "lore", operation: "append", storyCardType: "lore", memoryMode: "historical" });
+  });
+  it.each(["thought", "currentState", "relationshipPressure", "emotionalInterpretation", "recentDevelopments", "notes"])("constructs Brain FIELD %s locally", field => {
+    const result = complete(memoryCommand("S1 brain B1", `TITLE Suspicion\nFIELD ${field}`, "I suspect a secret."));
+    expect(result.sources[0].findings).toEqual([{ kind: "brain", targetId: "brain", title: "Suspicion", reason: "Extracted from narrator source Narrator-One.", candidateOnly: true,
+      evidenceQuotes: [{ messageId: "Narrator-One", quote: '\"The spell held.\"' }], brainPatch: field === "thought" ? { thoughts: { memory_narrator_one_1: "12 \u2192 I suspect a secret." } } : { [field]: "I suspect a secret." } }]);
+  });
+  it.each([["plotEssentials", "P1", "premise"], ["activePressure", "P2", "pressure"], ["currentArc", "P3", "arc"]])("constructs %s content", (kind, target, id) => {
+    expect(complete(memoryCommand(`S1 ${kind} ${target}`)).sources[0].findings[0]).toEqual({ kind, targetId: id, title: "The spell", content: "The spell held.", reason: "Extracted from narrator source Narrator-One.", candidateOnly: true, evidenceQuotes: [{ messageId: "Narrator-One", quote: '\"The spell held.\"' }] });
+  });
+  it("retains two independent memories and source-scoped evidence", () => {
+    const r = complete([memoryCommand(), memoryCommand("S1 storyCard NEW", "", "A separate fact."), memoryCommand("S2 storyCard NEW"), memoryCommand("S3 storyCard NEW")].join("\n"));
+    expect(r.sources.map(s => s.findings.length)).toEqual([2, 1, 1]);
+    expect(r.sources[0].findingIndexes).toEqual([0, 1]);
+    expect(r.sources.map(s => s.findings[0].evidenceQuotes[0].messageId)).toEqual(["Narrator-One", "two", "three"]);
+    expect(r.sources.every(s => !s.failureReason)).toBe(true);
+  });
+  it("records valid empty DONE evaluations", () => {
+    expect(commands("DONE S1\nDONE S2\nDONE S3").sources).toEqual(["Narrator-One", "two", "three"].map(sourceId => ({ sourceId, findings: [], findingIndexes: [], rejected: [], diagnostics: [] })));
+  });
+  it.each(["TITLE", "MODE", "STATUS"])("recovers omitted %s conservatively", field => {
+    const metadata = ["TITLE Research", "MODE historical", "STATUS completed"].filter(l => !l.startsWith(field)).join("\n");
+    const f = complete(memoryCommand("S1 storyCard NEW", metadata)).sources[0].findings[0];
+    expect(f).toBeDefined(); expect(f.candidateOnly).toBe(true);
+    if (field === "TITLE") expect(f.title).toBe("The spell");
+    if (field === "MODE") expect(f.memoryMode).toBe("static");
+    if (field === "STATUS") expect(f.eventStatus).toBe("unresolved");
+  });
+  it.each([
+    [memoryCommand("S1 storyCard NEW", "", "Fact.", ""), "Missing evidence"],
+    [memoryCommand("S1 storyCard NEW", "", "Fact.", "E E99 | fact"), "Invalid evidence alias"],
+    [memoryCommand("S1 storyCard C99"), "Invalid target alias"],
+    [memoryCommand("S1 storyCard toString"), "Invalid target alias"],
+    [memoryCommand("S1 wrong NEW"), "Unknown memory kind"],
+    [memoryCommand("S1 brain B1", "FIELD delete"), "Brain FIELD"],
+    [memoryCommand("S1 storyCard NEW", "", ""), "Missing usable factual content"],
+    [memoryCommand("S1 storyCard NEW", "INVALID data"), "Invalid command syntax"],
+    [memoryCommand("S1 storyCard C2"), "requires PROFILE"],
+  ])("isolates invalid command: %s", (invalid, reason) => {
+    const r = complete(memoryCommand() + "\n" + invalid + "\n" + memoryCommand()).sources[0];
+    expect(r.findings).toHaveLength(2); expect(r.findingIndexes).toEqual([0, 2]); expect(r.rejected).toEqual([{ index: 1, reason: expect.stringContaining(reason) }]); expect(r.failureReason).toBeTruthy();
+  });
+  it("rejects unknown sources without guessing attribution", () => {
+    const r = complete(memoryCommand("S99 storyCard NEW"));
+    expect(r.sources.every(s => !s.findings.length && !s.failureReason)).toBe(true);
+    expect(r.sources[0].diagnostics).toContainEqual({ index: -1, reason: expect.stringContaining("Unknown source") });
+  });
+  it("preserves completed siblings before truncation and requires DONE", () => {
+    const r = commands(memoryCommand() + "\nMEM S1 storyCard NEW\nE E2 | fact\nTEXT\ncut").sources[0];
+    expect(r.findings).toHaveLength(1); expect(r.findingIndexes).toEqual([0]); expect(r.rejected).toEqual([{ index: 1, reason: expect.stringContaining("missing END") }]); expect(r.failureReason).toContain("Missing DONE");
+    expect(commands(memoryCommand()).sources[0].failureReason).toContain("Missing DONE");
+  });
+  it("rejects duplicate DONE and commands after DONE", () => {
+    expect(complete("DONE S1").sources[0].failureReason).toContain("Duplicate DONE");
+    const r = commands("DONE S1\n" + memoryCommand()).sources[0];
+    expect(r.findings).toEqual([]); expect(r.rejected[0]).toEqual({ index: 0, reason: "Command after DONE." });
+  });
+  it("preserves multiline content, pipes, quotes, braces, colons and evidence after the first pipe", () => {
+    const content = 'Fact: {"text": "a | b"}\n  Second line.\nMEM is literal prose here.';
+    const f = complete(memoryCommand("S1 storyCard NEW", "", content, 'E E2 |  "a | b": {}  \nE E1 | player words')).sources[0].findings[0];
+    expect(f.content).toBe(content); expect(f.evidenceQuotes).toEqual([{ messageId: "Narrator-One", quote: '\"a | b\": {}' }, { messageId: "player", quote: "player words" }]);
+  });
+  it.each([(s: string) => `\`\`\`\n${s}\n\`\`\``, (s: string) => `\`\`\`text\n${s}\n\`\`\``, (s: string) => `<think>reason</think>\n${s}`])("accepts complete wrappers", wrap => {
+    expect(commands(wrap(memoryCommand() + "\nDONE S1")).sources[0].findings).toHaveLength(1);
+  });
+  it("does not parse unfinished thinking", () => {
+    const r = commands("<think>\n" + memoryCommand() + "\nDONE S1").sources[0];
+    expect(r.findings).toEqual([]); expect(r.failureReason).toContain("Missing DONE");
+  });
+  it("accepts case-insensitive keywords with exact aliases", () => {
+    expect(complete(memoryCommand().replace("MEM", "mem").replace("TEXT", "text").replace("END", "end")).sources[0].findings).toHaveLength(1);
+    expect(complete(memoryCommand("s1 storyCard NEW")).sources[0].findings).toHaveLength(0);
+  });
+  it("dispatches legacy root sources JSON and never extracts JSON from command content", () => {
+    const legacy = JSON.stringify({ sources: [{ sourceId: "Narrator-One", findings: [groundedFinding()] }] });
+    expect(parseSinglePassMemoryResponse(legacy, ["Narrator-One"], undefined, commandAliases).sources[0].findings).toEqual([groundedFinding()]);
+    const text = memoryCommand("S1 storyCard NEW", "", legacy) + "\nDONE S1";
+    expect(parseSinglePassMemoryResponse(text, ["Narrator-One"], undefined, commandAliases).sources[0].findings[0].content).toBe(legacy);
+  });
+  it("pools aliases without text copies or persisted aliases", async () => {
+    const { a, ids } = singlePassFixture(); const before = JSON.stringify(a);
+    const batch = await prepareSinglePassMemoryBatch(a, ids);
+    expect(JSON.stringify(a)).toBe(before);
+    expect(Object.values(batch.outputAliases).map(s => s.sourceId)).toEqual(ids);
+    const payload = JSON.parse(buildSinglePassMemoryMessages(batch)[1].content);
+    expect(payload.outputAliases).toEqual(batch.outputAliases);
+    for (const [i, source] of Object.values(batch.outputAliases).entries()) {
+      expect(Object.values(source.evidence).every(e => ids.slice(i + 1).every(id => id !== e.id))).toBe(true);
+      for (const e of Object.values(source.evidence)) expect(payload.references[e.reference].id).toBe(e.id);
+    }
+    const policy = buildSinglePassMemoryMessages(batch)[0].content;
+    expect(policy).toContain("Do not write JSON."); expect(policy).not.toContain("return identityChange:");
+  });
+});
+
+it("parsing and validation make zero provider requests", async () => {
+  const { validateSinglePassSource } = await import("./singlePassMemoryValidation");
+  const { a, ids } = singlePassFixture(1); const batch = await prepareSinglePassMemoryBatch(a, ids);
+  const send = vi.spyOn(transport, "sendMemoryCompletion");
+  const e = Object.entries(batch.outputAliases.S1.evidence).find(([, v]) => v.id === ids[0])![0];
+  const result = parseSinglePassMemoryCommands(memoryCommand("S1 storyCard NEW", "", confirmationQuote, `E ${e} | ${confirmationQuote}`) + "\nDONE S1", batch.outputAliases, a);
+  expect(validateSinglePassSource(a, result.sources[0], batch.checkpoints[0].checkpoint).proposals).toHaveLength(1);
+  expect(send).not.toHaveBeenCalled();
+});
+it("rejects malformed MEM headers at an identifiable source/index", () => {
+  const r = complete(memoryCommand() + "\nMEM S1 storyCard\nTEXT\nFact.\nEND\n" + memoryCommand()).sources[0];
+  expect(r.findingIndexes).toEqual([0, 2]); expect(r.rejected[0]).toMatchObject({ index: 1, reason: expect.stringContaining("Invalid MEM syntax") });
+});
+it("generates stable thought ordinals and safely recovers an omitted Brain title", () => {
+  const input = memoryCommand() + "\n" + memoryCommand("S1 brain B1", "FIELD thought", "I suspect a secret.");
+  const first = complete(input).sources[0].findings[1];
+  expect(first.brainPatch).toEqual({ thoughts: { memory_narrator_one_2: "12 \u2192 I suspect a secret." } });
+  expect(complete(input).sources[0].findings[1]).toEqual(first);
+  expect(first.title).toBe("I suspect a"); expect(first.candidateOnly).toBe(true);
+});
+it.each(["character", "location", "custom"])("creates exceptional new %s cards only with explicit TYPE", type => {
+  expect(complete(memoryCommand("S1 storyCard NEW", `TYPE ${type}`)).sources[0].findings[0].storyCardType).toBe(type);
+  expect(complete(memoryCommand("S1 storyCard NEW", "TITLE Draconia")).sources[0].findings[0].storyCardType).toBe("lore");
+});
+it("does not honor REVIEW no when metadata needs recovery", () => {
+  expect(complete(memoryCommand("S1 storyCard NEW", "REVIEW no")).sources[0].findings[0].candidateOnly).toBe(true);
+});
+it("does not resolve cross-kind Plot aliases or recover malformed PROFILE", () => {
+  expect(complete(memoryCommand("S1 activePressure P1")).sources[0].rejected[0].reason).toContain("Invalid target alias");
+  expect(complete(memoryCommand("S1 storyCard C2", "PROFILE transformation")).sources[0].rejected[0].reason).toContain("Invalid PROFILE");
 });
