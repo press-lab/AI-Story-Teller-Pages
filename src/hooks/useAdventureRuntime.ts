@@ -271,7 +271,21 @@ export function useAdventureRuntime(
     setAdventure((current) => current ? adventureReducer(current, { type: "QUEUE_PENDING_UPDATE", update }) : current);
   }
 
-  function mergeQueuedUpdates(adventureState: Adventure): Adventure {
+  function publishHistorySnapshot(snapshot: Adventure): Adventure {
+    let committed = snapshot;
+    // Include archive commits queued since the provider snapshot was captured,
+    // even if React has not run adventureRef's effect yet.
+    setAdventure(current => {
+      if (current?.id !== snapshot.id) return current;
+      committed = adventureReducer(snapshot, { type: "MERGE_MEMORY_HISTORY_PROGRESS", baseline: snapshot, latest: current });
+      return committed;
+    });
+    return committed;
+  }
+
+  function mergeQueuedUpdates(adventureState: Adventure, baseline = adventureState): Adventure {
+    const latest = adventureRef.current;
+    if (latest) adventureState = adventureReducer(adventureState, { type: "MERGE_MEMORY_HISTORY_PROGRESS", baseline, latest });
     adventureState = reduceActions(adventureState, apiActionsRef.current);
     apiActionsRef.current = [];
     if (queuedUpdatesRef.current.length === 0) return adventureState;
@@ -706,7 +720,7 @@ export function useAdventureRuntime(
         providerConfig: mergeProviderConfig(base, providerSettings),
         sendChatCompletion: async (messages, snapshot, context) => {
           snapshotWithUserMsg = snapshot;
-          setAdventure(snapshot);
+          publishHistorySnapshot(snapshot);
           setContextResult(context);
           const storyConfig = applyResponseLengthHint(
             mergeProviderConfig(snapshot, providerSettings),
@@ -725,8 +739,8 @@ export function useAdventureRuntime(
         },
       });
 
-      let next = mergeQueuedUpdates(result.adventure);
-      setAdventure(next);
+      let next = mergeQueuedUpdates(result.adventure, base);
+      next = publishHistorySnapshot(next);
       setContextResult(result.postTurnContext);
       await saveAdventure(next);
       setSaveStatus("saved");
@@ -751,8 +765,7 @@ export function useAdventureRuntime(
         wasHiddenRef.current = false;
         setError(errMsg);
       }
-      const errorState = mergeQueuedUpdates(snapshotWithUserMsg ?? base);
-      setAdventure(errorState);
+      const errorState = publishHistorySnapshot(mergeQueuedUpdates(snapshotWithUserMsg ?? base));
       await saveAdventure(errorState);
       return snapshotWithUserMsg !== undefined;
     } finally {
@@ -787,7 +800,7 @@ export function useAdventureRuntime(
         providerCue: "[continue]",
         providerConfig: mergeProviderConfig(base, providerSettings),
         sendChatCompletion: async (messages, snapshot, context) => {
-          setAdventure(snapshot);
+          publishHistorySnapshot(snapshot);
           setContextResult(context);
           const continueConfig = applyResponseLengthHint(
             mergeProviderConfig(snapshot, providerSettings),
@@ -803,8 +816,8 @@ export function useAdventureRuntime(
         },
       });
       let next = result.adventure;
-      next = mergeQueuedUpdates(next);
-      setAdventure(next);
+      next = mergeQueuedUpdates(next, base);
+      next = publishHistorySnapshot(next);
       setContextResult(result.postTurnContext);
       await saveAdventure(next);
       setSaveStatus("saved");
@@ -813,8 +826,7 @@ export function useAdventureRuntime(
       void startPostTurnWork(next);
     } catch (providerError) {
       setError(providerError instanceof Error ? providerError.message : "Continue failed.");
-      const failed = mergeQueuedUpdates(adventure);
-      setAdventure(failed);
+      const failed = publishHistorySnapshot(mergeQueuedUpdates(adventure));
       await saveAdventure(failed);
     } finally {
       setLoading(false);
@@ -841,6 +853,7 @@ export function useAdventureRuntime(
     isNarratingRef.current = true;
     let next = ready;
     next = adventureReducer(next, { type: "REMOVE_LAST_ASSISTANT_MESSAGE" });
+    const historyBaseline = next;
     const lastUser = [...next.messages].reverse().find((m) => m.role === "user")?.content ?? "Continue.";
     const context = buildContext(next, { currentInput: lastUser, latestModelOutput: latestAssistantOutput(next) });
     setContextResult(context);
@@ -867,8 +880,8 @@ export function useAdventureRuntime(
         advanceArcPacing: false,
       });
       next = applied.adventure;
-      next = mergeQueuedUpdates(next);
-      setAdventure(next);
+      next = mergeQueuedUpdates(next, historyBaseline);
+      next = publishHistorySnapshot(next);
       setContextResult(buildContext(next, { latestModelOutput: applied.responseContent }));
       await saveAdventure(next);
       setSaveStatus("saved");
@@ -877,8 +890,7 @@ export function useAdventureRuntime(
       void startPostTurnWork(next, false);
     } catch (providerError) {
       setError(providerError instanceof Error ? providerError.message : "Regeneration failed.");
-      const failed = mergeQueuedUpdates(adventure);
-      setAdventure(failed);
+      const failed = publishHistorySnapshot(mergeQueuedUpdates(adventure));
       await saveAdventure(failed);
     } finally {
       setLoading(false);

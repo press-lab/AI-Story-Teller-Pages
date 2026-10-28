@@ -86,11 +86,33 @@ function transaction<T>(
   );
 }
 
-export async function saveAdventure(adventure: Adventure): Promise<void> {
-  await transaction("readwrite", (store, tx) => {
-    tx.objectStore(SUMMARY_STORE_NAME).put(adventureSummary(adventure));
-    return store.put(sanitizeAdventureForPersistence(adventure));
+const saveQueues = new Map<string, Promise<void>>();
+export function saveAdventure(adventure: Adventure): Promise<void> {
+  const prior = saveQueues.get(adventure.id) ?? Promise.resolve();
+  const pending = prior.catch(() => undefined).then(async () => {
+    await transaction("readwrite", (store, tx) => {
+      const read = store.get(adventure.id);
+      read.onsuccess = () => {
+        try {
+          const previous = read.result as Adventure | undefined;
+          const previousHistory = previous?.activeState.compressedMemoryHistory;
+          const incomingHistory = adventure.activeState.compressedMemoryHistory;
+          // Blocks are immutable and append-only. A concurrently queued snapshot
+          // must never erase evidence that another save has already committed.
+          const history = previousHistory?.version === 1 && (!incomingHistory || incomingHistory.version === 1)
+            ? { version: 1 as const, blocks: { ...previousHistory.blocks, ...incomingHistory?.blocks } } : incomingHistory;
+          const safe = sanitizeAdventureForPersistence(history ? { ...adventure,
+            activeState: { ...adventure.activeState, compressedMemoryHistory: history } } : adventure);
+          tx.objectStore(SUMMARY_STORE_NAME).put(adventureSummary(safe));
+          store.put(safe);
+        } catch { tx.abort(); }
+      };
+      return read;
+    });
   });
+  saveQueues.set(adventure.id, pending);
+  void pending.finally(() => { if (saveQueues.get(adventure.id) === pending) saveQueues.delete(adventure.id); }).catch(() => undefined);
+  return pending;
 }
 
 export async function getAdventure(id: string): Promise<Adventure | undefined> {

@@ -171,6 +171,8 @@ export interface SinglePassMemoryCheckpoint {
 }
 
 export interface MemoryEvaluationState {
+  archivedMemoryHistoryId?: string;
+  archivedFindingCount?: number;
   pipeline?: MemoryPipelineMode;
   singlePass?: SinglePassMemoryCheckpoint;
   assessment?: MemoryAssessmentCheckpoint;
@@ -731,6 +733,7 @@ export interface MemoryPlacementValidation {
 }
 
 export interface MemoryProposal {
+  archivedMemoryHistoryId?: string;
   /** Generated card memory only appends a factual delta or creates a new card. */
   cardOperation?: "append" | "create";
   placementValidation?: MemoryPlacementValidation;
@@ -893,7 +896,23 @@ export interface PendingBrainDelta {
   evidenceMessageIds: string[];
 }
 
+/** Immutable portable blocks. Unknown versions remain preserved, with explicit decode errors. */
+export interface CompressedMemoryHistoryBlock {
+  id: string;
+  format: "aist-memory-history";
+  version: 1;
+  encoding: "typed-json-gzip-base64";
+  kind: "proposal" | "evaluation";
+  recordId: string;
+  decodedBytes: number;
+  sha256: string;
+  data: string;
+}
+export type MemoryHistoryRecord = { kind: "proposal"; id: string; value: MemoryProposal }
+  | { kind: "evaluation"; id: string; value: MemoryEvaluationState };
+export type HistoricalProposalAction = Extract<AdventureAction, { type: "APPROVE_MEMORY_PROPOSAL" | "UPDATE_MEMORY_PROPOSAL" | "REJECT_MEMORY_PROPOSAL" | "IGNORE_MEMORY_PROPOSAL" }>;
 export interface ActiveState {
+  compressedMemoryHistory?: { version: 1; blocks: Record<string, CompressedMemoryHistoryBlock> };
   pendingBrainDeltas?: PendingBrainDelta[];
   /** Character list display order; does not change context priorities or Brain content. */
   brainOrder?: string[];
@@ -1109,6 +1128,9 @@ export type BrainPatch = {
 };
 
 export type AdventureAction =
+  | { type: "MERGE_MEMORY_HISTORY_PROGRESS"; baseline: Adventure; latest: Adventure }
+  | { type: "ARCHIVE_MEMORY_HISTORY"; adventureId: string; record: MemoryHistoryRecord; block: CompressedMemoryHistoryBlock }
+  | { type: "APPLY_ARCHIVED_PROPOSAL_ACTION"; adventureId: string; archiveId: string; proposal: MemoryProposal; action: HistoricalProposalAction }
   | { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH"; checkpoints: Array<{ sourceId: string; checkpoint: SinglePassMemoryCheckpoint }>; manual?: boolean }
   | { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH"; batchId: string; sources: Array<{ result: SinglePassMemorySourceResult; checkpoint: SinglePassMemoryCheckpoint }> }
   | { type: "FAIL_SINGLE_PASS_MEMORY_BATCH"; batchId: string; sourceIds: string[]; reason: string }

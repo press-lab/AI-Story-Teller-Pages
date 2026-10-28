@@ -91,6 +91,7 @@ export function ImportExportPage({
   const [importText, setImportText] = useState("");
   const [importFilename, setImportFilename] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
+  const [backupSize, setBackupSize] = useState<{ adventure: typeof adventure; kb: number }>();
 
   async function importAdventure() {
     if (importPreview.status !== "ready") {
@@ -129,7 +130,9 @@ export function ImportExportPage({
 
   function handleExport() {
     const filename = `${slug()}.json`;
-    download(filename, exportAdventureJson(adventure));
+    const json = exportAdventureJson(adventure);
+    setBackupSize({ adventure, kb: Math.max(1, Math.ceil(new Blob([json]).size / 1024)) });
+    download(filename, json);
     setStatusMessage(`Downloaded full backup: ${filename}`);
   }
 
@@ -161,8 +164,6 @@ export function ImportExportPage({
 
   const rawImportCount = adventure.activeState.rawImports.length;
   const transcriptCount = adventure.messages.length;
-  const backupJson = exportAdventureJson(adventure);
-  const backupSizeKb = Math.max(1, Math.ceil(new Blob([backupJson]).size / 1024));
   const importPreview = useMemo(() => parseBackupPreview(importText), [importText]);
 
   return (
@@ -230,7 +231,7 @@ export function ImportExportPage({
             <button type="button" className="primary-action" onClick={handleExport}>
               Download full backup
             </button>
-            <span className="muted">{backupSizeKb} KB JSON</span>
+            <span className="muted">{backupSize?.adventure === adventure ? `${backupSize.kb} KB JSON` : "JSON size calculated on download"}</span>
           </div>
           <div className="import-export-secondary-actions" aria-label="Partial exports">
             <button type="button" onClick={handleExportStoryCards}>

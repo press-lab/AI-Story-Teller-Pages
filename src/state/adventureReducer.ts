@@ -1,3 +1,4 @@
+import { compactHistoricalEvaluation, compactHistoricalProposal, eligibleHistory } from "../memory/memoryHistory";
 import { singlePassReferenceState } from "../memory/singlePassMemory";
 import { singlePassSourceError, validateSinglePassSource, toSinglePassProposal } from "../memory/singlePassMemoryValidation";
 import { reconcileBrainBatchState } from "../memory/brainBatchRecovery";
@@ -1128,6 +1129,9 @@ function applyCompanionMemoryProposals(
 }
 
 export function adventureReducer(state: Adventure, action: AdventureAction): Adventure {
+  if ((action.type === "APPROVE_MEMORY_PROPOSAL" || action.type === "UPDATE_MEMORY_PROPOSAL"
+    || action.type === "REJECT_MEMORY_PROPOSAL" || action.type === "IGNORE_MEMORY_PROPOSAL")
+    && state.activeState.memoryProposals.some(p => p.id === action.proposalId && p.archivedMemoryHistoryId)) return state;
   const reduced = reduceAdventure(state, action);
   const automatic = action.type === "COMMIT_MEMORY_EVALUATION_GROUP"
     || (action.type === "ADD_MEMORY_PROPOSAL" && !action.proposal.userInitiated)
@@ -1184,6 +1188,61 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
 
 function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
   switch (action.type) {
+    case "MERGE_MEMORY_HISTORY_PROGRESS": {
+      const { baseline, latest } = action;
+      const incoming = state.activeState.compressedMemoryHistory;
+      const progress = latest.activeState.compressedMemoryHistory;
+      if (state.id !== baseline.id || state.id !== latest.id || !progress || progress === incoming || progress.version !== 1 || incoming && incoming.version !== 1) return state;
+      // Narration may have started from an older immutable snapshot. Preserve
+      // archive progress without changing any narrator or memory result.
+      const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+      return { ...state,
+        messages: state.messages.map(m => {
+          const previous = baseline.messages.find(p => p.id === m.id);
+          const saved = latest.messages.find(p => p.id === m.id)?.memoryEvaluation;
+          if (m.memoryEvaluation === saved) return m;
+          return saved?.archivedMemoryHistoryId && m.memoryEvaluation === previous?.memoryEvaluation
+            && m.memoryEvaluation && same(compactHistoricalEvaluation(m.memoryEvaluation, saved.archivedMemoryHistoryId), saved)
+            ? { ...m, memoryEvaluation: saved } : m;
+        }), activeState: { ...state.activeState,
+          compressedMemoryHistory: { version: 1, blocks: { ...incoming?.blocks, ...progress.blocks } },
+          memoryProposals: state.activeState.memoryProposals.map(p => {
+            const saved = latest.activeState.memoryProposals.find(q => q.id === p.id);
+            if (p === saved) return p;
+            return saved?.archivedMemoryHistoryId && p === baseline.activeState.memoryProposals.find(q => q.id === p.id)
+              && same(compactHistoricalProposal(p, saved.archivedMemoryHistoryId), saved) ? saved : p;
+          }) } };
+    }
+    case "ARCHIVE_MEMORY_HISTORY": {
+      const { record, block } = action;
+      if (state.id !== action.adventureId || !eligibleHistory(record) || block.kind !== record.kind || block.recordId !== record.id
+        || block.version !== 1 || !block.data || state.activeState.compressedMemoryHistory?.blocks[block.id]) return state;
+      const current = record.kind === "proposal" ? state.activeState.memoryProposals.find(p => p.id === record.id)
+        : state.messages.find(m => m.id === record.id)?.memoryEvaluation;
+      // Immutable identity guards every field, including source edits, status,
+      // retries and normalization. Worker results never replace a whole snapshot.
+      if (current !== record.value) return state;
+      const history = state.activeState.compressedMemoryHistory;
+      if (history && history.version !== 1) return state;
+      return { ...state, messages: record.kind === "evaluation" ? state.messages.map(m => m.id === record.id
+        ? { ...m, memoryEvaluation: compactHistoricalEvaluation(record.value, block.id) } : m) : state.messages,
+        activeState: { ...state.activeState, compressedMemoryHistory: { version: 1, blocks: { ...history?.blocks, [block.id]: block } },
+          memoryProposals: record.kind === "proposal" ? state.activeState.memoryProposals.map(p => p.id === record.id
+            ? compactHistoricalProposal(record.value, block.id) : p) : state.activeState.memoryProposals } };
+    }
+    case "APPLY_ARCHIVED_PROPOSAL_ACTION": {
+      const current = state.activeState.memoryProposals.find(p => p.id === action.proposal.id);
+      if (state.id !== action.adventureId || current?.archivedMemoryHistoryId !== action.archiveId
+        || action.action.proposalId !== current.id || !state.activeState.compressedMemoryHistory?.blocks[action.archiveId]) return state;
+      // Restore omitted debugging fields while preserving any intervening shallow
+      // bookkeeping updates. The archive stays immutable and portable.
+      const restored = { ...action.proposal, ...current, archivedMemoryHistoryId: undefined,
+        placementValidation: action.proposal.placementValidation,
+        evaluationSource: action.proposal.evaluationSource };
+      const hydrated = { ...state, activeState: { ...state.activeState,
+        memoryProposals: state.activeState.memoryProposals.map(p => p.id === current.id ? restored : p) } };
+      return adventureReducer(hydrated, action.action);
+    }
     case "CLAIM_SINGLE_PASS_MEMORY_BATCH": {
       if (action.checkpoints.length < 1 || action.checkpoints.length > 3 || new Set(action.checkpoints.map(c => c.sourceId)).size !== action.checkpoints.length) return state;
       const valid = action.checkpoints.filter(({ sourceId, checkpoint }) => {
@@ -1197,7 +1256,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
       return touchAdventure(state, { messages: state.messages.map(message => {
         const claim = valid.find(c => c.sourceId === message.id);
         return claim ? { ...message, memoryEvaluation: { ...message.memoryEvaluation!, status: "running" as const,
-          attempts: message.memoryEvaluation!.attempts + 1, singlePass: claim.checkpoint } } : message;
+          attempts: message.memoryEvaluation!.attempts + 1, archivedMemoryHistoryId: undefined, archivedFindingCount: undefined, singlePass: claim.checkpoint } } : message;
       }) });
     }
     case "FAIL_SINGLE_PASS_MEMORY_BATCH": {

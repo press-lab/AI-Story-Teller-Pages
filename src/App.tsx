@@ -1,3 +1,4 @@
+import { useMemoryHistoryCompression } from "./hooks/useMemoryHistoryCompression";
 import { useCallback, useEffect, useState } from "react";
 import { adventureReducer } from "./state/adventureReducer";
 import { saveAdventure } from "./db/adventureDb";
@@ -115,6 +116,7 @@ export default function App() {
   const [playPanelTab, setPlayPanelTab] = useState<EditorTabId | undefined>();
   const [navForceVisible, setNavForceVisible] = useState(false);
   const [adventure, setAdventure] = useState<Adventure | undefined>();
+  const historyCompressionError = useMemoryHistoryCompression(adventure, setAdventure);
   const [contextResult, setContextResult] = useState<ContextBuildResult | undefined>();
   const [saveStatus, setSaveStatus] = useState("idle");
   const [providerPresets, setProviderPresets] = useLocalStorage<ProviderPreset[]>(
@@ -703,6 +705,7 @@ export default function App() {
             <button type="button" className="error-dismiss" aria-label="Dismiss error" onClick={runtime.clearError}>×</button>
           </div>
         )}
+        {historyCompressionError && <p role="alert">{historyCompressionError}</p>}
         {page}
       </main>
 

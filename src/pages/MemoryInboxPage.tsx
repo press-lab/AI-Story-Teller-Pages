@@ -1,3 +1,4 @@
+import { ArchivedMemoryDetails } from "./ArchivedMemoryDetails";
 import { placementValidationError, proposalDestinationLabel } from "../memory/storyCardPlacement";
 import { MemoryDecisionsPage } from "./MemoryDecisionsPage";
 import { proposalLore } from "../memory/storyCardArchitecture";
@@ -257,9 +258,22 @@ function MemorySuggestionsPage({ adventure, dispatch, onRegenerateProposal, onRe
         <details className="panel memory-history-panel">
           <summary>History ({resolved.length})</summary>
           <div className="list" style={{ marginTop: "0.75rem" }}>
-            {resolved.map((proposal) => (
-              <ProposalCard key={proposal.id} adventure={adventure} proposal={proposal} dispatch={dispatch} onUpdate={updateProposal} onRegenerate={onRegenerateProposal} />
-            ))}
+            {resolved.map(proposal => proposal.archivedMemoryHistoryId ? <div className="card" key={proposal.id}>
+              <strong>{proposal.title}</strong> · {proposal.status}
+              <p>{proposal.content}</p>
+              <ArchivedMemoryDetails adventure={adventure} archiveId={proposal.archivedMemoryHistoryId}>{record => {
+                if (record.kind !== "proposal" || record.id !== proposal.id) return <p role="alert">Archive record identity mismatch.</p>;
+                const apply: typeof dispatch = action => {
+                  if ((action.type === "APPROVE_MEMORY_PROPOSAL" || action.type === "UPDATE_MEMORY_PROPOSAL"
+                    || action.type === "REJECT_MEMORY_PROPOSAL" || action.type === "IGNORE_MEMORY_PROPOSAL") && action.proposalId === proposal.id) {
+                    dispatch({ type: "APPLY_ARCHIVED_PROPOSAL_ACTION", adventureId: adventure.id,
+                      archiveId: proposal.archivedMemoryHistoryId!, proposal: record.value, action });
+                  }
+                };
+                return <ProposalCard adventure={adventure} proposal={record.value} dispatch={apply}
+                  onUpdate={(_, patch) => apply({ type: "UPDATE_MEMORY_PROPOSAL", proposalId: proposal.id, patch })} />;
+              }}</ArchivedMemoryDetails>
+            </div> : <ProposalCard key={proposal.id} adventure={adventure} proposal={proposal} dispatch={dispatch} onUpdate={updateProposal} onRegenerate={onRegenerateProposal} />)}
           </div>
         </details>
       )}

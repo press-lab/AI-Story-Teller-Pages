@@ -6,6 +6,7 @@ import { adventureReducer } from "./adventureReducer";
 import { makeMemoryProposal } from "../test/goldenAdventure";
 
 const testedActionTypes = [
+  "ARCHIVE_MEMORY_HISTORY", "APPLY_ARCHIVED_PROPOSAL_ACTION", "MERGE_MEMORY_HISTORY_PROGRESS",
   "CLAIM_SINGLE_PASS_MEMORY_BATCH", "COMMIT_SINGLE_PASS_MEMORY_BATCH", "FAIL_SINGLE_PASS_MEMORY_BATCH",
   "SCAN_STORY_CARD_EXCHANGE",
   "QUEUE_MEMORY_EVALUATION",

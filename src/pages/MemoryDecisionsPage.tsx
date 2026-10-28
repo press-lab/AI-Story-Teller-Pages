@@ -1,3 +1,4 @@
+import { ArchivedMemoryVersions } from "./ArchivedMemoryDetails";
 import { summarizeMemoryCosts } from "../providers/memoryCostSummary";
 import { placementValidationError, proposalDestinationLabel } from "../memory/storyCardPlacement";
 import { backgroundProviderConfigIssue } from "../providers/backgroundProvider";
@@ -85,7 +86,11 @@ export function MemoryDecisionsPage({ adventure, onSuggestions, onEvaluateMemory
         <p><strong>Source:</strong> {message.id} Â· <time>{message.createdAt}</time></p>
         <p>{message.content.slice(0, 240)}{message.content.length > 240 ? "â€¦" : ""}</p>
         {linked.filter(p => p.proposedType === "storyCard").map(p => <p key={p.id}>{proposalDestinationLabel(adventure, p)} Â· {p.status === "pending" ? placementValidationError(adventure, p) ?? p.placementValidation?.reason : p.placementValidation?.reason}</p>)}
-        {message.memoryEvaluation?.singlePass && <div>
+        {message.memoryEvaluation?.archivedMemoryHistoryId && <>
+          <p>Archived evaluation Â· {message.memoryEvaluation.archivedFindingCount ?? 0} findings. Status and counters remain active.</p>
+        </>}
+        <ArchivedMemoryVersions adventure={adventure} kind="evaluation" recordId={message.id} />
+        {message.memoryEvaluation?.singlePass && !message.memoryEvaluation.archivedMemoryHistoryId && <div>
           <h3>Single-pass evaluation</h3>
           <p>Batch: {message.memoryEvaluation.singlePass.batchId}. Source: {message.memoryEvaluation.status === "failed" ? "evaluation failed" : message.memoryEvaluation.singlePass.reviewCount ? "awaiting review" : message.memoryEvaluation.status === "complete" ? message.memoryEvaluation.singlePass.findings.length ? "evaluation complete" : "valid evaluation with zero findings" : "pending evaluation"}.</p>
           <p>{message.memoryEvaluation.singlePass.findings.length} returned · {message.memoryEvaluation.singlePass.acceptedCount} accepted · {message.memoryEvaluation.singlePass.suppressedCount} suppressed · {message.memoryEvaluation.singlePass.rejectedCount} rejected · {message.memoryEvaluation.singlePass.reviewCount} review required.</p>
