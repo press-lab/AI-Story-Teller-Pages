@@ -41,6 +41,7 @@ const PLAY_TOOLKIT_COMPACT_WIDTH = 160;
 const PLAY_TOOLKIT_MIN_WIDTH = 120;
 const PLAY_TOOLKIT_PANEL_MIN_WIDTH = 420;
 const PLAY_TOOLKIT_MAX_WIDTH = 600;
+const TRANSCRIPT_PAGE_SIZE = 100;
 const MOBILE_COMPOSER_QUERY = "(max-width: 640px), (hover: none) and (pointer: coarse)";
 
 function transformInput(text: string, mode: InputMode): string {
@@ -155,6 +156,11 @@ export function PlayPage({
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
+
+  const [olderMessageCount, setOlderMessageCount] = useState(0);
+  const hiddenMessageCount = Math.max(0, adventure.messages.length - TRANSCRIPT_PAGE_SIZE - olderMessageCount);
+  const visibleMessages = adventure.messages.slice(hiddenMessageCount);
+  useEffect(() => setOlderMessageCount(0), [adventure.id]);
 
   const lastAssistant = [...adventure.messages].reverse().find((m) => m.role === "assistant");
   const latestMessageId = adventure.messages.at(-1)?.id;
@@ -357,7 +363,7 @@ export function PlayPage({
               aria-orientation="vertical"
             />
           )}
-          {adventure.openingScene && (
+          {adventure.openingScene && hiddenMessageCount === 0 && (
             <article className={`message assistant opening-scene-message${editingOpeningScene ? " editing" : ""}`}>
               <div className="message-actions">
                 <button type="button" onClick={() => setEditingOpeningScene(!editingOpeningScene)}>
@@ -379,7 +385,15 @@ export function PlayPage({
           {!adventure.openingScene && adventure.messages.length === 0 && (
             <p className="muted">No turns yet. Set up your world, then start playing below.</p>
           )}
-          {adventure.messages.map((message) => (
+          {hiddenMessageCount > 0 && (
+            <button type="button" onClick={(event) => {
+              event.stopPropagation();
+              setOlderMessageCount(count => count + TRANSCRIPT_PAGE_SIZE);
+            }}>
+              Show earlier entries ({hiddenMessageCount} hidden)
+            </button>
+          )}
+          {visibleMessages.map((message) => (
             <article
               key={message.id}
               ref={(el) => {

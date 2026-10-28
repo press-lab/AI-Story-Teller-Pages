@@ -1,8 +1,8 @@
 /**
  * @vitest-environment jsdom
  */
-import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
-import { beforeEach, describe, expect, it } from "vitest";
+import { IDBFactory, IDBKeyRange, IDBObjectStore } from "fake-indexeddb";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createDefaultAdventure } from "../state/defaults";
 import { deleteAdventure, getAdventure, listAdventures, saveAdventure } from "./adventureDb";
 
@@ -96,4 +96,51 @@ describe("adventureDb IndexedDB persistence", () => {
     expect(await getAdventure(newer.id)).toBeUndefined();
     expect((await listAdventures()).map((adventure) => adventure.title)).toEqual(["Older"]);
   });
+
+  it("backfills metadata from a version-one database without rewriting the save", async () => {
+    const legacy = createDefaultAdventure("Legacy large save");
+    legacy.activeState.turn = 25;
+    legacy.messages = [{ id: "legacy-message", role: "assistant", content: "An old entry.", createdAt: legacy.createdAt }];
+    await new Promise<void>((resolve, reject) => {
+      const request = indexedDB.open(DB_NAME, 1);
+      request.onupgradeneeded = () => request.result.createObjectStore("adventures", { keyPath: "id" });
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        const db = request.result;
+        const tx = db.transaction("adventures", "readwrite");
+        tx.objectStore("adventures").put(legacy);
+        tx.oncomplete = () => { db.close(); resolve(); };
+        tx.onerror = () => reject(tx.error);
+      };
+    });
+    expect(await listAdventures()).toEqual([expect.objectContaining({ id: legacy.id, title: legacy.title, turnCount: 25, storyEntryCount: 1 })]);
+    const raw = await new Promise((resolve, reject) => {
+      const request = indexedDB.open(DB_NAME);
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        const db = request.result;
+        const tx = db.transaction("adventures", "readonly");
+        const get = tx.objectStore("adventures").get(legacy.id);
+        tx.oncomplete = () => { db.close(); resolve(get.result); };
+        tx.onerror = () => reject(tx.error);
+      };
+    });
+    expect(raw).toEqual(legacy);
+  });
+
+  it("refreshes library metadata without reading full saves and updates metadata on save", async () => {
+    const adventure = createDefaultAdventure("Before");
+    await saveAdventure(adventure);
+    adventure.title = "After";
+    adventure.activeState.turn = 44;
+    await saveAdventure(adventure);
+    const reads = vi.spyOn(IDBObjectStore.prototype, "getAll");
+    try {
+      expect(await listAdventures()).toEqual([expect.objectContaining({ title: "After", turnCount: 44 })]);
+      expect(reads.mock.contexts.map(store => (store as IDBObjectStore).name)).toEqual(["adventureSummaries"]);
+    } finally { reads.mockRestore(); }
+    await deleteAdventure(adventure.id);
+    expect(await listAdventures()).toEqual([]);
+  });
+
 });

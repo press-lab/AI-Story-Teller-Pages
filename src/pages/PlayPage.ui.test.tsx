@@ -337,3 +337,51 @@ it("keeps a newer draft and ignores duplicate clicks while a submission waits fo
   await act(async () => { finish(true); });
   expect(input).toHaveValue("I listen");
 });
+
+
+it("opens a long transcript at recent entries and lets the player reveal and edit older entries", async () => {
+  const user = userEvent.setup();
+  const adventure = playAdventure();
+  adventure.messages = Array.from({ length: 250 }, (_, index) => ({
+    id: `long-${index}`, role: "assistant" as const, content: `Unique story entry ${index}.`, createdAt: timestamp,
+  }));
+  render(<StatefulPlayPage initialAdventure={adventure} />);
+  expect(screen.getByText("Unique story entry 249.")).toBeInTheDocument();
+  expect(screen.queryByText("Unique story entry 0.")).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Show earlier entries (150 hidden)" }));
+  expect(screen.getByText("Unique story entry 50.")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Show earlier entries (50 hidden)" }));
+  const oldest = screen.getByText("Unique story entry 0.");
+  await user.dblClick(oldest);
+  expect(screen.getByDisplayValue("Unique story entry 0.")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /Show earlier entries/ })).not.toBeInTheDocument();
+  expect(adventure.messages).toHaveLength(250);
+});
+
+
+it("shows completed Continue and Retry responses in a long transcript without leaving Play", async () => {
+  const user = userEvent.setup();
+  const initial = playAdventure();
+  initial.messages = Array.from({ length: 250 }, (_, index) => ({
+    id: `entry-${index}`, role: "assistant" as const, content: `Earlier entry ${index}.`, createdAt: timestamp,
+  }));
+  function LongPlay() {
+    const [adventure, setAdventure] = useState(initial);
+    const dispatch = (action: AdventureAction) => setAdventure(current => adventureReducer(current, action));
+    return <PlayPage adventure={adventure} dispatch={dispatch} loading={false} saveStatus="saved"
+      onSubmitTurn={noopSubmitTurn} onBuildContext={() => undefined} onOpenContext={() => undefined}
+      onRememberThis={noopAsync}
+      onContinue={async () => { dispatch({ type: "ADD_MESSAGE", role: "assistant", content: "The next story arrives." }); }}
+      onRegenerate={async () => {
+        dispatch({ type: "REMOVE_LAST_ASSISTANT_MESSAGE" });
+        dispatch({ type: "ADD_MESSAGE", role: "assistant", content: "The retried story arrives." });
+      }} />;
+  }
+  const { container } = render(<LongPlay />);
+  await user.click(screen.getByRole("button", { name: "Continue" }));
+  expect(screen.getByText("The next story arrives.")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Retry" }));
+  expect(screen.getByText("The retried story arrives.")).toBeInTheDocument();
+  expect(screen.queryByText("The next story arrives.")).not.toBeInTheDocument();
+  expect(container.querySelectorAll("article.message")).toHaveLength(100);
+});
