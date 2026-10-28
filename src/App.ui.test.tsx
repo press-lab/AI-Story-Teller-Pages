@@ -11,6 +11,7 @@ import App from "./App";
 let savedAdventures: Adventure[] = [];
 
 vi.mock("./db/adventureDb", () => ({
+  releaseAdventurePersistence: vi.fn(),
   listAdventures: vi.fn(async () =>
     savedAdventures.map((adventure) => ({
       id: adventure.id,

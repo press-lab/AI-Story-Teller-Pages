@@ -40,14 +40,14 @@ export function useMemoryHistoryCompression(adventure: Adventure | undefined, se
   useEffect(() => {
     if (!adventure) return;
     let active = true;
-    let persisted: Adventure["activeState"]["compressedMemoryHistory"];
+    let persisted = adventure.activeState.compressedMemoryHistory;
     let saving = false;
     const timer = setInterval(() => {
       const current = latest.current;
       const history = current?.activeState.compressedMemoryHistory;
       if (!current || current.id !== adventure?.id || !history || history === persisted || saving) return;
       saving = true;
-      void saveAdventure(current).then(() => { persisted = history; if (active) setError(previous => previous?.startsWith("History save failed") ? undefined : previous); })
+      void saveAdventure(current, { priority: "background" }).then(() => { persisted = history; if (active) setError(previous => previous?.startsWith("History save failed") ? undefined : previous); })
         .catch(e => { if (active) setError(`History save failed; history remains in memory and the previous save is intact. ${e instanceof Error ? e.message : ""}`); })
         .finally(() => { saving = false; });
     }, 2000);

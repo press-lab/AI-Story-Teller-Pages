@@ -44,10 +44,11 @@ export function proposalCoverage(a: Adventure, p: MemoryProposal, includeProposa
 }
 /** Newest-first input: apply the limit after relevance, never take the oldest tail. */
 export function relevantProposalCoverage(a: Adventure, excerpt: string, targetIds: string[] = [], sourceIds: string[] = []) {
-  const words = new Set(factKey(excerpt).split(" ").filter(w => w.length > 3));
+  const excerptKey = factKey(excerpt);
+  const words = new Set(excerptKey.split(" ").filter(w => w.length > 3));
   return a.activeState.memoryProposals.filter(p => p.proposedType === "storyCard" && (
     Boolean(p.targetId && targetIds.includes(p.targetId)) || sourceIds.includes(p.sourceTurnId)
-    || p.storyCardReview?.participants.some(name => factKey(excerpt).includes(factKey(name)))
+    || p.storyCardReview?.participants.some(name => excerptKey.includes(factKey(name)))
     || facts(p.title + " " + p.content + " " + p.suggestedTriggers.join(" ")).some(f => f.split(" ").filter(w => words.has(w)).length >= 2)
   )).slice(0, 12).map(p => ({ id: p.id, targetId: p.targetId, title: p.title, status: p.status,
     proposedFacts: p.content.slice(0, 1600), newFact: p.placementValidation?.newFact,

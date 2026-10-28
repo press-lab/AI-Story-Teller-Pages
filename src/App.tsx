@@ -1,7 +1,7 @@
 import { useMemoryHistoryCompression } from "./hooks/useMemoryHistoryCompression";
 import { useCallback, useEffect, useState } from "react";
 import { adventureReducer } from "./state/adventureReducer";
-import { saveAdventure } from "./db/adventureDb";
+import { saveAdventure, releaseAdventurePersistence } from "./db/adventureDb";
 import { defaultCloudSyncSettings } from "./sync/githubSync";
 import { defaultGitHubSaveSettings } from "./sync/githubSaves";
 import { useGitHubSaves } from "./hooks/useGitHubSaves";
@@ -117,6 +117,7 @@ export default function App() {
   const [navForceVisible, setNavForceVisible] = useState(false);
   const [adventure, setAdventure] = useState<Adventure | undefined>();
   const historyCompressionError = useMemoryHistoryCompression(adventure, setAdventure);
+  useEffect(() => { const id = adventure?.id; return () => { if (id) releaseAdventurePersistence(id); }; }, [adventure?.id]);
   const [contextResult, setContextResult] = useState<ContextBuildResult | undefined>();
   const [saveStatus, setSaveStatus] = useState("idle");
   const [providerPresets, setProviderPresets] = useLocalStorage<ProviderPreset[]>(

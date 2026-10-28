@@ -24,13 +24,38 @@ const stop = new Set("the a an and but then now later today tomorrow yesterday i
 const titleWords = (text: string) => new Set((normalizeMemoryText(text).split(" ")).filter(word => word.length > 3 && !stop.has(word)));
 const mentions = (text: string, phrase: string) => Boolean(phrase.trim()) && (` ${normalizeMemoryText(text)} `).includes(` ${normalizeMemoryText(phrase)} `);
 
-export function relevantStoryCardInventory(adventure: Adventure, text: string) {
-  const words = titleWords(text);
-  return adventure.storyCards.map(card => ({ card,
-    score: [card.title, ...card.keys].filter(name => mentions(text, name)).length * 10
+type Inventory = Array<{ id: string; title: string; type: StoryCardType; keys: string[] }>;
+// Only the current card collection is retained, with at most sixteen excerpts.
+// The exact signature also handles callers that edit fixture/import objects in place.
+let inventoryCards: WeakRef<Adventure["storyCards"]> | undefined;
+let inventoryAdventureId: string | undefined;
+let inventorySignature = "";
+const inventories = new Map<string, Inventory>();
+export function relevantStoryCardInventory(adventure: Adventure, text: string): Inventory {
+  const signature = JSON.stringify(adventure.storyCards.map(c => [c.id, c.title, c.keys, c.priority, c.type]));
+  if (inventoryCards?.deref() !== adventure.storyCards || inventoryAdventureId !== adventure.id || inventorySignature !== signature) {
+    inventories.clear();
+    inventoryCards = new WeakRef(adventure.storyCards);
+    inventoryAdventureId = adventure.id;
+    inventorySignature = signature;
+  }
+  const cached = inventories.get(text);
+  if (cached) return cached.map(c => ({ ...c, keys: [...c.keys] }));
+  const normalized = normalizeMemoryText(text);
+  const padded = ` ${normalized} `;
+  const words = new Set(normalized.split(" ").filter(word => word.length > 3 && !stop.has(word)));
+  const result = adventure.storyCards.map(card => ({ card,
+    score: [card.title, ...card.keys].filter(name => Boolean(name.trim()) && padded.includes(` ${normalizeMemoryText(name)} `)).length * 10
       + [...titleWords(card.title + " " + card.keys.join(" "))].filter(word => words.has(word)).length,
   })).filter(entry => entry.score >= 2).sort((a, b) => b.score - a.score || b.card.priority - a.card.priority).slice(0, 8)
     .map(({ card }) => ({ id: card.id, title: card.title.slice(0, 100), type: card.type, keys: card.keys.slice(0, 3) }));
+  if (text.length <= 1_000_000) {
+    while (inventories.size >= 16 || [...inventories.keys()].reduce((n, key) => n + key.length, 0) + text.length > 1_000_000) {
+      inventories.delete(inventories.keys().next().value!);
+    }
+    inventories.set(text, result);
+  }
+  return result.map(c => ({ ...c, keys: [...c.keys] }));
 }
 const uncertainty = /\b(almost|nearly|might|may|could|would|if|not|never|no|pretend(?:s|ed)?|imagin(?:es|ed|ing)|dream(?:s|ed)?|threaten(?:s|ed)? to|considers?|hopes? to|intends? to|plans? to|wants? to|will|tomorrow|rumou?rs?|claims?|reportedly|going to)\b/i;
 

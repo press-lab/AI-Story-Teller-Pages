@@ -17,7 +17,7 @@ export function useAdventureAutosave(
     if (!adventure) return;
     onSaveStatusChangeRef.current("saving");
     const timeout = window.setTimeout(() => {
-      saveAdventure(adventure)
+      saveAdventure(adventure, { priority: "background" })
         .then(() => {
           onSaveStatusChangeRef.current("saved");
           onSavedRef.current();

@@ -55,10 +55,14 @@ export async function prepareSinglePassMemoryBatch(a: Adventure, ids: readonly s
   const ordered = a.messages.filter(m => ids.includes(m.id));
   const batchId = createId("memoryBatch");
   const references: unknown[] = [];
+  const referenceIndexes = new Map<string | undefined, number>();
   const pool = (value: unknown) => {
     const serialized = JSON.stringify(value);
-    let index = references.findIndex(v => JSON.stringify(v) === serialized);
-    if (index < 0) { index = references.length; references.push(value); }
+    const existing = referenceIndexes.get(serialized);
+    if (existing !== undefined) return existing;
+    const index = references.length;
+    references.push(value);
+    referenceIndexes.set(serialized, index);
     return index;
   };
   const checkpoints: PreparedSinglePassMemoryBatch["checkpoints"] = [];

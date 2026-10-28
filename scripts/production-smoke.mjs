@@ -57,11 +57,17 @@ try {
   if (assetPaths.length === 0) {
     throw new Error("Production index did not reference any JS/CSS assets.");
   }
+  const loadedAssets = new Set();
   for (const assetPath of assetPaths) {
+    if (loadedAssets.has(assetPath)) continue;
+    loadedAssets.add(assetPath);
     const url = new URL(assetPath, baseUrl).toString();
     const assetResponse = await fetchWithRetry(url, 5);
     const text = await assetResponse.text();
-    if (!text.trim()) throw new Error(`Production asset was empty: ${assetPath}`);
+    if (!text.trim() || /^\s*<!doctype html/i.test(text)) throw new Error(`Production asset was empty or missing: ${assetPath}`);
+    if (assetPath.endsWith(".js")) for (const match of text.matchAll(/["']([^"']*\/assets\/[^"']*\.worker-[^"']+\.js)["']/g)) {
+      if (!assetPaths.includes(match[1])) assetPaths.push(match[1]);
+    }
   }
   console.log(`Production smoke passed: ${assetPaths.length} asset(s) loaded from ${baseUrl}.`);
 } finally {
