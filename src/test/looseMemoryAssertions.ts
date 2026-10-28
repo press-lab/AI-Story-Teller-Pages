@@ -17,11 +17,12 @@ export function expectSixLooseProposals(a: import("../types/adventure").Adventur
   ]));
   const brain = proposals.find(p => p.proposedType === "brainUpdate")!;
   expect(Object.values(JSON.parse(brain.content).thoughts)).toEqual([expect.stringMatching(/^\d+ \u2192 I believe the business can grow beyond individual customers\.$/)]);
-  expect(proposals.every(p => p.status === "pending" && p.requiresReview)).toBe(true);
+  expect(brain).toMatchObject({ status: a.memoryAutoApprove.brainUpdate ? "approved" : "pending", requiresReview: false });
+  expect(proposals.filter(p => p.proposedType !== "brainUpdate").every(p => p.status === "pending" && p.requiresReview)).toBe(true);
   expect(proposals.filter(p => p.cardOperation === "create").every(p => !p.targetId)).toBe(true);
   expect(a.messages.filter(m => sourceIds.includes(m.id)).map(m => m.memoryEvaluation?.status)).toEqual(["complete", "complete", "complete"]);
   for (const m of a.messages.filter(m => sourceIds.includes(m.id))) {
-    expect(m.memoryEvaluation?.singlePass).toMatchObject({ parsedCount: 2, routedCount: 2, proposedCount: 2, reviewCount: 2, rejectedCount: 0, suppressedCount: 0 });
+    expect(m.memoryEvaluation?.singlePass).toMatchObject({ parsedCount: 2, routedCount: 2, proposedCount: 2, reviewCount: m.id === sourceIds[0] && a.memoryAutoApprove.brainUpdate ? 1 : 2, acceptedCount: m.id === sourceIds[0] && a.memoryAutoApprove.brainUpdate ? 1 : 0, rejectedCount: 0, suppressedCount: 0 });
     expect(proposals.filter(p => p.sourceTurnId === m.id).every(p => p.sourceText === m.content)).toBe(true);
   }
 }

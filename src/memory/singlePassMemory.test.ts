@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { syntheticMemoryAdventure, partnershipSourceId, confirmationQuote } from "./fixtures/syntheticMemoryAdventure";
-import { defaultModelConfig, normalizeAdventure, createDefaultAdventure } from "../state/defaults";
+import { defaultModelConfig, normalizeAdventure, createDefaultAdventure, makeBrain } from "../state/defaults";
 import { adventureReducer as reduce } from "../state/adventureReducer";
 import { singlePassCycleSources } from "./memoryCycleState";
 import { prepareSinglePassMemoryBatch, runSinglePassMemoryBatch, parseSinglePassMemoryResponse, normalizeSinglePassFinding, parseSinglePassMemoryCommands, buildSinglePassMemoryMessages } from "./singlePassMemory";
@@ -398,4 +398,34 @@ it("recognizes incremental private changes while preserving authored Brain condi
   expect(buildMemoryAssessmentConditions(a).brains.find(c => c.id === "brain:brain-George")?.condition).toContain("meaningful new private observation");
   a.brains[1].updateCondition = "Only when George makes a private business decision.";
   expect(buildMemoryAssessmentConditions(a).brains.find(c => c.id === "brain:brain-George")?.condition).toBe(a.brains[1].updateCondition);
+});
+
+it("describes local validation and saved approval rules without changing the quality policy", async () => {
+  const { a, ids } = singlePassFixture(1);
+  const batch = await prepareSinglePassMemoryBatch(a, ids);
+  const policy = buildSinglePassMemoryMessages(batch)[0].content;
+  expect(policy).toContain("All extracted findings undergo local validation. Valid findings follow the user's configured auto-approval rules.");
+  expect(policy).toContain("Protected, uncertain, recovered, and explicitly review-required findings remain subject to manual approval. Never invent certainty to bypass review.");
+  expect(policy).not.toContain("All extracted candidates await the user's review.");
+  expect(policy).toContain("Private interpretation examples");
+});
+
+it.each(["title", "reason", "candidateOnly"])("keeps a Brain with recovered %s review-required", field => {
+  const raw: Record<string, unknown> = { kind: "brain", targetId: "brain", title: "George", reason: "A private interpretation.",
+    candidateOnly: false, brainPatch: { thoughts: { new_thought: "I trust her judgment." } }, evidenceQuotes: [{ messageId: "source", quote: "A warning." }] };
+  delete raw[field];
+  const diagnostics: string[] = [];
+  expect(normalizeSinglePassFinding(raw, "source", { ...createDefaultAdventure(), brains: [makeBrain({ id: "brain", characterName: "George" })] }, diagnostics)?.candidateOnly).toBe(true);
+  expect(diagnostics).toContain("Recovered " + field + " locally.");
+});
+
+it.each(["yes", "no"])("preserves explicit Brain REVIEW %s when no recovery is necessary", flag => {
+  const f = complete(memoryCommand("S1 brain B1", "TITLE George\nREASON Supported private interpretation.\nREVIEW " + flag + "\nFIELD thought", "I trust her judgment.")).sources[0].findings[0];
+  expect(f.candidateOnly).toBe(flag === "yes");
+});
+
+it("overrides Brain REVIEW no when evidence needs local recovery", () => {
+  const r = complete(memoryCommand("S1 brain B1", "TITLE George\nREASON A private interpretation.\nREVIEW no\nFIELD thought", "I trust her judgment.", "E E2 | paraphrased spell")).sources[0];
+  expect(r.findings[0].candidateOnly).toBe(true);
+  expect(r.diagnostics?.some(d => d.reason.includes("review required"))).toBe(true);
 });

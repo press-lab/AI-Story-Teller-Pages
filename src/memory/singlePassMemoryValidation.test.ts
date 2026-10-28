@@ -96,7 +96,7 @@ it("keeps separate Hermione developments and an attempted kiss distinct without 
   expect(a.activeState.memoryProposals.every(p => p.storyCardType === "lore" && p.status === "pending")).toBe(true);
   expect(a.activeState.memoryProposals.some(p => /romantic date|completed kiss/.test(p.content))).toBe(false);
 });
-it("does not approve absent NPC knowledge or a past event as immediate pressure", async () => {
+it("keeps explicitly uncertain absent NPC knowledge and past-event pressure under review", async () => {
   const { makeBrain, makeComponent } = await import("../state/defaults");
   let { a, ids } = singlePassFixture(1); a.memoryAutoApprove.brainUpdate = true; a.memoryAutoApprove.plotPressureUpdate = true;
   a.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
@@ -106,7 +106,7 @@ it("does not approve absent NPC knowledge or a past event as immediate pressure"
   const batch = await prepareSinglePassMemoryBatch(a, ids);
   const quote = { messageId: ids[0], quote: a.messages.find(m => m.id === ids[0])!.content };
   const findings = [
-    { ...groundedFinding(), kind: "brain" as const, targetId: brain.id, title: "Draco", brainPatch: { thoughts: { agreement: "1 → I know Casey's private agreement." } }, reason: "Draco learned the agreement.", evidenceQuotes: [quote] },
+    { ...groundedFinding(), kind: "brain" as const, targetId: brain.id, title: "Draco", candidateOnly: true, brainPatch: { thoughts: { agreement: "1 → I know Casey's private agreement." } }, reason: "Draco learned the agreement.", evidenceQuotes: [quote] },
     { ...groundedFinding(), kind: "activePressure" as const, targetId: pressure.id, content: "Yesterday's resolved workshop debt threatens Casey.", evidenceQuotes: [quote] },
   ];
   a = reduce(a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
@@ -157,8 +157,8 @@ async function commandValidationFixture(evidence: string) {
   const batch = await prepareSinglePassMemoryBatch(a, ids);
   const manifest = batch.outputAliases.S1;
   const e = Object.entries(manifest.evidence).find(([, v]) => v.id === ids[0])![0];
-  const parse = (kind: string, target: string, content: string, metadata = "") => parseSinglePassMemoryCommands(
-    `MEM S1 ${kind} ${target}\nTITLE Development\nREASON Evidence records a change.\nREVIEW no\nMODE historical\nSTATUS completed\n${metadata}\nE ${e} | ${evidence}\nTEXT\n${content}\nEND\nDONE S1`, batch.outputAliases, a).sources[0];
+  const parse = (kind: string, target: string, content: string, metadata = "", reviewRequired = false) => parseSinglePassMemoryCommands(
+    `MEM S1 ${kind} ${target}\nTITLE Development\nREASON Evidence records a change.\nREVIEW ${reviewRequired ? "yes" : "no"}\nMODE historical\nSTATUS completed\n${metadata}\nE ${e} | ${evidence}\nTEXT\n${content}\nEND\nDONE S1`, batch.outputAliases, a).sources[0];
   const commit = (result: ReturnType<typeof parse>, state = a) => {
     state = reduce(state, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
     return reduce(state, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId, sources: [{ checkpoint: batch.checkpoints[0].checkpoint, result }] });
@@ -180,12 +180,12 @@ it("command-derived private interpretation stays in an existing Brain", async ()
   const b = Object.keys(f.manifest.brains)[0]; expect(b).toBeDefined();
   const r = f.parse("brain", b, "I believe the offer means trust.", "FIELD thought");
   const v = validateSinglePassSource(f.a, r, f.batch.checkpoints[0].checkpoint);
-  expect(v.rejected).toEqual([]); expect(v.proposals[0].proposal).toMatchObject({ proposedType: "brainUpdate", requiresReview: true });
+  expect(v.rejected).toEqual([]); expect(v.proposals[0].proposal).toMatchObject({ proposedType: "brainUpdate", requiresReview: false });
   expect(f.commit(r).storyCards).toEqual(f.a.storyCards);
 });
-it("command-derived absent NPC knowledge cannot auto-apply", async () => {
+it("command-derived absent NPC knowledge with explicit REVIEW yes cannot auto-apply", async () => {
   const f = await commandValidationFixture("Casey was absent and did not witness Avery's private agreement.");
-  const r = f.parse("brain", Object.keys(f.manifest.brains)[0], "I learned Avery's private agreement.", "FIELD thought");
+  const r = f.parse("brain", Object.keys(f.manifest.brains)[0], "I learned Avery's private agreement.", "FIELD thought", true);
   const state = f.commit(r);
   expect(state.brains[0].thoughts).toEqual({});
   expect(state.activeState.memoryProposals.every(p => p.status === "pending")).toBe(true);
@@ -365,4 +365,34 @@ it("invalidates a stale linked personality profile at commit", async () => {
   a = reduce(a, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId, sources: [{ checkpoint: batch.checkpoints[0].checkpoint,
     result: { sourceId: ids[0], findings: [thoughtFinding("Draconia", privateDraconia)], rejected: [] } }] });
   expect(a.activeState.memoryProposals).toEqual([]); expect(a.messages[0].memoryEvaluation?.status).toBe("failed");
+});
+
+it.each([
+  "I thought her warning was useful.",
+  "I felt relieved that she understood the risk.",
+  "I learned to trust her judgment.",
+  "I knew we could keep control.",
+  "I realized our relationship could improve.",
+  "I believe this partnership suits us.",
+])("allows intended private interpretation without mandatory review: %s", async content => {
+  const { a, ids } = qualityFixture();
+  a.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
+  const batch = await prepareSinglePassMemoryBatch(a, ids);
+  const finding = { ...thoughtFinding("George", content), candidateOnly: false };
+  const checked = validateSinglePassSource(a, { sourceId: ids[0], findings: [finding], rejected: [] }, batch.checkpoints[0].checkpoint);
+  expect(checked.rejected).toEqual([]);
+  expect(checked.proposals[0].proposal).toMatchObject({ status: "pending", requiresReview: false });
+});
+
+it.each(["dialogue", "duplicate"])("retains the %s quality safeguard with Character auto-approval enabled", async mode => {
+  let { a, ids } = qualityFixture();
+  a.memoryAutoApprove.brainUpdate = true;
+  a.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
+  const before = structuredClone(a.brains);
+  const batch = await prepareSinglePassMemoryBatch(a, ids);
+  const finding = { ...thoughtFinding("Fred", mode === "dialogue" ? spokenFred : "I protect the people who trust me."), candidateOnly: false };
+  a = reduce(a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
+  a = reduce(a, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId, sources: [{ checkpoint: batch.checkpoints[0].checkpoint, result: { sourceId: ids[0], findings: [finding], rejected: [] } }] });
+  expect(a.brains).toEqual(before); expect(a.activeState.memoryProposals).toEqual([]);
+  expect(a.messages[0].memoryEvaluation?.singlePass).toMatchObject({ status: "complete", suppressedCount: 1, acceptedCount: 0 });
 });

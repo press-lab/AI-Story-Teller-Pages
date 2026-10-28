@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { looseMemoryFixture, looseResponse } from "../test/looseMemory";
 import { makeBrain, makeComponent, makeStoryCard } from "../state/defaults";
 import type { Adventure, ComponentType } from "../types/adventure";
-import { prepareSinglePassMemoryBatch } from "./singlePassMemory";
+import { prepareSinglePassMemoryBatch, parseSinglePassMemoryResponse } from "./singlePassMemory";
 import { parseLooseMemoryOperations } from "./looseMemoryParser";
 import { routeLooseMemoryOperations, resolveLooseCategory, resolveLooseSource } from "./looseMemoryRouter";
 import { validateSinglePassSource } from "./singlePassMemoryValidation";
@@ -20,12 +20,12 @@ function expectFinding(r: Awaited<ReturnType<typeof routed>>, kind: string, subt
   expect(r.result.rejected).toEqual([]);
   expect(r.result.findings).toHaveLength(1);
   const f = r.result.findings[0];
-  expect(f).toMatchObject({ kind, targetId: id, operation, candidateOnly: true,
+  expect(f).toMatchObject({ kind, targetId: id, operation, candidateOnly: kind !== "brain",
     evidenceQuotes: [{ messageId: "narrator-1", quote: r.a.messages[0].content }] });
   if (kind === "storyCard") expect(f.storyCardType).toBe(subtype);
   if (kind === "brain") expect(Object.keys(f.brainPatch!)).toEqual([subtype]);
   expect(r.checked.proposals).toHaveLength(1);
-  expect(r.checked.proposals[0].proposal).toMatchObject({ proposedType: proposalType, requiresReview: true, status: "pending" });
+  expect(r.checked.proposals[0].proposal).toMatchObject({ proposedType: proposalType, requiresReview: kind !== "brain" || Boolean(r.a.brains.find(b => b.id === id)?.protected) || r.a.semanticEvaluationSettings.requireApprovalForAutoUpdates, status: "pending" });
   expect(r.checked.proposals[0].proposal.targetId ?? null).toBe(id);
 }
 describe("Brain routing", () => {
@@ -64,9 +64,11 @@ describe("Brain routing", () => {
     const r = await routed("(brain: George Weasley = " + belief + ")", a => { a.brains[1].thoughts.old = "1 \u2192 " + belief; });
     expect(r.checked.proposals).toEqual([]); expect(r.checked.suppressed).toEqual([0]); expect(r.checked.failureReason).toBeUndefined();
   });
-  it("holds unsupported private knowledge for review and never treats attached evidence as semantic proof", async () => {
+  it("holds explicitly uncertain private knowledge for review and never treats attached evidence as semantic proof", async () => {
     const r = await routed("(brain: George Weasley = I know Draconia's undisclosed secret.)", a => { a.messages[0].content += " George did not learn Draconia's secret."; });
-    expectFinding(r, "brain", "thoughts", "brain-george", "patch", "brainUpdate");
+    const uncertain = { ...r.result.findings[0], candidateOnly: true, reason: "Uncertain private knowledge; author review required." };
+    r.result = parseSinglePassMemoryResponse(JSON.stringify({ sources: [{ sourceId: "narrator-1", findings: [uncertain] }] }), ["narrator-1"], r.a).sources[0];
+    expect(validateSinglePassSource(r.a, r.result, r.batch.checkpoints[0].checkpoint).proposals[0].proposal.requiresReview).toBe(true);
     const claimed = reduce(r.a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: r.batch.checkpoints });
     const saved = reduce(claimed, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: r.batch.batchId, sources: [{ result: r.result, checkpoint: r.batch.checkpoints[0].checkpoint }] });
     expect(saved.brains).toEqual(r.a.brains); expect(saved.activeState.memoryProposals[0].status).toBe("pending");

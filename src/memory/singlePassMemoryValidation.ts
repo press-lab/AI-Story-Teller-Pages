@@ -60,10 +60,12 @@ export function toSinglePassProposal(a: Adventure, sourceId: string, checkpoint:
   const target = f.targetId ? memoryTargetSnapshot(a, targetKind, f.targetId) : undefined;
   const protectedTarget = f.kind === "storyCard" ? a.storyCards.find(c => c.id === f.targetId)?.protected
     : f.kind === "brain" ? a.brains.find(b => b.id === f.targetId)?.protected : a.components.find(c => c.id === f.targetId)?.protected;
-  // These cues can require review, never prove a claim. Semantic certainty still requires author judgment.
-  const interpretive = /\b(attempt(?:s|ed|ing)?|kiss(?:es|ed|ing)?|romantic|romance|date|yesterday|last week|previously|completed event|invitation|invited|withdrawn|withdrew|unconfirmed|relationship|privately|secretly|felt|feels?|thought|knew|learned|realized|understood|interprets?|believes?|assumes?|might|perhaps|uncertain|unconfirmed)\b/i.test(`${f.content ?? ""} ${JSON.stringify(f.brainPatch ?? {})} ${f.reason} ${f.evidenceQuotes.map(q => q.quote).join(" ")}`);
-  const review = f.kind === "immediateMomentum" || f.candidateOnly || Boolean(protectedTarget) || f.storyCardType === "character" || f.eventStatus === "unresolved" || interpretive
-    || a.semanticEvaluationSettings.requireApprovalForAutoUpdates;
+  // Private interpretation is intended Brain content; these cues only restrict other memory types.
+  const interpretive = f.kind !== "brain" && /\b(attempt(?:s|ed|ing)?|kiss(?:es|ed|ing)?|romantic|romance|date|yesterday|last week|previously|completed event|invitation|invited|withdrawn|withdrew|unconfirmed|relationship|privately|secretly|felt|feels?|thought|knew|learned|realized|understood|interprets?|believes?|assumes?|might|perhaps|uncertain|unconfirmed)\b/i.test(`${f.content ?? ""} ${JSON.stringify(f.brainPatch ?? {})} ${f.reason} ${f.evidenceQuotes.map(q => q.quote).join(" ")}`);
+  const globalApprovalRequired = a.semanticEvaluationSettings.requireApprovalForAutoUpdates;
+  const mandatoryReview = Boolean(protectedTarget) || globalApprovalRequired || f.candidateOnly;
+  const review = f.kind === "brain" ? mandatoryReview
+    : mandatoryReview || f.kind === "immediateMomentum" || f.storyCardType === "character" || f.eventStatus === "unresolved" || interpretive;
   let p: MemoryProposal;
   if (f.kind === "storyCard") {
     p = makeStoryCardSuggestion(a, sourceId, checkpoint.sourceContent, { title: f.title, content: f.content!, evidence: f.evidenceQuotes.map(q => q.quote).join("\n"),

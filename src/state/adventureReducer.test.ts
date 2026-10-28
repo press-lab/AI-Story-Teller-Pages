@@ -1852,3 +1852,81 @@ it.each(["bracketed", "metadata"])("retains distinct %s dated occurrences throug
   if (mode === "bracketed") { expect(content).toContain("2001-01-02"); expect(content).toContain("2001-01-03"); }
   else expect(content.match(/Draconia kissed Seth/g)).toHaveLength(2);
 });
+
+it.each(["enabled", "disabled", "global", "protected", "explicit", "metadata", "evidence"])("single-pass Brain approval respects %s controls through parsing, routing and commit", async mode => {
+  const { looseMemoryFixture } = await import("../test/looseMemory");
+  const { parseSinglePassMemoryResponse } = await import("../memory/singlePassMemory");
+  let { a, ids } = looseMemoryFixture();
+  a.memoryAutoApprove.brainUpdate = mode !== "disabled";
+  a.semanticEvaluationSettings.requireApprovalForAutoUpdates = mode === "global";
+  a.brains[1].protected = mode === "protected";
+  const before = structuredClone(a.brains);
+  const batch = await prepareSinglePassMemoryBatch(a, [ids[0]]);
+  const source = batch.outputAliases.S1;
+  const thought = "I felt encouraged by the totals; I believe our relationship with customers can grow into lasting partnerships.";
+  let response = "S1\n(brain: George Weasley = " + thought + ")";
+  if (["explicit", "metadata", "evidence"].includes(mode)) {
+    const alias = Object.keys(source.brains).find(key => source.brains[key].id === "brain-george")!;
+    const evidence = Object.keys(source.evidence).find(key => source.evidence[key].id === ids[0])!;
+    response = "MEM S1 brain " + alias + "\nTITLE George Weasley\n" + (mode === "metadata" ? "" : "REASON Supported private interpretation.\n")
+      + "REVIEW " + (mode === "explicit" ? "yes" : "no") + "\nE " + evidence
+      + (mode === "evidence" ? "" : " | " + a.messages[0].content) + "\nFIELD thought\nTEXT\n" + thought + "\nEND\nDONE S1";
+  }
+  const result = parseSinglePassMemoryResponse(response, [ids[0]], a, batch.outputAliases, batch).sources[0];
+  expect(result.rejected).toEqual([]);
+  expect(result.findings).toHaveLength(1);
+  expect(result.findings[0].candidateOnly).toBe(["explicit", "metadata", "evidence"].includes(mode));
+  a = adventureReducer(a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
+  a = adventureReducer(a, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId, sources: [{ result, checkpoint: batch.checkpoints[0].checkpoint }] });
+  const p = a.activeState.memoryProposals[0];
+  expect(p).toMatchObject({ proposedType: "brainUpdate", status: mode === "enabled" ? "approved" : "pending", requiresReview: !["enabled", "disabled"].includes(mode) });
+  expect(p.evaluationSource?.messages).toEqual(batch.checkpoints[0].checkpoint.evidence);
+  expect(a.messages[0].memoryEvaluation?.singlePass).toMatchObject({ acceptedCount: mode === "enabled" ? 1 : 0, reviewCount: mode === "enabled" ? 0 : 1 });
+  if (mode !== "enabled") expect(a.brains).toEqual(before);
+  if (mode === "disabled") a = adventureReducer(a, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: p.id });
+  if (["enabled", "disabled"].includes(mode)) {
+    expect(Object.values(a.brains[1].thoughts)).toEqual([expect.stringContaining(thought)]);
+    const restored = normalizeAdventure(JSON.parse(JSON.stringify(a)));
+    expect(restored.brains[1].thoughts).toEqual(a.brains[1].thoughts);
+    expect(restored.activeState.memoryProposals[0]).toMatchObject({ id: p.id, status: "approved", evaluationSource: p.evaluationSource });
+  }
+});
+
+it.each(["missingSource", "changedSource", "staleTarget", "missingTarget", "protectedTarget", "global", "disabled", "missingEvidence", "malformedPatch", "overwrite"])("single-pass Brain auto-approval fails safely for %s", async mode => {
+  const { looseMemoryFixture } = await import("../test/looseMemory");
+  const { parseSinglePassMemoryResponse } = await import("../memory/singlePassMemory");
+  let { a, ids } = looseMemoryFixture();
+  a.brains[1].thoughts.established = "I protect the designs.";
+  const batch = await prepareSinglePassMemoryBatch(a, [ids[0]]);
+  const result = parseSinglePassMemoryResponse("S1\n(brain: George Weasley = I believe we can scale up without surrendering control.)", [ids[0]], a, batch.outputAliases, batch).sources[0];
+  if (mode === "missingEvidence") result.findings[0].evidenceQuotes = [];
+  if (mode === "malformedPatch") result.findings[0].brainPatch = { thoughts: { invalid: 42 } } as never;
+  if (mode === "overwrite") result.findings[0].brainPatch = { thoughts: { established: "I surrender all control." } };
+  a = adventureReducer(a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
+  if (mode === "missingSource") a.messages = a.messages.filter(m => m.id !== ids[0]);
+  if (mode === "changedSource") a.messages[0].content += " Author correction.";
+  if (mode === "staleTarget") a.brains[1].notes = "Author correction.";
+  if (mode === "missingTarget") a.brains = a.brains.filter(b => b.id !== "brain-george");
+  if (mode === "protectedTarget") a.brains[1].protected = true;
+  if (mode === "global") a.semanticEvaluationSettings.requireApprovalForAutoUpdates = true;
+  if (mode === "disabled") a.memoryAutoApprove.brainUpdate = false;
+  const before = structuredClone(a.brains), cards = structuredClone(a.storyCards);
+  a = adventureReducer(a, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId, sources: [{ result, checkpoint: batch.checkpoints[0].checkpoint }] });
+  expect(a.brains).toEqual(before); expect(a.storyCards).toEqual(cards);
+  expect(a.activeState.memoryProposals.some(p => p.status === "approved")).toBe(false);
+  if (!["missingSource", "disabled"].includes(mode)) expect(a.messages[0].memoryEvaluation?.status).toBe("failed");
+});
+
+it("enabling Character auto-approval preserves historical pending proposals and diagnostics", async () => {
+  const { qualityFixture, thoughtFinding, privateGeorge } = await import("../test/memoryQuality");
+  let { a, ids } = qualityFixture();
+  const batch = await prepareSinglePassMemoryBatch(a, ids);
+  const p = toSinglePassProposal(a, ids[0], batch.checkpoints[0].checkpoint, thoughtFinding("George", privateGeorge));
+  a = adventureReducer(a, { type: "ADD_MEMORY_PROPOSAL", proposal: p });
+  const history = structuredClone(a.activeState.memoryProposals), brains = structuredClone(a.brains), diagnostics = structuredClone(a.activeState.memoryDiagnostics);
+  a = adventureReducer(a, { type: "SET_MEMORY_AUTO_APPROVE", settings: { ...a.memoryAutoApprove, brainUpdate: true } });
+  const restored = normalizeAdventure(JSON.parse(JSON.stringify(a)));
+  expect(restored.memoryAutoApprove.brainUpdate).toBe(true); expect(restored.activeState.memoryProposals).toEqual(history);
+  expect(restored.brains).toEqual(brains);
+  expect(restored.activeState.memoryDiagnostics).toEqual(diagnostics);
+});

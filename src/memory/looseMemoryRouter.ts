@@ -106,7 +106,7 @@ export function buildLooseFinding(a: Adventure, source: Source, op: LooseMemoryO
   if (!narrator) return undefined;
   const evidenceQuotes = [{ messageId: narrator.id, quote: narrator.content }];
   const kind = destination.category.category === "component" ? destination.category.subtype as SinglePassMemoryFinding["kind"] : destination.category.category;
-  const base: SinglePassMemoryFinding = { kind, targetId: destination.targetId, title: op.subject, candidateOnly: true,
+  const base: SinglePassMemoryFinding = { kind, targetId: destination.targetId, title: op.subject, candidateOnly: kind !== "brain",
     reason: destination.diagnostic ?? (op.category === "unclassified" ? "Unclassified assignment recovered as review-required Lore." : "Extracted factual candidate; narrator provenance attached locally."),
     evidenceQuotes, operation: destination.operation };
   if (kind === "storyCard" && destination.category.subtype === "lore" && !destination.targetId

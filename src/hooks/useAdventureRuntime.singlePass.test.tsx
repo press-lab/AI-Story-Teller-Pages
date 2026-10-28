@@ -170,16 +170,17 @@ it("delivers all six loose operations to the Memory Inbox with one HTTP extracti
   const saved = hook.result.current.adventure!;
   const ids = saved.messages.filter(m => m.role === "assistant").map(m => m.id);
   expectSixLooseProposals(saved, ids);
-  expect(saved.storyCards).toEqual(originalCards); expect(saved.brains).toEqual(originalBrains); expect(saved.components).toEqual(originalComponents);
+  expect(saved.storyCards).toEqual(originalCards); expect(saved.brains.filter(b => b.id !== "brain-george")).toEqual(originalBrains.filter(b => b.id !== "brain-george"));
+  expect(Object.values(saved.brains.find(b => b.id === "brain-george")!.thoughts)).toEqual([expect.stringContaining("I believe the business can grow beyond individual customers.")]); expect(saved.components).toEqual(originalComponents);
   expect(memoryCalls).toBe(1); expect(narrationCalls).toBe(3);
   for (const spy of forbidden) expect(spy).not.toHaveBeenCalled();
   expect(saved.activeState.apiCalls!.filter(c => c.memoryRequest?.stage === "singlePass")).toHaveLength(1);
   expect(saved.activeState.apiCalls!.filter(c => c.memoryRequest && c.memoryRequest.stage !== "singlePass")).toEqual([]);
 });
 
-it("keeps a three-source mixed Brain/Lore extraction to one provider call after deterministic quality suppression", async () => {
+it.each([false, true])("keeps mixed Brain/Lore extraction to one call with Character auto-approval=%s", async autoApprove => {
   const { qualityFixture, qualitySource, spokenFred, privateGeorge } = await import("../test/memoryQuality");
-  const { a } = qualityFixture(); a.messages = [];
+  const { a } = qualityFixture(); a.messages = []; a.memoryAutoApprove.brainUpdate = autoApprove; a.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
   let memoryCalls = 0, narrationCalls = 0;
   const forbidden = [vi.spyOn(semantic, "runMemoryCycle"), vi.spyOn(assessment, "assessMemory"), vi.spyOn(review, "validateMemoryUpdate")];
   vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
@@ -199,6 +200,20 @@ it("keeps a three-source mixed Brain/Lore extraction to one provider call after 
   expect(narrationCalls).toBe(3); expect(memoryCalls).toBe(1);
   expect(hook.result.current.adventure!.activeState.memoryProposals.filter(p => p.proposedType === "brainUpdate")).toHaveLength(1);
   expect(hook.result.current.adventure!.activeState.memoryProposals.filter(p => p.proposedType === "storyCard")).toHaveLength(1);
+  const saved = hook.result.current.adventure!;
+  const brain = saved.activeState.memoryProposals.find(p => p.proposedType === "brainUpdate")!;
+  const lore = saved.activeState.memoryProposals.find(p => p.proposedType === "storyCard")!;
+  expect(brain).toMatchObject({ status: autoApprove ? "approved" : "pending", requiresReview: false });
+  expect(lore).toMatchObject({ status: "pending", requiresReview: true });
+  expect(Object.values(saved.brains.find(b => b.id === "brain-George")!.thoughts).some(t => t.includes(privateGeorge))).toBe(autoApprove);
+  for (const p of [brain, lore]) expect(p.evaluationSource?.messages.some(e => e.id === p.sourceTurnId && e.content === qualitySource)).toBe(true);
+  const first = saved.messages.find(m => m.role === "assistant")!;
+  expect(first.memoryEvaluation?.singlePass).toMatchObject({ parsedCount: 3, suppressedCount: 1, acceptedCount: autoApprove ? 1 : 0, reviewCount: autoApprove ? 1 : 2 });
+  expect(first.memoryEvaluation?.singlePass?.dispositions).toContainEqual(expect.objectContaining({ status: autoApprove ? "accepted" : "review", proposalId: brain.id }));
+  expect(first.memoryEvaluation?.singlePass?.dispositions).toContainEqual(expect.objectContaining({ status: "review", proposalId: lore.id }));
+  expect(saved.activeState.memoryDiagnostics).toContainEqual(expect.objectContaining({ sourceId: first.id, outcome: "evaluation_completed" }));
+  expect(saved.activeState.apiCalls!.filter(c => c.memoryRequest?.stage === "singlePass")).toHaveLength(1);
+  expect(saved.activeState.apiCalls!.filter(c => c.memoryRequest && c.memoryRequest.stage !== "singlePass")).toEqual([]);
   for (const spy of forbidden) expect(spy).not.toHaveBeenCalled();
   await act(async () => { await settle(); }); expect(memoryCalls).toBe(1);
   expect(hook.result.current.runtime.memoryWork).toBeUndefined();
