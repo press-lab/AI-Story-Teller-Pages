@@ -1,6 +1,6 @@
 # Large-save storage architecture with unchanged memory behavior
 
-Status: design only. No parser, evaluator, runtime, save format, or user-data migration is implemented by this document.
+Status: the standalone lossless codec and offline equivalence tests are implemented. The codec is disabled in the app: database writers, exports, parser, evaluator and runtime are unchanged. No user-data migration is enabled. See [validation results](lossless-storage-validation.md).
 
 ## Decision and boundaries
 
