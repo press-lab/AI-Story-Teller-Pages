@@ -351,3 +351,51 @@ describe("source alias evidence recovery", () => {
     expect(r.findings).toEqual([]); expect(r.rejected).toHaveLength(1);
   });
 });
+
+import { qualityFixture } from "../test/memoryQuality";
+import { singlePassCharacterCard, singlePassPersonality, singlePassReferenceState } from "./singlePassMemory";
+import { makeStoryCard } from "../state/defaults";
+it("supplies an explicit pooled personality reference for every matched Brain without duplicating the profile", async () => {
+  const { a, ids } = qualityFixture(3);
+  const batch = await prepareSinglePassMemoryBatch(a, ids);
+  const manifest = batch.outputAliases.S1;
+  for (const b of Object.values(manifest.brains)) {
+    const reference = batch.payload.references[b.reference] as { personalityReference: { cardId: string; reference?: number; personality?: string } };
+    expect(reference.personalityReference).toBeDefined();
+    if (reference.personalityReference.reference !== undefined) expect(batch.payload.references[reference.personalityReference.reference]).toMatchObject({ type: "character" });
+    else expect(reference.personalityReference.personality!.length).toBeLessThanOrEqual(500);
+  }
+  expect(buildSinglePassMemoryMessages(batch)[0].content).toContain("consider EVERY eligible existing Brain");
+  expect(buildSinglePassMemoryMessages(batch)[0].content).toContain("One ongoing conversation is one development");
+  expect(singlePassPersonality("Biography. ".repeat(200) + "Personality: proud and pragmatic.")).toMatch(/^Personality: proud and pragmatic/);
+});
+it("uses linked profiles first, unique normalized name/alias fallback, and never ambiguous profiles", () => {
+  const { a } = qualityFixture(); const brain = a.brains[2];
+  a.storyCards.push(makeStoryCard({ id: "other", type: "character", title: "Other identity", keys: ["  DRACONIA  "], content: "Other." }));
+  expect(singlePassCharacterCard(a, brain)?.id).toBe("profile-Draconia");
+  brain.linkedStoryCardId = "missing";
+  expect(singlePassCharacterCard(a, brain)).toBeUndefined();
+  a.storyCards = a.storyCards.filter(c => c.id !== "profile-Draconia");
+  expect(singlePassCharacterCard(a, brain)?.id).toBe("other");
+});
+it("invalidates extraction when a newly supplied linked Character profile changes outside ordinary inventory", async () => {
+  const { a, ids } = qualityFixture();
+  a.storyCards.find(c => c.id === "profile-Draconia")!.title = "Vesper";
+  a.storyCards.find(c => c.id === "profile-Draconia")!.keys = ["vesper"];
+  const batch = await prepareSinglePassMemoryBatch(a, ids);
+  const brain = batch.payload.references[batch.outputAliases.S1.brains.B3.reference] as { personalityReference: { personality?: string; reference?: number } };
+  expect(brain.personalityReference).toBeDefined();
+  const personality = brain.personalityReference.personality ?? JSON.stringify(batch.payload.references[brain.personalityReference.reference!]);
+  expect(personality).toContain("proud");
+  a.storyCards.find(c => c.id === "profile-Draconia")!.content = "Personality: open and warm.";
+  expect(singlePassReferenceState(a, ids[0])).not.toBe(batch.checkpoints[0].checkpoint.referenceState);
+});
+
+it("recognizes incremental private changes while preserving authored Brain conditions", async () => {
+  const { a } = qualityFixture();
+  const { buildMemoryAssessmentConditions } = await import("../triggers/semanticEngine");
+  a.brains[1].updateCondition = "";
+  expect(buildMemoryAssessmentConditions(a).brains.find(c => c.id === "brain:brain-George")?.condition).toContain("meaningful new private observation");
+  a.brains[1].updateCondition = "Only when George makes a private business decision.";
+  expect(buildMemoryAssessmentConditions(a).brains.find(c => c.id === "brain:brain-George")?.condition).toBe(a.brains[1].updateCondition);
+});

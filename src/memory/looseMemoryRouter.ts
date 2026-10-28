@@ -3,7 +3,7 @@ import type { PreparedSinglePassMemoryBatch } from "./singlePassMemory";
 import type { LooseMemoryOperation, LooseMemoryParseResult } from "./looseMemoryParser";
 import { normalizeSinglePassFinding } from "./singlePassMemory";
 import { validateSinglePassSource } from "./singlePassMemoryValidation";
-import { storyCardTargets } from "./storyCardSuggestions";
+import { safeLoreAppendTarget, storyCardTargets } from "./storyCardSuggestions";
 import { matchingStoryCardEntities, characterParticipants } from "./storyCardEntities";
 import { factsCovered } from "./factCoverage";
 
@@ -83,14 +83,17 @@ export function resolveLooseDestination(a: Adventure, source: Source, op: LooseM
     return lore;
   }
   if (category.subtype === "character" && op.explicitUpdate) return { error: "Character correction requires an existing unique Character identity." };
-  let candidates = matches.map(c => c.id);
-  if (!candidates.length && category.subtype === "lore") {
-    candidates = storyCardTargets(a, { title: op.subject, content: op.content, type: "lore" }).filter(id => cards.some(c => c.id === id));
+  if (category.subtype === "lore") {
+    const targetId = safeLoreAppendTarget(a, { title: op.subject }) ?? null;
+    const candidates = [...new Set([...matches.map(c => c.id), ...storyCardTargets(a, { title: op.subject, content: op.content, type: "lore" })])]
+      .filter(id => cards.some(c => c.id === id));
+    return { value: { category, targetId, operation: targetId ? "append" : "create", candidates,
+      ...(!targetId && candidates.length ? { diagnostic: "No unique strong Lore topic match; candidate choices retained for manual review." } : {}) } };
   }
-  if (candidates.length > 1 && category.subtype !== "lore") return { error: "Ambiguous " + category.subtype + " destination; no duplicate created." };
+  const candidates = matches.map(c => c.id);
+  if (candidates.length > 1) return { error: "Ambiguous " + category.subtype + " destination; no duplicate created." };
   return { value: { category, targetId: candidates.length === 1 ? candidates[0] : null,
-    operation: candidates.length === 1 ? "append" : "create", candidates,
-    ...(candidates.length > 1 ? { diagnostic: "Ambiguous Lore destination; candidate choices retained for manual review." } : {}) } };
+    operation: candidates.length === 1 ? "append" : "create", candidates } };
 }
 function hash(text: string): string {
   let value = 2166136261;

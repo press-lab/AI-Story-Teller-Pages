@@ -1,7 +1,7 @@
 import { reviewedProposal } from "../test/memoryPlacement";
 /** @vitest-environment jsdom */
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useReducer } from "react";
 import { afterEach, expect, it, vi } from "vitest";
@@ -223,4 +223,59 @@ it("shows the actual card type and converts a legacy identity draft into reviewe
   const saved = savedReview();
   expect(saved.storyCards[0].content).toBe("Moody is a veteran Auror. VOICE: Blunt.");
   expect(saved.storyCards.find(c => c.type === "lore")?.content).toBe("Moody demonstrated three curses to the class.");
+});
+
+import { qualityFixture } from "../test/memoryQuality";
+import { makeMemoryProposal } from "../test/goldenAdventure";
+function GroupedReview() {
+  const { a } = qualityFixture();
+  a.activeState.memoryProposals = [
+    makeMemoryProposal({ id: "one", title: "First subject label", storyCardType: "lore", targetId: "relationship", appendContent: true, content: "Draconia accepted a design safeguard." }),
+    makeMemoryProposal({ id: "two", title: "Different subject label", storyCardType: "lore", targetId: "relationship", appendContent: true, content: "Seth retained control of the shop." }),
+    makeMemoryProposal({ id: "three", title: "Quidditch Trials", storyCardType: "lore", content: "Ron plans to try out for Keeper." }),
+    makeMemoryProposal({ id: "four", title: "  quidditch trials  ", storyCardType: "lore", content: "Harry will observe the trials." }),
+    makeMemoryProposal({ id: "five", proposedType: "brainUpdate", targetId: "brain-Fred", title: "Private reaction", content: JSON.stringify({ thoughts: { latest: "I will judge her by her work." } }) }),
+  ];
+  const [adventure, dispatch] = useReducer(adventureReducer, a);
+  return <><MemoryInboxPage adventure={adventure} dispatch={dispatch} /><output data-testid="grouped-state">{JSON.stringify(adventure)}</output></>;
+}
+it("groups by destination ID, normalized CREATE title/type and Brain character; search and individual edits/approval remain independent", async () => {
+  render(<GroupedReview />); const user = userEvent.setup();
+  const relationship = screen.getByRole("region", { name: "Seth and Draconia's Public Exposure suggestions" });
+  expect(within(relationship).getByRole("heading")).toHaveTextContent("2 proposals");
+  expect(screen.getByRole("region", { name: /CREATE lore: Quidditch Trials suggestions/i })).toHaveTextContent("2 proposals");
+  expect(screen.getByRole("region", { name: "Brain: Fred suggestions" })).toHaveTextContent("1 proposal");
+  const drafts = within(relationship).getAllByPlaceholderText("Proposed content...");
+  await user.clear(drafts[0]); await user.type(drafts[0], "A revised independent safeguard.");
+  expect(drafts[1]).toHaveValue("Seth retained control of the shop.");
+  await user.click(within(relationship).getAllByRole("button", { name: "Approve" })[0]);
+  const state = JSON.parse(screen.getByTestId("grouped-state").textContent!);
+  expect(state.activeState.memoryProposals.find((p: { id: string }) => p.id === "two").status).toBe("pending");
+  expect(screen.getByLabelText("Memory suggestion counts")).toHaveTextContent("4 pending");
+  await user.type(screen.getByPlaceholderText("Search suggestions..."), "Keeper");
+  expect(screen.getByLabelText("Memory suggestion counts")).toHaveTextContent("1 shown");
+  expect(screen.getByRole("region", { name: /CREATE lore: Quidditch Trials suggestions/i })).toHaveTextContent("1 proposal");
+});
+
+import * as historyWorker from "../memory/memoryHistoryWorker";
+import { compactHistoricalProposal } from "../memory/memoryHistory";
+it("opens archived history beside grouped pending proposals without changing either", async () => {
+  const { a } = qualityFixture();
+  const original = makeMemoryProposal({ id: "resolved", title: "Original archived agreement", storyCardType: "lore", status: "rejected", content: "A preserved reviewed development." });
+  const record = { kind: "proposal" as const, id: original.id, value: original };
+  const block = { id: "archive", version: 1 as const, format: "aist-memory-history" as const, encoding: "typed-json-gzip-base64" as const,
+    kind: "proposal" as const, recordId: original.id, decodedBytes: 100, sha256: "0".repeat(64), data: "synthetic-worker-result" };
+  a.activeState.memoryProposals = [compactHistoricalProposal(original, block.id), makeMemoryProposal({ id: "pending", title: "Quidditch Trials", storyCardType: "lore", content: "Ron plans to audition." })];
+  a.activeState.compressedMemoryHistory = { version: 1, blocks: { archive: block } };
+  const read = vi.spyOn(historyWorker, "readHistoryInWorker").mockResolvedValue(record);
+  try {
+    render(<MemoryInboxPage adventure={a} dispatch={vi.fn()} />);
+    expect(read).not.toHaveBeenCalled();
+    await userEvent.setup().click(screen.getByText("History (1)", { selector: "summary" }));
+    await userEvent.setup().click(screen.getByText("Original archived details", { selector: "summary" }));
+    expect(await screen.findByText("Complete original record (JSON)")).toBeInTheDocument();
+    expect(read).toHaveBeenCalledWith(block);
+    expect(screen.getByRole("region", { name: "CREATE lore: Quidditch Trials suggestions" })).toHaveTextContent("1 proposal");
+    expect(a.activeState.memoryProposals[0].status).toBe("rejected");
+  } finally { read.mockRestore(); }
 });

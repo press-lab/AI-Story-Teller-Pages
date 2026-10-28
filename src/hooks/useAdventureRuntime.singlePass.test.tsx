@@ -176,3 +176,30 @@ it("delivers all six loose operations to the Memory Inbox with one HTTP extracti
   expect(saved.activeState.apiCalls!.filter(c => c.memoryRequest?.stage === "singlePass")).toHaveLength(1);
   expect(saved.activeState.apiCalls!.filter(c => c.memoryRequest && c.memoryRequest.stage !== "singlePass")).toEqual([]);
 });
+
+it("keeps a three-source mixed Brain/Lore extraction to one provider call after deterministic quality suppression", async () => {
+  const { qualityFixture, qualitySource, spokenFred, privateGeorge } = await import("../test/memoryQuality");
+  const { a } = qualityFixture(); a.messages = [];
+  let memoryCalls = 0, narrationCalls = 0;
+  const forbidden = [vi.spyOn(semantic, "runMemoryCycle"), vi.spyOn(assessment, "assessMemory"), vi.spyOn(review, "validateMemoryUpdate")];
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+    const body = JSON.parse(init!.body as string); let content: string;
+    if (body.model === "evaluator") {
+      memoryCalls++;
+      expect(body.messages[0].content).toContain("brain:"); expect(body.messages[0].content).toContain("storyCard:");
+      const payload = JSON.parse(body.messages.at(-1).content);
+      expect(Object.keys(payload.outputAliases)).toHaveLength(3);
+      content = `S1\n(brain.thoughts: Fred = ${spokenFred})\n(brain.thoughts: George = ${privateGeorge})\n(storyCard.lore: Gryffindor Quidditch Tryouts 2001 = Ron will audition for Keeper.)\nS2\n(brain.thoughts: Fred = ${spokenFred})\nS3\nNONE`;
+    } else { narrationCalls++; content = qualitySource; }
+    return new Response(JSON.stringify({ choices: [{ message: { content } }], usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 } }));
+  });
+  const hook = setup(a);
+  for (let i = 0; i < 3; i++) await act(async () => { await hook.result.current.runtime.continueTurn(); await settle(); });
+  await waitFor(() => expect(hook.result.current.adventure!.messages.filter(m => m.role === "assistant").every(m => m.memoryEvaluation?.status === "complete")).toBe(true));
+  expect(narrationCalls).toBe(3); expect(memoryCalls).toBe(1);
+  expect(hook.result.current.adventure!.activeState.memoryProposals.filter(p => p.proposedType === "brainUpdate")).toHaveLength(1);
+  expect(hook.result.current.adventure!.activeState.memoryProposals.filter(p => p.proposedType === "storyCard")).toHaveLength(1);
+  for (const spy of forbidden) expect(spy).not.toHaveBeenCalled();
+  await act(async () => { await settle(); }); expect(memoryCalls).toBe(1);
+  expect(hook.result.current.runtime.memoryWork).toBeUndefined();
+});

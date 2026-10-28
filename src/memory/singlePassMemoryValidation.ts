@@ -1,12 +1,13 @@
 import type { Adventure, MemoryProposal, SinglePassMemoryCheckpoint, SinglePassMemoryFinding, SinglePassMemorySourceResult } from "../types/adventure";
 import { bindPlacement, characterProfileChangeError, placementValidationError } from "./storyCardPlacement";
 import { makeStoryCardSuggestion, storyCardTargets } from "./storyCardSuggestions";
-import { proposalCoverage, factsCovered, factKey, facts } from "./factCoverage";
+import { proposalCoverage, loreNovelty, factsCovered, factKey, facts } from "./factCoverage";
 import { memoryEvidenceWindow } from "./memoryEvidenceWindow";
 import { memoryTargetSnapshot } from "./memoryCycleState";
 import { singlePassFindingSchemaError } from "./singlePassMemory";
 import { memoryUpdateShapeError } from "./validateMemoryUpdate";
 import { buildMemoryAssessmentConditions } from "../triggers/semanticEngine";
+import { privateThoughtQualityReason } from "./privateThoughtQuality";
 import { createId, nowIso } from "../utils/id";
 
 export function singlePassSourceError(a: Adventure, sourceId: string, checkpoint: SinglePassMemoryCheckpoint): string | undefined {
@@ -92,11 +93,20 @@ export function validateSinglePassSource(a: Adventure, result: SinglePassMemoryS
   const rejected = [...result.rejected];
   const proposals: Array<{ index: number; findingIndex: number; proposal: MemoryProposal }> = [];
   const suppressed: number[] = [...(result.suppressedIndexes ?? [])];
+  const suppressionReasons: Record<number, string> = {};
   result.findings.forEach((finding, findingIndex) => {
     const index = result.findingIndexes?.[findingIndex] ?? findingIndex;
     const error = sourceError ?? validateSinglePassFinding(a, result.sourceId, checkpoint, finding);
     if (error) { rejected.push({ index, reason: error }); return; }
+    const brainTarget = finding.kind === "brain" ? a.brains.find(b => b.id === finding.targetId) : undefined;
+    const qualityReason = brainTarget && privateThoughtQualityReason(finding.brainPatch!, checkpoint.evidence
+      .filter(e => a.messages.some(m => m.id === e.id && m.role === "assistant")).map(e => e.content), brainTarget);
+    if (qualityReason) { suppressed.push(index); suppressionReasons[index] = qualityReason; return; }
     const proposal = toSinglePassProposal(a, result.sourceId, checkpoint, finding);
+    const novelty = finding.kind === "storyCard" && finding.storyCardType === "lore"
+      ? loreNovelty({ ...a, activeState: { ...a.activeState, memoryProposals: [...a.activeState.memoryProposals, ...proposals.map(p => p.proposal)] } }, proposal) : undefined;
+    if (novelty?.status === "covered") { suppressed.push(index); suppressionReasons[index] = novelty.reason; return; }
+    if (novelty && novelty.status !== "new") { proposal.requiresReview = true; proposal.rationale += " " + novelty.reason; }
     const placementError = placementValidationError(a, proposal);
     if (placementError) { rejected.push({ index, reason: placementError }); return; }
     const brain = finding.kind === "brain" ? a.brains.find(b => b.id === finding.targetId) : undefined;
@@ -105,11 +115,11 @@ export function validateSinglePassSource(a: Adventure, result: SinglePassMemoryS
     const priorBrain = brain ? [brain.currentState, brain.relationshipPressure, brain.emotionalInterpretation, brain.recentDevelopments, brain.notes, ...Object.values(brain.thoughts), ...Object.values(brain.archivedThoughts)] : [];
     const thoughtText = (value: string) => value.replace(/^\s*\d+\s*(?:\u2192|:)\s*/, "");
     const card = finding.kind === "storyCard" ? a.storyCards.find(c => c.id === finding.targetId) : undefined;
-    const covered = proposalCoverage(a, proposal) || (Boolean(card) && facts(finding.content!).every(fact => (" " + factKey(card!.content) + " ").includes(" " + fact + " "))) || (finding.kind === "brain" && brainValues.length > 0
+    const covered = proposalCoverage(a, proposal) || (finding.storyCardType !== "lore" && Boolean(card) && facts(finding.content!).every(fact => (" " + factKey(card!.content) + " ").includes(" " + fact + " "))) || (finding.kind === "brain" && brainValues.length > 0
       && brainValues.every(value => factsCovered(thoughtText(value), priorBrain.map(thoughtText))))
       || (!["brain", "storyCard"].includes(finding.kind) && Boolean(component) && factsCovered(finding.content!, [component!.content]));
-    if (covered) suppressed.push(index);
+    if (covered) { suppressed.push(index); suppressionReasons[index] = "Factual delta already recorded or considered."; }
     else proposals.push({ index, findingIndex, proposal });
   });
-  return { proposals, rejected, suppressed, failureReason: sourceError ?? result.failureReason ?? (rejected.length && !proposals.length && !suppressed.length ? "All recognized operations rejected: " + rejected.map(r => `${r.index}: ${r.reason}`).join("; ") : undefined) };
+  return { proposals, rejected, suppressed, suppressionReasons, failureReason: sourceError ?? result.failureReason ?? (rejected.length && !proposals.length && !suppressed.length ? "All recognized operations rejected: " + rejected.map(r => `${r.index}: ${r.reason}`).join("; ") : undefined) };
 }

@@ -1,19 +1,39 @@
-import type { Adventure, ChatMessage, ProviderConfig, SinglePassMemoryBatchResult, SinglePassMemoryCheckpoint, SinglePassMemoryFinding, SinglePassMemorySourceResult } from "../types/adventure";
+import type { Adventure, BrainEntry, ChatMessage, ProviderConfig, SinglePassMemoryBatchResult, SinglePassMemoryCheckpoint, SinglePassMemoryFinding, SinglePassMemorySourceResult } from "../types/adventure";
 import { assessmentInputs, assessmentSourceState, memoryDecisionState } from "./memoryAssessment";
 import { buildMemoryAssessmentConditions } from "../triggers/semanticEngine";
 import { memoryEvidenceWindow } from "./memoryEvidenceWindow";
 import { memoryBatchProvider, sendMemoryCompletion } from "../providers/memoryCompletion";
 import { generatedStoryCardTriggers } from "./resolveMemoryTarget";
+import { storyCardContextContent } from "./storyCardPolicy";
 import { createId } from "../utils/id";
 import { parseLooseMemoryOperations } from "./looseMemoryParser";
 import { routeLooseMemoryOperations } from "./looseMemoryRouter";
+
+const profileName = (name: string) => name.normalize("NFKC").toLocaleLowerCase().replace(/\s+/g, " ").trim();
+/** Linked identity wins; fallback names/aliases must identify exactly one Character. */
+export function singlePassCharacterCard(a: Adventure, brain: BrainEntry) {
+  const linked = a.storyCards.find(c => c.id === brain.linkedStoryCardId && c.type === "character");
+  if (linked) return linked;
+  const matches = a.storyCards.filter(c => c.type === "character" && [c.title, ...c.keys].some(name => profileName(name) === profileName(brain.characterName)));
+  return matches.length === 1 ? matches[0] : undefined;
+}
+export function singlePassPersonality(content: string): string {
+  const parts = content.split(/\n+|(?<=[.!?])\s+/).map(s => s.trim()).filter(Boolean);
+  const priority = /personality|voice|motivat|relationship|trust|loyal|proud|protect|humou?r|wit|sarcas|ambiti|values?|fear|want|believ|temper|reserved|guarded|speaks?|manner/i;
+  return [...parts.filter(s => priority.test(s)), ...parts.filter(s => !priority.test(s))].join(" ").slice(0, 500);
+}
 
 /** Exact reference/control guard. Worker bookkeeping and request records are not evidence. */
 export function singlePassReferenceState(a: Adventure, sourceId: string): string {
   const snapshot = { ...a, messages: a.messages.slice(0, a.messages.findIndex(m => m.id === sourceId) + 1),
     activeState: { ...a.activeState, turn: a.messages.find(m => m.id === sourceId)?.memoryEvaluation?.turn ?? a.activeState.turn },
     semanticEvaluationSettings: { ...a.semanticEvaluationSettings, messagesIncluded: memoryEvidenceWindow(a, sourceId).length } };
-  return JSON.stringify([assessmentSourceState(snapshot, sourceId, buildMemoryAssessmentConditions(snapshot)), memoryDecisionState(snapshot, sourceId), snapshot.components.filter(c => c.type === "immediateMomentum")]);
+  const conditions = buildMemoryAssessmentConditions(snapshot);
+  return JSON.stringify([assessmentSourceState(snapshot, sourceId, conditions), memoryDecisionState(snapshot, sourceId), snapshot.components.filter(c => c.type === "immediateMomentum"),
+    snapshot.brains.filter(b => conditions.brains.some(c => c.id === `brain:${b.id}`)).map(b => {
+      const card = singlePassCharacterCard(snapshot, b);
+      return card ? { brainId: b.id, id: card.id, title: card.title, keys: card.keys, content: card.content } : { brainId: b.id };
+    })]);
 }
 export interface PreparedSinglePassMemoryBatch {
   batchId: string;
@@ -50,6 +70,16 @@ export async function prepareSinglePassMemoryBatch(a: Adventure, ids: readonly s
       semanticEvaluationSettings: { ...a.semanticEvaluationSettings, messagesIncluded: memoryEvidenceWindow(a, source.id).length } };
     const conditions = buildMemoryAssessmentConditions(snapshot);
     const inputs = await assessmentInputs(snapshot, source.id, conditions);
+    const brains = inputs.currentBrains.map(b => {
+      const brain = snapshot.brains.find(entry => entry.id === b.id)!;
+      const card = singlePassCharacterCard(snapshot, brain);
+      if (!card) return b;
+      const supplied = inputs.currentCards.find(c => c.id === card.id)
+        ?? inputs.canon.find(entry => entry.content === "Canon story card: " + card.title + "\n" + storyCardContextContent(card));
+      return { ...b, personalityReference: supplied
+        ? { cardId: card.id, reference: pool(supplied), use: "personality, motivations, relationships, voice" }
+        : { cardId: card.id, personality: singlePassPersonality(card.content) } };
+    });
     // Single-pass-only, review-required legacy Momentum support.
     const plot = [...inputs.currentPlot.filter(p => conditions.plot.some(c => c.id.endsWith(":" + p.id))), ...snapshot.components.filter(c => c.type === "immediateMomentum" && c.active && c.autoUpdate !== false)
       .map(c => ({ id: c.id, type: c.type, content: c.content, premise: c.arcPremise, autoUpdate: c.autoUpdate, protected: c.protected }))];
@@ -61,7 +91,7 @@ export async function prepareSinglePassMemoryBatch(a: Adventure, ids: readonly s
       sourceId: source.id, sourceTurn: source.memoryEvaluation!.turn,
       evidence: Object.fromEntries(inputs.evidence.map((e, i) => [`E${i + 1}`, { id: e.id, reference: pool(e) }])),
       cards: Object.fromEntries(inputs.currentCards.map((c, i) => [`C${i + 1}`, { id: c.id, reference: pool(c), type: c.type, memoryMode: c.memoryMode }])),
-      brains: Object.fromEntries(inputs.currentBrains.map((b, i) => [`B${i + 1}`, { id: b.id, reference: pool(b), type: "brain" as const }])),
+      brains: Object.fromEntries(brains.map((b, i) => [`B${i + 1}`, { id: b.id, reference: pool(b), type: "brain" as const }])),
       plot: Object.fromEntries(plot.map((p, i) => [`P${i + 1}`, { id: p.id, reference: pool({ ...p, title: snapshot.components.find(c => c.id === p.id)?.title }), type: p.type }])),
     };
     sources.push({ sourceId: source.id, conditions,
@@ -72,7 +102,7 @@ export async function prepareSinglePassMemoryBatch(a: Adventure, ids: readonly s
         if (plot) return pool({ role: entry.role, prefix: entry.content.slice(0, -plot.content.length), reference: pool(plot) });
         return pool(entry);
       }), cards: inputs.currentCards.map(pool),
-      brains: inputs.currentBrains.map(pool), plot: plot.map(p => pool({ ...p, title: snapshot.components.find(c => c.id === p.id)?.title })), consideredSuggestionsNotCanon: inputs.coverage.map(pool) });
+      brains: brains.map(pool), plot: plot.map(p => pool({ ...p, title: snapshot.components.find(c => c.id === p.id)?.title })), consideredSuggestionsNotCanon: inputs.coverage.map(pool) });
   }
   return { batchId, checkpoints, outputAliases, payload: { references, sources } };
 }
@@ -83,8 +113,9 @@ Group operations under S1, S2 or S3 in outputAliases source order. Write NONE un
 Use names and topic titles. The application resolves destinations, evidence, triggers and internal operations locally.
 
 Categories:
-brain: existing eligible character's private interpretation, reaction or plan, in their own first-person voice. Subject is the character's name. Default subtype thoughts; alternatives currentState, relationshipPressure, emotionalInterpretation, recentDevelopments, notes. Never create Brains. Never give an absent character knowledge without an established means of learning it. Avoid scene presence, generic moods and stable traits.
-storyCard: default subtype lore. Lore records consequential events, agreements, plans, discoveries and shared developments. Use an existing topical Lore title when it fits. A participant's biography is not the event destination.
+brain: consider EVERY eligible existing Brain whose character directly participated in, witnessed, or demonstrably learned about the latest development. Subject is the character's name. Use established personality/voice from personalityReference and existing Brain state. Write a meaningful NEW private observation, interpretation, intention, reaction, changed belief or revised judgment in that character's first-person voice: what does this privately mean to them? Incremental changes qualify; a major personality transformation is unnecessary. Prefer subtype thoughts. Alternatives currentState, relationshipPressure, emotionalInterpretation, recentDevelopments, notes remain available for a distinct state change; recentDevelopments is NOT a transcript-summary field. Never create Brains.
+Never copy dialogue into thoughts, rewrite narration in first person without private meaning, record location or scene participation, repeat existing thoughts in different words, or invent feelings to force an update. Never grant knowledge of unwitnessed events without evidence of learning them. Return no Brain update when nothing meaningful changed.
+storyCard: default subtype lore. Lore records consequential events, agreements, plans, discoveries and shared developments. Compare each candidate fact against provided Story Cards and considered suggestions; output ONLY information not already recorded or considered. One ongoing conversation is one development unless a new decision, consequence or fact changes it. Do not record conversational restatements or create a new event because an old event is discussed again. Preserve genuinely new consequences and commitments. Plans, invitations, attempts, offers, accepted agreements and completed outcomes are distinct. Return NONE when no new durable information exists. Use an existing topical Lore title only for the same subject; shared participants do not establish a destination. A participant's biography is not the event destination.
 storyCard.character: a genuinely missing person's enduring identity. Existing profiles are protected. Only an explicit evidenced enduring correction uses storyCard.character.update, with a specific explanation after ||. Never infer permanence from a single scene.
 storyCard.location: enduring properties of a place, not a one-time event there.
 storyCard.custom: enduring properties of an established non-person subject, not a catch-all for events.
@@ -105,6 +136,12 @@ S3
 (component.activePressure: Ministry Deadline = The Ministry expects the research report tomorrow.)
 
 Brain and Story Card subtypes may be omitted when using their defaults. lore: Topic = Information is also valid.
+Private interpretation examples (illustrative, not established canon):
+Bad: (brain.recentDevelopments: Fred = Fair question, she's one of ours now by dating Press.)
+Good, ONLY if supported: (brain.thoughts: Fred = George is treating this like an acquisition attempt. Press seems happy; I'll watch for trouble without making his girlfriend an enemy.)
+Bad: (brain.thoughts: George = I said we should be careful.)
+Good, ONLY if supported: (brain.thoughts: George = Her warning addresses the risk I missed. I can accept her help while keeping control of our designs.)
+
 A justified existing Character correction:
 (storyCard.character.update: Eleanor Vale = Eleanor permanently lost her fire magic. || The experiment established this lasting loss.)
 

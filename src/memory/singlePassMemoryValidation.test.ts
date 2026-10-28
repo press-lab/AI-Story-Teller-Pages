@@ -307,3 +307,62 @@ it.each([true, false])("recovers supported Character events with topical Lore pr
   expect(p.targetId).toBeUndefined();
   expect(p.storyCardReview!.targetCandidates.includes(lore.id)).toBe(hasLore);
 });
+
+import { qualityFixture, spokenFred, privateFred, privateGeorge, privateDraconia, thoughtFinding, loreFinding, repeatedLore } from "../test/memoryQuality";
+it.each(["thoughts", "recentDevelopments"])("suppresses Fred's identical spoken line in %s without failing the source", async field => {
+  const { a, ids } = qualityFixture(); const batch = await prepareSinglePassMemoryBatch(a, ids);
+  const f = thoughtFinding("Fred", spokenFred);
+  if (field === "recentDevelopments") f.brainPatch = { recentDevelopments: spokenFred };
+  const result = validateSinglePassSource(a, { sourceId: ids[0], findings: [f], rejected: [] }, batch.checkpoints[0].checkpoint);
+  expect(result.proposals).toEqual([]); expect(result.suppressed).toEqual([0]); expect(result.failureReason).toBeUndefined();
+  expect(result.suppressionReasons[0]).toContain("spoken dialogue");
+});
+it("accepts distinct private voices, preserves existing thoughts and rejects an absent unlearned perspective", async () => {
+  let { a, ids } = qualityFixture(); const before = structuredClone(a.brains);
+  const batch = await prepareSinglePassMemoryBatch(a, ids);
+  const findings = [thoughtFinding("Fred", privateFred), thoughtFinding("George", privateGeorge), thoughtFinding("Draconia", privateDraconia), thoughtFinding("Hermione", "I know their shop agreement now.")];
+  const checked = validateSinglePassSource(a, { sourceId: ids[0], findings, rejected: [] }, batch.checkpoints[0].checkpoint);
+  expect(checked.proposals).toHaveLength(3); expect(checked.rejected[0].reason).toContain("eligible");
+  a = reduce(a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
+  a = reduce(a, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId, sources: [{ checkpoint: batch.checkpoints[0].checkpoint, result: { sourceId: ids[0], findings: findings.slice(0, 3), rejected: [] } }] });
+  for (const p of a.activeState.memoryProposals) a = reduce(a, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: p.id });
+  for (let i = 0; i < 3; i++) expect(a.brains[i].thoughts.established).toBe(before[i].thoughts.established);
+  expect(a.brains[2].thoughts.new_reaction).toContain("own terms");
+  expect(a.brains[3]).toEqual(before[3]);
+});
+it("suppresses source copying and turn-prefixed existing thoughts but permits a brief quotation with interpretation", async () => {
+  const { a, ids } = qualityFixture(); const batch = await prepareSinglePassMemoryBatch(a, ids);
+  const findings = [thoughtFinding("George", "George worries aloud about losing control of the shop"), thoughtFinding("Fred", "I protect the people who trust me."),
+    thoughtFinding("Fred", `He says 'one of ours', but I need to judge her by whether she respects the designs. My loyalty doesn't require suspicion.`)];
+  const checked = validateSinglePassSource(a, { sourceId: ids[0], findings, rejected: [] }, batch.checkpoints[0].checkpoint);
+  expect(checked.suppressed).toEqual([0, 1]); expect(checked.proposals).toHaveLength(1);
+  expect(checked.failureReason).toBeUndefined();
+});
+it("finds sentence-level Lore coverage and suppresses earlier findings in the same batch", async () => {
+  const { a, ids } = qualityFixture(); const batch = await prepareSinglePassMemoryBatch(a, ids);
+  const fresh = loreFinding("Draconia negotiated a separate design safeguard.");
+  const findings = [...repeatedLore.map(text => loreFinding(text)), fresh, { ...fresh }];
+  const checked = validateSinglePassSource(a, { sourceId: ids[0], findings, rejected: [] }, batch.checkpoints[0].checkpoint);
+  expect(checked.suppressed).toEqual([0, 1, 2, 4]); expect(checked.proposals).toHaveLength(1); expect(checked.failureReason).toBeUndefined();
+});
+it("keeps partially overlapping Lore intact for review", async () => {
+  const { a, ids } = qualityFixture(); const batch = await prepareSinglePassMemoryBatch(a, ids);
+  const content = repeatedLore[2] + " She promised to keep the design confidential.";
+  const checked = validateSinglePassSource(a, { sourceId: ids[0], findings: [loreFinding(content)], rejected: [] }, batch.checkpoints[0].checkpoint);
+  expect(checked.proposals[0].proposal).toMatchObject({ content, requiresReview: true }); expect(checked.suppressed).toEqual([]);
+});
+
+it("finishes NONE without inventing a Brain proposal", async () => {
+  const { a, ids } = qualityFixture(); const batch = await prepareSinglePassMemoryBatch(a, ids);
+  const parsed = (await import("./singlePassMemory")).parseSinglePassMemoryResponse("S1\nNONE", ids, a, batch.outputAliases, batch).sources[0];
+  const checked = validateSinglePassSource(a, parsed, batch.checkpoints[0].checkpoint);
+  expect(checked.proposals).toEqual([]); expect(checked.failureReason).toBeUndefined();
+});
+it("invalidates a stale linked personality profile at commit", async () => {
+  let { a, ids } = qualityFixture(); const batch = await prepareSinglePassMemoryBatch(a, ids);
+  a = reduce(a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
+  a.storyCards = a.storyCards.map(c => c.id === "profile-Draconia" ? { ...c, content: "Personality: openly trusting." } : c);
+  a = reduce(a, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId, sources: [{ checkpoint: batch.checkpoints[0].checkpoint,
+    result: { sourceId: ids[0], findings: [thoughtFinding("Draconia", privateDraconia)], rejected: [] } }] });
+  expect(a.activeState.memoryProposals).toEqual([]); expect(a.messages[0].memoryEvaluation?.status).toBe("failed");
+});

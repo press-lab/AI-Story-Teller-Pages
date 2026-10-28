@@ -114,7 +114,9 @@ it("uses zero HTTP attempts for local recovery, validation and duplicate suppres
   const fetch = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("No local step can request a model."));
   const record = JSON.stringify({ sourceId: ids[0], findings: [groundedFinding(), groundedFinding()] });
   const result = parseSinglePassMemoryResponse('{"sources":[' + record + ',{"sourceId":"cut', ids, a).sources[0];
-  expect(validateSinglePassSource(a, result, batch.checkpoints[0].checkpoint).proposals).toHaveLength(2);
+  const validated = validateSinglePassSource(a, result, batch.checkpoints[0].checkpoint);
+  expect(validated.proposals).toHaveLength(1);
+  expect(validated.suppressed).toEqual([1]);
   a = reduce(a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
   a = reduce(a, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId, sources: [{ result, checkpoint: batch.checkpoints[0].checkpoint }] });
   expect(a.activeState.memoryProposals).toHaveLength(1);

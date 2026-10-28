@@ -13,7 +13,7 @@ export const looseResponse = [
   "(component.activePressure: Ministry Deadline = The Ministry expects the research report tomorrow.)",
 ].join("\n");
 export const looseNarrations = [
-  'Fred and George agreed to produce 96 rune tattoos tomorrow. George reflects, "I believe the business can grow beyond individual customers."',
+  'Fred and George agreed to produce 96 rune tattoos tomorrow. George studies the production totals and considers the market beyond individual orders.',
   "Eleanor Vale is a sixth-year Ravenclaw specializing in experimental enchantments. The Observatory Annex contains a sealed underground chamber.",
   "Draconia agreed to meet Seth tomorrow at six. The meeting has not occurred. The Ministry expects the research report tomorrow.",
 ];

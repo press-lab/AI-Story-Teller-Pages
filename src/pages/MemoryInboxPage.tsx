@@ -78,8 +78,23 @@ function MemorySuggestionsPage({ adventure, dispatch, onRegenerateProposal, onRe
     || proposal.title.toLowerCase().includes(searchLower)
     || proposal.content.toLowerCase().includes(searchLower)
     || proposal.sourceText.toLowerCase().includes(searchLower)
-    || proposal.rationale.toLowerCase().includes(searchLower));
+    || proposal.rationale.toLowerCase().includes(searchLower)
+    || adventure.storyCards.some(c => c.id === proposal.targetId && c.title.toLowerCase().includes(searchLower))
+    || adventure.brains.some(b => b.id === proposal.targetId && b.characterName.toLowerCase().includes(searchLower)));
   const pending = visibleProposals.filter((p) => p.status === "pending");
+  const groups = new Map<string, { label: string; proposals: MemoryProposal[] }>();
+  const normalizeTitle = (text: string) => text.normalize("NFKC").toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  for (const proposal of pending) {
+    const key = proposal.targetId ? `target:${proposal.proposedType}:${proposal.targetId}`
+      : `create:${proposal.proposedType}:${proposal.storyCardType ?? "lore"}:${normalizeTitle(proposal.title)}`;
+    const label = proposal.proposedType === "brainUpdate"
+      ? `Brain: ${adventure.brains.find(b => b.id === proposal.targetId)?.characterName ?? proposal.title}`
+      : proposal.targetId ? adventure.storyCards.find(c => c.id === proposal.targetId)?.title
+        ?? adventure.components.find(c => c.id === proposal.targetId)?.title ?? proposal.title
+        : `CREATE ${proposal.storyCardType ?? proposal.proposedType}: ${proposal.title}`;
+    const group = groups.get(key) ?? { label, proposals: [] };
+    group.proposals.push(proposal); groups.set(key, group);
+  }
   const resolved = visibleProposals.filter((p) => p.status !== "pending");
   const totalPending = allProposals.filter((p) => p.status === "pending").length;
   const totalResolved = allProposals.length - totalPending;
@@ -249,9 +264,11 @@ function MemorySuggestionsPage({ adventure, dispatch, onRegenerateProposal, onRe
 
       <div className="list">
         {pending.length === 0 && <p className="muted">No pending memory suggestions.</p>}
-        {pending.map((proposal) => (
-          <ProposalCard key={proposal.id} adventure={adventure} proposal={proposal} dispatch={dispatch} onUpdate={updateProposal} onRegenerate={onRegenerateProposal} />
-        ))}
+        {[...groups.values()].map(group => <section className="panel memory-destination-group" key={group.proposals[0].id} aria-label={`${group.label} suggestions`}>
+          <h3>{group.label} <span className="badge">{group.proposals.length} {group.proposals.length === 1 ? "proposal" : "proposals"}</span></h3>
+          <p className="muted">{group.proposals.slice(0, 3).map(p => p.content.replace(/\s+/g, " ").slice(0, 100)).join(" · ")}{group.proposals.length > 3 ? " …" : ""}</p>
+          {group.proposals.map(proposal => <ProposalCard key={proposal.id} adventure={adventure} proposal={proposal} dispatch={dispatch} onUpdate={updateProposal} onRegenerate={onRegenerateProposal} />)}
+        </section>)}
       </div>
 
       {resolved.length > 0 && (

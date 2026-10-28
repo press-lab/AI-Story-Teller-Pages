@@ -229,3 +229,31 @@ describe("deterministic story clock", () => {
     expect(state.storyClock?.current?.date).toBe("2019-02-01");
   });
 });
+
+import { safeLoreAppendTarget, storyCardTargets } from "./storyCardSuggestions";
+it("separates safe topic identity from advisory participant matches, retaining explicit destinations", () => {
+  const a = seed();
+  a.storyCards.push(makeStoryCard({ id: "exposure", type: "lore", title: "Seth and Draconia's Public Exposure", keys: ["Seth", "Draconia", "public exposure"], content: "Seth and Draconia know Fred." }));
+  const finding = { title: "Gryffindor Quidditch Tryouts 2001", content: "Fred announces tryouts; Ron is auditioning for Keeper. Draconia asks Seth about Ron.", type: "lore" as const };
+  expect(safeLoreAppendTarget(a, finding)).toBeUndefined();
+  expect(safeLoreAppendTarget(a, { title: "Seth" })).toBeUndefined();
+  const topic = makeStoryCard({ id: "quidditch", type: "lore", title: finding.title, keys: ["Gryffindor Keeper Auditions"], content: "Tryouts are planned." });
+  a.storyCards.push(topic);
+  expect(safeLoreAppendTarget(a, finding)).toBe(topic.id);
+  expect(safeLoreAppendTarget(a, { title: "Gryffindor Keeper Auditions" })).toBe(topic.id);
+  expect(safeLoreAppendTarget(a, { title: "Seth and Draconia's Public Exposure" })).toBe("exposure");
+  expect(storyCardTargets(a, { ...finding, targetId: "exposure" })).toEqual(["exposure"]);
+  a.storyCards.push({ ...topic, id: "duplicate" });
+  expect(safeLoreAppendTarget(a, finding)).toBeUndefined();
+  expect(safeLoreAppendTarget(a, { title: "Gryffindor Keeper Auditions" })).toBeUndefined();
+});
+
+import { equivalentStoryCardSuggestions } from "./storyCardSuggestions";
+it("does not merge different dated occurrences or unrelated Lore subjects before authoritative coverage", () => {
+  const a = seed();
+  const draft = makeStoryCardSuggestion(a, "source", "Draconia kissed Seth.", { title: "Public Exposure", content: "[2001-01-02] Draconia kissed Seth.", evidence: "Draconia kissed Seth.", reason: "Observed event" });
+  expect(equivalentStoryCardSuggestions(draft, { ...draft, id: "next", content: "[2001-01-03] Draconia kissed Seth." })).toBe(false);
+  expect(equivalentStoryCardSuggestions(draft, { ...draft, id: "next", title: "An unrelated subject" })).toBe(false);
+  const dated = { ...draft, content: "Draconia kissed Seth.", lore: { ...draft.lore!, occurredAt: { text: "2001-01-02", date: "2001-01-02", precision: "day" as const }, lastChangedAt: undefined } };
+  expect(equivalentStoryCardSuggestions(dated, { ...dated, id: "next", lore: { ...dated.lore, occurredAt: { text: "2001-01-03", date: "2001-01-03", precision: "day" } } })).toBe(false);
+});

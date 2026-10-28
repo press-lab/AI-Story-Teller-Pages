@@ -195,3 +195,67 @@ describe("Seattle pressure and identity regressions", () => {
     expect(await validateMemoryUpdate(a, config, "activePressure", "Pressure", "Watchers pursue Seth.", "There is no immediate external pressure.")).toMatchObject({ changed: true });
   });
 });
+
+import { qualityFixture, spokenFred, privateGeorge, privateDraconia, thoughtFinding, loreFinding, repeatedLore } from "../test/memoryQuality";
+import { prepareSinglePassMemoryBatch, parseSinglePassMemoryResponse } from "./singlePassMemory";
+import { loreNovelty } from "./factCoverage";
+import { toSinglePassProposal } from "./singlePassMemoryValidation";
+import { compactHistoricalProposal } from "./memoryHistory";
+it("commits the same mocked seven findings as two private reactions and one new Lore consequence", async () => {
+  let { a, ids } = qualityFixture(3);
+  const consequence = "Draconia negotiated a separate design safeguard.";
+  a.messages[0].content += " " + consequence;
+  const batch = await prepareSinglePassMemoryBatch(a, ids);
+  const findings = [thoughtFinding("Fred", spokenFred), thoughtFinding("George", privateGeorge), thoughtFinding("Draconia", privateDraconia), ...repeatedLore.map(text => loreFinding(text)), loreFinding(consequence)];
+  const result = parseSinglePassMemoryResponse(JSON.stringify({ sources: ids.map((sourceId, i) => ({ sourceId, findings: i ? [] : findings })) }), ids, a, batch.outputAliases, batch);
+  const original = structuredClone(a);
+  a = adventureReducer(a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
+  a = adventureReducer(a, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId, sources: result.sources.map(r => ({ result: r, checkpoint: batch.checkpoints.find(c => c.sourceId === r.sourceId)!.checkpoint })) });
+  expect(a.activeState.memoryProposals.filter(p => p.proposedType === "brainUpdate")).toHaveLength(2);
+  expect(a.activeState.memoryProposals.filter(p => p.proposedType === "storyCard")).toHaveLength(1);
+  expect(a.messages.every(m => m.memoryEvaluation?.status === "complete")).toBe(true);
+  expect(a.messages[0].memoryEvaluation?.singlePass?.suppressedCount).toBe(4);
+  expect(a.messages[0].memoryEvaluation?.singlePass?.dispositions.find(d => d.index === 0)?.reason).toContain("spoken dialogue");
+  expect(a.brains).toEqual(original.brains); expect(a.storyCards).toEqual(original.storyCards);
+  const proposal = a.activeState.memoryProposals.find(p => p.proposedType === "storyCard")!;
+  expect(proposal.evaluationSource?.messages[0].id).toBe(ids[0]);
+  expect(proposal.placementValidation?.sources[0].content).toBe(original.messages[0].content);
+});
+it.each([false, true])("covers pending and resolved Lore records including compact historical records=%s", async compressed => {
+  const { a, ids } = qualityFixture(); const batch = await prepareSinglePassMemoryBatch(a, ids);
+  a.storyCards.find(c => c.id === "relationship")!.content = "They know each other.";
+  for (const status of ["pending", "approved", "rejected", "ignored"] as const) {
+    const proposal = { ...toSinglePassProposal(a, ids[0], batch.checkpoints[0].checkpoint, loreFinding(repeatedLore[2])), id: "prior", status };
+    a.activeState.memoryProposals = [compressed && status !== "pending" ? compactHistoricalProposal(proposal, "archive-id") : proposal];
+    expect(loreNovelty(a, { ...proposal, id: "incoming" }).status).toBe("covered");
+    expect(loreNovelty(a, { ...proposal, id: "incoming" }, false).status).toBe("new");
+  }
+});
+it.each([
+  ["Draconia attempted to kiss Seth.", "Draconia kissed Seth."],
+  ["Seth offered a design agreement.", "Draconia accepted the design agreement."],
+  ["Draconia did not remove her Mood Ring.", "Draconia removed her Mood Ring."],
+  ["Draconia might remove her Mood Ring.", "Draconia will remove her Mood Ring."],
+  ["Draconia plans to kiss Seth.", "Draconia kissed Seth."],
+  ["Draconia kissed Seth on January 2, 2001.", "Draconia kissed Seth on January 3, 2001."],
+  ["Draconia kissed Seth.", "Hermione kissed Seth."],
+  ["Draconia refuses to remove her Mood Ring.", "Draconia refuses to remove her Mood Ring because it now anchors the protective ward."],
+])("preserves distinct factual states: %s / %s", (before, after) => {
+  const { a } = qualityFixture(); a.storyCards.find(c => c.id === "relationship")!.content = before;
+  const p = makeMemoryProposal({ storyCardType: "lore", targetId: "relationship", content: after });
+  expect(loreNovelty(a, p).status).not.toBe("covered");
+  const next = adventureReducer(a, { type: "ADD_MEMORY_PROPOSAL", proposal: p });
+  expect(next.activeState.memoryProposals[0]?.content).toBe(after);
+});
+it("normalizes a written date without merging distinct dated occurrences", () => {
+  const { a } = qualityFixture(); a.storyCards.find(c => c.id === "relationship")!.content = "Draconia kissed Seth on January 2, 2001.";
+  expect(loreNovelty(a, makeMemoryProposal({ targetId: "relationship", content: "Draconia kissed Seth on 2001-01-02." })).status).toBe("covered");
+});
+
+it("keeps bracketed dates and uncertain overlap without deleting new information", () => {
+  const { a } = qualityFixture(); a.storyCards.find(c => c.id === "relationship")!.content = "[2001-01-02] Draconia kissed Seth.";
+  const p = makeMemoryProposal({ targetId: "relationship", storyCardType: "lore", content: "[2001-01-03] Draconia kissed Seth." });
+  expect(loreNovelty(a, p).status).not.toBe("covered");
+  a.storyCards.find(c => c.id === "relationship")!.content = "Draconia publicly keeps Seth's blazer despite George's warning.";
+  expect(loreNovelty(a, { ...p, content: "Draconia keeps Seth's blazer publicly despite Fred's warning." }).status).toBe("uncertain");
+});

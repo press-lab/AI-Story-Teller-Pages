@@ -1778,3 +1778,77 @@ it("retains the latest 600 context diagnostics across JSON reload", () => {
   expect(restored.activeState.memoryDiagnostics![0].id).toBe("context-5");
   expect(restored.activeState.memoryDiagnostics!.at(-1)!.id).toBe("context-604");
 });
+
+import { qualityFixture, loreFinding, repeatedLore } from "../test/memoryQuality";
+import { prepareSinglePassMemoryBatch } from "../memory/singlePassMemory";
+import { toSinglePassProposal } from "../memory/singlePassMemoryValidation";
+it("rechecks the latest Lore at insertion and approval, preserving partial drafts and source history", async () => {
+  let { a, ids } = qualityFixture(); const batch = await prepareSinglePassMemoryBatch(a, ids);
+  const p = toSinglePassProposal(a, ids[0], batch.checkpoints[0].checkpoint, loreFinding("Draconia promised to safeguard the designs."));
+  a = adventureReducer(a, { type: "ADD_MEMORY_PROPOSAL", proposal: p });
+  a.storyCards = a.storyCards.map(c => c.id === "relationship" ? { ...c, content: c.content + " " + p.content } : c);
+  const before = structuredClone(a.storyCards);
+  a = adventureReducer(a, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: p.id });
+  expect(a.storyCards).toEqual(before); expect(a.activeState.memoryProposals[0].status).toBe("approved");
+  expect(a.activeState.memoryProposals[0].evaluationSource).toEqual(p.evaluationSource);
+  const duplicate = { ...p, id: "duplicate", content: repeatedLore[2] };
+  a = adventureReducer(a, { type: "ADD_MEMORY_PROPOSAL", proposal: duplicate });
+  expect(a.activeState.memoryProposals.some(q => q.id === duplicate.id)).toBe(false);
+  const partial = { ...p, id: "partial", content: p.content + " She accepted a separate Ministry commission." };
+  a = adventureReducer(a, { type: "ADD_MEMORY_PROPOSAL", proposal: partial });
+  a = adventureReducer(a, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: partial.id });
+  expect(a.activeState.memoryProposals.find(q => q.id === partial.id)).toMatchObject({ status: "pending", requiresReview: true, content: partial.content });
+  expect(a.storyCards).toEqual(before);
+});
+it("prevents duplicate titles created by approval ordering and supports an explicitly chosen destination", async () => {
+  let { a, ids } = qualityFixture(); const batch = await prepareSinglePassMemoryBatch(a, ids);
+  const title = "Gryffindor Quidditch Tryouts 2001";
+  const make = (id: string, content: string) => ({ ...toSinglePassProposal(a, ids[0], batch.checkpoints[0].checkpoint, { ...loreFinding(content), title, targetId: null, operation: "create" as const }), id });
+  const one = make("one", "Fred announced Gryffindor tryouts.");
+  const two = make("two", "Ron will audition for Keeper.");
+  a = adventureReducer(a, { type: "ADD_MEMORY_PROPOSAL", proposal: one });
+  a = adventureReducer(a, { type: "ADD_MEMORY_PROPOSAL", proposal: two });
+  a = adventureReducer(a, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: one.id });
+  a = adventureReducer(a, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: two.id });
+  expect(a.storyCards.filter(c => c.title === title)).toHaveLength(1);
+  expect(a.activeState.memoryProposals.find(p => p.id === two.id)).toMatchObject({ status: "pending", requiresReview: true, content: two.content });
+  const target = a.storyCards.find(c => c.title === title)!;
+  a = adventureReducer(a, { type: "UPDATE_MEMORY_PROPOSAL", proposalId: two.id, patch: { targetId: target.id, cardOperation: "append", appendContent: true } });
+  a = adventureReducer(a, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: two.id });
+  expect(a.storyCards.find(c => c.id === target.id)!.content).toContain(two.content);
+  const duplicate = { ...one, id: "already-covered" };
+  a.activeState.memoryProposals.push(duplicate);
+  a = adventureReducer(a, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: duplicate.id });
+  expect(a.activeState.memoryProposals.find(p => p.id === duplicate.id)!.status).toBe("approved");
+  expect(a.storyCards.filter(c => c.title === title)).toHaveLength(1);
+});
+
+it("retains CREATE title collisions for explicit review even with automatic Story Card approval enabled", async () => {
+  let { a, ids } = qualityFixture(); a.memoryAutoApprove.storyCard = true;
+  a.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
+  const batch = await prepareSinglePassMemoryBatch(a, ids);
+  const p = toSinglePassProposal(a, ids[0], batch.checkpoints[0].checkpoint, { ...loreFinding("They opened a new workshop."), targetId: null, operation: "create" });
+  p.requiresReview = false; p.storyCardReview!.candidateOnly = false;
+  a = adventureReducer(a, { type: "ADD_MEMORY_PROPOSAL", proposal: p });
+  expect(a.activeState.memoryProposals.find(q => q.id === p.id)).toMatchObject({ status: "pending", requiresReview: true });
+  expect(a.storyCards.filter(c => c.title === p.title)).toHaveLength(1);
+});
+
+it.each(["bracketed", "metadata"])("retains distinct %s dated occurrences through proposal insertion and approval", async mode => {
+  let { a, ids } = qualityFixture(); const batch = await prepareSinglePassMemoryBatch(a, ids);
+  const make = (day: string) => {
+    const p = toSinglePassProposal(a, ids[0], batch.checkpoints[0].checkpoint,
+      loreFinding(mode === "bracketed" ? `[2001-01-${day}] Draconia kissed Seth.` : "Draconia kissed Seth."));
+    return { ...p, id: "dated-" + day, lore: mode === "metadata" ? { ...p.lore!, occurredAt: { text: `2001-01-${day}`, date: `2001-01-${day}`, precision: "day" as const }, lastChangedAt: undefined } : p.lore };
+  };
+  const one = make("02"), two = make("03");
+  a = adventureReducer(a, { type: "ADD_MEMORY_PROPOSAL", proposal: one });
+  a = adventureReducer(a, { type: "ADD_MEMORY_PROPOSAL", proposal: two });
+  expect(a.activeState.memoryProposals).toHaveLength(2);
+  a = adventureReducer(a, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: one.id });
+  a = adventureReducer(a, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: two.id });
+  expect(a.activeState.memoryProposals.every(p => p.status === "approved")).toBe(true);
+  const content = a.storyCards.find(c => c.id === "relationship")!.content;
+  if (mode === "bracketed") { expect(content).toContain("2001-01-02"); expect(content).toContain("2001-01-03"); }
+  else expect(content.match(/Draconia kissed Seth/g)).toHaveLength(2);
+});

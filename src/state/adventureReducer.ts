@@ -3,7 +3,7 @@ import { singlePassReferenceState } from "../memory/singlePassMemory";
 import { singlePassSourceError, validateSinglePassSource, toSinglePassProposal } from "../memory/singlePassMemoryValidation";
 import { reconcileBrainBatchState } from "../memory/brainBatchRecovery";
 import { memoryDecisionState, rebaseAutomaticAssessments } from "../memory/memoryAssessment";
-import { factsCovered, hasFactOverlap, proposalCoverage } from "../memory/factCoverage";
+import { factsCovered, hasFactOverlap, proposalCoverage, loreNovelty, loreTitleKey } from "../memory/factCoverage";
 import { placementValidationError, placementFingerprint } from "../memory/storyCardPlacement";
 import { backgroundProviderConfigIssue } from "../providers/backgroundProvider";
 import { memoryRecoveryInterval, MEMORY_RECOVERY_MAX_FAILURES } from "../memory/memoryRecoveryBatch";
@@ -842,14 +842,17 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal,
     if (!manualApproval) {
       if (existing && proposal.storyCardType && existing.type !== primaryStoryCardType(proposal.storyCardType)) return {};
     }
-    const changeTime = proposal.lore?.lastChangedAt ?? state.messages.find(m => m.id === proposal.sourceTurnId)?.storyTime;
+    const changeTime = proposal.lore?.lastChangedAt ?? proposal.lore?.occurredAt ?? state.messages.find(m => m.id === proposal.sourceTurnId)?.storyTime;
     const datedContent = changeTime?.text && !safeContent.includes(changeTime.text)
       ? `[${formatStoryTime(changeTime)}] ${safeContent}` : safeContent;
     let storyCard: StoryCard;
     if (existing) {
       storyCard = recordStoryCardMemoryUpdate(existing, guardStoryCard({
         ...existing,
-        content: appendCardContent(existing.content, datedContent),
+        // Lore novelty has already been checked against the latest destination.
+        // Preserve distinct dates here; the legacy append helper strips bracket prefixes.
+        content: existing.type === "lore" ? [existing.content, datedContent.trim()].filter(Boolean).join("\n")
+          : appendCardContent(existing.content, datedContent),
         keys: Array.from(new Set([...existing.keys, ...sanitizeStoryCardTriggers(state, existing.title,
           proposal.suggestedTriggers, existing.id, existing.memoryMode, safeContent)])),
         sourceTurnIds: appendSourceTurnIds(existing.sourceTurnIds, proposal.sourceTurnId),
@@ -1289,7 +1292,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
           continue;
         }
         const dispositions: import("../types/adventure").SinglePassMemoryCheckpoint["dispositions"] = validation.rejected.map(r => ({ ...r, status: "rejected" as const }));
-        for (const index of validation.suppressed) dispositions.push({ index, status: "suppressed", reason: "Factual delta already recorded or considered." });
+        for (const index of validation.suppressed) dispositions.push({ index, status: "suppressed", reason: validation.suppressionReasons[index] ?? "Factual delta already recorded or considered." });
         for (const { index, findingIndex } of validation.proposals) {
           // Rebind only after all external author edits were ruled out above. Existing reducer handles duplicate/approval policy.
           const proposal = toSinglePassProposal(next, result.sourceId, checkpoint, result.findings[findingIndex]);
@@ -1851,6 +1854,21 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
       if (Boolean(clean.eventMemory) && !clean.targetId && [...state.storyCards.filter(isHistoricalLore), ...state.activeState.memoryProposals.filter(p => Boolean(p.eventMemory))].some(c => sameEventMemory(c, clean))) return suppressed("Duplicate historical event already recorded.");
       if (proposalCoverage(state, clean)) return suppressed("Factual delta already recorded or considered.");
 
+      const loreQuality = clean.proposedType === "storyCard" && clean.storyCardType === "lore" && !clean.storyCardPatch
+        ? loreNovelty(state, clean) : undefined;
+      if (loreQuality && loreQuality.status !== "new") {
+        clean.requiresReview = true;
+        clean.rationale += " " + loreQuality.reason;
+      }
+      if (clean.proposedType === "storyCard" && !clean.targetId) {
+        const collisions = state.storyCards.filter(c => c.type === (clean.storyCardType ?? "lore") && loreTitleKey(c.title) === loreTitleKey(clean.title));
+        if (collisions.length) {
+          clean.requiresReview = true;
+          clean.rationale += " An equivalent title exists; choose a destination explicitly before approval.";
+          if (clean.storyCardReview) clean.storyCardReview = { ...clean.storyCardReview, candidateOnly: true,
+            targetCandidates: [...new Set([...clean.storyCardReview.targetCandidates, ...collisions.map(c => c.id)])] };
+        }
+      }
       // Dedup: drop a proposal that duplicates one already pending, one the user already
       // dismissed (rejected/ignored), or a NEW story card whose title already exists as a card.
       // Without this, the model re-suggesting the same entity each turn spawns a fresh duplicate —
@@ -1867,7 +1885,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
         p.proposedType === clean.proposedType &&
         normalizeProposalTitle(p.title) === normTitle &&
         (p.targetId ?? "") === (clean.targetId ?? "");
-      const duplicatesPending = comparableProposals.some((p) => p.status === "pending" && matchesTarget(p)
+      const duplicatesPending = clean.storyCardType !== "lore" && comparableProposals.some((p) => p.status === "pending" && matchesTarget(p)
         && (!clean.evaluationSource || p.content === clean.content)
         && (!clean.storyCardReview || equivalentStoryCardSuggestions(p, clean)));
       // A dismissed new-card suggestion should not come back every turn. Targeted updates are
@@ -1875,7 +1893,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
       // every later revision for that target. Only suppress a targeted update when its content is
       // the same or substantially duplicates the dismissed revision.
       const duplicatesDismissed =
-        comparableProposals.some((p) =>
+        clean.storyCardType !== "lore" && comparableProposals.some((p) =>
           (p.status === "rejected" || p.status === "ignored") &&
           matchesTarget(p) &&
           (!clean.storyCardReview || equivalentStoryCardSuggestions(p, clean)) &&
@@ -1886,18 +1904,18 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
           )
         );
       const duplicatesCard =
-        clean.proposedType === "storyCard" &&
+        clean.storyCardType !== "lore" && clean.proposedType === "storyCard" &&
         !clean.targetId &&
         !(clean.requiresReview && clean.storyCardReview?.targetCandidates.length) &&
         state.storyCards.some((c) => normalizeProposalTitle(c.title) === normTitle);
       // Similarity can deduplicate event retellings, but must not merge distinct character identities.
-      const duplicatesStoryCardContent = clean.proposedType === "storyCard" && clean.storyCardType !== "character"
+      const duplicatesStoryCardContent = clean.proposedType === "storyCard" && clean.storyCardType !== "character" && clean.storyCardType !== "lore"
         && !isUpdate && !clean.targetId && comparableProposals.some(p =>
           p.proposedType === "storyCard" && p.storyCardType !== "character" && !p.targetId && contentLooksDuplicate(p.content, clean.content));
-      const duplicatesExistingCardContent = clean.proposedType === "storyCard" && clean.storyCardType !== "character"
+      const duplicatesExistingCardContent = clean.proposedType === "storyCard" && clean.storyCardType !== "character" && clean.storyCardType !== "lore"
         && !isUpdate && !clean.targetId && state.storyCards.some(c => c.type !== "character" && contentLooksDuplicate(c.content, clean.content));
       const duplicatesExistingTargetContent =
-        clean.proposedType === "storyCard" &&
+        clean.storyCardType !== "lore" && clean.proposedType === "storyCard" &&
         isUpdate &&
         !hasMemoryPatch &&
         Boolean(targetStoryCard) &&
@@ -1965,11 +1983,24 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
           createdAt: nowIso(), stage: "reducer", outcome: "candidate_suppressed", proposalId: proposal.id,
           reason: "Approval retained as a no-op: the latest destination already contains the complete reviewed factual delta." } });
       }
+      if (proposal.proposedType === "storyCard" && !proposal.targetId) {
+        const collisions = state.storyCards.filter(c => c.type === (proposal.storyCardType ?? "lore") && loreTitleKey(c.title) === loreTitleKey(proposal.title));
+        if (collisions.length) {
+          const next = touchAdventure(state, { activeState: { ...state.activeState, memoryProposals: state.activeState.memoryProposals.map(p => p.id === proposal.id
+            ? { ...proposal, requiresReview: true, placementValidation: undefined,
+              rationale: "An equivalent Story Card title now exists. Choose a destination explicitly or edit the title before approval.",
+              ...(proposal.storyCardReview ? { storyCardReview: { ...proposal.storyCardReview, candidateOnly: true, targetCandidates: collisions.map(c => c.id) } } : {}) } : p) } });
+          return adventureReducer(next, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: { id: createId("decision"), sourceId: proposal.sourceTurnId,
+            createdAt: nowIso(), stage: "reducer", outcome: "validation_rejected", proposalId: proposal.id, failureCode: "memory_destination_required",
+            reason: "Equivalent Story Card title now exists; explicit destination selection required. Draft and source history preserved." } });
+        }
+      }
       if (proposal.proposedType === "storyCard" && proposal.targetId && !proposal.storyCardPatch) {
         const target = state.storyCards.find(c => c.id === proposal.targetId);
-        if (target && hasFactOverlap(proposal.content, target.content)) {
+        if (target && (proposal.storyCardType === "lore" ? loreNovelty(state, proposal, false).status === "overlap" : hasFactOverlap(proposal.content, target.content))) {
           const next = touchAdventure(state, { activeState: { ...state.activeState, memoryProposals: state.activeState.memoryProposals.map(p =>
-            p.id === proposal.id ? { ...proposal, requiresReview: true, placementValidation: undefined } : p) } });
+            p.id === proposal.id ? { ...proposal, requiresReview: true, placementValidation: undefined,
+              rationale: "The destination now overlaps part of this draft. Edit the repeated information before approval. " + proposal.rationale } : p) } });
           return adventureReducer(next, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: { id: createId("decision"), sourceId: proposal.sourceTurnId,
             createdAt: nowIso(), stage: "reducer", outcome: "validation_rejected", proposalId: proposal.id, failureCode: "memory_overlap_review_required",
             reason: "The destination now overlaps part of this draft. Edit/regenerate and revalidate the remaining claim before approval; the reviewed draft was preserved." } });

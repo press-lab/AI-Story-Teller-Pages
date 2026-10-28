@@ -76,7 +76,7 @@ describe("Story Card routing", () => {
   it.each([
     ["storyCard.lore", "Weasley Tattoo Business", "business", "lore", "append"],
     ["lore", "tattoo business", "business", "lore", "append"],
-    ["storyCard.lore", "Rune tattoo production agreement", "business", "lore", "append"],
+    ["storyCard.lore", "Rune tattoo production agreement", null, "lore", "create"],
     ["lore", "Draconia Research Meeting", null, "lore", "create"],
     ["storyCard.character", "Eleanor Vale", null, "character", "create"],
     ["storyCard.location", "Great Hall", "location", "location", "append"],
@@ -99,7 +99,7 @@ describe("Story Card routing", () => {
     });
     expectFinding(r, "storyCard", "lore", null, "create", "storyCard");
     expect(r.checked.proposals[0].proposal.storyCardReview?.targetCandidates.sort()).toEqual(["business", "other-business"]);
-    expect(r.result.diagnostics).toContainEqual({ index: 0, reason: expect.stringContaining("Ambiguous Lore") });
+    expect(r.result.diagnostics).toContainEqual({ index: 0, reason: expect.stringContaining("No unique strong Lore topic match") });
   });
   it("keeps protected Lore pending and suppresses an already covered fact", async () => {
     const text = "(lore: Weasley Tattoo Business = The twins agreed to produce 96 rune tattoos tomorrow.)";
@@ -288,4 +288,23 @@ it("requires Immediate Momentum review even if a historical internal finding cla
   });
   const p = toSinglePassProposal(r.a, "narrator-1", r.batch.checkpoints[0].checkpoint, { ...r.result.findings[0], candidateOnly: false });
   expect(p.requiresReview).toBe(true); expect(p.proposedType).toBe("plotMomentumUpdate");
+});
+
+it("never places Quidditch facts in public relationship Lore; exact topics append and ambiguous topics stay CREATE", async () => {
+  const text = "(lore: Gryffindor Quidditch Tryouts 2001 = Fred announces tryouts; Ron is auditioning for Keeper. Draconia asks Seth about Ron.)";
+  const relation = makeStoryCard({ id: "exposure", type: "lore", title: "Seth and Draconia's Public Exposure", keys: ["Seth", "Draconia", "Ron"], content: "Fred knows Seth and Draconia." });
+  const unsafe = await routed(text, a => a.storyCards.push(relation));
+  expectFinding(unsafe, "storyCard", "lore", null, "create", "storyCard");
+  expect(unsafe.checked.proposals[0].proposal.storyCardReview!.targetCandidates).toContain("exposure");
+  const topic = makeStoryCard({ id: "quidditch", type: "lore", title: "Gryffindor Quidditch Tryouts 2001", content: "Tryouts are planned." });
+  const exact = await routed(text, a => a.storyCards.push(relation, topic));
+  expectFinding(exact, "storyCard", "lore", topic.id, "append", "storyCard");
+  const ambiguous = await routed(text, a => a.storyCards.push(topic, { ...topic, id: "other-topic" }));
+  expectFinding(ambiguous, "storyCard", "lore", null, "create", "storyCard");
+  expect(ambiguous.checked.proposals[0].proposal.requiresReview).toBe(true);
+});
+it("appends different facts about the same explicitly named relationship topic", async () => {
+  const text = "(lore: Seth and Draconia's Public Exposure = Draconia publicly committed to supporting Seth's independent designs.)";
+  const r = await routed(text, a => a.storyCards.push(makeStoryCard({ id: "exposure", type: "lore", title: "Seth and Draconia's Public Exposure", content: "They wore matching rings." })));
+  expectFinding(r, "storyCard", "lore", "exposure", "append", "storyCard");
 });

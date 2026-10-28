@@ -1,4 +1,4 @@
-import { factsCovered } from "./factCoverage";
+import { factsCovered, loreFactsCovered, loreTitleKey, loreOccurrenceDate } from "./factCoverage";
 import type { Adventure, MemoryProposal, Message, StoryCardType } from "../types/adventure";
 import { createId, nowIso } from "../utils/id";
 import { isHistoricalLore } from "./storyCardArchitecture";
@@ -78,6 +78,22 @@ export function suggestionSourceValid(adventure: Adventure, proposal: MemoryProp
   if (!source || source.content !== review.sourceContent) return false;
   if (review.additionalSources?.some(source => !adventure.messages.some(message => message.id === source.id && message.content === source.content))) return false;
   return !review.playerMessageId || adventure.messages.some(message => message.id === review.playerMessageId && message.content === review.playerContent);
+}
+
+/** Automatic Lore placement requires identity of subject, not a ranked similarity winner.
+ * Aliases must exactly name the proposed topic and contain a non-person topical term. */
+export function safeLoreAppendTarget(adventure: Adventure, finding: { title: string }): string | undefined {
+  const subject = normalizeMemoryText(finding.title);
+  const lore = adventure.storyCards.filter(c => c.type === "lore");
+  const exact = lore.filter(c => normalizeMemoryText(c.title) === subject);
+  if (exact.length) return exact.length === 1 ? exact[0].id : undefined;
+  const people = new Set(adventure.storyCards.filter(c => c.type === "character")
+    .flatMap(c => [c.title, ...c.keys]).flatMap(name => normalizeMemoryText(name).split(" ")));
+  const broad = new Set("relationship relationships romance bond public private exposure business event development history news update together".split(" "));
+  const terms = [...titleWords(subject)].filter(word => !people.has(word) && !broad.has(word));
+  if (subject.split(" ").length < 2 || !terms.length) return undefined;
+  const aliases = lore.filter(c => c.keys.some(alias => normalizeMemoryText(alias) === subject));
+  return aliases.length === 1 ? aliases[0].id : undefined;
 }
 
 /** A bounded local search. Participants alone never establish a shared continuing subject. */
@@ -173,6 +189,12 @@ export function scanStoryCardExchange(adventure: Adventure, source: Message): Me
 /** Merge the two detectors by source + event meaning, not just shared participants. */
 export function equivalentStoryCardSuggestions(a: MemoryProposal, b: MemoryProposal): boolean {
   if (a.proposedType !== "storyCard" || b.proposedType !== "storyCard" || (a.storyCardType ?? "lore") !== (b.storyCardType ?? "lore")) return false;
+  if ((a.storyCardType ?? "lore") === "lore") {
+    const sameSubject = a.targetId && b.targetId ? a.targetId === b.targetId : loreTitleKey(a.title) === loreTitleKey(b.title);
+    const leftDate = loreOccurrenceDate(a), rightDate = loreOccurrenceDate(b);
+    if (!sameSubject || (leftDate && rightDate && leftDate !== rightDate)) return false;
+    return loreFactsCovered(a.content, [b.content]) && loreFactsCovered(b.content, [a.content]);
+  }
   const ar = a.storyCardReview, br = b.storyCardReview;
   if (["character", "location", "custom"].includes(a.storyCardType ?? "lore") && !a.targetId && !b.targetId && normalizeMemoryText(a.title) === normalizeMemoryText(b.title)) return true;
   const exact = factsCovered(a.content, [b.content]) && factsCovered(b.content, [a.content]);
