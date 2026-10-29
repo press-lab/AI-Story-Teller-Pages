@@ -1,3 +1,4 @@
+import { validateLoreChronology, loreDateConfirmed, validLoreDate } from "../memory/validateLoreChronology";
 import { ArchivedMemoryDetails } from "./ArchivedMemoryDetails";
 import { placementValidationError, proposalDestinationLabel } from "../memory/storyCardPlacement";
 import { MemoryDecisionsPage } from "./MemoryDecisionsPage";
@@ -315,6 +316,8 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
   const [regenerating, setRegenerating] = useState(false);
   const isLore = proposal.proposedType === "storyCard" && (proposal.storyCardType === "lore" || adventure.storyCards.some(card => card.id === proposal.targetId && card.type === "lore"));
   const lore = isLore ? proposalLore(adventure, proposal) : undefined;
+  const chronology = validateLoreChronology(adventure, proposal);
+  const dateConflict = chronology.status === "conflict" && !loreDateConfirmed(adventure, proposal);
 
   async function handleRegenerate(convertToLore = false) {
     if (!onRegenerate || regenerating) return;
@@ -356,7 +359,7 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
         <div className="row">
           <button
             type="button"
-            disabled={proposal.status === "approved"}
+            disabled={proposal.status === "approved" || dateConflict}
             onClick={() => dispatch({ type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id })}
           >
             Approve
@@ -417,8 +420,14 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
         </select></Field>
         {proposal.storyCardReview.targetCandidates.length > 1 && !proposal.targetId && <p>Several continuing subjects may fit. Choose an update target or keep this as a separate card.</p>}
       </div>}
+      {isPending && dateConflict && <div role="alert">
+        <p>Date conflict: this event’s proposed date does not agree with its source chronology.</p>
+        <p>{chronology.status === "conflict" ? chronology.reason : ""}</p>
+        <button type="button" disabled={!validLoreDate(lore?.occurredAt) || !validLoreDate(lore?.lastChangedAt)}
+          onClick={() => dispatch({ type: "CONFIRM_MEMORY_PROPOSAL_DATE", proposalId: proposal.id })}>Confirm this event date</button>
+      </div>}
       {isPending && lore && <ProposalEventDate value={proposal.targetId ? lore.lastChangedAt ?? lore.occurredAt : lore.occurredAt}
-        onChange={time => onUpdate(proposal, { lore: { ...lore, occurredAt: time, lastChangedAt: time } })} />}
+        onChange={time => onUpdate(proposal, { lore: { ...lore, occurredAt: proposal.targetId ? lore.occurredAt : time, lastChangedAt: time } })} />}
       <textarea
         rows={5}
         value={proposal.content}

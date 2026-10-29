@@ -1,3 +1,4 @@
+import { reviewedProposal } from "../test/memoryPlacement";
 import { normalizeAdventure } from "./defaults";
 import { describe, expect, it, vi } from "vitest";
 import type { Adventure, AdventureAction, RawImportEntry, TriggerLogEntry } from "../types/adventure";
@@ -68,6 +69,7 @@ const testedActionTypes = [
   "ADD_MEMORY_PROPOSAL",
   "UPDATE_MEMORY_PROPOSAL",
   "APPROVE_MEMORY_PROPOSAL",
+  "CONFIRM_MEMORY_PROPOSAL_DATE",
   "REJECT_MEMORY_PROPOSAL",
   "IGNORE_MEMORY_PROPOSAL",
   "UPDATE_ROLLING_SUMMARY",
@@ -1948,4 +1950,112 @@ it("PRUNE_DEBUG_HISTORY is explicit and OFF logging actions preserve state ident
     expect(a.activeState.memoryDiagnostics).toEqual([entry]);
     expect(clean.messages).toEqual(a.messages);
   } finally { debugLogging.MEMORY_DEBUG_LOGGING = true; }
+});
+
+
+describe("Lore chronology approval boundary", () => {
+  const chronologyProposal = (overrides: Parameters<typeof makeMemoryProposal>[0]) => ({ ...makeMemoryProposal(), ...overrides });
+  const day = (date: string) => ({ text: date, date, precision: "day" as const });
+  function chronologyFixture(conflict = true, append = false) {
+    let state = createDefaultAdventure();
+    state.memoryAutoApprove.storyCard = true;
+    state.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
+    state.messages = [{ id: "chronology-source", role: "assistant", content: "They received exclusive archive access.", storyTime: day("2001-09-05"), createdAt: "2026-10-29" }];
+    if (append) state.storyCards = [makeStoryCard({ id: "chronology-target", type: "lore", title: "3 September — Research Agreement", content: "They signed the initial research agreement.",
+      lore: { status: "ongoing", sourceMessageIds: ["original"], occurredAt: day("2001-09-03") } })];
+    const p = reviewedProposal(state, chronologyProposal({ id: "chronology", proposedType: "storyCard", storyCardType: "lore", title: append ? state.storyCards[0].title : "Archive access",
+      content: "They received exclusive archive access.", sourceTurnId: "chronology-source", sourceText: state.messages[0].content,
+      targetId: append ? "chronology-target" : undefined, requiresReview: false,
+      lore: { status: "ongoing", sourceMessageIds: ["chronology-source"], occurredAt: day(append ? "2001-09-03" : conflict ? "2001-09-02" : "2001-09-05"), lastChangedAt: day(conflict ? "2001-09-02" : "2001-09-05") } }));
+    state = adventureReducer(state, { type: "ADD_MEMORY_PROPOSAL", proposal: p });
+    return state;
+  }
+  it("automatically approves valid dates and preserves original APPEND chronology", () => {
+    for (const append of [false, true]) {
+      const state = chronologyFixture(false, append);
+      expect(state.activeState.memoryProposals[0].status).toBe("approved");
+      expect(state.storyCards[0].lore?.occurredAt?.date).toBe(append ? "2001-09-03" : "2001-09-05");
+      expect(state.storyCards[0].lore?.lastChangedAt?.date).toBe("2001-09-05");
+      if (append) expect(state.storyCards[0].content).toContain("They signed the initial research agreement.");
+    }
+  });
+  it("blocks automatic and unconfirmed manual approval, retaining the draft and destination", () => {
+    let state = chronologyFixture(true, true);
+    const original = state.storyCards[0];
+    const proposal = state.activeState.memoryProposals[0];
+    expect(proposal).toMatchObject({ status: "pending", requiresReview: true, targetId: original.id });
+    for (const automatic of [true, false]) {
+      state = adventureReducer(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id, automatic });
+      expect(state.activeState.memoryProposals[0]).toMatchObject({ status: "pending", content: proposal.content, sourceText: proposal.sourceText });
+      expect(state.storyCards[0]).toBe(original);
+    }
+  });
+  it("approves a correction agreeing with source evidence without another confirmation", () => {
+    let state = chronologyFixture();
+    state = adventureReducer(state, { type: "UPDATE_MEMORY_PROPOSAL", proposalId: "chronology", patch: { lore: { ...state.activeState.memoryProposals[0].lore!, occurredAt: day("2001-09-05"), lastChangedAt: day("2001-09-05") } } });
+    state = adventureReducer(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: "chronology" });
+    expect(state.activeState.memoryProposals[0].status).toBe("approved");
+    expect(state.storyCards[0].lore?.occurredAt?.date).toBe("2001-09-05");
+  });
+  it("permits a deliberate confirmation of the displayed conflicting date", () => {
+    let state = chronologyFixture();
+    state = adventureReducer(state, { type: "CONFIRM_MEMORY_PROPOSAL_DATE", proposalId: "chronology" });
+    expect(state.activeState.memoryProposals[0].chronologyConfirmationFingerprint).toBeTruthy();
+    state = adventureReducer(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: "chronology" });
+    expect(state.activeState.memoryProposals[0].status).toBe("approved");
+    expect(state.storyCards[0].lore?.occurredAt?.date).toBe("2001-09-02");
+  });
+  it.each(["title", "content", "target", "date", "source"])("invalidates confirmation after changing %s", change => {
+    let state = chronologyFixture();
+    state = adventureReducer(state, { type: "CONFIRM_MEMORY_PROPOSAL_DATE", proposalId: "chronology" });
+    const p = state.activeState.memoryProposals[0];
+    if (change === "source") state = adventureReducer(state, { type: "UPDATE_MESSAGE", messageId: "chronology-source", content: "They received exclusive archive access. The terms are revised." });
+    else state = adventureReducer(state, { type: "UPDATE_MEMORY_PROPOSAL", proposalId: p.id, patch: change === "date" ? { lore: { ...p.lore!, occurredAt: day("2001-09-01"), lastChangedAt: day("2001-09-01") } }
+      : change === "target" ? { targetId: "another-destination" } : { [change]: p[change as "title" | "content"] + " Revised." } });
+    state = adventureReducer(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: p.id });
+    expect(state.activeState.memoryProposals[0].status).toBe("pending");
+    expect(state.storyCards).toHaveLength(0);
+  });
+  it("does not allow injected confirmation fields or confirmation of invalid exact dates", () => {
+    let state = chronologyFixture();
+    state = adventureReducer(state, { type: "UPDATE_MEMORY_PROPOSAL", proposalId: "chronology", patch: { chronologyConfirmationFingerprint: "forged", lore: { ...state.activeState.memoryProposals[0].lore!, occurredAt: day("2001-02-30"), lastChangedAt: day("2001-02-30") } } });
+    state = adventureReducer(state, { type: "CONFIRM_MEMORY_PROPOSAL_DATE", proposalId: "chronology" });
+    expect(state.activeState.memoryProposals[0].chronologyConfirmationFingerprint).toBeUndefined();
+    state = adventureReducer(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: "chronology" });
+    expect(state.activeState.memoryProposals[0].status).toBe("pending");
+  });
+  it("preserves uncertain approval, duplicate suppression, and Brain auto-approval", () => {
+    let state = chronologyFixture();
+    state.activeState.memoryProposals = [];
+    const relative = { text: "three days before the coronation", precision: "relative" as const };
+    state.messages[0].storyTime = relative;
+    const p = reviewedProposal(state, chronologyProposal({ id: "uncertain-chronology", proposedType: "storyCard", storyCardType: "lore", title: "Archive access", sourceTurnId: "chronology-source",
+      content: state.messages[0].content, lore: { status: "completed", sourceMessageIds: ["chronology-source"], occurredAt: relative, lastChangedAt: relative } }));
+    state = adventureReducer(state, { type: "ADD_MEMORY_PROPOSAL", proposal: p });
+    expect(state.activeState.memoryProposals[0].status).toBe("approved");
+    expect(state.storyCards[0].lore?.occurredAt).toEqual(relative);
+    state = adventureReducer(state, { type: "ADD_MEMORY_PROPOSAL", proposal: { ...p, id: "duplicate" } });
+    expect(state.activeState.memoryProposals).toHaveLength(1);
+    state.brains = [makeBrain({ id: "chronology-brain", characterName: "Mira" })];
+    state.memoryAutoApprove.brainUpdate = true;
+    const brain = chronologyProposal({ id: "brain-chronology", proposedType: "brainUpdate", targetId: "chronology-brain", title: "Mira", content: JSON.stringify({ thoughts: { access: "I can finally consult the archives." } }), sourceTurnId: "chronology-source", requiresReview: false });
+    state = adventureReducer(state, { type: "ADD_MEMORY_PROPOSAL", proposal: brain });
+    expect(state.activeState.memoryProposals.find(p => p.id === brain.id)?.status).toBe("approved");
+    expect(state.brains[0].thoughts.access).toBe("I can finally consult the archives.");
+  });
+});
+
+
+it("does not fabricate date labels for textual Lore APPEND dates or duplicate matching explicit prefixes", () => {
+  for (const content of ["They obtained permanent archive access.", "[September 5, 2001] They obtained permanent archive access."]) {
+    const a = createDefaultAdventure();
+    a.storyCards = [makeStoryCard({ id: "labels", type: "lore", title: "Research agreement", content: "They signed an agreement." })];
+    const time = content.startsWith("[") ? { text: "2001-09-05", date: "2001-09-05", precision: "day" as const }
+      : { text: "around midwinter", precision: "approximate" as const };
+    const p = { ...makeMemoryProposal({ id: "labels", title: "Research agreement", targetId: "labels", content, storyCardType: "lore", appendContent: true }),
+      lore: { status: "ongoing" as const, sourceMessageIds: [], occurredAt: time, lastChangedAt: time } };
+    let state = adventureReducer(a, { type: "ADD_MEMORY_PROPOSAL", proposal: p });
+    state = adventureReducer(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: p.id });
+    expect(state.storyCards[0].content).toBe("They signed an agreement.\n" + content);
+  }
 });

@@ -256,3 +256,63 @@ it("single-pass sibling appends preserve original Lore, history and both source 
 // These legacy assertions inspect detailed logging. OFF contracts are tested separately.
 const debugLogging = vi.hoisted(() => ({ MEMORY_DEBUG_LOGGING: true }));
 vi.mock("../config/debugLogging", () => debugLogging);
+
+
+describe("explicit scene-date recognition", () => {
+  it.each([
+    ["2001-09-03 — Morning", "2001-09-03"],
+    ["Monday, 3 September 2001", "2001-09-03"],
+    ["Monday, September 3, 2001", "2001-09-03"],
+    ["3 September 2001 — Morning", "2001-09-03"],
+    ["September 4, 2001 — Morning", "2001-09-04"],
+    ["Story date: September 3, 2001", "2001-09-03"],
+    ["Current story date: 2001-09-03", "2001-09-03"],
+    ["The room falls silent.\n\n### September 4, 2001 — Morning\nThey return.", "2001-09-04"],
+  ])("advances from a current-scene heading: %s", (heading, date) => {
+    const state = dated(createDefaultAdventure(), "scene", heading);
+    expect(state.storyClock).toMatchObject({ current: { date }, sourceMessageId: "scene" });
+    expect(state.messages.at(-1)?.storyTime?.date).toBe(date);
+  });
+
+  it.each([
+    '"I’ll see you tomorrow," she says.',
+    'She says, "Today is September 4, 2001."',
+    '"September 4, 2001\nStory date: September 4, 2001"',
+    '> Story date: September 4, 2001',
+    'They found a letter dated September 4, 2001.',
+    'She recalls the old classroom.\n\nMonday, 3 September 2001',
+    'Flashback: September 1, 2001\nThey meet.',
+    'They read the letter:\nSeptember 4, 2001',
+  ])("does not advance from dialogue or historical evidence: %s", text => {
+    const state = dated(dated(createDefaultAdventure(), "now", "Story date: 2001-09-02"), "past", text);
+    expect(state.storyClock?.current?.date).toBe("2001-09-02");
+  });
+
+  it.each(["Wednesday, 4 September 2001", "September 31, 2001 — Morning", "2001-02-29 — Morning"])("keeps an inconsistent declaration pending: %s", text => {
+    const state = dated(dated(createDefaultAdventure(), "now", "Story date: 2001-09-02"), "invalid", text);
+    expect(state.storyClock).toMatchObject({ current: { date: "2001-09-02" }, pendingReference: text });
+    expect(state.messages.at(-1)?.storyTime?.date).toBeUndefined();
+  });
+
+  it.each(["The next morning", "The following day", "Three days later", "Two weeks later", "Two months later", "One year later"])("counts a repeated user/narrator transition once: %s", text => {
+    let state = dated(createDefaultAdventure(), "now", "Story date: 2001-09-02");
+    state = reduce(state, { type: "ADD_MESSAGE", role: "user", id: "instruction", content: text });
+    const date = state.storyClock?.current?.date;
+    state = dated(state, "response", `## ${text}\nThey return.`);
+    expect(state.storyClock?.current?.date).toBe(date);
+    expect(state.messages.at(-1)?.storyTime?.date).toBe(date);
+    expect(state.storyClock?.sourceMessageId).toBe("instruction");
+  });
+
+  it("retains a manual anchor through later message edits and undo without rewriting saved dates", () => {
+    let state = dated(createDefaultAdventure(), "old", "Story date: 2001-09-02");
+    const old = state.messages[0];
+    state = reduce(state, { type: "SET_STORY_CLOCK", clock: { current: { text: "2001-09-04", date: "2001-09-04", precision: "day" } } });
+    state = dated(state, "skip", "The next morning");
+    state = reduce(state, { type: "UPDATE_MESSAGE", messageId: "skip", content: "Two days later" });
+    expect(state.storyClock?.current?.date).toBe("2001-09-06");
+    expect(state.messages[0]).toEqual(old);
+    state = reduce(state, { type: "UNDO_STORY_EDIT" });
+    expect(state.storyClock?.current?.date).toBe("2001-09-05");
+  });
+});

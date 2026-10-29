@@ -61,3 +61,17 @@ it("explains relevance selection without per-card scheduling and keeps context c
   expect(saved.storyCards[0].autoUpdate).toEqual(initial.storyCards[0].autoUpdate);
   expect(saved.storyCards[0].autoUpdateCooldownTurns).toEqual(initial.storyCards[0].autoUpdateCooldownTurns);
 });
+
+
+it("keeps the original Story Cards clock editor independent of approved Lore dates", async () => {
+  render(<Editor />);
+  const user = userEvent.setup();
+  const before = JSON.parse(screen.getByTestId("saved").textContent!);
+  await user.click(screen.getByText(/Current story clock:/, { selector: "summary" }));
+  const input = screen.getByLabelText("Current story time", { exact: true });
+  await user.clear(input); await user.type(input, "2001-09-04");
+  const after = JSON.parse(screen.getByTestId("saved").textContent!);
+  expect(after.storyClock.current.date).toBe("2001-09-04");
+  expect(after.storyCards).toEqual(before.storyCards);
+  expect(after.messages).toEqual(before.messages);
+});

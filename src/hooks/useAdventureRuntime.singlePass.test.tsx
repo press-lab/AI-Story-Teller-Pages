@@ -225,3 +225,47 @@ it.each([false, true])("keeps mixed Brain/Lore extraction to one call with Chara
 // These legacy assertions inspect detailed logging. OFF contracts are tested separately.
 const debugLogging = vi.hoisted(() => ({ MEMORY_DEBUG_LOGGING: true }));
 vi.mock("../config/debugLogging", () => debugLogging);
+
+
+it.each([false, true])("keeps a fixed chronology batch at one memory API request, with conflict=%s", async conflict => {
+  debugLogging.MEMORY_DEBUG_LOGGING = true;
+  const a = createDefaultAdventure();
+  a.memoryDetectionSettings.pipeline = "singlePass";
+  a.memoryAutoApprove.storyCard = true;
+  a.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
+  const content = "Mira received exclusive archive access.";
+  a.messages = ["clock-a", "clock-b", "clock-c"].map((id, index) => ({ id, role: "assistant" as const,
+    content: index === 2 ? content : "Mira waits beside the gate.", createdAt: "2026-10-29",
+    storyTime: { text: "2001-09-02", date: "2001-09-02", precision: "day" as const },
+    memoryEvaluation: { pipeline: "singlePass" as const, status: "pending" as const, attempts: 0, turn: index + 1, completedGroups: [] } }));
+  const title = conflict ? "4 September — Archive access" : "2 September — Archive access";
+  const responseBodies: string[] = [];
+  const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+    const body = JSON.parse(init!.body as string);
+    expect(body.model).toBe("evaluator");
+    const payload = JSON.parse(body.messages.at(-1).content);
+    const finding = { kind: "storyCard", targetId: null, title, content, evidenceQuotes: [{ messageId: "clock-c", quote: content }],
+      reason: "A lasting access agreement.", candidateOnly: false, storyCardType: "lore", operation: "create", memoryMode: "historical",
+      eventStatus: "completed", suggestedTriggers: ["archive access", "research agreement"], participants: ["Mira"] };
+    const reply = JSON.stringify({ sources: payload.sources.map((source: { sourceId: string }) => ({ sourceId: source.sourceId,
+      findings: source.sourceId === "clock-c" ? [finding] : [] })) });
+    responseBodies.push(reply);
+    return new Response(JSON.stringify({ choices: [{ message: { content: reply } }], usage: { prompt_tokens: 100, completion_tokens: 30, total_tokens: 130 } }));
+  });
+  const hook = setup(a);
+  await act(async () => { await hook.result.current.runtime.evaluateMemorySources(a.messages.map(m => m.id)); await settle(); });
+  await waitFor(() => expect(hook.result.current.adventure!.messages.every(m => m.memoryEvaluation?.status === "complete")).toBe(true));
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(responseBodies).toHaveLength(1);
+  const after = hook.result.current.adventure!;
+  const proposal = after.activeState.memoryProposals.find(p => p.title === title)!;
+  expect(proposal).toMatchObject({ title, content, sourceText: content, lore: { occurredAt: { date: "2001-09-02" } } });
+  expect(proposal.status).toBe(conflict ? "pending" : "approved");
+  if (conflict) expect(proposal.requiresReview).toBe(true);
+  expect(after.messages.at(-1)!.memoryEvaluation!.singlePass!.findings).toEqual(
+    JSON.parse(responseBodies[0]).sources.find((source: { sourceId: string }) => source.sourceId === "clock-c").findings);
+  expect(after.activeState.apiCalls).toHaveLength(1);
+  expect(after.activeState.apiCalls![0].usage).toMatchObject({ promptTokens: 100, completionTokens: 30, totalTokens: 130 });
+  await act(async () => { await settle(); });
+  expect(fetch).toHaveBeenCalledTimes(1);
+});

@@ -147,11 +147,14 @@ it.each([false, true])("edits Event Date before approval, persists it, and keeps
   await user.clear(input);
   await user.type(input, "2019-02-14");
   const corrected = { text: "2019-02-14", date: "2019-02-14", precision: "day" };
-  expect(savedReview().activeState.memoryProposals[0].lore).toMatchObject({ occurredAt: corrected, lastChangedAt: corrected });
+  expect(savedReview().activeState.memoryProposals[0].lore).toMatchObject({ occurredAt: update ? before.storyCards[0].lore!.occurredAt : corrected, lastChangedAt: corrected });
   expect(savedReview().storyClock).toEqual(before.storyClock);
   // A pending correction survives both JSON and the real IndexedDB persistence boundary.
   await saveAdventure(normalizeAdventure(JSON.parse(JSON.stringify(savedReview()))));
-  expect((await getAdventure(before.id))?.activeState.memoryProposals[0].lore?.occurredAt).toEqual(corrected);
+  expect((await getAdventure(before.id))?.activeState.memoryProposals[0].lore?.lastChangedAt).toEqual(corrected);
+  expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
+  await user.click(screen.getByRole("button", { name: "Confirm this event date" }));
+  expect(screen.getByRole("button", { name: "Approve" })).toBeEnabled();
   await user.click(screen.getByRole("button", { name: "Approve" }));
   const approved = savedReview();
   expect(approved.storyCards).toHaveLength(1);
@@ -278,4 +281,26 @@ it("opens archived history beside grouped pending proposals without changing eit
     expect(screen.getByRole("region", { name: "CREATE lore: Quidditch Trials suggestions" })).toHaveTextContent("1 proposal");
     expect(a.activeState.memoryProposals[0].status).toBe("rejected");
   } finally { read.mockRestore(); }
+});
+
+
+it("adds no date confirmation for normal proposals and invalidates a deliberate override after editing", async () => {
+  render(<DatedReview />);
+  const user = userEvent.setup();
+  expect(screen.queryByRole("button", { name: "Confirm this event date" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Approve" })).toBeEnabled();
+  const input = screen.getByLabelText("Event Date");
+  await user.clear(input); await user.type(input, "2019-02-04");
+  expect(screen.getByText("Date conflict: this event’s proposed date does not agree with its source chronology.")).toBeVisible();
+  expect(screen.getByText(/Source event date 2019-02-01; proposed occurrence 2019-02-04/)).toBeVisible();
+  await user.click(screen.getByRole("button", { name: "Confirm this event date" }));
+  expect(screen.getByRole("button", { name: "Approve" })).toBeEnabled();
+  await user.type(screen.getByDisplayValue("First kiss"), " privately");
+  expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Confirm this event date" })).toBeVisible();
+  await user.clear(input); await user.type(input, "2019-02-01");
+  expect(screen.queryByRole("button", { name: "Confirm this event date" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Approve" })).toBeEnabled();
+  await user.click(screen.getByRole("button", { name: "Approve" }));
+  expect(savedReview().activeState.memoryProposals[0].status).toBe("approved");
 });

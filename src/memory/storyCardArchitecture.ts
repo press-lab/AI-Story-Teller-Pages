@@ -1,5 +1,6 @@
 import type { Adventure, LoreMetadata, MemoryProposal, StoryCard, StoryCardType, LegacyStoryCardType } from "../types/adventure";
-import { readStoryTime, formatStoryTime } from "./storyTime";
+import { formatStoryTime } from "./storyTime";
+import { resolveLoreEventDate } from "./validateLoreChronology";
 import { approximateTokenCount } from "../tokenizer/approximateTokenCount";
 
 export const PRIMARY_STORY_CARD_TYPES = ["character", "location", "lore", "custom"] as const;
@@ -38,8 +39,7 @@ export function migrateStoryCard(card: Omit<StoryCard, "type"> & { type: StoryCa
 export function proposalLore(adventure: Adventure, proposal: MemoryProposal): LoreMetadata {
   const source = adventure.messages.find(m => m.id === proposal.sourceTurnId);
   const sourceContent = "sourceContent" in proposal && typeof proposal.sourceContent === "string" ? proposal.sourceContent : undefined;
-  const observed = readStoryTime(sourceContent ?? source?.content ?? proposal.sourceText ?? "", adventure.storyClock);
-  const time = proposal.lore?.occurredAt ?? source?.storyTime ?? observed.time;
+  const time = proposal.lore ? proposal.lore.occurredAt : resolveLoreEventDate(adventure, proposal, source);
   return {
     status: proposal.memoryMode === "historical" || proposal.eventMemory ? "completed" : "unresolved",
     ...proposal.lore,

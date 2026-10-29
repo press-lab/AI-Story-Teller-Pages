@@ -1,3 +1,4 @@
+import { validateLoreChronology, isLoreProposal, loreChronologyFingerprint, loreDateConfirmed, validLoreDate } from "../memory/validateLoreChronology";
 import { MEMORY_DEBUG_LOGGING } from "../config/debugLogging";
 import { compactCompletedEvaluationWithoutDebug, pruneDebugHistory, compactHistoricalEvaluation, compactHistoricalProposal, eligibleHistory } from "../memory/memoryHistory";
 import { singlePassReferenceState } from "../memory/singlePassMemory";
@@ -587,7 +588,10 @@ function redoStoryEdit(state: Adventure): Adventure {
 function updateMemoryProposal(proposal: MemoryProposal, patch: Partial<MemoryProposal>): MemoryProposal {
   const sanitizedPatch = { ...patch };
   delete sanitizedPatch.updatedAt;
+  delete sanitizedPatch.chronologyConfirmationFingerprint;
   const next = { ...proposal, ...sanitizedPatch, updatedAt: nowIso() };
+  if (["sourceTurnId", "sourceText", "storyCardReview", "evaluationSource", "title", "content", "targetId", "cardOperation", "appendContent", "lore"].some(key =>
+    JSON.stringify(proposal[key as keyof MemoryProposal]) !== JSON.stringify(next[key as keyof MemoryProposal]))) next.chronologyConfirmationFingerprint = undefined;
   if (next.placementValidation && next.placementValidation.fingerprint !== placementFingerprint(next)) next.placementValidation = undefined;
   return next;
 }
@@ -853,7 +857,10 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal,
       if (existing && proposal.storyCardType && existing.type !== primaryStoryCardType(proposal.storyCardType)) return {};
     }
     const changeTime = proposal.lore?.lastChangedAt ?? proposal.lore?.occurredAt ?? state.messages.find(m => m.id === proposal.sourceTurnId)?.storyTime;
-    const datedContent = changeTime?.text && !safeContent.includes(changeTime.text)
+    const hasDatePrefix = /^\s*\[?\d{4}-\d{2}-\d{2}\]?/.test(safeContent)
+      || /^\s*\[?(?:\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)|(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2})\b/i.test(safeContent);
+    const labelDate = isLoreProposal(state, proposal) ? changeTime?.date && !hasDatePrefix : changeTime?.text;
+    const datedContent = labelDate && changeTime && !safeContent.includes(changeTime.text)
       ? `[${formatStoryTime(changeTime)}] ${safeContent}` : safeContent;
     let storyCard: StoryCard;
     if (existing) {
@@ -1125,6 +1132,7 @@ function applyCompanionMemoryProposals(
   for (const proposal of proposals) {
     const clean = sanitizeProposal(routedProposal(workingState, proposal));
     if (!clean) continue;
+    if (validateLoreChronology(workingState, clean).status === "conflict") clean.requiresReview = true;
     const autoApprove = workingState.memoryAutoApprove?.[clean.proposedType as keyof typeof workingState.memoryAutoApprove] ?? false;
     if (!autoApprove || clean.requiresReview || placementValidationError(workingState, clean)) {
       recorded.push(clean);
@@ -1465,7 +1473,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
       return next;
     }
     case "SET_STORY_CLOCK":
-      return touchAdventure(state, { storyClock: { ...action.clock, anchor: action.clock.current, origin: "established" } });
+      return touchAdventure(state, { storyClock: { ...action.clock, sourceMessageId: undefined, pendingReference: undefined, anchor: action.clock.current, anchorMessageId: state.messages.at(-1)?.id, origin: "established" } });
     case "SET_TITLE":
       return touchAdventure(state, { title: action.title });
     case "SET_OPENING_SCENE":
@@ -1481,7 +1489,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
       const messageTime = (duplicateTransition ? state.storyClock?.current : observed?.time) ?? (observed && !observed.flashback ? state.storyClock?.current : undefined);
       if (messageTime) message.storyTime = messageTime;
       const storyClock = observed?.advances && observed.time && !duplicateTransition ? { ...state.storyClock, current: observed.time, sourceMessageId: message.id, origin: transitionKey(message.content) ? state.storyClock?.origin : "established" as const, pendingReference: undefined }
-        : observed?.time?.precision === "relative" && !observed.advances && !observed.flashback ? { ...state.storyClock, pendingReference: observed.time.text } : state.storyClock;
+        : observed?.time && !observed.advances && !observed.flashback ? { ...state.storyClock, pendingReference: observed.time.text } : state.storyClock;
       const index = state.messages.length;
       return withStoryHistory(
         state,
@@ -1866,6 +1874,9 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
         candidate: { kind: action.proposal.storyCardType ?? action.proposal.proposedType, title: action.proposal.title, content: action.proposal.content.slice(0, 4000), evidence: (action.proposal.sourceText ?? "").slice(0, 4000), rationale: (action.proposal.rationale ?? "").slice(0, 600) },
       } });
       if (!clean) return suppressed("Proposal sanitization rejected the candidate.");
+      // Only the explicit confirmation action may authorize a conflicting date.
+      delete clean.chronologyConfirmationFingerprint;
+      if (validateLoreChronology(state, clean).status === "conflict") clean.requiresReview = true;
       const comparableProposals = state.activeState.memoryProposals.filter(proposal => !proposal.storyCardReview || suggestionSourceValid(state, proposal)
         || (!state.messages.some(message => message.id === proposal.storyCardReview!.sourceMessageId)
           && proposal.storyCardReview.sourceMessageId === clean.storyCardReview?.sourceMessageId && proposal.storyCardReview.sourceContent === clean.storyCardReview.sourceContent));
@@ -1996,6 +2007,15 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
         },
       });
     }
+    case "CONFIRM_MEMORY_PROPOSAL_DATE": {
+      const proposal = state.activeState.memoryProposals.find(p => p.id === action.proposalId);
+      if (!proposal || proposal.status !== "pending" || !isLoreProposal(state, proposal)
+        || validateLoreChronology(state, proposal).status !== "conflict"
+        || !validLoreDate(proposal.lore?.occurredAt) || !validLoreDate(proposal.lore?.lastChangedAt)) return state;
+      return touchAdventure(state, { activeState: { ...state.activeState,
+        memoryProposals: state.activeState.memoryProposals.map(p => p.id === proposal.id
+          ? { ...p, chronologyConfirmationFingerprint: loreChronologyFingerprint(state, p) } : p) } });
+    }
     case "APPROVE_MEMORY_PROPOSAL": {
       const existing = state.activeState.memoryProposals.find((proposal) => proposal.id === action.proposalId);
       if (!existing || existing.status === "approved") return state;
@@ -2006,6 +2026,12 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
         || state.storyCards.some(card => card.id === existing.targetId && card.protected))) return state;
       const proposal = sanitizeProposal(proposalWithEdits(existing, action.editedProposal));
       if (!proposal) return state;
+      const chronology = validateLoreChronology(state, proposal);
+      if (chronology.status === "conflict" && !loreDateConfirmed(state, proposal)) {
+        return touchAdventure(state, { activeState: { ...state.activeState,
+          memoryProposals: state.activeState.memoryProposals.map(p => p.id === proposal.id
+            ? { ...proposal, status: "pending", requiresReview: true } : p) } });
+      }
       if (proposalCoverage(state, proposal, false)) {
         const next = touchAdventure(state, { activeState: { ...state.activeState,
           memoryProposals: state.activeState.memoryProposals.map(p => p.id === proposal.id ? updateMemoryProposal(proposal, { status: "approved" }) : p) } });

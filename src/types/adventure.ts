@@ -361,6 +361,8 @@ export interface StoryClock {
   /** Explicit user clock anchor, retained when replaying edited date evidence. */
   anchor?: StoryTime;
   sourceMessageId?: string;
+  /** Last existing message at an explicit user clock correction. */
+  anchorMessageId?: string;
 }
 export interface LoreMetadata {
   occurredAt?: StoryTime;
@@ -735,6 +737,7 @@ export interface MemoryPlacementValidation {
 }
 
 export interface MemoryProposal {
+  chronologyConfirmationFingerprint?: string;
   archivedMemoryHistoryId?: string;
   /** Generated card memory only appends a factual delta or creates a new card. */
   cardOperation?: "append" | "create";
@@ -1208,6 +1211,7 @@ export type AdventureAction =
   | { type: "DELETE_RAW_IMPORT"; rawImportId: string }
   | { type: "ADD_MEMORY_PROPOSAL"; proposal: MemoryProposal }
   | { type: "UPDATE_MEMORY_PROPOSAL"; proposalId: string; patch: Partial<MemoryProposal>; expectedFingerprint?: string }
+  | { type: "CONFIRM_MEMORY_PROPOSAL_DATE"; proposalId: string }
   | { type: "APPROVE_MEMORY_PROPOSAL"; proposalId: string; editedProposal?: Partial<MemoryProposal>; automatic?: boolean }
   | { type: "REJECT_MEMORY_PROPOSAL"; proposalId: string }
   | { type: "IGNORE_MEMORY_PROPOSAL"; proposalId: string }

@@ -1,3 +1,4 @@
+import { validateLoreChronology } from "./validateLoreChronology";
 import type { Adventure, MemoryProposal, SinglePassMemoryCheckpoint, SinglePassMemoryFinding, SinglePassMemorySourceResult } from "../types/adventure";
 import { bindPlacement, characterProfileChangeError, placementValidationError } from "./storyCardPlacement";
 import { makeStoryCardSuggestion, storyCardTargets } from "./storyCardSuggestions";
@@ -88,6 +89,7 @@ export function toSinglePassProposal(a: Adventure, sourceId: string, checkpoint:
       suggestedTriggers: [], confidence: review ? 0.45 : 0.8, rationale: f.reason, status: "pending", requiresReview: review, createdAt: nowIso(), updatedAt: nowIso() };
   }
   p.evaluationSource = { messages: checkpoint.evidence, target };
+  if (validateLoreChronology(a, p).status === "conflict") p.requiresReview = true;
   return p;
 }
 export function validateSinglePassSource(a: Adventure, result: SinglePassMemorySourceResult, checkpoint: SinglePassMemoryCheckpoint) {

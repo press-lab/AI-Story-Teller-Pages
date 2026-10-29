@@ -2,7 +2,7 @@ import { factsCovered, loreFactsCovered, loreTitleKey, loreOccurrenceDate } from
 import type { Adventure, MemoryProposal, Message, StoryCardType } from "../types/adventure";
 import { createId, nowIso } from "../utils/id";
 import { isHistoricalLore } from "./storyCardArchitecture";
-import { readStoryTime, transitionKey } from "./storyTime";
+import { resolveLoreEventDate } from "./validateLoreChronology";
 import { memoryTargetMatches } from "./memoryCycleState";
 import { storyCardEntityCandidates, characterParticipants } from "./storyCardEntities";
 import { storyMemoryMessages } from "./memoryEvidenceWindow";
@@ -155,10 +155,7 @@ export function makeStoryCardSuggestion(adventure: Adventure, sourceId: string, 
 }): MemoryProposal {
   const player = sourcePlayer(adventure, sourceId);
   const source = adventure.messages.find(message => message.id === sourceId);
-  // Old imports without per-entry chronology must not reuse today's clock for a past relative skip.
-  const observed = readStoryTime(story, source && !source.storyTime ? undefined : adventure.storyClock);
-  const echoedTransition = !source && player?.id === adventure.storyClock?.sourceMessageId && Boolean(transitionKey(story)) && transitionKey(story) === transitionKey(player?.content ?? "");
-  const time = source?.storyTime ?? (echoedTransition ? adventure.storyClock?.current : observed.time) ?? (!source && !observed.flashback ? adventure.storyClock?.current : undefined);
+  const time = resolveLoreEventDate(adventure, { sourceTurnId: sourceId, storyCardReview: { sourceContent: story } }, source);
   const type = finding.type ?? "lore";
   const participants = characterParticipants(adventure.storyCards, finding.evidence, finding.participants);
   const choices = storyCardTargets(adventure, { ...finding, participants, type });
@@ -180,7 +177,7 @@ export function makeStoryCardSuggestion(adventure: Adventure, sourceId: string, 
     content, sourceTurnId: sourceId, sourceText: finding.evidence, rationale: finding.reason,
     suggestedTriggers: generatedStoryCardTriggers(adventure, finding.title, finding.content, finding.triggers, target?.id, memoryMode, type), requiresReview: review || closedTitle, status: "pending", confidence: candidateOnly ? 0.45 : 0.8,
     targetId: target?.id, appendContent: target ? true : undefined, memoryMode,
-    lore: type === "lore" ? { status: uncertain ? "unresolved" : target?.lore?.status ?? (continuing ? "ongoing" : "completed"), sourceMessageIds: [sourceId, ...(player ? [player.id] : [])], ...(time ? { occurredAt: time, lastChangedAt: time } : {}) } : undefined,
+    lore: type === "lore" ? { status: uncertain ? "unresolved" : target?.lore?.status ?? (continuing ? "ongoing" : "completed"), sourceMessageIds: [sourceId, ...(player ? [player.id] : [])], ...(time ? { occurredAt: target?.lore?.occurredAt ?? time, lastChangedAt: time } : {}) } : undefined,
     storyCardReview: { origin: finding.origin ?? "model", candidateOnly, eventKind, participants, operation: target ? "update" : "create",
       targetCandidates: choices, suggestedTitle, sourceMessageId: sourceId, sourceContent: story,
       ...(player ? { playerMessageId: player.id, playerContent: player.content } : {}) },

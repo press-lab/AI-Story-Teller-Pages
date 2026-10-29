@@ -385,3 +385,29 @@ it("shows completed Continue and Retry responses in a long transcript without le
   expect(screen.queryByText("The next story arrives.")).not.toBeInTheDocument();
   expect(container.querySelectorAll("article.message")).toHaveLength(100);
 });
+
+
+it("exposes clock correction during Play and dates future messages without rewriting prior entries", async () => {
+  let latest = playAdventure();
+  latest = adventureReducer(latest, { type: "ADD_MESSAGE", id: "old-date", role: "assistant", content: "Story date: 2001-09-02" });
+  const previous = latest.messages;
+  function ClockPlay() {
+    const [adventure, setAdventure] = useState(latest);
+    latest = adventure;
+    const dispatch = (action: AdventureAction) => setAdventure(current => adventureReducer(current, action));
+    return <PlayPage adventure={adventure} dispatch={dispatch} loading={false} saveStatus="saved"
+      onSubmitTurn={noopSubmitTurn} onContinue={async () => dispatch({ type: "ADD_MESSAGE", id: "future-date", role: "assistant", content: "They signed an agreement." })}
+      onRegenerate={noopAsync} onBuildContext={() => undefined} onOpenContext={() => undefined} onRememberThis={noopAsync} />;
+  }
+  render(<ClockPlay />);
+  const user = userEvent.setup();
+  await user.click(screen.getByText("Correct story date", { selector: "summary" }));
+  const input = screen.getByLabelText("Current story time", { exact: true });
+  expect(input).toBeVisible();
+  await user.clear(input); await user.type(input, "2001-09-04");
+  expect(latest.storyClock).toMatchObject({ current: { date: "2001-09-04" }, anchor: { date: "2001-09-04" }, origin: "established" });
+  expect(latest.messages).toEqual(previous);
+  await user.click(screen.getByRole("button", { name: "Continue" }));
+  expect(latest.messages.at(-1)).toMatchObject({ id: "future-date", storyTime: { date: "2001-09-04" } });
+  expect(latest.messages.slice(0, -1)).toEqual(previous);
+});

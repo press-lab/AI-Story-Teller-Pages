@@ -1,3 +1,4 @@
+import { validLoreDate } from "../memory/validateLoreChronology";
 import { useEffect, useState } from "react";
 import type { StoryTime } from "../types/adventure";
 import { readStoryTime, STORY_TIME_PRECISIONS } from "../memory/storyTime";
@@ -5,9 +6,7 @@ import { Field } from "./shared";
 
 function parseDate(text: string) {
   const time = readStoryTime("Date: " + text).time;
-  const gregorian = /^\d{4}-\d{2}-\d{2}\b/.test(text.trim())
-    || /^(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4}\b/i.test(text.trim());
-  return { time, invalid: gregorian && !time?.date };
+  return { time, invalid: Boolean(text.trim()) && !validLoreDate({ text, precision: "day", ...(time?.date ? { date: time.date } : {}) }) };
 }
 
 /** Proposal chronology only: this control never dispatches a story-clock action. */
