@@ -1,4 +1,5 @@
-import { compactHistoricalEvaluation, compactHistoricalProposal, eligibleHistory } from "../memory/memoryHistory";
+import { MEMORY_DEBUG_LOGGING } from "../config/debugLogging";
+import { compactCompletedEvaluationWithoutDebug, pruneDebugHistory, compactHistoricalEvaluation, compactHistoricalProposal, eligibleHistory } from "../memory/memoryHistory";
 import { singlePassReferenceState } from "../memory/singlePassMemory";
 import { singlePassSourceError, validateSinglePassSource, toSinglePassProposal } from "../memory/singlePassMemoryValidation";
 import { reconcileBrainBatchState } from "../memory/brainBatchRecovery";
@@ -116,6 +117,7 @@ function recordComponentMemoryUpdate(
 ): ComponentEntry {
   const timestamp = nowIso();
   const stamped = { ...next, updatedAt: timestamp, lastMemoryUpdatedAt: timestamp };
+  if (!MEMORY_DEBUG_LOGGING) return { ...stamped, memoryUpdateHistory: previous?.memoryUpdateHistory ?? next.memoryUpdateHistory };
   return {
     ...stamped,
     memoryUpdateHistory: [
@@ -137,6 +139,7 @@ function recordStoryCardMemoryUpdate(
 ): StoryCard {
   const timestamp = nowIso();
   const stamped = { ...next, updatedAt: timestamp, lastMemoryUpdatedAt: timestamp };
+  if (!MEMORY_DEBUG_LOGGING) return { ...stamped, memoryUpdateHistory: previous?.memoryUpdateHistory ?? next.memoryUpdateHistory };
   return {
     ...stamped,
     memoryUpdateHistory: [
@@ -479,10 +482,17 @@ const STORY_HISTORY_LIMIT = 100;
 function applyStoryPatch(state: Adventure, patch: StoryEditPatch): Partial<Adventure> {
   if (patch.type === "insertMessage") {
     const index = patch.index ?? state.messages.length;
+    const evaluation = patch.message.memoryEvaluation;
+    // Keep undo/redo entries exact. Resolve a removed archive reference only
+    // when its message is restored after explicit cleanup.
+    const restored = state.activeState.debugHistoryGeneration && evaluation?.archivedMemoryHistoryId
+      && !state.activeState.compressedMemoryHistory?.blocks[evaluation.archivedMemoryHistoryId]
+      ? { ...patch.message, memoryEvaluation: evaluation.status === "complete"
+        ? compactCompletedEvaluationWithoutDebug(evaluation) : { ...evaluation, archivedMemoryHistoryId: undefined } } : patch.message;
     return {
       messages: [
         ...state.messages.slice(0, index),
-        patch.message,
+        restored,
         ...state.messages.slice(index),
       ],
     };
@@ -1140,7 +1150,19 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
     || (action.type === "ADD_MEMORY_PROPOSAL" && !action.proposal.userInitiated)
     || (action.type === "APPROVE_MEMORY_PROPOSAL" && action.automatic === true)
     || (action.type === "APPLY_BRAIN_UPDATE" && Boolean(action.diagnosticSourceId));
-  const next = automatic ? rebaseAutomaticAssessments(state, reduced) : reduced;
+  let next = automatic ? rebaseAutomaticAssessments(state, reduced) : reduced;
+  if (!MEMORY_DEBUG_LOGGING) {
+    // Compact only sources completed by this transaction, after proposal writes
+    // and dependency validation. Existing logs are preserved until cleanup.
+    if (action.type === "COMMIT_SINGLE_PASS_MEMORY_BATCH" || action.type === "COMMIT_MEMORY_EVALUATION_GROUP") {
+      const sourceIds = new Set(action.type === "COMMIT_SINGLE_PASS_MEMORY_BATCH" ? action.sources.map(s => s.result.sourceId) : [action.source.id]);
+      const messages = next.messages.map(m => sourceIds.has(m.id) && m.memoryEvaluation?.status === "complete"
+        && state.messages.find(old => old.id === m.id)?.memoryEvaluation !== m.memoryEvaluation
+        ? { ...m, memoryEvaluation: compactCompletedEvaluationWithoutDebug(m.memoryEvaluation) } : m);
+      if (messages.some((m, i) => m !== next.messages[i])) next = { ...next, messages };
+    }
+    return next;
+  }
   if (action.type === "APPLY_BRAIN_UPDATE" && action.diagnosticSourceId
     && next.brains.find(brain => brain.id === action.brainId) !== state.brains.find(brain => brain.id === action.brainId)) {
     return adventureReducer(next, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: {
@@ -1191,7 +1213,11 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
 
 function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
   switch (action.type) {
+    case "PRUNE_DEBUG_HISTORY":
+      return touchAdventure(pruneDebugHistory(state), {});
     case "MERGE_MEMORY_HISTORY_PROGRESS": {
+      if (!MEMORY_DEBUG_LOGGING) return state;
+      if ((state.activeState.debugHistoryGeneration ?? 0) !== (action.latest.activeState.debugHistoryGeneration ?? 0)) return state;
       const { baseline, latest } = action;
       const incoming = state.activeState.compressedMemoryHistory;
       const progress = latest.activeState.compressedMemoryHistory;
@@ -1217,6 +1243,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
           }) } };
     }
     case "ARCHIVE_MEMORY_HISTORY": {
+      if (!MEMORY_DEBUG_LOGGING) return state;
       const { record, block } = action;
       if (state.id !== action.adventureId || !eligibleHistory(record) || block.kind !== record.kind || block.recordId !== record.id
         || block.version !== 1 || !block.data || state.activeState.compressedMemoryHistory?.blocks[block.id]) return state;
@@ -1259,7 +1286,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
       return touchAdventure(state, { messages: state.messages.map(message => {
         const claim = valid.find(c => c.sourceId === message.id);
         return claim ? { ...message, memoryEvaluation: { ...message.memoryEvaluation!, status: "running" as const,
-          attempts: message.memoryEvaluation!.attempts + 1, archivedMemoryHistoryId: undefined, archivedFindingCount: undefined, singlePass: claim.checkpoint } } : message;
+          attempts: message.memoryEvaluation!.attempts + 1, archivedMemoryHistoryId: undefined, archivedFindingCount: undefined, debugHistoryOmitted: undefined, singlePass: claim.checkpoint } } : message;
       }) });
     }
     case "FAIL_SINGLE_PASS_MEMORY_BATCH": {
@@ -1269,7 +1296,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
         if (e?.status !== "running" || e.singlePass?.batchId !== action.batchId) continue;
         next = touchAdventure(next, { messages: next.messages.map(m => m.id === sourceId ? { ...m, memoryEvaluation: { ...e,
           status: "failed" as const, lastError: action.reason, singlePass: { ...e.singlePass!, status: "failed" as const, failureReason: action.reason } } } : m) });
-        next = adventureReducer(next, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: { id: createId("decision"), sourceId,
+        if (MEMORY_DEBUG_LOGGING) next = adventureReducer(next, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: { id: createId("decision"), sourceId,
           createdAt: nowIso(), stage: "independent", requestStage: "singlePass", outcome: "evaluation_failed", reason: action.reason, retryable: false } });
       }
       return next;
@@ -1300,7 +1327,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
           const stored = next.activeState.memoryProposals.find(p => p.id === proposal.id);
           dispositions.push({ index, status: !stored ? "suppressed" : stored.status === "approved" ? "accepted" : "review", proposalId: stored?.id });
         }
-        for (const diagnostic of result.diagnostics ?? []) next = adventureReducer(next, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: {
+        if (MEMORY_DEBUG_LOGGING) for (const diagnostic of result.diagnostics ?? []) next = adventureReducer(next, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: {
           id: createId("decision"), sourceId: result.sourceId, createdAt: nowIso(), stage: "independent", requestStage: "singlePass", outcome: "finding_normalized",
           reason: `${diagnostic.index < 0 ? "Source record" : `Finding ${diagnostic.index}`}: ${diagnostic.reason}` } });
         const failureReason = validation.failureReason;
@@ -1312,7 +1339,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
           reviewCount: dispositions.filter(d => d.status === "review").length, suppressedCount: dispositions.filter(d => d.status === "suppressed").length };
         next = touchAdventure(next, { messages: next.messages.map(m => m.id === result.sourceId ? { ...m, memoryEvaluation: { ...m.memoryEvaluation!,
           singlePass: saved, status: saved.status, lastError: failureReason } } : m) });
-        next = adventureReducer(next, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: { id: createId("decision"), sourceId: result.sourceId,
+        if (MEMORY_DEBUG_LOGGING) next = adventureReducer(next, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: { id: createId("decision"), sourceId: result.sourceId,
           createdAt: nowIso(), stage: "independent", requestStage: "singlePass", outcome: failureReason ? "evaluation_failed" : "evaluation_completed",
           reason: failureReason ?? (result.findings.length ? "All returned findings have recorded dispositions." : "Valid evaluation with zero findings."),
           counts: { returned: saved.parsedCount!, parsed: saved.parsedCount, routed: saved.routedCount, proposed: saved.proposedCount, review: saved.reviewCount, accepted: saved.acceptedCount, rejected: saved.rejectedCount, suppressed: saved.suppressedCount, retryPending: 0 } } });
@@ -1474,8 +1501,8 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
         m.id === action.messageId ? { ...m, content: action.content } : m) });
       // Old exports may have lost the marker after an edit. Only explicit prior
       // independent-evaluation records qualify; never nominate untracked history.
-      const trackedIds = new Set((state.activeState.memoryDiagnostics ?? []).filter(entry => entry.stage === "independent"
-        && ["evaluation_queued", "evaluation_started", "evaluation_completed", "evaluation_failed"].includes(entry.outcome)).map(entry => entry.sourceId));
+      const trackedIds = new Set([...(state.activeState.legacyMemoryEvaluationSourceIds ?? []), ...(state.activeState.memoryDiagnostics ?? []).filter(entry => entry.stage === "independent"
+        && ["evaluation_queued", "evaluation_started", "evaluation_completed", "evaluation_failed"].includes(entry.outcome)).map(entry => entry.sourceId)]);
       const tracked = (message: Message) => message.role === "assistant" && message.inputMode !== "comms"
         && Boolean(message.memoryEvaluation || trackedIds.has(message.id));
       return reconcileStoryMutation(state, withStoryHistory(
@@ -1771,6 +1798,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
         triggerRules: updateById(state.triggerRules, action.triggerRuleId, (item) => touch({ ...item, lastFiredTurn: action.turn })),
       });
     case "LOG_TRIGGER_FIRE":
+      if (!MEMORY_DEBUG_LOGGING) return state;
       return touchAdventure(state, {
         activeState: {
           ...state.activeState,
@@ -1778,9 +1806,11 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
         },
       });
     case "RECORD_MEMORY_DIAGNOSTIC":
+      if (!MEMORY_DEBUG_LOGGING) return state;
       return touchAdventure(state, { activeState: { ...state.activeState,
         memoryDiagnostics: [...(state.activeState.memoryDiagnostics ?? []), action.entry].slice(-600) } });
     case "LOG_EVALUATION_RESULT":
+      if (!MEMORY_DEBUG_LOGGING) return state;
       return touchAdventure(state, {
         activeState: {
           ...state.activeState,
@@ -1830,7 +1860,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
       });
     case "ADD_MEMORY_PROPOSAL": {
       const clean = sanitizeProposal(routedProposal(state, action.proposal));
-      const suppressed = (reason: string, proposalId?: string) => adventureReducer(state, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: {
+      const suppressed = (reason: string, proposalId?: string) => !MEMORY_DEBUG_LOGGING ? state : adventureReducer(state, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: {
         id: createId("decision"), sourceId: action.proposal.sourceTurnId ?? "unknown", createdAt: nowIso(),
         stage: "reducer", outcome: "candidate_suppressed", reason, proposalId,
         candidate: { kind: action.proposal.storyCardType ?? action.proposal.proposedType, title: action.proposal.title, content: action.proposal.content.slice(0, 4000), evidence: (action.proposal.sourceText ?? "").slice(0, 4000), rationale: (action.proposal.rationale ?? "").slice(0, 600) },

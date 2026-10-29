@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { useState } from "react";
-import { afterEach, describe, it, expect, vi } from "vitest";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { createDefaultAdventure, defaultModelConfig, normalizeAdventure, makeStoryCard } from "../state/defaults";
 import type { Adventure } from "../types/adventure";
 import { useAdventureRuntime } from "./useAdventureRuntime";
@@ -13,7 +13,7 @@ import * as cardReview from "../memory/validateStoryCardProposal";
 vi.mock("../db/adventureDb", () => ({ saveAdventure: vi.fn(async () => undefined) }));
 const nativeTimeout = globalThis.setTimeout;
 const settle = () => new Promise<void>(resolve => nativeTimeout(resolve, 30));
-afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.useRealTimers(); });
+afterEach(() => { debugLogging.MEMORY_DEBUG_LOGGING = true; cleanup(); vi.restoreAllMocks(); vi.useRealTimers(); });
 function setup(initial = createDefaultAdventure()) {
   initial.semanticEvaluationSettings.backgroundProviderConfig = { baseUrl: "https://example.test/v1", model: "evaluator", memoryReasoningControl: "omit" };
   return renderHook(() => {
@@ -23,7 +23,8 @@ function setup(initial = createDefaultAdventure()) {
       { pipeline: "singlePass", enabled: true, everyNTurns: 1, generateContent: true }) };
   });
 }
-describe.each(["json", "commands"])("runtime %s response compatibility", format => {
+describe.each(["json", "commands"].flatMap(format => [false, true].map(enabled => ({ format, enabled }))))("runtime $format logging $enabled response compatibility", ({ format, enabled }) => {
+beforeEach(() => { debugLogging.MEMORY_DEBUG_LOGGING = enabled; });
 function mockHttp(mode = "empty") {
   let memoryCalls = 0;
   vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
@@ -97,7 +98,9 @@ it("retains valid siblings in the existing Memory Inbox without paid repair", as
   for (let i = 0; i < 3; i++) await act(async () => { await hook.result.current.runtime.continueTurn(); await settle(); });
   await waitFor(() => expect(hook.result.current.adventure!.messages.filter(m => m.role === "assistant").every(m => m.memoryEvaluation?.status === "complete")).toBe(true));
   expect(hook.result.current.runtime.memoryWork).toBeUndefined();
-  expect(hook.result.current.adventure!.messages.filter(m => m.role === "assistant").at(-1)!.memoryEvaluation!.singlePass!.dispositions).toContainEqual(expect.objectContaining({ status: "rejected", reason: expect.any(String) }));
+  const dispositions = hook.result.current.adventure!.messages.filter(m => m.role === "assistant").at(-1)!.memoryEvaluation!.singlePass!.dispositions;
+  if (enabled) expect(dispositions).toContainEqual(expect.objectContaining({ status: "rejected", reason: expect.any(String) }));
+  else expect(dispositions).toEqual([]);
   expect(calls()).toBe(1);
   expect(hook.result.current.adventure!.activeState.memoryProposals).toContainEqual(expect.objectContaining({ title: "Gate sanctuary", status: "pending" }));
   await act(async () => { await hook.result.current.runtime.continueTurn(); await settle(); });
@@ -218,3 +221,7 @@ it.each([false, true])("keeps mixed Brain/Lore extraction to one call with Chara
   await act(async () => { await settle(); }); expect(memoryCalls).toBe(1);
   expect(hook.result.current.runtime.memoryWork).toBeUndefined();
 });
+
+// These legacy assertions inspect detailed logging. OFF contracts are tested separately.
+const debugLogging = vi.hoisted(() => ({ MEMORY_DEBUG_LOGGING: true }));
+vi.mock("../config/debugLogging", () => debugLogging);

@@ -123,3 +123,24 @@ it("keeps archive progress completed during a pending narrator request in the pu
   expect(JSON.stringify(hook.result.current.a)).toContain('"compressedMemoryHistory"');
   expect(hook.result.current.a!.activeState.apiCalls).toHaveLength(1);
 });
+
+// These legacy assertions inspect detailed logging. OFF contracts are tested separately.
+const debugLogging = vi.hoisted(() => ({ MEMORY_DEBUG_LOGGING: true }));
+vi.mock("../config/debugLogging", () => debugLogging);
+
+it("OFF schedules no scans, timers, workers, warnings or archive saves", async () => {
+  debugLogging.MEMORY_DEBUG_LOGGING = false;
+  try {
+    vi.useFakeTimers();
+    vi.stubGlobal("Worker", undefined);
+    const timeout = vi.spyOn(globalThis, "setTimeout"), interval = vi.spyOn(globalThis, "setInterval");
+    const a = initial();
+    a.activeState.compressedMemoryHistory = { version: 1, blocks: { old: block({ kind: "evaluation", id: "historical", value: a.messages[0].memoryEvaluation! }) } };
+    const hook = renderHook(() => useMemoryHistoryCompression(a, vi.fn()));
+    expect(timeout).not.toHaveBeenCalled(); expect(interval).not.toHaveBeenCalled();
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+    expect(hook.result.current).toBeUndefined();
+    expect(compressHistoryInWorker).not.toHaveBeenCalled(); expect(saveAdventure).not.toHaveBeenCalled();
+    expect(a.activeState.compressedMemoryHistory.blocks.old).toBeTruthy();
+  } finally { debugLogging.MEMORY_DEBUG_LOGGING = true; }
+});

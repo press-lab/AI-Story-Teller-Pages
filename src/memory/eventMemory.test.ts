@@ -159,3 +159,7 @@ vi.mock("../providers/memoryCompletion", async importOriginal => {
   return { ...actual, sendMemoryCompletion: vi.fn(async (...args: Parameters<typeof actual.sendMemoryCompletion>) =>
     offlinePlacementReview({ messages: args[2] }) ?? actual.sendMemoryCompletion(...args)) };
 });
+
+// These legacy assertions inspect detailed logging. OFF contracts are tested separately.
+const debugLogging = vi.hoisted(() => ({ MEMORY_DEBUG_LOGGING: true }));
+vi.mock("../config/debugLogging", () => debugLogging);

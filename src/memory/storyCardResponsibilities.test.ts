@@ -124,3 +124,7 @@ describe("Story Card detection responsibilities", () => {
     expect(result.adventure.activeState.evaluationLog.some(log => log.errors.some(error => /envelope|JSON/.test(error)))).toBe(true);
   });
 });
+
+// These legacy assertions inspect detailed logging. OFF contracts are tested separately.
+const debugLogging = vi.hoisted(() => ({ MEMORY_DEBUG_LOGGING: true }));
+vi.mock("../config/debugLogging", () => debugLogging);

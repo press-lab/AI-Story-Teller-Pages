@@ -173,6 +173,8 @@ export interface SinglePassMemoryCheckpoint {
 export interface MemoryEvaluationState {
   archivedMemoryHistoryId?: string;
   archivedFindingCount?: number;
+  /** Detailed completed payload was omitted by configuration or explicit cleanup. */
+  debugHistoryOmitted?: boolean;
   pipeline?: MemoryPipelineMode;
   singlePass?: SinglePassMemoryCheckpoint;
   assessment?: MemoryAssessmentCheckpoint;
@@ -912,6 +914,10 @@ export type MemoryHistoryRecord = { kind: "proposal"; id: string; value: MemoryP
   | { kind: "evaluation"; id: string; value: MemoryEvaluationState };
 export type HistoricalProposalAction = Extract<AdventureAction, { type: "APPROVE_MEMORY_PROPOSAL" | "UPDATE_MEMORY_PROPOSAL" | "REJECT_MEMORY_PROPOSAL" | "IGNORE_MEMORY_PROPOSAL" }>;
 export interface ActiveState {
+  /** Explicit cleanup epoch; prevents old worker/save archive merges undoing cleanup. */
+  debugHistoryGeneration?: number;
+  /** Compact legacy source-edit markers, including sources temporarily held in undo history. */
+  legacyMemoryEvaluationSourceIds?: string[];
   compressedMemoryHistory?: { version: 1; blocks: Record<string, CompressedMemoryHistoryBlock> };
   pendingBrainDeltas?: PendingBrainDelta[];
   /** Character list display order; does not change context priorities or Brain content. */
@@ -1129,6 +1135,7 @@ export type BrainPatch = {
 
 export type AdventureAction =
   | { type: "MERGE_MEMORY_HISTORY_PROGRESS"; baseline: Adventure; latest: Adventure }
+  | { type: "PRUNE_DEBUG_HISTORY" }
   | { type: "ARCHIVE_MEMORY_HISTORY"; adventureId: string; record: MemoryHistoryRecord; block: CompressedMemoryHistoryBlock }
   | { type: "APPLY_ARCHIVED_PROPOSAL_ACTION"; adventureId: string; archiveId: string; proposal: MemoryProposal; action: HistoricalProposalAction }
   | { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH"; checkpoints: Array<{ sourceId: string; checkpoint: SinglePassMemoryCheckpoint }>; manual?: boolean }

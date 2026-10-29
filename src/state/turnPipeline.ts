@@ -1,3 +1,4 @@
+import { MEMORY_DEBUG_LOGGING } from "../config/debugLogging";
 import { parseOnePassMemory } from "../memory/onePassMemory";
 import { buildContext, extractInlineThoughts } from "../contextBuilder/contextBuilder";
 import { runContinuityCheck, scanForRiskyClaims } from "../continuityLint";
@@ -130,7 +131,7 @@ export async function applyProviderResponse({
     usage: response.usage,
     generation,
   });
-  if (mode !== "comms") {
+  if (MEMORY_DEBUG_LOGGING && mode !== "comms") {
     const cardIds = new Set(adventure.storyCards.map(card => card.id));
     const sorted = (ids: string[]) => [...new Set(ids.filter(id => cardIds.has(id)))].sort();
     const summary = {

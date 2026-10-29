@@ -1,5 +1,5 @@
 import { normalizeAdventure } from "./defaults";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Adventure, AdventureAction, RawImportEntry, TriggerLogEntry } from "../types/adventure";
 import { createDefaultAdventure, makeBrain, makeComponent, makeStoryCard, makeTriggerRule } from "./defaults";
 import { adventureReducer } from "./adventureReducer";
@@ -78,6 +78,7 @@ const testedActionTypes = [
   "SET_SEMANTIC_EVALUATION_SETTINGS",
   "SET_MEMORY_AUTO_APPROVE",
   "SET_MEMORY_DETECTION_SETTINGS",
+  "PRUNE_DEBUG_HISTORY",
   "SET_STATE_FLAG",
   "SET_RESPONSE_LENGTH_HINT",
   "SET_NEXT_TURN_NOTE",
@@ -1929,4 +1930,22 @@ it("enabling Character auto-approval preserves historical pending proposals and 
   expect(restored.memoryAutoApprove.brainUpdate).toBe(true); expect(restored.activeState.memoryProposals).toEqual(history);
   expect(restored.brains).toEqual(brains);
   expect(restored.activeState.memoryDiagnostics).toEqual(diagnostics);
+});
+
+// These legacy assertions inspect detailed logging. OFF contracts are tested separately.
+const debugLogging = vi.hoisted(() => ({ MEMORY_DEBUG_LOGGING: true }));
+vi.mock("../config/debugLogging", () => debugLogging);
+
+it("PRUNE_DEBUG_HISTORY is explicit and OFF logging actions preserve state identity", () => {
+  debugLogging.MEMORY_DEBUG_LOGGING = false;
+  try {
+    const a = baseAdventure();
+    const entry = { id: "old", sourceId: "source", createdAt: "2000-01-01", stage: "independent" as const, outcome: "evaluation_completed" as const };
+    a.activeState.memoryDiagnostics = [entry];
+    expect(adventureReducer(a, { type: "RECORD_MEMORY_DIAGNOSTIC", entry })).toBe(a);
+    const clean = adventureReducer(a, { type: "PRUNE_DEBUG_HISTORY" });
+    expect(clean.activeState.memoryDiagnostics).toEqual([]);
+    expect(a.activeState.memoryDiagnostics).toEqual([entry]);
+    expect(clean.messages).toEqual(a.messages);
+  } finally { debugLogging.MEMORY_DEBUG_LOGGING = true; }
 });

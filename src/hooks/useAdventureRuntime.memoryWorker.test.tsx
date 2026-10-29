@@ -503,3 +503,7 @@ it("an incomplete batch does not request repair or individual fallback", async (
   expect(provider.mock.calls.filter(([r]) => r.memoryEvaluation)).toHaveLength(1);
   expect(hook.result.current.adventure!.messages.every(m => m.memoryEvaluation?.status === "quarantined" && m.memoryEvaluation.attempts === 1)).toBe(true);
 });
+
+// These legacy assertions inspect detailed logging. OFF contracts are tested separately.
+const debugLogging = vi.hoisted(() => ({ MEMORY_DEBUG_LOGGING: true }));
+vi.mock("../config/debugLogging", () => debugLogging);

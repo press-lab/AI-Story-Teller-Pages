@@ -1,3 +1,4 @@
+import { MEMORY_DEBUG_LOGGING } from "./config/debugLogging";
 import { useMemoryHistoryCompression } from "./hooks/useMemoryHistoryCompression";
 import { useCallback, useEffect, useState } from "react";
 import { adventureReducer } from "./state/adventureReducer";
@@ -706,7 +707,7 @@ export default function App() {
             <button type="button" className="error-dismiss" aria-label="Dismiss error" onClick={runtime.clearError}>×</button>
           </div>
         )}
-        {historyCompressionError && <p role="alert">{historyCompressionError}</p>}
+        {MEMORY_DEBUG_LOGGING && historyCompressionError && <p role="alert">{historyCompressionError}</p>}
         {page}
       </main>
 

@@ -180,3 +180,11 @@ it("runs the six-result loose parser to router to validation to reducer producti
   expect(send).toHaveBeenCalledTimes(1); expect(send.mock.calls[0][3]).toBe("singlePass");
   send.mockRestore();
 });
+
+it("the default OFF pipeline still finalizes narration and queues operational memory evaluation", async () => {
+  const a = fixture(); a.memoryDetectionSettings.everyNTurns = 1;
+  const result = await runTurnPipeline({ adventure: a, text: "I continue.", assistantMessageId: "off-source", sendChatCompletion: async () => ({ content: negotiation }) });
+  expect(result.adventure.messages.at(-1)?.content).toBe(negotiation);
+  expect(result.adventure.messages.at(-1)?.memoryEvaluation?.status).toBe("pending");
+  expect(result.adventure.activeState.memoryDiagnostics?.length ?? 0).toBe(0);
+});

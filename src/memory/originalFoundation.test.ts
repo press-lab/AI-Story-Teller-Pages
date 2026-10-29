@@ -680,3 +680,7 @@ it("retains a Moody lesson from the existing Character check as focused Lore wit
   expect(approved.storyCards[0]).toEqual(a.storyCards[0]);
   expect(approved.storyCards.find(c => c.type === "lore")?.content).toContain(moodyPlacement.lore);
 });
+
+// These legacy assertions inspect detailed logging. OFF contracts are tested separately.
+const debugLogging = vi.hoisted(() => ({ MEMORY_DEBUG_LOGGING: true }));
+vi.mock("../config/debugLogging", () => debugLogging);

@@ -429,3 +429,27 @@ it("overrides Brain REVIEW no when evidence needs local recovery", () => {
   expect(r.findings[0].candidateOnly).toBe(true);
   expect(r.diagnostics?.some(d => d.reason.includes("review required"))).toBe(true);
 });
+
+// These legacy assertions inspect detailed logging. OFF contracts are tested separately.
+const debugLogging = vi.hoisted(() => ({ MEMORY_DEBUG_LOGGING: true }));
+vi.mock("../config/debugLogging", () => debugLogging);
+
+it("OFF keeps exact in-flight sources, references and evidence, then compacts successful completion", async () => {
+  debugLogging.MEMORY_DEBUG_LOGGING = false;
+  try {
+    let { a, ids } = singlePassFixture(1);
+    const batch = await prepareSinglePassMemoryBatch(a, ids);
+    const checkpoint = batch.checkpoints[0].checkpoint;
+    expect(checkpoint.referenceState).toBe(singlePassReferenceStateForTest(a, ids[0]));
+    expect(checkpoint.sourceContent).toBe(a.messages.find(m => m.id === ids[0])!.content);
+    expect(checkpoint.evidence.length).toBeGreaterThan(0);
+    a = reduce(a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
+    expect(a.messages.find(m => m.id === ids[0])!.memoryEvaluation!.singlePass).toBe(checkpoint);
+    a = reduce(a, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId, sources: [{ checkpoint, result: { sourceId: ids[0], findings: [groundedFinding()], rejected: [] } }] });
+    const e = a.messages.find(m => m.id === ids[0])!.memoryEvaluation!;
+    expect(e).toMatchObject({ status: "complete", debugHistoryOmitted: true, revision: ids[0], attempts: 1 });
+    expect(e.singlePass).toMatchObject({ referenceState: "", sourceContent: "", evidence: [], findings: [], dispositions: [], reviewCount: 1 });
+    expect(a.activeState.memoryProposals.some(p => p.status === "pending")).toBe(true);
+  } finally { debugLogging.MEMORY_DEBUG_LOGGING = true; }
+});
+import { singlePassReferenceState as singlePassReferenceStateForTest } from "./singlePassMemory";

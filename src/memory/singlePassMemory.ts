@@ -29,7 +29,7 @@ export function singlePassReferenceState(a: Adventure, sourceId: string): string
     activeState: { ...a.activeState, turn: a.messages.find(m => m.id === sourceId)?.memoryEvaluation?.turn ?? a.activeState.turn },
     semanticEvaluationSettings: { ...a.semanticEvaluationSettings, messagesIncluded: memoryEvidenceWindow(a, sourceId).length } };
   const conditions = buildMemoryAssessmentConditions(snapshot);
-  return JSON.stringify([assessmentSourceState(snapshot, sourceId, conditions), memoryDecisionState(snapshot, sourceId), snapshot.components.filter(c => c.type === "immediateMomentum"),
+  return JSON.stringify([assessmentSourceState(snapshot, sourceId, conditions), memoryDecisionState(snapshot, sourceId), snapshot.components.filter(c => c.type === "immediateMomentum").map(({ memoryUpdateHistory: _history, ...c }) => c),
     snapshot.brains.filter(b => conditions.brains.some(c => c.id === `brain:${b.id}`)).map(b => {
       const card = singlePassCharacterCard(snapshot, b);
       return card ? { brainId: b.id, id: card.id, title: card.title, keys: card.keys, content: card.content } : { brainId: b.id };
@@ -88,6 +88,7 @@ export async function prepareSinglePassMemoryBatch(a: Adventure, ids: readonly s
     const plot = [...inputs.currentPlot.filter(p => conditions.plot.some(c => c.id.endsWith(":" + p.id))), ...snapshot.components.filter(c => c.type === "immediateMomentum" && c.active && c.autoUpdate !== false)
       .map(c => ({ id: c.id, type: c.type, content: c.content, premise: c.arcPremise, autoUpdate: c.autoUpdate, protected: c.protected }))];
 
+    // Exact operational guards remain full in both logging modes until commit.
     checkpoints.push({ sourceId: source.id, checkpoint: { batchId, sourceContent: source.content, sourceRevision: source.memoryEvaluation?.revision,
       evidence: inputs.evidence.map(({ id, content }) => ({ id, content })), referenceState: singlePassReferenceState(a, source.id),
       status: "running", findings: [], dispositions: [], acceptedCount: 0, rejectedCount: 0, suppressedCount: 0, reviewCount: 0 } });

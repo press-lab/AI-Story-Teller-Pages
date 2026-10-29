@@ -647,3 +647,7 @@ it("uses final Story Card sections for inclusion and sorts unique diagnostic IDs
   expect(entries).toHaveLength(1);
   expect(JSON.parse(entries[0].reason!)).toMatchObject({ matchedStoryCardIds: ["a-card", "z-card"], includedStoryCardIds: ["a-card", "z-card"], budgetDroppedStoryCardIds: [] });
 });
+
+// These legacy assertions inspect detailed logging. OFF contracts are tested separately.
+const debugLogging = vi.hoisted(() => ({ MEMORY_DEBUG_LOGGING: true }));
+vi.mock("../config/debugLogging", () => debugLogging);

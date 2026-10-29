@@ -113,3 +113,7 @@ it("rejects a locally bound private Brain note on a Character profile without id
     { kind: "append", reason: "Private interpretation needs review.", newFact: fact }, ["source"]);
   expect(placementValidationError(a, p)).toContain("enduring profile change"); expect(provider).not.toHaveBeenCalled();
 });
+
+// These legacy assertions inspect detailed logging. OFF contracts are tested separately.
+const debugLogging = vi.hoisted(() => ({ MEMORY_DEBUG_LOGGING: true }));
+vi.mock("../config/debugLogging", () => debugLogging);

@@ -58,3 +58,24 @@ it("queued older snapshots cannot erase an already committed archive, including 
   await saveAdventure(archived);
   expect((await getAdventure(a.id))!.activeState.memoryProposals[0].archivedMemoryHistoryId).toBe(block.id);
 });
+
+// These legacy assertions inspect detailed logging. OFF contracts are tested separately.
+const debugLogging = vi.hoisted(() => ({ MEMORY_DEBUG_LOGGING: true }));
+vi.mock("../config/debugLogging", () => debugLogging);
+
+it("explicit cleanup persists without the previous archive merge resurrecting blocks", async () => {
+  const { archived } = await setup();
+  await saveAdventure(archived);
+  const cleaned = adventureReducer(archived, { type: "PRUNE_DEBUG_HISTORY" });
+  await saveAdventure(cleaned);
+  const loaded = (await getAdventure(cleaned.id))!;
+  expect(loaded.activeState.compressedMemoryHistory).toBeUndefined();
+  expect(loaded.activeState.memoryProposals.every(p => !p.archivedMemoryHistoryId)).toBe(true);
+  expect(importAdventureJson(exportAdventureJson(loaded)).activeState.debugHistoryGeneration).toBe(1);
+  // A later ON evaluation still archives normally in the cleanup generation.
+  const later = { ...cleaned, activeState: { ...cleaned.activeState, memoryProposals: [makeMemoryProposal({ id: "later", status: "approved" })] } };
+  const record: MemoryHistoryRecord = { kind: "proposal", id: "later", value: later.activeState.memoryProposals[0] };
+  const block = await compressHistory(record);
+  await saveAdventure(adventureReducer(later, { type: "ARCHIVE_MEMORY_HISTORY", adventureId: later.id, record, block }));
+  expect((await getAdventure(later.id))!.activeState.compressedMemoryHistory!.blocks[block.id]).toEqual(block);
+});

@@ -1,4 +1,4 @@
-import { it, expect } from "vitest";
+import { it, expect, vi } from "vitest";
 import { singlePassFixture, groundedFinding } from "../test/singlePassMemory";
 import { prepareSinglePassMemoryBatch, parseSinglePassMemoryCommands, normalizeSinglePassFinding } from "./singlePassMemory";
 import { validateSinglePassFinding, validateSinglePassSource } from "./singlePassMemoryValidation";
@@ -395,4 +395,31 @@ it.each(["dialogue", "duplicate"])("retains the %s quality safeguard with Charac
   a = reduce(a, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId, sources: [{ checkpoint: batch.checkpoints[0].checkpoint, result: { sourceId: ids[0], findings: [finding], rejected: [] } }] });
   expect(a.brains).toEqual(before); expect(a.activeState.memoryProposals).toEqual([]);
   expect(a.messages[0].memoryEvaluation?.singlePass).toMatchObject({ status: "complete", suppressedCount: 1, acceptedCount: 0 });
+});
+
+// These legacy assertions inspect detailed logging. OFF contracts are tested separately.
+const debugLogging = vi.hoisted(() => ({ MEMORY_DEBUG_LOGGING: true }));
+vi.mock("../config/debugLogging", () => debugLogging);
+
+it.each([false, true])("Brain auto-approval and failed sibling checkpoints work with logging %s", async enabled => {
+  debugLogging.MEMORY_DEBUG_LOGGING = enabled;
+  try {
+    let { a, ids } = qualityFixture();
+    a.memoryAutoApprove.brainUpdate = true;
+    a.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
+    const batch = await prepareSinglePassMemoryBatch(a, ids);
+    a = reduce(a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
+    const checkpoint = batch.checkpoints[0].checkpoint;
+    const finding = { ...thoughtFinding("Fred", "I can accept her help while keeping control of our designs."), candidateOnly: false };
+    a = reduce(a, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId, sources: [{ checkpoint, result: { sourceId: ids[0], findings: [finding], rejected: [] } }] });
+    expect(Object.values(a.brains.find(b => b.characterName === "Fred")!.thoughts).some(t => t.includes("accept her help"))).toBe(true);
+    expect(a.activeState.memoryProposals.find(p => p.proposedType === "brainUpdate")?.status).toBe("approved");
+    expect(a.messages[0].memoryEvaluation?.status).toBe("complete");
+    // Fresh explicit retry data is retained exactly on failure in either mode.
+    const edited = reduce(a, { type: "UPDATE_MESSAGE", messageId: ids[0], content: a.messages[0].content + " A new development." });
+    const retry = await prepareSinglePassMemoryBatch(edited, ids);
+    const claimed = reduce(edited, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: retry.checkpoints, manual: true });
+    const failed = reduce(claimed, { type: "FAIL_SINGLE_PASS_MEMORY_BATCH", batchId: retry.batchId, sourceIds: ids, reason: "offline interruption" });
+    expect(failed.messages[0].memoryEvaluation?.singlePass).toMatchObject({ ...retry.checkpoints[0].checkpoint, status: "failed", failureReason: "offline interruption" });
+  } finally { debugLogging.MEMORY_DEBUG_LOGGING = true; }
 });

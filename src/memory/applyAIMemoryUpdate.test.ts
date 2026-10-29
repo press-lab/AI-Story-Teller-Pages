@@ -1,5 +1,5 @@
 import { reviewedProposal } from "../test/memoryPlacement";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { adventureReducer } from "../state/adventureReducer";
 import { createDefaultAdventure, makeBrain, makeComponent, makeStoryCard } from "../state/defaults";
 import { applyAIMemoryUpdate } from "./applyAIMemoryUpdate";
@@ -107,3 +107,7 @@ describe("applyAIMemoryUpdate", () => {
     ]);
   });
 });
+
+// These legacy assertions inspect detailed logging. OFF contracts are tested separately.
+const debugLogging = vi.hoisted(() => ({ MEMORY_DEBUG_LOGGING: true }));
+vi.mock("../config/debugLogging", () => debugLogging);

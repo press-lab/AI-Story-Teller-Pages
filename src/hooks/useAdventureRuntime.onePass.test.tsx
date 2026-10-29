@@ -166,3 +166,7 @@ it("pauses invalid memory configuration before claims while narration continues,
   expect(hook.result.current.adventure!.messages.find(message => message.id === sources[0].id)?.memoryEvaluation?.status).toBe("complete");
   expect(hook.result.current.adventure!.messages.find(message => message.id === sources[1].id)?.memoryEvaluation?.attempts).toBe(0);
 });
+
+// These legacy assertions inspect detailed logging. OFF contracts are tested separately.
+const debugLogging = vi.hoisted(() => ({ MEMORY_DEBUG_LOGGING: true }));
+vi.mock("../config/debugLogging", () => debugLogging);

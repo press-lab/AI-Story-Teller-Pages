@@ -259,3 +259,7 @@ it("keeps bracketed dates and uncertain overlap without deleting new information
   a.storyCards.find(c => c.id === "relationship")!.content = "Draconia publicly keeps Seth's blazer despite George's warning.";
   expect(loreNovelty(a, { ...p, content: "Draconia keeps Seth's blazer publicly despite Fred's warning." }).status).toBe("uncertain");
 });
+
+// These legacy assertions inspect detailed logging. OFF contracts are tested separately.
+const debugLogging = vi.hoisted(() => ({ MEMORY_DEBUG_LOGGING: true }));
+vi.mock("../config/debugLogging", () => debugLogging);

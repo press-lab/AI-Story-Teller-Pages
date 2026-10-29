@@ -311,3 +311,7 @@ describe("continuous conversation attribution", () => {
     expect(system).not.toContain("[ONE-PASS MEMORY]");
   });
 });
+
+// These legacy assertions inspect detailed logging. OFF contracts are tested separately.
+const debugLogging = vi.hoisted(() => ({ MEMORY_DEBUG_LOGGING: true }));
+vi.mock("../config/debugLogging", () => debugLogging);

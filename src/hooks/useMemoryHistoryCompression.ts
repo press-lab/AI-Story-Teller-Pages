@@ -1,3 +1,4 @@
+import { MEMORY_DEBUG_LOGGING } from "../config/debugLogging";
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import type { Adventure } from "../types/adventure";
 import { nextHistoryRecord } from "../memory/memoryHistory";
@@ -10,7 +11,7 @@ export function useMemoryHistoryCompression(adventure: Adventure | undefined, se
   const [error, setError] = useState<string>();
   useEffect(() => { latest.current = adventure; }, [adventure]);
   useEffect(() => {
-    if (!adventure) return;
+    if (!MEMORY_DEBUG_LOGGING || !adventure) return;
     if (typeof Worker === "undefined") { setError("Background history compression is unavailable in this browser. Original history retained."); return; }
     const adventureId = adventure.id;
     const attempted = new WeakSet<object>();
@@ -34,11 +35,11 @@ export function useMemoryHistoryCompression(adventure: Adventure | undefined, se
     }
     timer = setTimeout(tick, 500);
     return () => { controller.abort(); clearTimeout(timer); };
-  }, [adventure?.id, setAdventure]);
+  }, [adventure?.id, adventure?.activeState.debugHistoryGeneration, setAdventure]);
   // Compression never gates narrator or memory saves. Each replacement is one
   // immutable adventure containing BOTH the portable block and compact record.
   useEffect(() => {
-    if (!adventure) return;
+    if (!MEMORY_DEBUG_LOGGING || !adventure) return;
     let active = true;
     let persisted = adventure.activeState.compressedMemoryHistory;
     let saving = false;
@@ -52,6 +53,6 @@ export function useMemoryHistoryCompression(adventure: Adventure | undefined, se
         .finally(() => { saving = false; });
     }, 2000);
     return () => { active = false; clearInterval(timer); };
-  }, [adventure?.id]);
+  }, [adventure?.id, adventure?.activeState.debugHistoryGeneration]);
   return error;
 }

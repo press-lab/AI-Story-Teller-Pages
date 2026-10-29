@@ -229,3 +229,7 @@ it("single-pass repeated Lore respects a prior rejection and preserves distinct 
   const separate = { ...groundedFinding(), title: "A future workshop tour", content: "Blair Reed will arrange a workshop tour later.", evidenceQuotes: [{ messageId: ids[0], quote: "Blair Reed will arrange a workshop tour later." }] };
   expect(validateSinglePassSource(a, { ...result, findings: [separate] }, batch.checkpoints[0].checkpoint).proposals).toHaveLength(1);
 });
+
+// These legacy assertions inspect detailed logging. OFF contracts are tested separately.
+const debugLogging = vi.hoisted(() => ({ MEMORY_DEBUG_LOGGING: true }));
+vi.mock("../config/debugLogging", () => debugLogging);

@@ -213,3 +213,18 @@ it.skipIf(!privateFixture)("benchmarks the private save without writing its cont
   expect(report.sourceUnchanged).toBe(true);
   expect(report.archivedJsonBytes).toBeLessThan(report.baselineJsonBytes);
 }, 120_000);
+
+// These legacy assertions inspect detailed logging. OFF contracts are tested separately.
+const debugLogging = vi.hoisted(() => ({ MEMORY_DEBUG_LOGGING: true }));
+vi.mock("../config/debugLogging", () => debugLogging);
+
+it("OFF does not scan completed evaluations or resolved proposals for new archives", async () => {
+  debugLogging.MEMORY_DEBUG_LOGGING = false;
+  try {
+    const { a } = fixture();
+    expect(nextHistoryRecord(a, new WeakSet())).toBeUndefined();
+    const p = a.activeState.memoryProposals[0];
+    const record: MemoryHistoryRecord = { kind: "proposal", id: p.id, value: p };
+    expect(reduce(a, { type: "ARCHIVE_MEMORY_HISTORY", adventureId: a.id, record, block: await compressHistory(record) })).toBe(a);
+  } finally { debugLogging.MEMORY_DEBUG_LOGGING = true; }
+});

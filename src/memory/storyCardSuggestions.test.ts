@@ -257,3 +257,7 @@ it("does not merge different dated occurrences or unrelated Lore subjects before
   const dated = { ...draft, content: "Draconia kissed Seth.", lore: { ...draft.lore!, occurredAt: { text: "2001-01-02", date: "2001-01-02", precision: "day" as const }, lastChangedAt: undefined } };
   expect(equivalentStoryCardSuggestions(dated, { ...dated, id: "next", lore: { ...dated.lore, occurredAt: { text: "2001-01-03", date: "2001-01-03", precision: "day" } } })).toBe(false);
 });
+
+// These legacy assertions inspect detailed logging. OFF contracts are tested separately.
+const debugLogging = vi.hoisted(() => ({ MEMORY_DEBUG_LOGGING: true }));
+vi.mock("../config/debugLogging", () => debugLogging);

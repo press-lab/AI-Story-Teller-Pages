@@ -198,3 +198,25 @@ it("shows single-pass empty, failed and review states and counts a shared batch 
   expect(screen.getByText(/300 reported input tokens/)).toBeTruthy();
   expect(screen.getAllByText(/Batch:/)).toHaveLength(3);
 });
+
+// These legacy assertions inspect detailed logging. OFF contracts are tested separately.
+const debugLogging = vi.hoisted(() => ({ MEMORY_DEBUG_LOGGING: true }));
+vi.mock("../config/debugLogging", () => debugLogging);
+
+it("requires confirmation and a full-backup warning before reducer cleanup", () => {
+  debugLogging.MEMORY_DEBUG_LOGGING = false;
+  try {
+    const dispatch = vi.fn();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<MemoryDecisionsPage adventure={seed()} dispatch={dispatch} onSuggestions={vi.fn()} />);
+    expect(screen.getByText(/Detailed debug logging is disabled/)).toBeTruthy();
+    expect(screen.getByText(/Download a full JSON backup before/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Clear saved debug history" }));
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining("cannot be reconstructed"));
+    expect(dispatch).not.toHaveBeenCalled();
+    confirm.mockReturnValue(true);
+    fireEvent.click(screen.getByRole("button", { name: "Clear saved debug history" }));
+    expect(dispatch).toHaveBeenCalledExactlyOnceWith({ type: "PRUNE_DEBUG_HISTORY" });
+    confirm.mockRestore();
+  } finally { debugLogging.MEMORY_DEBUG_LOGGING = true; }
+});

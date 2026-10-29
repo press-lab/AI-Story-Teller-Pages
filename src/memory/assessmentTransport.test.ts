@@ -174,3 +174,7 @@ it("uses an existing Lore assessment delta without generation and retains source
     expect(r.state.storyCards).toEqual(a.storyCards);
   } finally { unsubscribe(); }
 });
+
+// These legacy assertions inspect detailed logging. OFF contracts are tested separately.
+const debugLogging = vi.hoisted(() => ({ MEMORY_DEBUG_LOGGING: true }));
+vi.mock("../config/debugLogging", () => debugLogging);

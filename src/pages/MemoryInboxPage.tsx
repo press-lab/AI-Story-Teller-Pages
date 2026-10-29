@@ -60,7 +60,7 @@ export function MemoryInboxPage(props: MemoryInboxPageProps) {
       <button type="button" aria-pressed={view === "suggestions"} onClick={() => setView("suggestions")}>Suggestions</button>
       <button type="button" aria-pressed={view === "decisions"} onClick={() => setView("decisions")}>Decisions</button>
     </nav>
-    {view === "decisions" ? <MemoryDecisionsPage adventure={props.adventure} loading={props.loading} onEvaluateMemory={props.onEvaluateMemory} onSuggestions={title => { setProposalSearch(title ?? ""); setView("suggestions"); }} /> : <MemorySuggestionsPage {...props} initialSearch={proposalSearch} />}
+    {view === "decisions" ? <MemoryDecisionsPage dispatch={props.dispatch} adventure={props.adventure} loading={props.loading} onEvaluateMemory={props.onEvaluateMemory} onSuggestions={title => { setProposalSearch(title ?? ""); setView("suggestions"); }} /> : <MemorySuggestionsPage {...props} initialSearch={proposalSearch} />}
   </>;
 }
 

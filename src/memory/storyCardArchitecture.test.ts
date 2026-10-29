@@ -1,5 +1,5 @@
 import { reviewedProposal } from "../test/memoryPlacement";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createDefaultAdventure, makeBrain, makeStoryCard, normalizeAdventure } from "../state/defaults";
 import { adventureReducer as reduce } from "../state/adventureReducer";
 import { makeMemoryProposal } from "../test/goldenAdventure";
@@ -252,3 +252,7 @@ it("single-pass sibling appends preserve original Lore, history and both source 
   expect(changed.memoryUpdateHistory?.map(h => h.sourceTurnId)).toEqual(expect.arrayContaining(ids));
   expect(a.messages.filter(m => ids.includes(m.id)).every(m => m.memoryEvaluation?.status === "complete")).toBe(true);
 });
+
+// These legacy assertions inspect detailed logging. OFF contracts are tested separately.
+const debugLogging = vi.hoisted(() => ({ MEMORY_DEBUG_LOGGING: true }));
+vi.mock("../config/debugLogging", () => debugLogging);

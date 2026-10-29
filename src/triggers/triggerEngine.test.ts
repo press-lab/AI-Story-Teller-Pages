@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { adventureReducer } from "../state/adventureReducer";
 import { createDefaultAdventure, makeComponent, makeStoryCard, makeTriggerRule } from "../state/defaults";
 import type { Adventure } from "../types/adventure";
@@ -124,3 +124,7 @@ describe("evaluateTriggerRules", () => {
     expect(next.triggerRules.find((rule) => rule.id === "trigger-b")?.lastFiredTurn).toBe(0);
   });
 });
+
+// These legacy assertions inspect detailed logging. OFF contracts are tested separately.
+const debugLogging = vi.hoisted(() => ({ MEMORY_DEBUG_LOGGING: true }));
+vi.mock("../config/debugLogging", () => debugLogging);

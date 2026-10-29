@@ -96,7 +96,8 @@ export async function writeAdventure(adventure: Adventure): Promise<Adventure> {
         const previous = read.result as Adventure | undefined;
         const previousHistory = previous?.activeState.compressedMemoryHistory;
         const incomingHistory = adventure.activeState.compressedMemoryHistory;
-        const history = previousHistory?.version === 1 && (!incomingHistory || incomingHistory.version === 1)
+        const history = (previous?.activeState.debugHistoryGeneration ?? 0) === (adventure.activeState.debugHistoryGeneration ?? 0)
+          && previousHistory?.version === 1 && (!incomingHistory || incomingHistory.version === 1)
           ? { version: 1 as const, blocks: { ...previousHistory.blocks, ...incomingHistory?.blocks } } : incomingHistory;
         committed = sanitizeAdventureForPersistence(history ? { ...adventure,
           activeState: { ...adventure.activeState, compressedMemoryHistory: history } } : adventure);

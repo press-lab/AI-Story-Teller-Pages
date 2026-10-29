@@ -1,9 +1,10 @@
+import { MEMORY_DEBUG_LOGGING } from "../config/debugLogging";
 import { ArchivedMemoryVersions } from "./ArchivedMemoryDetails";
 import { summarizeMemoryCosts } from "../providers/memoryCostSummary";
 import { placementValidationError, proposalDestinationLabel } from "../memory/storyCardPlacement";
 import { backgroundProviderConfigIssue } from "../providers/backgroundProvider";
 import { useState } from "react";
-import type { Adventure, MemoryDiagnostic } from "../types/adventure";
+import type { Adventure, AdventureAction, MemoryDiagnostic } from "../types/adventure";
 
 const labels: Record<string, string> = {
   finding_normalized: "Local finding metadata",
@@ -28,7 +29,7 @@ function explanation(reason?: string) {
   return reason;
 }
 
-export function MemoryDecisionsPage({ adventure, onSuggestions, onEvaluateMemory, loading }: { adventure: Adventure; onSuggestions: (title?: string) => void; onEvaluateMemory?: (sourceIds: string[]) => Promise<void>; loading?: boolean }) {
+export function MemoryDecisionsPage({ adventure, onSuggestions, onEvaluateMemory, loading, dispatch }: { adventure: Adventure; dispatch?: (action: AdventureAction) => void; onSuggestions: (title?: string) => void; onEvaluateMemory?: (sourceIds: string[]) => Promise<void>; loading?: boolean }) {
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
   const diagnostics = adventure.activeState.memoryDiagnostics ?? [];
@@ -55,6 +56,13 @@ export function MemoryDecisionsPage({ adventure, onSuggestions, onEvaluateMemory
   }).slice(0, 100);
   return <section className="page editor-surface" aria-label="Memory decisions" style={{ overflowWrap: "anywhere", minWidth: 0 }}>
     <h2>Memory decisions</h2>
+    {!MEMORY_DEBUG_LOGGING && <p>Detailed debug logging is disabled. Current evaluation status and proposal decisions remain available. Previously saved history is shown when available.</p>}
+    {dispatch && <>
+      <p>Download a full JSON backup before clearing saved debug history. Deleted debugging history cannot be reconstructed.</p>
+      <button type="button" disabled={loading} onClick={() => {
+        if (window.confirm("Download a full JSON backup first. Clear saved debug history? Deleted debugging history cannot be reconstructed. Story content, active memories, pending proposals and API accounting will be preserved.")) dispatch({ type: "PRUNE_DEBUG_HISTORY" });
+      }}>Clear saved debug history</button>
+    </>}
     <MemoryCostSummary adventure={adventure} />
     <p>Selected pipeline: {adventure.memoryDetectionSettings.pipeline ?? "singlePass"}.</p>
     {backgroundProviderConfigIssue(adventure) && <p role="alert">{backgroundProviderConfigIssue(adventure)}</p>}
@@ -89,11 +97,12 @@ export function MemoryDecisionsPage({ adventure, onSuggestions, onEvaluateMemory
         {message.memoryEvaluation?.archivedMemoryHistoryId && <>
           <p>Archived evaluation Â· {message.memoryEvaluation.archivedFindingCount ?? 0} findings. Status and counters remain active.</p>
         </>}
+        {message.memoryEvaluation?.debugHistoryOmitted && <p>Detailed logging was disabled or saved debug history was cleared for this completed evaluation.</p>}
         <ArchivedMemoryVersions adventure={adventure} kind="evaluation" recordId={message.id} />
         {message.memoryEvaluation?.singlePass && !message.memoryEvaluation.archivedMemoryHistoryId && <div>
           <h3>Single-pass evaluation</h3>
-          <p>Batch: {message.memoryEvaluation.singlePass.batchId}. Source: {message.memoryEvaluation.status === "failed" ? "evaluation failed" : message.memoryEvaluation.singlePass.reviewCount ? "awaiting review" : message.memoryEvaluation.status === "complete" ? message.memoryEvaluation.singlePass.findings.length ? "evaluation complete" : "valid evaluation with zero findings" : "pending evaluation"}.</p>
-          <p>{message.memoryEvaluation.singlePass.findings.length} returned · {message.memoryEvaluation.singlePass.acceptedCount} accepted · {message.memoryEvaluation.singlePass.suppressedCount} suppressed · {message.memoryEvaluation.singlePass.rejectedCount} rejected · {message.memoryEvaluation.singlePass.reviewCount} review required.</p>
+          <p>Batch: {message.memoryEvaluation.singlePass.batchId}. Source: {message.memoryEvaluation.status === "failed" ? "evaluation failed" : message.memoryEvaluation.singlePass.reviewCount ? "awaiting review" : message.memoryEvaluation.status === "complete" ? (message.memoryEvaluation.singlePass.parsedCount ?? message.memoryEvaluation.archivedFindingCount ?? message.memoryEvaluation.singlePass.findings.length) ? "evaluation complete" : "valid evaluation with zero findings" : "pending evaluation"}.</p>
+          <p>{message.memoryEvaluation.singlePass.parsedCount ?? message.memoryEvaluation.archivedFindingCount ?? message.memoryEvaluation.singlePass.findings.length} returned · {message.memoryEvaluation.singlePass.acceptedCount} accepted · {message.memoryEvaluation.singlePass.suppressedCount} suppressed · {message.memoryEvaluation.singlePass.rejectedCount} rejected · {message.memoryEvaluation.singlePass.reviewCount} review required.</p>
           {message.memoryEvaluation.singlePass.findings.map((f, i) => <details key={i}><summary>{f.kind}: {f.title}</summary><p>{f.content ?? JSON.stringify(f.brainPatch)}</p><p>{f.reason}</p>{f.evidenceQuotes.map((q, j) => <blockquote key={j}>[{q.messageId}] {q.quote}</blockquote>)}</details>)}
           {message.memoryEvaluation.singlePass.dispositions.map((d, i) => <p key={i}>Finding {d.index + 1}: {d.status}. {d.reason}</p>)}
         </div>}
