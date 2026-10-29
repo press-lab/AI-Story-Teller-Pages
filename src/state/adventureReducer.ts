@@ -1,4 +1,4 @@
-import { validateLoreChronology, isLoreProposal, loreChronologyFingerprint, loreDateConfirmed, validLoreDate } from "../memory/validateLoreChronology";
+import { pendingLoreDateCorrectionEligibility, validateLoreChronology, isLoreProposal, loreChronologyFingerprint, loreDateConfirmed, validLoreDate } from "../memory/validateLoreChronology";
 import { MEMORY_DEBUG_LOGGING } from "../config/debugLogging";
 import { compactCompletedEvaluationWithoutDebug, pruneDebugHistory, compactHistoricalEvaluation, compactHistoricalProposal, eligibleHistory } from "../memory/memoryHistory";
 import { singlePassReferenceState } from "../memory/singlePassMemory";
@@ -2006,6 +2006,32 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
           ),
         },
       });
+    }
+    case "APPLY_CURRENT_STORY_DATE_TO_PENDING_LORE": {
+      const current = state.storyClock?.current;
+      if (!current?.date || !["day", "time"].includes(current.precision) || !validLoreDate(current)
+        || readStoryTime("Date: " + current.text).time?.date !== current.date
+        || current.date !== action.expectedClockDate || state.storyClock?.origin !== "established") return state;
+      const selected = new Map(action.proposals.map(p => [p.id, p.expectedFingerprint]));
+      let changed = false;
+      const memoryProposals = state.activeState.memoryProposals.map(proposal => {
+        if (proposal.status !== "pending" || selected.get(proposal.id) !== loreChronologyFingerprint(state, proposal)
+          || !pendingLoreDateCorrectionEligibility(state, proposal, current).eligible) return proposal;
+        const target = state.storyCards.find(c => c.id === proposal.targetId);
+        const corrected: MemoryProposal = { ...proposal, lore: {
+          ...(proposal.lore ?? { status: "unresolved", sourceMessageIds: [proposal.sourceTurnId] }),
+          occurredAt: target ? target.lore?.occurredAt : current, lastChangedAt: current,
+        }, chronologyConfirmationFingerprint: undefined };
+        const chronology = validateLoreChronology(state, corrected);
+        // Eligibility has already excluded explicit conflicting dates and invalid
+        // evidence/placement. Only a stale stored source date can conflict here.
+        if (chronology.status === "conflict") corrected.chronologyConfirmationFingerprint = loreChronologyFingerprint(state, corrected);
+        if (JSON.stringify(corrected.lore) === JSON.stringify(proposal.lore)
+          && corrected.chronologyConfirmationFingerprint === proposal.chronologyConfirmationFingerprint) return proposal;
+        changed = true;
+        return { ...corrected, updatedAt: nowIso() };
+      });
+      return changed ? touchAdventure(state, { activeState: { ...state.activeState, memoryProposals } }) : state;
     }
     case "CONFIRM_MEMORY_PROPOSAL_DATE": {
       const proposal = state.activeState.memoryProposals.find(p => p.id === action.proposalId);

@@ -1,4 +1,4 @@
-import { validateLoreChronology, loreDateConfirmed, validLoreDate } from "../memory/validateLoreChronology";
+import { isLoreProposal, pendingLoreDateCorrectionEligibility, loreChronologyFingerprint, validateLoreChronology, loreDateConfirmed, validLoreDate } from "../memory/validateLoreChronology";
 import { ArchivedMemoryDetails } from "./ArchivedMemoryDetails";
 import { placementValidationError, proposalDestinationLabel } from "../memory/storyCardPlacement";
 import { MemoryDecisionsPage } from "./MemoryDecisionsPage";
@@ -7,7 +7,8 @@ import { suggestionSourceValid } from "../memory/storyCardSuggestions";
 import { memoryTargetSnapshot } from "../memory/memoryCycleState";
 import { formatStoryTime } from "../memory/storyTime";
 import { ProposalEventDate } from "./ProposalEventDate";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { StoryClockEditor } from "./StoryCardChronology";
 import { classifyMemory } from "../memory/classificationPolicy";
 import { resolveMemoryTarget } from "../memory/resolveMemoryTarget";
 import type { MemoryAutoApproveSettings, MemoryProposal, MemoryProposalType, MemoryReconcileRequest, StoryCardType } from "../types/adventure";
@@ -74,6 +75,34 @@ function MemorySuggestionsPage({ adventure, dispatch, onRegenerateProposal, onRe
   const [reconcileEntryCount, setReconcileEntryCount] = useState(20);
   const [reconcileIncludeBrains, setReconcileIncludeBrains] = useState(true);
   const [search, setSearch] = useState(initialSearch);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  type DateReview = { expectedClockDate: string; rows: Array<{ proposal: MemoryProposal; expectedFingerprint: string; resultFingerprint: string; eligibility: ReturnType<typeof pendingLoreDateCorrectionEligibility> }> };
+  const [dateReview, setDateReview] = useState<DateReview>();
+  const [appliedReview, setAppliedReview] = useState<DateReview>();
+  useEffect(() => { setSelectedIds([]); setDateReview(undefined); setAppliedReview(undefined); }, [adventure.id]);
+  useEffect(() => {
+    setSelectedIds(ids => {
+      const pendingIds = ids.filter(id => adventure.activeState.memoryProposals.some(p => p.id === id && p.status === "pending" && isLoreProposal(adventure, p)));
+      return pendingIds.length === ids.length ? ids : pendingIds;
+    });
+  }, [adventure.activeState.memoryProposals, adventure.id]);
+  const selected = allProposals.filter(p => selectedIds.includes(p.id) && p.status === "pending" && isLoreProposal(adventure, p));
+  const dateRows = selected.map(proposal => {
+    const target = adventure.storyCards.find(c => c.id === proposal.targetId);
+    const current = adventure.storyClock?.current;
+    const preview = { ...proposal, lore: { ...(proposal.lore ?? { status: "unresolved" as const, sourceMessageIds: [proposal.sourceTurnId] }),
+      occurredAt: target ? target.lore?.occurredAt : current, lastChangedAt: current } };
+    return { proposal, expectedFingerprint: loreChronologyFingerprint(adventure, proposal), resultFingerprint: loreChronologyFingerprint(adventure, preview),
+      eligibility: pendingLoreDateCorrectionEligibility(adventure, proposal, current) };
+  });
+  const reviewRows = dateReview?.rows ?? dateRows;
+  const eligibleCount = reviewRows.filter(row => row.eligibility.eligible).length;
+  const reviewStale = dateReview && (dateReview.expectedClockDate !== adventure.storyClock?.current?.date
+    || dateReview.rows.some(row => {
+      const live = allProposals.find(p => p.id === row.proposal.id);
+      return !live || live.status !== "pending" || row.expectedFingerprint !== loreChronologyFingerprint(adventure, live)
+        || row.eligibility.eligible !== pendingLoreDateCorrectionEligibility(adventure, live, adventure.storyClock?.current).eligible;
+    }));
   const searchLower = search.toLowerCase().trim();
   const visibleProposals = allProposals.filter((proposal) => !searchLower
     || proposal.title.toLowerCase().includes(searchLower)
@@ -172,6 +201,8 @@ function MemorySuggestionsPage({ adventure, dispatch, onRegenerateProposal, onRe
         </div>
       </div>
 
+      <StoryClockEditor adventure={adventure} dispatch={dispatch} inline />
+
       {onFindEventMemories && <div className="panel">
         <button type="button" disabled={loading || Boolean(eventScan)} onClick={async () => {
           const controller = new AbortController(); setEventScan(controller);
@@ -263,12 +294,58 @@ function MemorySuggestionsPage({ adventure, dispatch, onRegenerateProposal, onRe
         </button>
       </details>
 
+      <div className="panel" aria-label="Pending Lore date selection">
+        <button type="button" onClick={() => {
+          setDateReview(undefined); setAppliedReview(undefined);
+          setSelectedIds(ids => [...new Set([...ids, ...pending.filter(p => pendingLoreDateCorrectionEligibility(adventure, p, adventure.storyClock?.current).eligible).map(p => p.id)])]);
+        }}>Select visible eligible Lore</button>
+        {selected.length > 0 && <button type="button" onClick={() => { setSelectedIds([]); setDateReview(undefined); }}>Clear Lore selection</button>}
+      </div>
+      {(selected.length > 0 || dateReview) && <section className="panel" aria-label="Apply Current Date to Selected Lore">
+        <h3>Apply Current Date to Selected Lore</h3>
+        <p>Current story date: {formatStoryTime(adventure.storyClock?.current)}</p>
+        <p>{reviewRows.length} selected · {eligibleCount} eligible for correction</p>
+        <ul>{reviewRows.map(({ proposal, eligibility }) => <li key={proposal.id}>
+          <strong>{proposal.title}</strong>: {eligibility.eligible
+            ? <>{formatStoryTime(proposal.targetId ? proposal.lore?.lastChangedAt : proposal.lore?.occurredAt)} → {dateReview?.expectedClockDate ?? adventure.storyClock?.current?.date}{proposal.targetId ? " (last development; original occurrence preserved)" : " (occurrence and last development)"}</>
+            : <>Excluded: {eligibility.reason}</>}
+        </li>)}</ul>
+        {dateReview ? <div role="region" aria-label="Confirm Lore date changes">
+          <p>This replaces the proposed event dates for the selected pending Lore. Original Chronicle messages and existing approved Story Cards will not change.</p>
+          {reviewStale && <p role="alert">The clock, selected proposals, or eligibility changed. Cancel and review the current dates again.</p>}
+          <button type="button" disabled={Boolean(reviewStale) || eligibleCount === 0} onClick={() => {
+            dispatch({ type: "APPLY_CURRENT_STORY_DATE_TO_PENDING_LORE", expectedClockDate: dateReview.expectedClockDate,
+              proposals: dateReview.rows.map(({ proposal, expectedFingerprint }) => ({ id: proposal.id, expectedFingerprint })) });
+            setAppliedReview(dateReview); setDateReview(undefined); setSelectedIds([]);
+          }}>Confirm and Apply Dates</button>
+          <button type="button" onClick={() => setDateReview(undefined)}>Cancel date changes</button>
+        </div> : <button type="button" disabled={eligibleCount === 0} onClick={() => {
+          setAppliedReview(undefined); setDateReview({ expectedClockDate: adventure.storyClock!.current!.date!, rows: dateRows });
+        }}>Review Date Changes</button>}
+      </section>}
+      {appliedReview && <div className="panel" role="status" aria-label="Saved Lore date changes">
+        <p>Saved proposal dates after batch review (proposals remain pending):</p>
+        <ul>{appliedReview.rows.map(row => {
+          const live = allProposals.find(p => p.id === row.proposal.id);
+          const event = live?.targetId ? live.lore?.lastChangedAt : live?.lore?.occurredAt;
+          return <li key={row.proposal.id}>{row.proposal.title}: {formatStoryTime(event)}{!row.eligibility.eligible ? ` — excluded: ${row.eligibility.reason}`
+            : live && loreChronologyFingerprint(adventure, live) === row.resultFingerprint && row.resultFingerprint !== row.expectedFingerprint
+              ? " — saved" : " — unchanged or stale; review individually"}</li>;
+        })}</ul>
+      </div>}
+
       <div className="list">
         {pending.length === 0 && <p className="muted">No pending memory suggestions.</p>}
         {[...groups.values()].map(group => <section className="panel memory-destination-group" key={group.proposals[0].id} aria-label={`${group.label} suggestions`}>
           <h3>{group.label} <span className="badge">{group.proposals.length} {group.proposals.length === 1 ? "proposal" : "proposals"}</span></h3>
           <p className="muted">{group.proposals.slice(0, 3).map(p => p.content.replace(/\s+/g, " ").slice(0, 100)).join(" · ")}{group.proposals.length > 3 ? " …" : ""}</p>
-          {group.proposals.map(proposal => <ProposalCard key={proposal.id} adventure={adventure} proposal={proposal} dispatch={dispatch} onUpdate={updateProposal} onRegenerate={onRegenerateProposal} />)}
+          {group.proposals.map(proposal => <div key={proposal.id}>
+            {isLoreProposal(adventure, proposal) && <CheckboxField label={`Select Lore: ${proposal.title}`} checked={selectedIds.includes(proposal.id)} onChange={checked => {
+              setDateReview(undefined); setAppliedReview(undefined);
+              setSelectedIds(ids => checked ? [...new Set([...ids, proposal.id])] : ids.filter(id => id !== proposal.id));
+            }} />}
+            <ProposalCard adventure={adventure} proposal={proposal} dispatch={dispatch} onUpdate={updateProposal} onRegenerate={onRegenerateProposal} />
+          </div>)}
         </section>)}
       </div>
 

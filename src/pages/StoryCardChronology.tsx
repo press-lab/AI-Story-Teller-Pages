@@ -1,5 +1,6 @@
 import type { Adventure, AdventureAction, LoreMetadata, StoryCard, StoryTime } from "../types/adventure";
 import { useEffect, useState } from "react";
+import { validLoreDate } from "../memory/validateLoreChronology";
 import { STORY_TIME_PRECISIONS, readStoryTime } from "../memory/storyTime";
 import { Field, commaList, fromCommaList } from "./shared";
 
@@ -22,13 +23,27 @@ function ListField({ label, values, onChange, placeholder }: { label: string; va
     onBlur={() => onChange(fromCommaList(text))} /></Field>;
 }
 
-export function StoryClockEditor({ adventure, dispatch, compact = false }: { adventure: Adventure; dispatch: (action: AdventureAction) => void; compact?: boolean }) {
-  return <details className="panel"><summary>{compact ? "Correct story date" : <>Current story clock: {adventure.storyClock?.current?.text || "unknown"}{adventure.storyClock?.origin === "assumed" ? " (assumed)" : ""}</>}</summary>
+export function StoryClockEditor({ adventure, dispatch, compact = false, inline = false }: { adventure: Adventure; dispatch: (action: AdventureAction) => void; compact?: boolean; inline?: boolean }) {
+  const current = adventure.storyClock?.current;
+  const [draft, setDraft] = useState<StoryTime | undefined>(current);
+  useEffect(() => setDraft(current), [adventure.id, current]);
+  // Force exact-looking Gregorian text through the existing calendar validation,
+  // even when readStoryTime correctly retains an impossible day as unknown text.
+  const valid = Boolean(draft && draft.text.trim() && validLoreDate({ ...draft, precision: draft.precision === "unknown" ? "day" : draft.precision }));
+  const unchanged = JSON.stringify(draft) === JSON.stringify(current);
+  const contents = <>
+    {inline && <h3>Current Story Date: {current?.text || "unknown"}{adventure.storyClock?.origin === "assumed" ? " (assumed)" : ""}</h3>}
     <p className="muted">In-world time, independent of your computer clock. Explicit story-date headings and day skips can advance it; flashbacks do not. Ambiguous dates remain textual.</p>
     {adventure.storyClock?.pendingReference && <p role="alert">Unresolved time passage: {adventure.storyClock.pendingReference}. Correct the story clock when the duration is known.</p>}
-    <TimeFields label="Current story time" value={adventure.storyClock?.current}
-      onChange={current => dispatch({ type: "SET_STORY_CLOCK", clock: { current } })} />
-  </details>;
+    <TimeFields label="Current story time" value={draft} onChange={setDraft} />
+    {!valid && draft?.text && <p role="alert">Enter a valid story date. Gregorian dates must be valid calendar dates.</p>}
+    <button type="button" disabled={unchanged || !valid} onClick={() => {
+      if (valid && !unchanged) dispatch({ type: "SET_STORY_CLOCK", clock: { current: draft } });
+    }}>Apply Story Date</button>
+    <p className="muted">Changing the current date affects future story entries. Existing Chronicle messages and memory suggestions are not automatically rewritten.</p>
+  </>;
+  return inline ? <section className="panel" aria-label="Current Story Date">{contents}</section>
+    : <details className="panel"><summary>{compact ? "Correct story date" : <>Current story clock: {current?.text || "unknown"}{adventure.storyClock?.origin === "assumed" ? " (assumed)" : ""}</>}</summary>{contents}</details>;
 }
 
 export function LoreChronologyEditor({ card, dispatch, messages }: { card: StoryCard; dispatch: (action: AdventureAction) => void; messages: Adventure["messages"] }) {

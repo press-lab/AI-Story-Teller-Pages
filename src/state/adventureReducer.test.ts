@@ -70,6 +70,7 @@ const testedActionTypes = [
   "UPDATE_MEMORY_PROPOSAL",
   "APPROVE_MEMORY_PROPOSAL",
   "CONFIRM_MEMORY_PROPOSAL_DATE",
+  "APPLY_CURRENT_STORY_DATE_TO_PENDING_LORE",
   "REJECT_MEMORY_PROPOSAL",
   "IGNORE_MEMORY_PROPOSAL",
   "UPDATE_ROLLING_SUMMARY",
@@ -2058,4 +2059,85 @@ it("does not fabricate date labels for textual Lore APPEND dates or duplicate ma
     state = adventureReducer(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: p.id });
     expect(state.storyCards[0].content).toBe("They signed an agreement.\n" + content);
   }
+});
+
+
+import { loreCorrectionFixture, correctionBatch, correctionDay } from "../test/loreDateCorrection";
+import { loreDateConfirmed } from "../memory/validateLoreChronology";
+
+describe("APPLY_CURRENT_STORY_DATE_TO_PENDING_LORE", () => {
+  it("atomically corrects selected CREATE and APPEND dates while preserving all other state", () => {
+    const before = loreCorrectionFixture();
+    const next = adventureReducer(before, correctionBatch(before));
+    const create = next.activeState.memoryProposals.find(p => p.id === "stale")!;
+    const append = next.activeState.memoryProposals.find(p => p.id === "append")!;
+    expect(create.lore).toEqual({ ...before.activeState.memoryProposals[0].lore, occurredAt: correctionDay("2001-09-08"), lastChangedAt: correctionDay("2001-09-08") });
+    expect(append.lore).toEqual({ ...before.activeState.memoryProposals[2].lore, occurredAt: correctionDay("2001-09-04"), lastChangedAt: correctionDay("2001-09-08") });
+    for (const p of next.activeState.memoryProposals) {
+      const old = before.activeState.memoryProposals.find(old => old.id === p.id)!;
+      if (!["stale", "append"].includes(p.id)) expect(p).toBe(old);
+      else {
+        expect(p.status).toBe("pending"); expect(p.content).toBe(old.content); expect(p.targetId).toBe(old.targetId);
+        expect(loreDateConfirmed(next, p)).toBe(true);
+      }
+    }
+    expect(next.storyClock).toBe(before.storyClock);
+    expect(next.messages).toBe(before.messages);
+    expect(next.storyCards).toBe(before.storyCards);
+    expect(before.activeState.memoryProposals[0].lore?.occurredAt?.date).toBe("2001-09-02");
+  });
+  it("ignores selected resolved and non-Lore proposals", () => {
+    const before = loreCorrectionFixture();
+    const ids = ["approved", "rejected", "ignored", "brain", "character", "location", "custom"];
+    expect(adventureReducer(before, correctionBatch(before, ids))).toBe(before);
+  });
+  it.each(["clock", "assumed", "invalid", "fictional"])("rejects the whole batch with a stale or unusable %s", kind => {
+    const a = loreCorrectionFixture(); const batch = correctionBatch(a);
+    if (kind === "clock") a.storyClock!.current = correctionDay("2001-09-09");
+    if (kind === "assumed") a.storyClock!.origin = "assumed";
+    if (kind === "invalid") a.storyClock!.current = correctionDay("2001-02-30");
+    if (kind === "fictional") a.storyClock!.current = { text: "Third Frost", precision: "unknown" };
+    expect(adventureReducer(a, batch)).toBe(a);
+  });
+  it("skips stale proposal fingerprints while committing other eligible corrections", () => {
+    const a = loreCorrectionFixture(); const batch = correctionBatch(a);
+    batch.proposals[0].expectedFingerprint = "stale";
+    const next = adventureReducer(a, batch);
+    expect(next.activeState.memoryProposals[0]).toBe(a.activeState.memoryProposals[0]);
+    expect(next.activeState.memoryProposals[2].lore?.lastChangedAt?.date).toBe("2001-09-08");
+  });
+  it.each(["evidence", "placement", "target"])("does not bypass %s validation", kind => {
+    const a = loreCorrectionFixture();
+    if (kind === "evidence") a.messages[0].content += " Revised.";
+    if (kind === "placement") a.activeState.memoryProposals[0].placementValidation = undefined;
+    if (kind === "target") a.activeState.memoryProposals[0].targetId = "missing";
+    const next = adventureReducer(a, correctionBatch(a, ["stale"]));
+    expect(next).toBe(a);
+  });
+  it("can subsequently approve a deliberate correction through the existing approval guard", () => {
+    let a = loreCorrectionFixture();
+    a = adventureReducer(a, correctionBatch(a, ["stale"]));
+    a = adventureReducer(a, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: "stale" });
+    expect(a.activeState.memoryProposals[0].status).toBe("approved");
+    expect(a.storyCards.find(c => c.title === "Archive discovery")?.lore?.occurredAt?.date).toBe("2001-09-08");
+  });
+  it.each(["title", "content", "targetId", "lore", "sourceText"] as const)("invalidates a corrected confirmation after editing %s", key => {
+    let a = loreCorrectionFixture(); a = adventureReducer(a, correctionBatch(a, ["stale"]));
+    a = adventureReducer(a, { type: "UPDATE_MEMORY_PROPOSAL", proposalId: "stale", patch: key === "lore" ? { lore: { ...a.activeState.memoryProposals[0].lore!, lastChangedAt: correctionDay("2001-09-09") } } : { [key]: "Edited" } });
+    expect(loreDateConfirmed(a, a.activeState.memoryProposals[0])).toBe(false);
+  });
+  it("is idempotent for both repeated and freshly reviewed batches", () => {
+    const a = loreCorrectionFixture(); const batch = correctionBatch(a);
+    const next = adventureReducer(a, batch);
+    expect(adventureReducer(next, batch)).toBe(next);
+    expect(adventureReducer(next, correctionBatch(next))).toBe(next);
+  });
+  it("does not persist diagnostics when logging is disabled", () => {
+    debugLogging.MEMORY_DEBUG_LOGGING = false;
+    try {
+      const a = loreCorrectionFixture(); const next = adventureReducer(a, correctionBatch(a));
+      expect(next.activeState.memoryDiagnostics).toEqual(a.activeState.memoryDiagnostics);
+      expect(next.activeState.apiCalls).toEqual(a.activeState.apiCalls);
+    } finally { debugLogging.MEMORY_DEBUG_LOGGING = true; }
+  });
 });

@@ -23,6 +23,7 @@ it("offers four types and edits the independent story clock and Lore chronology"
   await user.click(screen.getByText(/Current story clock: 2000-01-01/));
   await user.clear(screen.getByLabelText("Current story time", { exact: true }));
   await user.type(screen.getByLabelText("Current story time", { exact: true }), "February 1, 2019");
+  await user.click(screen.getByRole("button", { name: "Apply Story Date" }));
   await user.click(document.querySelector(".story-card-editor-item > summary")!);
   const type = screen.getByLabelText("Type", { exact: true });
   expect(within(type).getAllByRole("option").map(option => (option as HTMLOptionElement).value)).toEqual(["character", "location", "lore", "custom"]);
@@ -70,8 +71,51 @@ it("keeps the original Story Cards clock editor independent of approved Lore dat
   await user.click(screen.getByText(/Current story clock:/, { selector: "summary" }));
   const input = screen.getByLabelText("Current story time", { exact: true });
   await user.clear(input); await user.type(input, "2001-09-04");
+  await user.click(screen.getByRole("button", { name: "Apply Story Date" }));
   const after = JSON.parse(screen.getByTestId("saved").textContent!);
   expect(after.storyClock.current.date).toBe("2001-09-04");
   expect(after.storyCards).toEqual(before.storyCards);
   expect(after.messages).toEqual(before.messages);
+});
+
+
+import { StoryClockEditor } from "./StoryCardChronology";
+import { vi } from "vitest";
+
+it("keeps clock drafts local, validates exact dates, applies once, and synchronizes external changes", () => {
+  const adventure = createDefaultAdventure(); const dispatch = vi.fn();
+  const view = render(<StoryClockEditor adventure={adventure} dispatch={dispatch} inline />);
+  expect(screen.getByRole("heading", { name: /Current Story Date: 2000-01-01.*assumed/ })).toBeVisible();
+  const apply = screen.getByRole("button", { name: "Apply Story Date" });
+  expect(apply).toBeDisabled();
+  const input = screen.getByLabelText("Current story time", { exact: true });
+  for (const value of ["2001-09-", "February 30, 2001", "2001-02-29", "2001-09-31"]) {
+    fireEvent.change(input, { target: { value } });
+    expect(dispatch).not.toHaveBeenCalled();
+    if (value !== "2001-09-") expect(apply).toBeDisabled();
+  }
+  fireEvent.change(input, { target: { value: "September 8, 2001" } });
+  expect(dispatch).not.toHaveBeenCalled(); expect(apply).toBeEnabled();
+  fireEvent.click(apply);
+  expect(dispatch).toHaveBeenCalledTimes(1);
+  expect(dispatch).toHaveBeenCalledWith({ type: "SET_STORY_CLOCK", clock: { current: { text: "September 8, 2001", date: "2001-09-08", precision: "day" } } });
+  const saved = adventureReducer(adventure, dispatch.mock.calls[0][0]);
+  view.rerender(<StoryClockEditor adventure={saved} dispatch={dispatch} inline />);
+  expect(apply).toBeDisabled();
+  const external = adventureReducer(saved, { type: "ADD_MESSAGE", role: "assistant", content: "The next morning" });
+  view.rerender(<StoryClockEditor adventure={external} dispatch={dispatch} inline />);
+  expect(input).toHaveValue("2001-09-09");
+  expect(screen.getByRole("heading", { name: "Current Story Date: 2001-09-09" })).toBeVisible();
+  expect(dispatch).toHaveBeenCalledTimes(1);
+});
+
+it.each(["Third Frost, Year of the Raven", "around midwinter", "three days before the coronation"])("preserves textual story calendars: %s", text => {
+  const adventure = createDefaultAdventure(); const dispatch = vi.fn();
+  adventure.storyClock!.pendingReference = "Several days later";
+  render(<StoryClockEditor adventure={adventure} dispatch={dispatch} inline />);
+  expect(screen.getByRole("alert")).toHaveTextContent("Unresolved time passage");
+  fireEvent.change(screen.getByLabelText("Current story time", { exact: true }), { target: { value: text } });
+  fireEvent.click(screen.getByRole("button", { name: "Apply Story Date" }));
+  expect(dispatch.mock.calls[0][0].clock.current).toMatchObject({ text });
+  expect(dispatch.mock.calls[0][0].clock.current.date).toBeUndefined();
 });

@@ -316,3 +316,24 @@ describe("explicit scene-date recognition", () => {
     expect(state.storyClock?.current?.date).toBe("2001-09-05");
   });
 });
+
+
+import { loreCorrectionFixture, correctionDay } from "../test/loreDateCorrection";
+import { makeStoryCardSuggestion } from "./storyCardSuggestions";
+it("anchors the manually set date for future source chronology without changing historical sources or approved Lore", () => {
+  const before = loreCorrectionFixture();
+  let state = reduce(before, { type: "SET_STORY_CLOCK", clock: { current: correctionDay("2001-09-08") } });
+  expect(state.storyClock).toMatchObject({ current: correctionDay("2001-09-08"), anchor: correctionDay("2001-09-08"), anchorMessageId: before.messages.at(-1)!.id, origin: "established" });
+  expect(state.messages).toBe(before.messages); expect(state.storyCards).toBe(before.storyCards);
+  state = dated(state, "future", "Mira discovered a royal seal.");
+  expect(state.messages.at(-1)?.storyTime).toEqual(correctionDay("2001-09-08"));
+  const proposal = makeStoryCardSuggestion(state, "future", state.messages.at(-1)!.content, { title: "Royal seal", content: "Mira discovered a royal seal.", evidence: "Mira discovered a royal seal.", reason: "A discovery" });
+  expect(proposal.lore?.occurredAt?.date).toBe("2001-09-08");
+  const old = makeStoryCardSuggestion(state, "historical", before.messages[1].content, { title: "Historical treaty", content: "The council signed a trade treaty.", evidence: "The council signed a trade treaty.", reason: "Historical event" });
+  expect(old.lore?.occurredAt?.date).toBe("2001-09-03");
+  const reloaded = importAdventureJson(exportAdventureJson(state));
+  expect(reloaded.storyClock).toEqual(state.storyClock);
+  state = dated(reloaded, "next", "The next morning\nMira returns.");
+  expect(state.storyClock?.current?.date).toBe("2001-09-09");
+  expect(state.messages.slice(0, before.messages.length)).toEqual(before.messages);
+});

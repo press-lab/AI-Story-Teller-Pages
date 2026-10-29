@@ -405,6 +405,7 @@ it("exposes clock correction during Play and dates future messages without rewri
   const input = screen.getByLabelText("Current story time", { exact: true });
   expect(input).toBeVisible();
   await user.clear(input); await user.type(input, "2001-09-04");
+  await user.click(screen.getByRole("button", { name: "Apply Story Date" }));
   expect(latest.storyClock).toMatchObject({ current: { date: "2001-09-04" }, anchor: { date: "2001-09-04" }, origin: "established" });
   expect(latest.messages).toEqual(previous);
   await user.click(screen.getByRole("button", { name: "Continue" }));

@@ -269,3 +269,69 @@ it.each([false, true])("keeps a fixed chronology batch at one memory API request
   await act(async () => { await settle(); });
   expect(fetch).toHaveBeenCalledTimes(1);
 });
+
+
+import "@testing-library/jest-dom/vitest";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { MemoryInboxPage } from "../pages/MemoryInboxPage";
+import { loreCorrectionFixture } from "../test/loreDateCorrection";
+
+it("clock editing, selection, preview, and confirmed correction cost zero requests and leave single-pass accounting unchanged", async () => {
+  debugLogging.MEMORY_DEBUG_LOGGING = false;
+  const fixture = () => {
+    const a = loreCorrectionFixture(); a.messages = a.messages.slice(0, 3).map((m, index) => ({ ...m,
+      memoryEvaluation: { pipeline: "singlePass", status: "pending", attempts: 0, turn: index + 1, completedGroups: [] } }));
+    a.memoryDetectionSettings.pipeline = "singlePass";
+    return a;
+  };
+  const responseBodies: string[] = [];
+  const requests: Array<Record<string, unknown>> = [];
+  const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+    const body = JSON.parse(init!.body as string); requests.push(body);
+    const payload = JSON.parse(body.messages.at(-1).content);
+    const content = JSON.stringify({ sources: payload.sources.map((source: { sourceId: string }) => ({ sourceId: source.sourceId, findings: [] })) });
+    responseBodies.push(content);
+    return new Response(JSON.stringify({ choices: [{ message: { content } }], usage: { prompt_tokens: 100, completion_tokens: 30, total_tokens: 130 } }));
+  });
+  const baseline = setup(fixture());
+  await act(async () => { await baseline.result.current.runtime.evaluateMemorySources(["stale", "historical", "append"]); await settle(); });
+  expect(fetch).toHaveBeenCalledTimes(1);
+  const beforeUsage = baseline.result.current.adventure!.activeState.backgroundTokenUsage;
+  const beforeRecords = baseline.result.current.adventure!.activeState.apiCalls!;
+  baseline.unmount(); fetch.mockClear();
+  const hook = setup(fixture());
+  const renderPage = () => <MemoryInboxPage adventure={hook.result.current.adventure!} dispatch={action => { hook.result.current.runtime.applyActionsAndPersist([action]); }} />;
+  const page = render(renderPage()); const user = userEvent.setup();
+  const original = hook.result.current.adventure!;
+  await user.clear(screen.getByLabelText("Current story time", { exact: true }));
+  await user.type(screen.getByLabelText("Current story time", { exact: true }), "2001-09-09");
+  expect(fetch).not.toHaveBeenCalled();
+  await user.click(screen.getByRole("button", { name: "Apply Story Date" })); page.rerender(renderPage());
+  expect(hook.result.current.adventure!.storyClock?.current?.date).toBe("2001-09-09");
+  expect(fetch).not.toHaveBeenCalled();
+  await user.click(screen.getByRole("checkbox", { name: "Select Lore: Archive discovery" }));
+  expect(fetch).not.toHaveBeenCalled();
+  await user.click(screen.getByRole("button", { name: "Review Date Changes" }));
+  expect(fetch).not.toHaveBeenCalled();
+  await user.click(screen.getByRole("button", { name: "Confirm and Apply Dates" })); page.rerender(renderPage());
+  await act(async () => { await settle(); });
+  const corrected = hook.result.current.adventure!;
+  expect(corrected.activeState.memoryProposals[0].lore?.occurredAt?.date).toBe("2001-09-09");
+  expect(fetch).not.toHaveBeenCalled();
+  expect(corrected.activeState.apiCalls).toEqual(original.activeState.apiCalls);
+  expect(corrected.activeState.backgroundTokenUsage).toEqual(original.activeState.backgroundTokenUsage);
+  expect(corrected.messages).toEqual(original.messages);
+  await act(async () => { await hook.result.current.runtime.evaluateMemorySources(["stale", "historical", "append"]); await settle(); });
+  expect(fetch).toHaveBeenCalledTimes(1);
+  const after = hook.result.current.adventure!;
+  expect(after.activeState.apiCalls).toHaveLength(beforeRecords.length);
+  expect(after.activeState.apiCalls![0].usage).toEqual(beforeRecords[0].usage);
+  expect(after.activeState.apiCalls![0].model).toEqual(beforeRecords[0].model);
+  expect(after.activeState.backgroundTokenUsage).toEqual(beforeUsage);
+  expect(responseBodies[1]).toBe(responseBodies[0]);
+  expect(requests[1].model).toBe(requests[0].model);
+  expect(requests[1].max_tokens).toBe(requests[0].max_tokens);
+  expect(requests[1].max_completion_tokens).toBe(requests[0].max_completion_tokens);
+  expect(after.messages.map(m => m.content)).toEqual(original.messages.map(m => m.content));
+});
