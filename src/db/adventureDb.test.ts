@@ -1,3 +1,7 @@
+import { Blob as NodeBlob } from "node:buffer";
+import { withArchivedRecord } from "../test/archivedMemoryFixture";
+import { makeMemoryProposal } from "../test/goldenAdventure";
+import { decompressHistory } from "../memory/historyCodec";
 /**
  * @vitest-environment jsdom
  */
@@ -141,6 +145,27 @@ describe("adventureDb IndexedDB persistence", () => {
     } finally { reads.mockRestore(); }
     await deleteAdventure(adventure.id);
     expect(await listAdventures()).toEqual([]);
+  });
+
+  it("preserves historical archive bytes across ordinary saves and never compresses new saves", async () => {
+    vi.stubGlobal("Blob", NodeBlob);
+    try {
+      const a = createDefaultAdventure("Existing compressed save");
+      const p = makeMemoryProposal({ status: "approved" });
+      a.activeState.memoryProposals = [p];
+      const record = { kind: "proposal" as const, id: p.id, value: p };
+      const archived = await withArchivedRecord(a, record);
+      await saveAdventure(archived);
+      const loaded = (await getAdventure(a.id))!;
+      expect(loaded.activeState.compressedMemoryHistory).toStrictEqual(archived.activeState.compressedMemoryHistory);
+      const block = Object.values(loaded.activeState.compressedMemoryHistory!.blocks)[0];
+      expect(await decompressHistory(block)).toStrictEqual(record);
+      await saveAdventure({ ...loaded, title: "Normal save" });
+      expect((await getAdventure(a.id))!.activeState.compressedMemoryHistory).toStrictEqual(archived.activeState.compressedMemoryHistory);
+      const fresh = createDefaultAdventure("New save"); fresh.activeState.memoryProposals = [p];
+      await saveAdventure(fresh);
+      expect((await getAdventure(fresh.id))!.activeState.compressedMemoryHistory).toBeUndefined();
+    } finally { vi.unstubAllGlobals(); }
   });
 
 });

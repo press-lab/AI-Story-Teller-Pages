@@ -1,3 +1,4 @@
+import { withArchivedRecord } from "../test/archivedMemoryFixture";
 import { afterEach, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
@@ -110,7 +111,7 @@ it.each([false, true])("explicit cleanup logging %s keeps resumable content, old
   const old = a.messages.find(m => m.role === "assistant" && !m.memoryEvaluation)!;
   a = reduce(a, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: { id: "legacy", sourceId: old.id, createdAt: "2000-01-01", stage: "independent", outcome: "evaluation_completed", reason: "Old historical marker" } });
   const record: MemoryHistoryRecord = { kind: "evaluation", id: ids[2], value: a.messages.find(m => m.id === ids[2])!.memoryEvaluation! };
-  a = reduce(a, { type: "ARCHIVE_MEMORY_HISTORY", adventureId: a.id, record, block: await compressHistory(record) });
+  a = await withArchivedRecord(a, record);
   logging.MEMORY_DEBUG_LOGGING = enabled;
   const before = JSON.stringify(a), clean = reduce(a, { type: "PRUNE_DEBUG_HISTORY" });
   expect(JSON.stringify(a)).toBe(before);
@@ -140,7 +141,8 @@ it.each([false, true])("explicit cleanup logging %s keeps resumable content, old
     expect(completed.debugHistoryOmitted).toBeUndefined();
     const record: MemoryHistoryRecord = { kind: "evaluation", id: ids[0], value: completed };
     const archived = reduce(continued, { type: "ARCHIVE_MEMORY_HISTORY", adventureId: continued.id, record, block: await compressHistory(record) });
-    expect(archived.messages.find(m => m.id === ids[0])!.memoryEvaluation?.archivedMemoryHistoryId).toBeTruthy();
+    expect(archived).toBe(continued);
+    expect(archived.activeState.compressedMemoryHistory).toBeUndefined();
   }
   expect(buildContext(clean).messages).toEqual(buildContext(a).messages);
 });
@@ -175,13 +177,8 @@ async function tenTurns(initial: Adventure, enabled: boolean) {
     if (a.components.some(c => c.id === "simulation-plot")) a = reduce(a, { type: "APPLY_COMPONENT_UPDATE", componentId: "simulation-plot", content: `Premise progress ${turn}.` });
     for (const purpose of ["narration", "memoryEvaluation"] as const) a = reduce(a, { type: "RECORD_API_CALL", record: { id: `sim-api-${purpose}-${turn}`, purpose, startedAt: "2000-01-01", status: "succeeded", model: purpose === "narration" ? "scripted-narrator" : "scripted-memory", provider: "offline", usage } });
     a = reduce(a, { type: "ACCUMULATE_BACKGROUND_TOKENS", promptTokens: usage.promptTokens, completionTokens: usage.completionTokens });
-    if (enabled) {
-      const attempted = new WeakSet<object>(); let record;
-      while ((record = nextHistoryRecord(a, attempted))) {
-        attempted.add(record.value);
-        a = reduce(a, { type: "ARCHIVE_MEMORY_HISTORY", adventureId: a.id, record, block: await compressHistory(record) });
-      }
-    }
+    expect(nextHistoryRecord(a, new WeakSet())).toBeUndefined();
+    expect(a.activeState.compressedMemoryHistory).toBeUndefined();
   }
   vi.restoreAllMocks();
   return { a, payloads, requests };
@@ -200,7 +197,7 @@ it("ten identical turns preserve payloads, API counts, costs and memories in bot
   expect(off.a.storyCards.map(c => c.content)).toEqual(on.a.storyCards.map(c => c.content));
   expect(off.a.storyCards).toHaveLength(10);
   expect(off.a.activeState.compressedMemoryHistory).toBeUndefined();
-  expect(Object.keys(on.a.activeState.compressedMemoryHistory!.blocks).length).toBeGreaterThan(0);
+  expect(on.a.activeState.compressedMemoryHistory).toBeUndefined();
 });
 
 const fixturePath = process.env.AIST_DEBUG_LOGGING_SAVE_FIXTURE;
@@ -221,7 +218,7 @@ it.skipIf(!fixturePath)("compares private large-save cleanup and ten-turn growth
   const report = { originalFileBytes: original.length, normalizedJsonBytes: bytes(a), afterCleanupJsonBytes: bytes(clean),
     tenTurnGrowthOffBytes: bytes(off.a) - bytes(start), tenTurnGrowthOnBytes: bytes(on.a) - bytes(start),
     apiRequestsOff: off.requests, apiRequestsOn: on.requests,
-    caveat: "Ten scripted narration and ten scripted single-pass requests per mode; synthetic usage, no live provider charges. ON includes background archive compression." };
+    caveat: "Ten scripted narration and ten scripted single-pass requests per mode; synthetic usage, no live provider charges. Background archive compression is disabled in both modes." };
   console.log("DEBUG_LOGGING_SIZE_COMPARISON " + JSON.stringify(report));
   expect(off.payloads).toEqual(on.payloads);
   expect(off.a.activeState.apiCalls).toEqual(on.a.activeState.apiCalls);
@@ -237,7 +234,7 @@ it("undo restores an archived message safely after cleanup without rewriting sto
   a = reduce(a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
   a = reduce(a, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId, sources: [{ checkpoint: batch.checkpoints[0].checkpoint, result: { sourceId: ids[0], findings: [], rejected: [] } }] });
   const record: MemoryHistoryRecord = { kind: "evaluation", id: ids[0], value: a.messages.at(-1)!.memoryEvaluation! };
-  a = reduce(a, { type: "ARCHIVE_MEMORY_HISTORY", adventureId: a.id, record, block: await compressHistory(record) });
+  a = await withArchivedRecord(a, record);
   const original = a.messages.at(-1)!;
   a = reduce(a, { type: "DELETE_MESSAGE", messageId: ids[0] });
   const clean = reduce(a, { type: "PRUNE_DEBUG_HISTORY" });

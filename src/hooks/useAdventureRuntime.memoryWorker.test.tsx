@@ -1,3 +1,4 @@
+import { compressHistoryInWorker } from "../memory/memoryHistoryWorker";
 import { mockAssessment, isAssessment } from "../test/memoryAssessment";
 /** @vitest-environment jsdom */
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
@@ -10,6 +11,7 @@ import { sendOpenAICompatibleChatCompletion } from "../providers/openAICompatibl
 import { saveAdventure } from "../db/adventureDb";
 import { useAdventureRuntime } from "./useAdventureRuntime";
 
+vi.mock("../memory/memoryHistoryWorker", () => ({ compressHistoryInWorker: vi.fn() }));
 vi.mock("../db/adventureDb", () => ({ saveAdventure: vi.fn(async () => undefined) }));
 vi.mock("../providers/openAICompatible", async original => ({ ...await original<typeof import("../providers/openAICompatible")>(), sendOpenAICompatibleChatCompletion: vi.fn() }));
 const nativeTimeout = globalThis.setTimeout;
@@ -507,3 +509,22 @@ it("an incomplete batch does not request repair or individual fallback", async (
 // These legacy assertions inspect detailed logging. OFF contracts are tested separately.
 const debugLogging = vi.hoisted(() => ({ MEMORY_DEBUG_LOGGING: true }));
 vi.mock("../config/debugLogging", () => debugLogging);
+
+
+it("normal narration and evaluation persist without compression requests or archive save jobs", async () => {
+  const worker = vi.fn(); vi.stubGlobal("Worker", worker);
+  try {
+    const hook = setup();
+    await act(async () => { await hook.result.current.runtime.submitTurn("I listen."); await tickIdle(); });
+    await waitFor(() => expect(hook.result.current.runtime.memoryWork).toBeUndefined());
+    expect(hook.result.current.adventure!.messages.at(-1)?.content).toBe(story);
+    expect(provider.mock.calls.filter(([r]) => !r.memoryEvaluation)).toHaveLength(1);
+    expect(provider.mock.calls.filter(([r]) => r.memoryEvaluation)).toHaveLength(1);
+    expect(saveAdventure).toHaveBeenCalled();
+    expect(compressHistoryInWorker).not.toHaveBeenCalled(); expect(worker).not.toHaveBeenCalled();
+    for (const [saved, options] of vi.mocked(saveAdventure).mock.calls) {
+      expect(saved.activeState.compressedMemoryHistory).toBeUndefined();
+      expect(options?.priority).not.toBe("background");
+    }
+  } finally { vi.unstubAllGlobals(); }
+});

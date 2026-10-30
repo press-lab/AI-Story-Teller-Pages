@@ -1,6 +1,10 @@
 # Portable memory history compression
 
-Implemented and enabled in the app. `useMemoryHistoryCompression` schedules finalized history while narration and memory evaluation continue. No provider, prompt, extraction, cadence, accounting or context policy changes are involved.
+Background memory-history compression is disabled at the application level by `MEMORY_HISTORY_COMPRESSION_ENABLED = false`, independently of debug logging. Re-enabling debug logging cannot restart compression. App no longer mounts `useMemoryHistoryCompression`; no compression timers, scans, worker requests or archive save jobs run during normal gameplay, and no new compressed history blocks are generated.
+
+Existing compressed archives remain readable on demand, including archived proposal restoration and integrity/error handling. Normal persistence continues through the existing save worker and save coordinator. With debug logging disabled, lightweight completed-evaluation compaction remains enabled; it omits completed debugging details without GZIP compression. Explicit debug-history cleanup remains available.
+
+The sections below describe the **historical compression implementation**, retained for compatibility and isolated tests. Scheduling and archive-producing reducer actions are disabled in the current build. No provider, prompt, extraction, cadence, accounting or context policy changes are involved.
 
 ## Storage and active behavior
 
@@ -22,9 +26,19 @@ Persistence queues writes per adventure. The previous archive and incoming block
 
 Memory Decisions exposes original archived evaluation details and earlier versions on demand. Memory Inbox displays compact historical proposals and restores full details only when requested. Corrupt, missing and unsupported blocks report an explicit error and remain preserved. Closing the details view releases its decoded copy. No archive is expanded merely by loading an adventure.
 
-Existing normalization and credential sanitization preserve the optional manifest without decoding it. Existing JSON exports, duplicate imports, IndexedDB copies, GitHub saves and cloud wrappers carry the complete same-adventure JSON, including the manifest. Old and mixed saves migrate incrementally. These backups require an app version that understands the new archive for full inspection; older versions cannot display compressed details. Backup size is calculated during an explicit download, with no full-adventure serialization during page rendering.
+Existing normalization and credential sanitization preserve the optional manifest without decoding it. Existing JSON exports, duplicate imports, IndexedDB copies, GitHub saves and cloud wrappers carry the complete same-adventure JSON, including the manifest. Old and mixed saves retain their existing blocks without automatic migration or expansion. These backups require an app version that understands the new archive for full inspection; older versions cannot display compressed details. Backup size is calculated during an explicit download, with no full-adventure serialization during page rendering.
 
-## Validation and desktop measurements
+## Current disabled-build verification
+
+Run `node scripts/memory-history-disabled-browser.mjs` after `npm.cmd run build`. It uses an isolated temporary Chromium profile, a synthetic historical archive and mocked providers against the production preview. Development modules only construct the fixture. The harness accelerates the existing 120-second memory-assessment idle flush to 100 ms; it does not change application scheduling code.
+
+Chrome 156 on Windows: three narration requests and three memory requests completed three evaluations. Instrumentation observed zero compression jobs, zero history-worker starts, zero timers at the historical compression scheduler's 500/2000 ms delays, and zero additional save-worker requests over a subsequent 6.5-second idle window. One normal persistence worker handled 16 save requests, including 15 deltas; existing archive blocks survived unchanged. With no compression jobs or history worker, no compression-triggered database writes occurred. No long tasks of 50 ms or more were observed in this small synthetic run.
+
+These are activity checks, not a before/after latency benchmark. No measured speed improvement is claimed. Large-save parsing, normalization, explicit JSON exports and other unrelated work may still cause lag; this synthetic run does not diagnose those costs. Hook regressions additionally verify no timeout/interval scheduling or save calls with debug logging both off and on.
+
+## Historical validation and desktop measurements
+
+These historical benchmarks do not measure the current disabled build or establish a current performance improvement.
 
 The private local fixture was read without modification or inclusion in Git. It has 307 resolved proposals and 180 completed evaluations, plus substantial failed/quarantined history that remains active. This is the available 41 MB fixture, not the later 53.12 MB save mentioned in the task.
 
@@ -46,7 +60,7 @@ These are desktop measurements, **not actual mobile hardware or Safari tests**. 
 
 Regression/integration tests cover exact recovery, real provider payload equivalence, historical routing/coverage/suppression/approval, unfinished work, interrupted workers, corrupt blocks, stale results, aborted persistence, queued saves, earlier versions after retry, old/mixed/compressed JSON, duplication, on-demand inspection, explicit backup serialization and narration/evaluation proceeding while compression is unresolved. Network responses in tests are mocked; no additional LLM requests are made by compression.
 
-Reproduce private-fixture equivalence and Node aggregate timings:
+The following utilities cover the historical enabled implementation (the browser compression benchmark is not a current disabled-build performance test). Private-fixture equivalence and Node aggregate timings:
 
 ```powershell
 $env:STORY_TELLER_SAVE_FIXTURE = 'C:/path/to/private-save.json'

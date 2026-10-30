@@ -1,3 +1,4 @@
+import { MEMORY_HISTORY_COMPRESSION_ENABLED } from "../config/memoryHistoryCompression";
 import { storyCardAutoApprovalBlockers } from "../memory/storyCardAutoApproval";
 import { pendingLoreDateCorrectionEligibility, validateLoreChronology, isLoreProposal, loreChronologyFingerprint, loreDateConfirmed, validLoreDate } from "../memory/validateLoreChronology";
 import { MEMORY_DEBUG_LOGGING } from "../config/debugLogging";
@@ -1226,7 +1227,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
     case "PRUNE_DEBUG_HISTORY":
       return touchAdventure(pruneDebugHistory(state), {});
     case "MERGE_MEMORY_HISTORY_PROGRESS": {
-      if (!MEMORY_DEBUG_LOGGING) return state;
+      if (!MEMORY_HISTORY_COMPRESSION_ENABLED || !MEMORY_DEBUG_LOGGING) return state;
       if ((state.activeState.debugHistoryGeneration ?? 0) !== (action.latest.activeState.debugHistoryGeneration ?? 0)) return state;
       const { baseline, latest } = action;
       const incoming = state.activeState.compressedMemoryHistory;
@@ -1253,7 +1254,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
           }) } };
     }
     case "ARCHIVE_MEMORY_HISTORY": {
-      if (!MEMORY_DEBUG_LOGGING) return state;
+      if (!MEMORY_HISTORY_COMPRESSION_ENABLED || !MEMORY_DEBUG_LOGGING) return state;
       const { record, block } = action;
       if (state.id !== action.adventureId || !eligibleHistory(record) || block.kind !== record.kind || block.recordId !== record.id
         || block.version !== 1 || !block.data || state.activeState.compressedMemoryHistory?.blocks[block.id]) return state;

@@ -1,3 +1,4 @@
+import { withArchivedRecord } from "../test/archivedMemoryFixture";
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
 import { IDBFactory, IDBObjectStore } from "fake-indexeddb";
 import { createDefaultAdventure } from "../state/defaults";
@@ -15,8 +16,8 @@ async function setup() {
   p.placementValidation = { version: 3, kind: "create", fingerprint: "exact snapshot".repeat(100), sources: [], reason: "test", newFact: p.content };
   a.activeState.memoryProposals = [p];
   const record: MemoryHistoryRecord = { kind: "proposal", id: p.id, value: p };
-  const block = await compressHistory(record);
-  const archived = adventureReducer(a, { type: "ARCHIVE_MEMORY_HISTORY", adventureId: a.id, record, block });
+  const archived = await withArchivedRecord(a, record);
+  const block = Object.values(archived.activeState.compressedMemoryHistory!.blocks)[0];
   return { a, archived, record, block };
 }
 it("commits archive, compact replacement and summary together and survives JSON duplication", async () => {
@@ -72,10 +73,10 @@ it("explicit cleanup persists without the previous archive merge resurrecting bl
   expect(loaded.activeState.compressedMemoryHistory).toBeUndefined();
   expect(loaded.activeState.memoryProposals.every(p => !p.archivedMemoryHistoryId)).toBe(true);
   expect(importAdventureJson(exportAdventureJson(loaded)).activeState.debugHistoryGeneration).toBe(1);
-  // A later ON evaluation still archives normally in the cleanup generation.
+  // Re-enabling logging cannot resurrect archives after explicit cleanup.
   const later = { ...cleaned, activeState: { ...cleaned.activeState, memoryProposals: [makeMemoryProposal({ id: "later", status: "approved" })] } };
   const record: MemoryHistoryRecord = { kind: "proposal", id: "later", value: later.activeState.memoryProposals[0] };
   const block = await compressHistory(record);
   await saveAdventure(adventureReducer(later, { type: "ARCHIVE_MEMORY_HISTORY", adventureId: later.id, record, block }));
-  expect((await getAdventure(later.id))!.activeState.compressedMemoryHistory!.blocks[block.id]).toEqual(block);
+  expect((await getAdventure(later.id))!.activeState.compressedMemoryHistory).toBeUndefined();
 });

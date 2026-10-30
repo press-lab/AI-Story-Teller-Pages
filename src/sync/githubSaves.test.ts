@@ -1,3 +1,6 @@
+import { withArchivedRecord } from "../test/archivedMemoryFixture";
+import { makeMemoryProposal } from "../test/goldenAdventure";
+import { decompressHistory } from "../memory/historyCodec";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDefaultAdventure } from "../state/defaults";
 import type { Adventure, CloudSyncSettings, GitHubSaveSettings, GitHubSaveSlot } from "../types/adventure";
@@ -380,4 +383,27 @@ describe("deleteGitHubAdventureSaves", () => {
     const written = JSON.parse(atob(indexPutBody!.content));
     expect(written.slots.map((s: GitHubSaveSlot) => s.saveId)).toEqual(["b1"]);
   });
+});
+
+
+it("round-trips existing compressed archives through GitHub save wrappers", async () => {
+  const a = makeAdventure();
+  const p = makeMemoryProposal({ status: "approved" }); a.activeState.memoryProposals = [p];
+  const record = { kind: "proposal" as const, id: p.id, value: p };
+  const archived = await withArchivedRecord(a, record);
+  let saved = "";
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (url, init) => {
+    if (!String(url).includes("/contents")) return response(200, {});
+    if (init?.method === "PUT") {
+      const body = JSON.parse(init.body as string);
+      if (body.message.startsWith("Save ")) saved = body.content;
+      return response(200, { content: { sha: "sha" } });
+    }
+    return saved && !String(url).includes("index.json")
+      ? response(200, { content: saved, encoding: "base64", sha: "sha" }) : response(404, { message: "Not Found" });
+  });
+  const slot = await saveToGitHub(cloudSettings, saveSettings, archived, "auto");
+  const loaded = await loadGitHubSave(cloudSettings, saveSettings, slot);
+  expect(loaded.activeState.compressedMemoryHistory).toStrictEqual(archived.activeState.compressedMemoryHistory);
+  expect(await decompressHistory(Object.values(loaded.activeState.compressedMemoryHistory!.blocks)[0])).toStrictEqual(record);
 });

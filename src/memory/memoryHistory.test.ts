@@ -228,3 +228,6 @@ it("OFF does not scan completed evaluations or resolved proposals for new archiv
     expect(reduce(a, { type: "ARCHIVE_MEMORY_HISTORY", adventureId: a.id, record, block: await compressHistory(record) })).toBe(a);
   } finally { debugLogging.MEMORY_DEBUG_LOGGING = true; }
 });
+
+// Isolated legacy writer coverage; this override never applies to the shipped build.
+vi.mock("../config/memoryHistoryCompression", () => ({ MEMORY_HISTORY_COMPRESSION_ENABLED: true }));

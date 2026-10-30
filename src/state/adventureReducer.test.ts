@@ -1,3 +1,5 @@
+import { withArchivedRecord } from "../test/archivedMemoryFixture";
+import { decompressHistory } from "../memory/historyCodec";
 import { reviewedProposal } from "../test/memoryPlacement";
 import { normalizeAdventure } from "./defaults";
 import { describe, expect, it, vi } from "vitest";
@@ -2307,4 +2309,30 @@ it("computes Story Card blockers deterministically without mutating saved state 
   expect(first).toContain("Global manual review is enabled.");
   expect(first).toContain("This proposal was previously marked for manual review. Part of this fact may already exist.");
   expect(JSON.stringify({ a, p })).toBe(before);
+});
+
+
+it.each([false, true])("compression actions are identity no-ops independently of logging %s; old proposal restoration still works", async enabled => {
+  debugLogging.MEMORY_DEBUG_LOGGING = enabled;
+  try {
+    const a = createDefaultAdventure();
+    const p = makeMemoryProposal({ status: "approved" });
+    p.placementValidation = { version: 3, kind: "create", fingerprint: "original historical snapshot", sources: [], reason: "test", newFact: p.content };
+    a.activeState.memoryProposals = [p];
+    const record = { kind: "proposal" as const, id: p.id, value: p };
+    const archived = await withArchivedRecord(a, record);
+    const block = Object.values(archived.activeState.compressedMemoryHistory!.blocks)[0];
+    expect(adventureReducer(a, { type: "ARCHIVE_MEMORY_HISTORY", adventureId: a.id, record, block })).toBe(a);
+    expect(adventureReducer(a, { type: "MERGE_MEMORY_HISTORY_PROGRESS", baseline: a, latest: archived })).toBe(a);
+    expect(a.activeState.compressedMemoryHistory).toBeUndefined();
+    const decoded = await decompressHistory(block);
+    expect(decoded).toStrictEqual(record);
+    if (decoded.kind !== "proposal") throw Error("Expected proposal");
+    const restored = adventureReducer(archived, { type: "APPLY_ARCHIVED_PROPOSAL_ACTION", adventureId: a.id, archiveId: block.id,
+      proposal: decoded.value, action: { type: "UPDATE_MEMORY_PROPOSAL", proposalId: p.id, patch: { content: "Restored historical draft" } } });
+    expect(restored.activeState.memoryProposals[0].content).toBe(p.content); // approved records still obey normal edit guards
+    expect(restored.activeState.memoryProposals[0].placementValidation).toStrictEqual(p.placementValidation);
+    expect(restored.activeState.memoryProposals[0].archivedMemoryHistoryId).toBeUndefined();
+    expect(restored.activeState.compressedMemoryHistory).toBe(archived.activeState.compressedMemoryHistory);
+  } finally { debugLogging.MEMORY_DEBUG_LOGGING = true; }
 });
