@@ -1,5 +1,5 @@
 import { StoryClockEditor } from "./StoryCardChronology";
-import { formatStoryTime } from "../memory/storyTime";
+import { formatStoryTimeForDisplay } from "./storyTimeDisplay";
 import { useEffect, useRef, useState } from "react";
 import { displayedBrainThoughts } from "../memory/displayedBrainThoughts";
 import type { InputMode, Message } from "../types/adventure";
@@ -655,7 +655,7 @@ export function PlayPage({
       >
         <div className="play-status">
           <span className="muted">Turn {adventure.activeState.turn} · {saveStatus}</span>
-          {adventure.storyClock?.current && <span className="muted">Story time: {formatStoryTime(adventure.storyClock.current)}</span>}
+          {adventure.storyClock?.current && <span className="muted">Story time: {formatStoryTimeForDisplay(adventure.storyClock.current)}</span>}
           <StoryClockEditor adventure={adventure} dispatch={dispatch} compact />
           {providerPresets && providerPresets.length > 1 && onSelectPreset && (
             <select

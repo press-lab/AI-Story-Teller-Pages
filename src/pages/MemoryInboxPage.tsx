@@ -5,7 +5,7 @@ import { MemoryDecisionsPage } from "./MemoryDecisionsPage";
 import { proposalLore } from "../memory/storyCardArchitecture";
 import { suggestionSourceValid } from "../memory/storyCardSuggestions";
 import { memoryTargetSnapshot } from "../memory/memoryCycleState";
-import { formatStoryTime } from "../memory/storyTime";
+import { formatStoryTimeForDisplay } from "./storyTimeDisplay";
 import { ProposalEventDate } from "./ProposalEventDate";
 import { useEffect, useState } from "react";
 import { StoryClockEditor } from "./StoryCardChronology";
@@ -303,11 +303,11 @@ function MemorySuggestionsPage({ adventure, dispatch, onRegenerateProposal, onRe
       </div>
       {(selected.length > 0 || dateReview) && <section className="panel" aria-label="Apply Current Date to Selected Lore">
         <h3>Apply Current Date to Selected Lore</h3>
-        <p>Current story date: {formatStoryTime(adventure.storyClock?.current)}</p>
+        <p>Current story date: {formatStoryTimeForDisplay(adventure.storyClock?.current)}</p>
         <p>{reviewRows.length} selected · {eligibleCount} eligible for correction</p>
         <ul>{reviewRows.map(({ proposal, eligibility }) => <li key={proposal.id}>
           <strong>{proposal.title}</strong>: {eligibility.eligible
-            ? <>{formatStoryTime(proposal.targetId ? proposal.lore?.lastChangedAt : proposal.lore?.occurredAt)} → {dateReview?.expectedClockDate ?? adventure.storyClock?.current?.date}{proposal.targetId ? " (last development; original occurrence preserved)" : " (occurrence and last development)"}</>
+            ? <>{formatStoryTimeForDisplay(proposal.targetId ? proposal.lore?.lastChangedAt : proposal.lore?.occurredAt)} → {formatStoryTimeForDisplay(dateReview ? { text: dateReview.expectedClockDate, date: dateReview.expectedClockDate, precision: "day" } : adventure.storyClock?.current)}{proposal.targetId ? " (last development; original occurrence preserved)" : " (occurrence and last development)"}</>
             : <>Excluded: {eligibility.reason}</>}
         </li>)}</ul>
         {dateReview ? <div role="region" aria-label="Confirm Lore date changes">
@@ -328,7 +328,7 @@ function MemorySuggestionsPage({ adventure, dispatch, onRegenerateProposal, onRe
         <ul>{appliedReview.rows.map(row => {
           const live = allProposals.find(p => p.id === row.proposal.id);
           const event = live?.targetId ? live.lore?.lastChangedAt : live?.lore?.occurredAt;
-          return <li key={row.proposal.id}>{row.proposal.title}: {formatStoryTime(event)}{!row.eligibility.eligible ? ` — excluded: ${row.eligibility.reason}`
+          return <li key={row.proposal.id}>{row.proposal.title}: {formatStoryTimeForDisplay(event)}{!row.eligibility.eligible ? ` — excluded: ${row.eligibility.reason}`
             : live && loreChronologyFingerprint(adventure, live) === row.resultFingerprint && row.resultFingerprint !== row.expectedFingerprint
               ? " — saved" : " — unchanged or stale; review individually"}</li>;
         })}</ul>
@@ -480,7 +480,7 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
         {Boolean(proposal.storyCardReview.evidenceQuotes?.length) && <details><summary>Supporting source quotes</summary>
           <ul>{proposal.storyCardReview.evidenceQuotes!.map((item, index) => <li key={`${item.messageId}-${index}`}><code>{item.messageId}</code><blockquote>{item.quote}</blockquote></li>)}</ul>
         </details>}
-        {proposal.lore && <p>Occurred: {formatStoryTime(proposal.lore.occurredAt)} · {proposal.lore.status} · Sources: {proposal.lore.sourceMessageIds.join(", ")}</p>}
+        {proposal.lore && <p>Occurred: {formatStoryTimeForDisplay(proposal.lore.occurredAt)} · {proposal.lore.status} · Sources: {proposal.lore.sourceMessageIds.join(", ")}</p>}
         <Field label="Story Card destination"><select value={proposal.targetId ?? ""} disabled={!isPending}
           onChange={event => {
             const card = adventure.storyCards.find(card => card.id === event.target.value);

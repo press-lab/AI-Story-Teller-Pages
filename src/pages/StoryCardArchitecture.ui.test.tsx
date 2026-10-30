@@ -102,10 +102,11 @@ it("keeps clock drafts local, validates exact dates, applies once, and synchroni
   const saved = adventureReducer(adventure, dispatch.mock.calls[0][0]);
   view.rerender(<StoryClockEditor adventure={saved} dispatch={dispatch} inline />);
   expect(apply).toBeDisabled();
+  expect(screen.getByRole("heading", { name: "Current Story Date: September 8, 2001 (Saturday)" })).toBeVisible();
   const external = adventureReducer(saved, { type: "ADD_MESSAGE", role: "assistant", content: "The next morning" });
   view.rerender(<StoryClockEditor adventure={external} dispatch={dispatch} inline />);
   expect(input).toHaveValue("2001-09-09");
-  expect(screen.getByRole("heading", { name: "Current Story Date: 2001-09-09" })).toBeVisible();
+  expect(screen.getByRole("heading", { name: "Current Story Date: 2001-09-09 (Sunday)" })).toBeVisible();
   expect(dispatch).toHaveBeenCalledTimes(1);
 });
 
@@ -118,4 +119,20 @@ it.each(["Third Frost, Year of the Raven", "around midwinter", "three days befor
   fireEvent.click(screen.getByRole("button", { name: "Apply Story Date" }));
   expect(dispatch.mock.calls[0][0].clock.current).toMatchObject({ text });
   expect(dispatch.mock.calls[0][0].clock.current.date).toBeUndefined();
+});
+
+
+it.each([
+  ["2001-09-08", "Saturday"], ["2001-09-09", "Sunday"], ["2001-09-10", "Monday"],
+  ["2001-09-11", "Tuesday"], ["2001-09-12", "Wednesday"], ["2001-09-13", "Thursday"],
+  ["2001-09-14", "Friday"], ["2000-02-29", "Tuesday"],
+])("shows the Gregorian weekday for %s without changing the saved clock", (date, weekday) => {
+  const adventure = createDefaultAdventure(); const dispatch = vi.fn();
+  adventure.storyClock = { origin: "established", current: { text: date, date, precision: "day" } };
+  const before = JSON.stringify(adventure);
+  render(<StoryClockEditor adventure={adventure} dispatch={dispatch} inline />);
+  expect(screen.getByRole("heading", { name: `Current Story Date: ${date} (${weekday})` })).toBeVisible();
+  expect(screen.getByLabelText("Current story time", { exact: true })).toHaveValue(date);
+  expect(JSON.stringify(adventure)).toBe(before);
+  expect(dispatch).not.toHaveBeenCalled();
 });

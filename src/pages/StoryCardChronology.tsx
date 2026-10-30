@@ -2,6 +2,7 @@ import type { Adventure, AdventureAction, LoreMetadata, StoryCard, StoryTime } f
 import { useEffect, useState } from "react";
 import { validLoreDate } from "../memory/validateLoreChronology";
 import { STORY_TIME_PRECISIONS, readStoryTime } from "../memory/storyTime";
+import { formatStoryTimeForDisplay } from "./storyTimeDisplay";
 import { Field, commaList, fromCommaList } from "./shared";
 
 function TimeFields({ label, value, onChange }: { label: string; value?: StoryTime; onChange: (time: StoryTime | undefined) => void }) {
@@ -32,7 +33,7 @@ export function StoryClockEditor({ adventure, dispatch, compact = false, inline 
   const valid = Boolean(draft && draft.text.trim() && validLoreDate({ ...draft, precision: draft.precision === "unknown" ? "day" : draft.precision }));
   const unchanged = JSON.stringify(draft) === JSON.stringify(current);
   const contents = <>
-    {inline && <h3>Current Story Date: {current?.text || "unknown"}{adventure.storyClock?.origin === "assumed" ? " (assumed)" : ""}</h3>}
+    {inline && <h3>Current Story Date: {formatStoryTimeForDisplay(current)}{adventure.storyClock?.origin === "assumed" ? " (assumed)" : ""}</h3>}
     <p className="muted">In-world time, independent of your computer clock. Explicit story-date headings and day skips can advance it; flashbacks do not. Ambiguous dates remain textual.</p>
     {adventure.storyClock?.pendingReference && <p role="alert">Unresolved time passage: {adventure.storyClock.pendingReference}. Correct the story clock when the duration is known.</p>}
     <TimeFields label="Current story time" value={draft} onChange={setDraft} />
@@ -43,7 +44,7 @@ export function StoryClockEditor({ adventure, dispatch, compact = false, inline 
     <p className="muted">Changing the current date affects future story entries. Existing Chronicle messages and memory suggestions are not automatically rewritten.</p>
   </>;
   return inline ? <section className="panel" aria-label="Current Story Date">{contents}</section>
-    : <details className="panel"><summary>{compact ? "Correct story date" : <>Current story clock: {current?.text || "unknown"}{adventure.storyClock?.origin === "assumed" ? " (assumed)" : ""}</>}</summary>{contents}</details>;
+    : <details className="panel"><summary>{compact ? "Correct story date" : <>Current story clock: {formatStoryTimeForDisplay(current)}{adventure.storyClock?.origin === "assumed" ? " (assumed)" : ""}</>}</summary>{contents}</details>;
 }
 
 export function LoreChronologyEditor({ card, dispatch, messages }: { card: StoryCard; dispatch: (action: AdventureAction) => void; messages: Adventure["messages"] }) {

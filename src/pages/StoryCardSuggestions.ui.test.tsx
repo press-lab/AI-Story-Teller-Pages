@@ -321,7 +321,7 @@ function BulkReview({ onAction = (_action: AdventureAction) => {} }: { onAction?
 
 it("shows the clock above evaluation tools, starts unselected, and offers selection only for pending Lore", async () => {
   render(<BulkReview />);
-  expect(screen.getByRole("heading", { name: "Current Story Date: 2001-09-08" })).toBeVisible();
+  expect(screen.getByRole("heading", { name: "Current Story Date: 2001-09-08 (Saturday)" })).toBeVisible();
   expect(screen.getByRole("region", { name: "Current Story Date" }).compareDocumentPosition(screen.getByText("Check Recent Entries")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   const boxes = screen.getAllByRole("checkbox", { name: /^Select Lore:/ });
   expect(boxes).toHaveLength(4); boxes.forEach(box => expect(box).not.toBeChecked());
@@ -365,7 +365,7 @@ it("requires review and confirmation, allows cancellation, and commits one batch
   expect(after.activeState.memoryProposals[2]).toMatchObject({ lore: { occurredAt: { date: "2001-09-04" }, lastChangedAt: { date: "2001-09-08" } } });
   expect(after.messages).toEqual(before.messages); expect(after.storyCards).toEqual(before.storyCards);
   expect(after.activeState.memoryProposals.slice(4)).toEqual(before.activeState.memoryProposals.slice(4));
-  expect(screen.getByRole("status", { name: "Saved Lore date changes" })).toHaveTextContent("Archive discovery: 2001-09-08 — saved");
+  expect(screen.getByRole("status", { name: "Saved Lore date changes" })).toHaveTextContent("Archive discovery: 2001-09-08 (Saturday) — saved");
   expect(screen.queryByRole("button", { name: "Review Date Changes" })).not.toBeInTheDocument();
   Object.defineProperty(globalThis, "indexedDB", { value: new IDBFactory(), configurable: true });
   await saveAdventure(normalizeAdventure(JSON.parse(JSON.stringify(after))));
@@ -408,7 +408,7 @@ it("applies the Suggestions clock draft to the saved adventure and persists its 
   expect(actions).toHaveBeenCalledTimes(1);
   const saved = savedReview();
   expect(saved.storyClock).toMatchObject({ current: { date: "2001-09-10" }, anchor: { date: "2001-09-10" }, anchorMessageId: before.messages.at(-1)!.id });
-  expect(screen.getByRole("heading", { name: "Current Story Date: September 10, 2001" })).toBeVisible();
+  expect(screen.getByRole("heading", { name: "Current Story Date: September 10, 2001 (Monday)" })).toBeVisible();
   expect(saved.messages).toEqual(before.messages); expect(saved.storyCards).toEqual(before.storyCards);
   expect(saved.activeState.memoryProposals).toEqual(before.activeState.memoryProposals);
   await saveAdventure(normalizeAdventure(JSON.parse(JSON.stringify(saved))));

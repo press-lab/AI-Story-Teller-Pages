@@ -404,8 +404,10 @@ it("exposes clock correction during Play and dates future messages without rewri
   await user.click(screen.getByText("Correct story date", { selector: "summary" }));
   const input = screen.getByLabelText("Current story time", { exact: true });
   expect(input).toBeVisible();
+  expect(screen.getByText("Story time: 2001-09-02 (Sunday)")).toBeVisible();
   await user.clear(input); await user.type(input, "2001-09-04");
   await user.click(screen.getByRole("button", { name: "Apply Story Date" }));
+  expect(screen.getByText("Story time: 2001-09-04 (Tuesday)")).toBeVisible();
   expect(latest.storyClock).toMatchObject({ current: { date: "2001-09-04" }, anchor: { date: "2001-09-04" }, origin: "established" });
   expect(latest.messages).toEqual(previous);
   await user.click(screen.getByRole("button", { name: "Continue" }));
