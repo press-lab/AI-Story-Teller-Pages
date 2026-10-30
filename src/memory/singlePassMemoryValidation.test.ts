@@ -484,3 +484,24 @@ it("retains advisory choices without overriding an authoritative exact APPEND", 
   const p = validateSinglePassSource(a, result, batch.checkpoints[0].checkpoint).proposals[0].proposal;
   expect(p).toMatchObject({ requiresReview: false, targetId: "business", storyCardReview: { candidateOnly: false, targetCandidates: ["business", "advisory-other"] } });
 });
+
+
+it.each([false, true])("scopes semantic risk to referenced full narrator messages (withdrawn=%s)", async withdrawn => {
+  const { a, ids } = singlePassFixture();
+  a.memoryAutoApprove.storyCard = true;
+  a.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
+  a.messages.find(m => m.id === ids[0])!.content = "Fred and George might produce rune tattoos next week.";
+  const sourceId = ids.at(-1)!;
+  const content = withdrawn ? "They kissed." : "The research team gained access to the library archives.";
+  const source = withdrawn ? "He attempted to kiss her but withdrew before contact." : content;
+  a.messages.find(m => m.id === sourceId)!.content = source;
+  const batch = await prepareSinglePassMemoryBatch(a, ids);
+  const checkpoint = batch.checkpoints.at(-1)!.checkpoint;
+  const result = validateSinglePassSource(a, { sourceId, findings: [{ ...groundedFinding(), title: "Archive development", content,
+    evidenceQuotes: [{ messageId: sourceId, quote: withdrawn ? "He attempted to kiss her" : content }] }], rejected: [] }, checkpoint);
+  expect(result.rejected).toEqual([]);
+  expect(checkpoint.evidence.some(e => e.id === ids[0])).toBe(true);
+  expect(result.proposals[0].proposal.requiresReview).toBe(withdrawn);
+  const after = reduce(a, { type: "ADD_MEMORY_PROPOSAL", proposal: result.proposals[0].proposal });
+  expect(after.activeState.memoryProposals[0].status).toBe(withdrawn ? "pending" : "approved");
+});

@@ -64,7 +64,7 @@ export function toSinglePassProposal(a: Adventure, sourceId: string, checkpoint:
   const protectedTarget = f.kind === "storyCard" ? a.storyCards.find(c => c.id === f.targetId)?.protected
     : f.kind === "brain" ? a.brains.find(b => b.id === f.targetId)?.protected : a.components.find(c => c.id === f.targetId)?.protected;
   const meaningReason = f.kind === "storyCard" ? storyCardMeaningReviewReason(f, checkpoint.evidence
-    .filter(e => a.messages.some(m => m.id === e.id && m.role === "assistant"))) : undefined;
+    .filter(e => ids.includes(e.id) && a.messages.some(m => m.id === e.id && m.role === "assistant"))) : undefined;
   const globalApprovalRequired = a.semanticEvaluationSettings.requireApprovalForAutoUpdates;
   const reviewReasons = [
     protectedTarget ? "Protected Story Card or memory destination." : undefined,

@@ -2240,3 +2240,71 @@ it("Story Card toggle leaves historical pending proposals alone and applies only
   expect(a.activeState.memoryProposals.find(p => p.id === pending[0].id)).toEqual(pending[0]);
   expect(a.activeState.memoryProposals.find(p => p.title === "Archive access")?.status).toBe("approved");
 });
+
+
+import { storyCardAutoApprovalBlockers } from "../memory/storyCardAutoApproval";
+import { makeStoryCardSuggestion } from "../memory/storyCardSuggestions";
+for (const path of ["insert", "merge", "scan", "final"] as const) {
+  it.each(["eligible", "global", "disabled", "both", "protected", "ambiguous", "date", "stale", "uncertain", "candidate", "placement"])(`shared Story Card approval gates: ${path} / %s`, mode => {
+    let a = createDefaultAdventure();
+    a.memoryAutoApprove.storyCard = !["disabled", "both"].includes(mode);
+    a.semanticEvaluationSettings.requireApprovalForAutoUpdates = ["global", "both"].includes(mode);
+    const content = "The research team gained access to the library archives.";
+    a.messages = [{ id: "approval-source", role: "assistant", content, createdAt: "2026-10-29",
+      storyTime: { text: "2001-09-02", date: "2001-09-02", precision: "day" } }];
+    if (mode === "protected") a.storyCards = [makeStoryCard({ id: "archive-target", title: "Archive access", type: "lore", content: "The library was founded in 1700.", protected: true })];
+    let p = reviewedProposal(a, makeStoryCardSuggestion(a, "approval-source", content, { title: "Archive access", content, evidence: content,
+      reason: "An established research agreement.", evidenceReviewed: true, targetId: mode === "protected" ? "archive-target" : undefined }));
+    if (mode === "ambiguous") p.storyCardReview = { ...p.storyCardReview!, targetCandidates: ["one", "two"] };
+    if (mode === "date") p.lore = { ...p.lore!, occurredAt: { text: "2001-09-04", date: "2001-09-04", precision: "day" } };
+    if (mode === "stale") a.messages[0].content = "The author corrected this event.";
+    if (mode === "uncertain") { p.requiresReview = true; p.rationale = "Part of this fact may already exist."; }
+    if (mode === "candidate") p.storyCardReview = { ...p.storyCardReview!, candidateOnly: true };
+    if (mode === "placement") p.placementValidation = undefined;
+    const before = structuredClone(a.storyCards);
+    expect(storyCardAutoApprovalBlockers(a, p).length === 0).toBe(mode === "eligible");
+    if (path === "insert") a = adventureReducer(a, { type: "ADD_MEMORY_PROPOSAL", proposal: p });
+    else {
+      a.activeState.memoryProposals = [p];
+      if (path === "merge") a = adventureReducer(a, { type: "ADD_MEMORY_PROPOSAL", proposal: { ...p, id: "incoming", requiresReview: false } });
+      if (path === "scan") a = adventureReducer(a, { type: "SCAN_STORY_CARD_EXCHANGE", sourceMessageId: "approval-source", manual: true });
+      if (path === "final") a = adventureReducer(a, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: p.id, automatic: true });
+    }
+    expect(a.activeState.memoryProposals.find(entry => entry.id === p.id)?.status).toBe(mode === "eligible" ? "approved" : "pending");
+    if (mode !== "eligible") expect(a.storyCards).toEqual(before);
+    if (mode === "uncertain") expect(a.activeState.memoryProposals[0].requiresReview).toBe(true);
+  });
+}
+
+it.each([false, true])("companion Story Cards respect current global review (%s) and placement safeguards", global => {
+  const a = createDefaultAdventure();
+  a.memoryAutoApprove.storyCard = true;
+  a.semanticEvaluationSettings.requireApprovalForAutoUpdates = global;
+  const brain = makeBrain({ characterName: "Mira", notes: "The research team gained archive access." });
+  a.brains = [brain];
+  const next = adventureReducer(a, { type: "APPLY_BRAIN_UPDATE", brainId: brain.id, patch: { notes: "A different present concern." }, mode: "replace" });
+  expect(next.activeState.memoryProposals).toHaveLength(1);
+  const p = next.activeState.memoryProposals[0];
+  expect(storyCardAutoApprovalBlockers(a, p).length).toBeGreaterThan(0);
+  expect(p.status).toBe("pending");
+  expect(next.storyCards).toEqual(a.storyCards);
+});
+
+it.each(["rejected", "ignored"] as const)("automatic approval never resurrects %s suggestions", status => {
+  const a = createDefaultAdventure(); a.memoryAutoApprove.storyCard = true; a.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
+  const p = makeMemoryProposal({ status }); a.activeState.memoryProposals = [p];
+  expect(adventureReducer(a, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: p.id, automatic: true })).toBe(a);
+});
+
+
+it("computes Story Card blockers deterministically without mutating saved state or proposals", () => {
+  const a = createDefaultAdventure();
+  const p = { ...makeMemoryProposal({ rationale: "Part of this fact may already exist." }), requiresReview: true };
+  a.semanticEvaluationSettings = { ...a.semanticEvaluationSettings, requireApprovalForAutoUpdates: true };
+  const before = JSON.stringify({ a, p });
+  const first = storyCardAutoApprovalBlockers(a, p);
+  expect(first).toEqual(storyCardAutoApprovalBlockers(a, p));
+  expect(first).toContain("Global manual review is enabled.");
+  expect(first).toContain("This proposal was previously marked for manual review. Part of this fact may already exist.");
+  expect(JSON.stringify({ a, p })).toBe(before);
+});

@@ -65,6 +65,7 @@ describe("primary Story Card architecture", () => {
 
   it("appends a reviewed death to a Character without creating redundant supporting Lore", () => {
     let state = createDefaultAdventure(); state.memoryAutoApprove.storyCard = true;
+    state.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
     state.storyCards = [makeStoryCard({ id: "voldemort", title: "Voldemort", type: "character", content: "Voldemort is a dark wizard." })];
     state = dated(state, "death", "Current story date: February 1, 2019\nVoldemort dies at Seth's hands.");
     const p = reviewedProposal(state, makeMemoryProposal({ id: "death", title: "Voldemort", targetId: "voldemort", sourceTurnId: "death", content: "Voldemort dies at Seth's hands.", proposedType: "storyCard" }));

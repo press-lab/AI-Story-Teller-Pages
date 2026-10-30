@@ -1,3 +1,4 @@
+import { storyCardAutoApprovalBlockers } from "../memory/storyCardAutoApproval";
 import { isLoreProposal, pendingLoreDateCorrectionEligibility, loreChronologyFingerprint, validateLoreChronology, loreDateConfirmed, validLoreDate } from "../memory/validateLoreChronology";
 import { ArchivedMemoryDetails } from "./ArchivedMemoryDetails";
 import { placementValidationError, proposalDestinationLabel } from "../memory/storyCardPlacement";
@@ -245,9 +246,15 @@ function MemorySuggestionsPage({ adventure, dispatch, onRegenerateProposal, onRe
           <CheckboxField label="Current Arc" checked={autoApprove.currentArcUpdate} onChange={(v) => setAutoApprove({ currentArcUpdate: v })} />
           <CheckboxField label="Arc Proposals" checked={autoApprove.arcProposal} onChange={(v) => setAutoApprove({ arcProposal: v })} />
           <CheckboxField label="Story Cards" checked={autoApprove.storyCard} onChange={(storyCard) => setAutoApprove({ storyCard })} />
+          <p aria-live="polite">{!autoApprove.storyCard ? "Story Card auto-approval is disabled."
+            : adventure.semanticEvaluationSettings.requireApprovalForAutoUpdates
+              ? "Story Card auto-approval is blocked because Require review for automatic updates is enabled."
+              : "Story Card auto-approval is active. Valid suggestions can apply automatically."}</p>
           <CheckboxField label="Characters" checked={autoApprove.brainUpdate} onChange={(v) => setAutoApprove({ brainUpdate: v })} />
         </div>
-        <p className="muted">Story Cards: automatically applies validated suggestions when enabled. Protected, ambiguous, conflicting, and uncertain suggestions still require review.</p>
+        <CheckboxField label="Require review for automatic updates" checked={adventure.semanticEvaluationSettings.requireApprovalForAutoUpdates}
+          onChange={requireApprovalForAutoUpdates => dispatch({ type: "SET_SEMANTIC_EVALUATION_SETTINGS", settings: { ...adventure.semanticEvaluationSettings, requireApprovalForAutoUpdates } })} />
+        <p className="muted">Global manual review overrides individual auto-approval settings. Protected, uncertain, or conflicting suggestions can still require review when global approval is disabled.</p>
         <p className="muted">Settings controls evaluation frequency. Component and Brain controls set their cooldowns. Story Cards use relevance-based selection.</p>
       </details>
 
@@ -387,6 +394,7 @@ interface ProposalCardProps {
 
 function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }: ProposalCardProps) {
   const isPending = proposal.status === "pending";
+  const autoApprovalBlockers = isPending && proposal.proposedType === "storyCard" ? storyCardAutoApprovalBlockers(adventure, proposal) : [];
   const sourceValid = suggestionSourceValid(adventure, proposal);
   const placementError = placementValidationError(adventure, proposal);
   const destinationLabel = proposalDestinationLabel(adventure, proposal);
@@ -497,6 +505,10 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
           {adventure.storyCards.map(card => <option key={card.id} value={card.id}>APPEND — {card.title}{proposal.storyCardReview!.targetCandidates.includes(card.id) ? " (suggested)" : ""}</option>)}
         </select></Field>
         {proposal.storyCardReview.targetCandidates.length > 1 && !proposal.targetId && <p>Several continuing subjects may fit. Choose an update target or keep this as a separate card.</p>}
+      </div>}
+      {isPending && proposal.proposedType === "storyCard" && <div aria-label="Automatic approval status">
+        {autoApprovalBlockers.length ? <ul>{autoApprovalBlockers.map(reason => <li key={reason}>{reason}</li>)}</ul>
+          : <p>This suggestion remains pending. Auto-approval settings apply to new suggestions; review this draft explicitly.</p>}
       </div>}
       {isPending && dateConflict && <div role="alert">
         <p>Date conflict: this event’s proposed date does not agree with its source chronology.</p>

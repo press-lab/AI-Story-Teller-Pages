@@ -76,6 +76,7 @@ describe("Story Card detection responsibilities", () => {
   it.each([false, true])("routes a newly occurring Character status change to explicit review (auto-approval=%s)", async autoApprove => {
     const state = fixture();
     state.memoryAutoApprove.storyCard = autoApprove;
+    state.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
     const text = "Lucius died defending the bridge during the battle.";
     const next = await narrate(text, [finding("Lucius Malfoy died defending the bridge.", text, { kind: "card", target: "Lucius Malfoy", targetId: "Lucius Malfoy" })], state);
     const identity = inbox(next).find(p => p.storyCardType === "character")!;

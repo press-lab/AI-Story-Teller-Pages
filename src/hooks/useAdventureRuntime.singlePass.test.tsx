@@ -338,38 +338,57 @@ it("clock editing, selection, preview, and confirmed correction cost zero reques
 });
 
 
-it("Story Card auto-approval changes only local outcomes: identical request, findings, tokens and accounting", async () => {
+it("Story Card auto-approval changes only local outcomes across a realistic multi-message window", async () => {
+  debugLogging.MEMORY_DEBUG_LOGGING = false;
   const { looseMemoryFixture } = await import("../test/looseMemory");
+  const fact = "The research team gained access to the library archives.";
+  const attempt = "He attempted to kiss her but withdrew before contact.";
+  const findings = [
+    { title: "Archive access", content: fact, quote: fact },
+    { title: "Claimed first kiss", content: "They kissed.", quote: attempt },
+  ].map(({ title, content, quote }) => ({ kind: "storyCard", targetId: null, title, content,
+    evidenceQuotes: [{ messageId: "narrator-2", quote }], reason: "A durable event.", candidateOnly: false,
+    storyCardType: "lore", operation: "create", memoryMode: "historical", eventStatus: "completed", suggestedTriggers: ["archive research", "personal milestones"], participants: [] }));
+  const output = JSON.stringify({ sources: ["narrator-1", "narrator-2", "narrator-3"].map(sourceId => ({ sourceId, findings: sourceId === "narrator-2" ? findings : [] })) });
   const requests: unknown[] = [];
   const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
     requests.push(JSON.parse(init!.body as string));
-    return new Response(JSON.stringify({ choices: [{ message: { content: "(lore: Archive access = The research team gained access to the library archives.)" } }],
+    return new Response(JSON.stringify({ choices: [{ message: { content: output } }],
       usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 } }));
   });
   const outcomes: Adventure[] = [];
   for (const enabled of [false, true]) {
-    const { a } = looseMemoryFixture(); a.messages = a.messages.slice(0, 1); a.storyCards = []; a.brains = []; a.components = [];
-    a.messages[0].content = "The research team gained access to the library archives.";
+    const { a } = looseMemoryFixture(); a.storyCards = []; a.brains = []; a.components = [];
+    a.messages[0].content = "Fred and George might produce rune tattoos next week.";
+    a.messages[1].content = fact + " " + attempt + " Hermione accepted the invitation to meet.";
+    a.messages[2].content = "The team returned to its workshop to discuss tomorrow's research plans.";
     a.memoryAutoApprove.storyCard = enabled;
+    a.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
     const hook = setup(a);
-    await act(async () => { await hook.result.current.runtime.evaluateMemorySources(["narrator-1"]); await settle(); });
-    await waitFor(() => expect(hook.result.current.adventure!.messages[0].memoryEvaluation?.status).toBe("complete"));
+    await act(async () => { await hook.result.current.runtime.evaluateMemorySources(a.messages.map(m => m.id)); await settle(); });
+    await waitFor(() => expect(hook.result.current.adventure!.messages.every(m => m.memoryEvaluation?.status === "complete")).toBe(true));
     await act(async () => { await settle(); });
     outcomes.push(hook.result.current.adventure!); hook.unmount();
   }
-  expect(fetch).toHaveBeenCalledTimes(2); // Exactly one extraction per configuration; zero review/retry calls.
+  expect(fetch).toHaveBeenCalledTimes(2); // One extraction per configuration; zero review/retry calls.
   expect(requests[1]).toEqual(requests[0]);
   const [off, on] = outcomes;
-  expect(on.messages[0].memoryEvaluation?.singlePass?.findings).toHaveLength(1);
-  expect(on.messages[0].memoryEvaluation?.singlePass?.findings).toEqual(off.messages[0].memoryEvaluation?.singlePass?.findings);
+  expect(on.messages[1].memoryEvaluation?.singlePass?.parsedCount).toBe(2);
+  expect(off.messages[1].memoryEvaluation?.singlePass?.parsedCount).toBe(2);
+  expect(on.activeState.memoryProposals.map(p => [p.title, p.content])).toEqual(off.activeState.memoryProposals.map(p => [p.title, p.content]));
+  expect(on.messages[1].memoryEvaluation?.singlePass?.findings).toEqual(off.messages[1].memoryEvaluation?.singlePass?.findings);
   expect(on.activeState.backgroundTokenUsage).toEqual(off.activeState.backgroundTokenUsage);
   for (const a of outcomes) {
     expect(a.activeState.apiCalls).toHaveLength(1);
     expect(a.activeState.apiCalls![0].usage).toMatchObject({ promptTokens: 100, completionTokens: 20, totalTokens: 120 });
     expect(a.activeState.apiCalls![0].memoryRequest?.stage).toBe("singlePass");
+    expect(a.activeState.memoryProposals).toHaveLength(2);
+    expect(a.activeState.memoryProposals.find(p => p.title === "Claimed first kiss")).toMatchObject({ status: "pending", requiresReview: true });
+    expect(a.activeState.memoryDiagnostics ?? []).toEqual([]);
   }
   expect(on.activeState.apiCalls![0].model).toBe(off.activeState.apiCalls![0].model);
-  expect(off.activeState.memoryProposals[0]).toMatchObject({ status: "pending", requiresReview: false });
-  expect(on.activeState.memoryProposals[0]).toMatchObject({ status: "approved", requiresReview: false });
-  expect(off.storyCards).toEqual([]); expect(on.storyCards[0].content).toBe("The research team gained access to the library archives.");
+  expect(on.activeState.apiCalls![0].provider).toBe(off.activeState.apiCalls![0].provider);
+  expect(off.activeState.memoryProposals.find(p => p.title === "Archive access")).toMatchObject({ status: "pending", requiresReview: false });
+  expect(on.activeState.memoryProposals.find(p => p.title === "Archive access")).toMatchObject({ status: "approved", requiresReview: false });
+  expect(off.storyCards).toEqual([]); expect(on.storyCards[0].content).toBe(fact);
 });

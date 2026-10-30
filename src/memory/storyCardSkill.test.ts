@@ -106,7 +106,8 @@ describe("Story Card skill policy", () => {
   });
   it("honors explicit opt-in for model findings after binding the completed exchange", async () => {
     const text = "Seth and Draconia shared their first kiss.";
-    const state = await play(text, [finding(text, "Their first kiss")], seed(true));
+    const initial = seed(true); initial.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
+    const state = await play(text, [finding(text, "Their first kiss")], initial);
     expect(proposals(state)).toHaveLength(1);
     expect(proposals(state)[0]).toMatchObject({ status: "approved", storyCardReview: { origin: "model", candidateOnly: false } });
     expect(state.storyCards.filter(card => card.type === "lore")).toHaveLength(1);

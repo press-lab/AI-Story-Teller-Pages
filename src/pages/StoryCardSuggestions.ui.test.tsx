@@ -455,7 +455,7 @@ it("keeps the Story Cards toggle bound and persisted, with auto-approved history
   await user.click(screen.getByText("Memory Approval Rules"));
   const toggle = screen.getByRole("checkbox", { name: "Story Cards" });
   expect(toggle).toBeChecked();
-  expect(screen.getByText("Story Cards: automatically applies validated suggestions when enabled. Protected, ambiguous, conflicting, and uncertain suggestions still require review.")).toBeInTheDocument();
+  expect(screen.getByText("Story Card auto-approval is active. Valid suggestions can apply automatically.")).toBeInTheDocument();
   await user.click(toggle); expect(toggle).not.toBeChecked();
   const disabled = JSON.parse(screen.getByTestId("approval-state").textContent!) as Adventure;
   expect(disabled.memoryAutoApprove.storyCard).toBe(false);
@@ -469,4 +469,47 @@ it("keeps the Story Cards toggle bound and persisted, with auto-approved history
   const pending = screen.getByRole("region", { name: /CREATE character: Eleanor Vale suggestions/i });
   await user.click(within(pending).getByRole("button", { name: "Approve" }));
   expect(JSON.parse(screen.getByTestId("approval-state").textContent!).storyCards.some((c: { title: string }) => c.title === "Eleanor Vale")).toBe(true);
+});
+
+
+import { SettingsPage } from "./SettingsPage";
+import { defaultGlobalAdventureSettings, defaultUiPreferences } from "./pageTypes";
+it.each([[true, false], [true, true], [false, false], [false, true]])("shares approval controls across pages and persistence (card=%s, global=%s)", async (storyCard, requireApprovalForAutoUpdates) => {
+  Object.defineProperty(globalThis, "indexedDB", { value: new IDBFactory(), configurable: true });
+  const initial = createDefaultAdventure();
+  initial.memoryAutoApprove.storyCard = storyCard;
+  initial.semanticEvaluationSettings.requireApprovalForAutoUpdates = requireApprovalForAutoUpdates;
+  function BothPages() {
+    const [adventure, dispatch] = useReducer(adventureReducer, initial);
+    return <><div data-testid="inbox"><MemoryInboxPage adventure={adventure} dispatch={dispatch} /></div>
+      <div data-testid="settings"><SettingsPage adventure={adventure} dispatch={dispatch} providerPresets={[]} activePresetId=""
+        onProviderPresetsChange={vi.fn()} onSelectPreset={vi.fn()} uiPreferences={{ ...defaultUiPreferences, showAdvancedSettings: true }} onUiPreferencesChange={vi.fn()}
+        globalAdventureSettings={defaultGlobalAdventureSettings} onGlobalAdventureSettingsChange={vi.fn()} /></div>
+      <output data-testid="saved">{JSON.stringify(adventure)}</output></>;
+  }
+  render(<BothPages />); const user = userEvent.setup();
+  const inbox = within(screen.getByTestId("inbox")); const settings = within(screen.getByTestId("settings"));
+  await user.click(inbox.getByText("Memory Approval Rules"));
+  const assertControls = (card: boolean, global: boolean) => {
+    for (const page of [inbox, settings]) {
+      expect((page.getByLabelText("Story Cards") as HTMLInputElement).checked).toBe(card);
+      expect((page.getByLabelText("Require review for automatic updates") as HTMLInputElement).checked).toBe(global);
+    }
+    expect(inbox.getByText(!card ? "Story Card auto-approval is disabled." : global
+      ? "Story Card auto-approval is blocked because Require review for automatic updates is enabled."
+      : "Story Card auto-approval is active. Valid suggestions can apply automatically.")).toBeInTheDocument();
+  };
+  assertControls(storyCard, requireApprovalForAutoUpdates);
+  await user.click(inbox.getByLabelText("Story Cards"));
+  assertControls(!storyCard, requireApprovalForAutoUpdates);
+  // Settings groups may be collapsed; the underlying shared control still dispatches normally.
+  const { fireEvent } = await import("@testing-library/react");
+  fireEvent.click(settings.getByLabelText("Require review for automatic updates"));
+  assertControls(!storyCard, !requireApprovalForAutoUpdates);
+  const saved = savedReview();
+  const imported = importAdventureJson(exportAdventureJson(saved));
+  await saveAdventure(imported);
+  const reloaded = (await getAdventure(imported.id))!;
+  expect(reloaded.memoryAutoApprove).toEqual(saved.memoryAutoApprove);
+  expect(reloaded.semanticEvaluationSettings).toEqual(saved.semanticEvaluationSettings);
 });

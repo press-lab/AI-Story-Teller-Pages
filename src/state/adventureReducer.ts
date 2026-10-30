@@ -1,3 +1,4 @@
+import { storyCardAutoApprovalBlockers } from "../memory/storyCardAutoApproval";
 import { pendingLoreDateCorrectionEligibility, validateLoreChronology, isLoreProposal, loreChronologyFingerprint, loreDateConfirmed, validLoreDate } from "../memory/validateLoreChronology";
 import { MEMORY_DEBUG_LOGGING } from "../config/debugLogging";
 import { compactCompletedEvaluationWithoutDebug, pruneDebugHistory, compactHistoricalEvaluation, compactHistoricalProposal, eligibleHistory } from "../memory/memoryHistory";
@@ -1134,7 +1135,8 @@ function applyCompanionMemoryProposals(
     if (!clean) continue;
     if (validateLoreChronology(workingState, clean).status === "conflict") clean.requiresReview = true;
     const autoApprove = workingState.memoryAutoApprove?.[clean.proposedType as keyof typeof workingState.memoryAutoApprove] ?? false;
-    if (!autoApprove || clean.requiresReview || placementValidationError(workingState, clean)) {
+    if (clean.proposedType === "storyCard" ? storyCardAutoApprovalBlockers(workingState, clean).length > 0
+      : !autoApprove || clean.requiresReview || placementValidationError(workingState, clean)) {
       recorded.push(clean);
       continue;
     }
@@ -1467,7 +1469,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
       // The one-pass model runs before its source is persisted. Opt-in approval waits
       // for the final saved source; local-only and ambiguous candidates still need review.
       if (next.memoryAutoApprove.storyCard) for (const proposal of next.activeState.memoryProposals) {
-        if (proposal.status === "pending" && proposal.proposedType === "storyCard" && proposal.storyCardReview?.sourceMessageId === source.id && !storyCardMustBeReviewed(next, proposal)
+        if (proposal.status === "pending" && proposal.proposedType === "storyCard" && proposal.storyCardReview?.sourceMessageId === source.id && storyCardAutoApprovalBlockers(next, proposal).length === 0
           && suggestionSourceValid(next, proposal)) next = adventureReducer(next, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id, automatic: true });
       }
       return next;
@@ -1888,7 +1890,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
           const merged = mergeStoryCardSuggestions(duplicate, clean);
           const next = touchAdventure(state, { activeState: { ...state.activeState,
             memoryProposals: state.activeState.memoryProposals.map(proposal => proposal.id === duplicate.id ? merged : proposal) } });
-          return state.memoryAutoApprove.storyCard && !storyCardMustBeReviewed(next, merged) && suggestionSourceValid(next, merged)
+          return storyCardAutoApprovalBlockers(next, merged).length === 0
             ? adventureReducer(next, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: merged.id, automatic: true }) : next;
         }
       }
@@ -1975,7 +1977,8 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
         );
       if (duplicatesPending || duplicatesDismissed || duplicatesCard || duplicatesStoryCardContent || duplicatesExistingCardContent || duplicatesExistingTargetContent || duplicatesCurrentPressure) return suppressed(
         duplicatesPending ? "Duplicate pending proposal" : duplicatesDismissed ? "Duplicate rejected or ignored proposal" : duplicatesCard ? "Story Card title already exists" : duplicatesStoryCardContent ? "Duplicate proposal content" : duplicatesExistingCardContent ? "Duplicate existing Story Card content" : duplicatesExistingTargetContent ? "Target already contains this content" : "Current pressure already contains this content");
-      const autoApprove = !placementValidationError(state, clean) && suggestionSourceValid(state, clean) && (state.memoryAutoApprove?.[clean.proposedType as keyof typeof state.memoryAutoApprove] ?? false);
+      const autoApprove = clean.proposedType === "storyCard" ? storyCardAutoApprovalBlockers(state, clean).length === 0
+        : !placementValidationError(state, clean) && suggestionSourceValid(state, clean) && (state.memoryAutoApprove?.[clean.proposedType as keyof typeof state.memoryAutoApprove] ?? false);
       if (autoApprove && !clean.requiresReview) {
         const approved = updateMemoryProposal(clean, { status: "approved" });
         const applied = applyApprovedMemoryProposal(state, approved);
@@ -2047,11 +2050,14 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
       if (!existing || existing.status === "approved") return state;
       // Reviewers can approve the displayed draft after edits or regeneration.
       // Background approvals still require matching source evidence and placement.
-      if (action.automatic && (!suggestionSourceValid(state, existing) || existing.requiresReview
+      if (action.automatic && existing.proposedType === "storyCard" && existing.status !== "pending") return state;
+      if (action.automatic && (existing.proposedType === "storyCard" ? storyCardAutoApprovalBlockers(state, existing).length > 0
+        : (!suggestionSourceValid(state, existing) || existing.requiresReview
         || state.semanticEvaluationSettings.requireApprovalForAutoUpdates
-        || state.storyCards.some(card => card.id === existing.targetId && card.protected))) return state;
+        || state.storyCards.some(card => card.id === existing.targetId && card.protected)))) return state;
       const proposal = sanitizeProposal(proposalWithEdits(existing, action.editedProposal));
       if (!proposal) return state;
+      if (action.automatic && proposal.proposedType === "storyCard" && storyCardAutoApprovalBlockers(state, proposal).length) return state;
       const chronology = validateLoreChronology(state, proposal);
       if (chronology.status === "conflict" && !loreDateConfirmed(state, proposal)) {
         return touchAdventure(state, { activeState: { ...state.activeState,
