@@ -2141,3 +2141,102 @@ describe("APPLY_CURRENT_STORY_DATE_TO_PENDING_LORE", () => {
     } finally { debugLogging.MEMORY_DEBUG_LOGGING = true; }
   });
 });
+
+
+async function commitLooseCard(state: Adventure, response: string, sourceId = "narrator-1") {
+  const { parseSinglePassMemoryResponse } = await import("../memory/singlePassMemory");
+  const batch = await prepareSinglePassMemoryBatch(state, [sourceId]);
+  const result = parseSinglePassMemoryResponse(response, [sourceId], state, batch.outputAliases, batch).sources[0];
+  expect(result.rejected).toEqual([]);
+  state = adventureReducer(state, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
+  return adventureReducer(state, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId, sources: [{ result, checkpoint: batch.checkpoints[0].checkpoint }] });
+}
+
+it.each(["create", "append", "disabled", "global", "protected", "ambiguous", "date", "recovered"])("Story Card auto-approval complete loose pipeline: %s", async mode => {
+  const { looseMemoryFixture } = await import("../test/looseMemory");
+  let { a } = looseMemoryFixture();
+  const fact = "The research team gained access to the library archives.";
+  a.messages[0].content = mode === "date" ? "Date: 2001-09-02\n" + fact : fact;
+  const sourceContent = a.messages[0].content;
+  a.messages[0].storyTime = { text: "2001-09-02", date: "2001-09-02", precision: "day" };
+  a.storyCards = [];
+  const prior = "The library was founded in 1700.";
+  if (["append", "protected", "ambiguous"].includes(mode)) a.storyCards.push(makeStoryCard({ id: "archive", type: "lore", title: "Archive access", content: prior,
+    protected: mode === "protected", lore: { status: "ongoing", sourceMessageIds: ["old-source"], occurredAt: { text: "2001-09-01", date: "2001-09-01", precision: "day" } } }));
+  if (mode === "ambiguous") a.storyCards.push({ ...a.storyCards[0], id: "other-archive" });
+  a.memoryAutoApprove.storyCard = mode !== "disabled";
+  a.semanticEvaluationSettings.requireApprovalForAutoUpdates = mode === "global";
+  const before = structuredClone(a.storyCards);
+  let response = `(lore: ${mode === "date" ? "2001-09-04 - Archive access" : "Archive access"} = ${fact})`;
+  if (mode === "recovered") response = JSON.stringify({ sources: [{ sourceId: "narrator-1", findings: [{ kind: "storyCard", targetId: null,
+    title: "Archive access", content: fact, evidenceQuotes: [{ messageId: "narrator-1", quote: fact }] }] }] });
+  a = await commitLooseCard(a, response);
+  const p = a.activeState.memoryProposals[0];
+  const eligible = ["create", "append"].includes(mode);
+  expect(p).toMatchObject({ status: eligible ? "approved" : "pending", requiresReview: !["create", "append", "disabled"].includes(mode), content: fact });
+  expect(p.evaluationSource?.messages).toContainEqual({ id: "narrator-1", content: sourceContent });
+  expect(p.storyCardReview?.sourceMessageId).toBe("narrator-1");
+  if (!eligible) expect(a.storyCards).toEqual(before);
+  else {
+    expect(a.storyCards).toHaveLength(1);
+    expect(a.storyCards[0].content).toContain(fact);
+    expect(a.storyCards[0].lore?.sourceMessageIds).toContain("narrator-1");
+    if (mode === "append") {
+      expect(a.storyCards[0].content).toContain(prior);
+      expect(a.storyCards[0].lore?.occurredAt?.date).toBe("2001-09-01");
+      expect(a.storyCards[0].lore?.lastChangedAt?.date).toBe("2001-09-02");
+    }
+  }
+  expect(normalizeAdventure(JSON.parse(JSON.stringify(a))).activeState.memoryProposals[0].status).toBe(p.status);
+});
+
+it.each(["covered", "partial", "distinct"])("retains factual coverage safeguards with auto-approval: %s", async mode => {
+  const { looseMemoryFixture } = await import("../test/looseMemory");
+  let { a } = looseMemoryFixture();
+  const known = "The research team gained access to the library archives.";
+  const fresh = "The librarian gave Mira a silver archive key.";
+  const content = mode === "covered" ? known : mode === "partial" ? known + " " + fresh : fresh;
+  a.storyCards = [makeStoryCard({ id: "archive", type: "lore", title: "Archive access", content: known })];
+  a.messages[0].content = content;
+  const before = structuredClone(a.storyCards);
+  a = await commitLooseCard(a, `(lore: Archive access = ${content})`);
+  if (mode === "covered") expect(a.activeState.memoryProposals).toEqual([]);
+  else expect(a.activeState.memoryProposals[0]).toMatchObject({ status: mode === "partial" ? "pending" : "approved", requiresReview: mode === "partial" });
+  if (mode !== "distinct") expect(a.storyCards).toEqual(before);
+  else expect(a.storyCards[0].content).toContain(fresh);
+});
+
+it.each([false, true])("keeps mixed loose batch approval independent (Brain auto=%s)", async brainAuto => {
+  const { looseMemoryFixture } = await import("../test/looseMemory");
+  let { a } = looseMemoryFixture(); a.memoryAutoApprove.brainUpdate = brainAuto;
+  a.storyCards.push(...["one", "two"].map(id => makeStoryCard({ id, type: "lore", title: "Archive access", content: "The library was founded in 1700." })));
+  a.storyCards.find(c => c.id === "george")!.protected = true;
+  const profileFact = "George permanently lost his fire magic.";
+  a.messages[0].content += " The research team gained access to the library archives. Mira joined the council. " + profileFact;
+  a = await commitLooseCard(a, [
+    "(lore: Council membership = Mira joined the council.)",
+    "(brain: George Weasley = I believe the business can grow beyond individual customers.)",
+    "(lore: Archive access = The research team gained access to the library archives.)",
+    `(storyCard.character.update: George Weasley = ${profileFact} || The experiment established this lasting loss.)`,
+  ].join("\n"));
+  expect(a.activeState.memoryProposals).toHaveLength(4);
+  expect(a.activeState.memoryProposals.find(p => p.title === "Council membership")?.status).toBe("approved");
+  expect(a.activeState.memoryProposals.find(p => p.proposedType === "brainUpdate")?.status).toBe(brainAuto ? "approved" : "pending");
+  expect(a.activeState.memoryProposals.filter(p => p.title === "Archive access" || p.storyCardType === "character").every(p => p.status === "pending" && p.requiresReview)).toBe(true);
+  expect(a.storyCards.find(c => c.id === "george")?.content).not.toContain(profileFact);
+  expect(a.storyCards.filter(c => ["one", "two"].includes(c.id)).every(c => c.content === "The library was founded in 1700.")).toBe(true);
+});
+
+it("Story Card toggle leaves historical pending proposals alone and applies only new eligible facts", async () => {
+  const { looseMemoryFixture } = await import("../test/looseMemory");
+  let { a } = looseMemoryFixture(); a.memoryAutoApprove.storyCard = false; a.storyCards = [];
+  a.messages[0].content = "Mira joined the council.";
+  a = await commitLooseCard(a, "(lore: Council membership = Mira joined the council.)");
+  const pending = structuredClone(a.activeState.memoryProposals);
+  a = adventureReducer(a, { type: "SET_MEMORY_AUTO_APPROVE", settings: { ...a.memoryAutoApprove, storyCard: true } });
+  expect(a.activeState.memoryProposals).toEqual(pending); expect(a.storyCards).toEqual([]);
+  a.messages[1].content = "The research team gained access to the library archives.";
+  a = await commitLooseCard(a, "(lore: Archive access = The research team gained access to the library archives.)", "narrator-2");
+  expect(a.activeState.memoryProposals.find(p => p.id === pending[0].id)).toEqual(pending[0]);
+  expect(a.activeState.memoryProposals.find(p => p.title === "Archive access")?.status).toBe("approved");
+});

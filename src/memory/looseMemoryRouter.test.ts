@@ -16,16 +16,16 @@ async function routed(text: string, mutate: (a: Adventure) => void = () => {}) {
   return { a, batch, result, checked };
 }
 const belief = "I believe the business can grow beyond individual customers.";
-function expectFinding(r: Awaited<ReturnType<typeof routed>>, kind: string, subtype: string, id: string | null, operation: string, proposalType: string) {
+function expectFinding(r: Awaited<ReturnType<typeof routed>>, kind: string, subtype: string, id: string | null, operation: string, proposalType: string, candidateOnly = kind === "storyCard" ? subtype === "character" || Boolean(r.result.diagnostics?.length) || r.result.findings[0]?.reason.startsWith("Unclassified") : kind !== "brain") {
   expect(r.result.rejected).toEqual([]);
   expect(r.result.findings).toHaveLength(1);
   const f = r.result.findings[0];
-  expect(f).toMatchObject({ kind, targetId: id, operation, candidateOnly: kind !== "brain",
+  expect(f).toMatchObject({ kind, targetId: id, operation, candidateOnly,
     evidenceQuotes: [{ messageId: "narrator-1", quote: r.a.messages[0].content }] });
   if (kind === "storyCard") expect(f.storyCardType).toBe(subtype);
   if (kind === "brain") expect(Object.keys(f.brainPatch!)).toEqual([subtype]);
   expect(r.checked.proposals).toHaveLength(1);
-  expect(r.checked.proposals[0].proposal).toMatchObject({ proposedType: proposalType, requiresReview: kind !== "brain" || Boolean(r.a.brains.find(b => b.id === id)?.protected) || r.a.semanticEvaluationSettings.requireApprovalForAutoUpdates, status: "pending" });
+  expect(r.checked.proposals[0].proposal).toMatchObject({ proposedType: proposalType, requiresReview: candidateOnly || Boolean(r.a.storyCards.find(c => c.id === id)?.protected) || Boolean(r.a.brains.find(b => b.id === id)?.protected) || r.a.semanticEvaluationSettings.requireApprovalForAutoUpdates, status: "pending" });
   expect(r.checked.proposals[0].proposal.targetId ?? null).toBe(id);
 }
 describe("Brain routing", () => {
@@ -121,6 +121,7 @@ describe("Story Card routing", () => {
   it("recovers an ordinary existing Character event as Lore requiring review", async () => {
     const r = await routed("(character: George Weasley = George agreed to reconvene Thursday.)");
     expectFinding(r, "storyCard", "lore", null, "create", "storyCard");
+    expect(r.result.findings[0].candidateOnly).toBe(true);
     expect(r.result.findings[0].identityChange).toBeUndefined();
     const claimed = reduce(r.a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: r.batch.checkpoints });
     const saved = reduce(claimed, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: r.batch.batchId, sources: [{ result: r.result, checkpoint: r.batch.checkpoints[0].checkpoint }] });
@@ -139,6 +140,7 @@ describe("Story Card routing", () => {
   });
   it("recovers an unclassified assignment as review-only Lore", async () => {
     const r = await routed("(Weasley Tattoo Business = Fred and George agreed to produce 96 rune tattoos tomorrow.)");
+    expect(r.result.findings[0].candidateOnly).toBe(true);
     expectFinding(r, "storyCard", "lore", "business", "append", "storyCard");
   });
 });
@@ -309,4 +311,26 @@ it("appends different facts about the same explicitly named relationship topic",
   const text = "(lore: Seth and Draconia's Public Exposure = Draconia publicly committed to supporting Seth's independent designs.)";
   const r = await routed(text, a => a.storyCards.push(makeStoryCard({ id: "exposure", type: "lore", title: "Seth and Draconia's Public Exposure", content: "They wore matching rings." })));
   expectFinding(r, "storyCard", "lore", "exposure", "append", "storyCard");
+});
+
+it.each(["create", "append"])("builds complete ordinary Lore metadata before normalization (%s)", async operation => {
+  const { normalizeSinglePassFinding } = await import("./singlePassMemory");
+  const r = await routed("(lore: Archive access = The research team gained access to the library archives.)", a => {
+    a.storyCards = operation === "append" ? [makeStoryCard({ id: "archives", type: "lore", title: "Archive access", content: "The library was founded in 1700." })] : [];
+    a.messages[0].content = "The research team gained access to the library archives.";
+  });
+  const f = r.result.findings[0];
+  expect(f).toMatchObject({ candidateOnly: false, operation, eventStatus: "unresolved" });
+  expect(f.suggestedTriggers!.length).toBeGreaterThan(0);
+  const diagnostics: string[] = [];
+  expect(normalizeSinglePassFinding(f, "narrator-1", r.a, diagnostics)?.candidateOnly).toBe(false);
+  expect(diagnostics).toEqual([]);
+  expect(r.checked.proposals[0].proposal).toMatchObject({ requiresReview: false, storyCardReview: { candidateOnly: false } });
+});
+
+it.each(["location", "custom"])("does not auto-approve permanent Character changes disguised as %s updates", async type => {
+  const content = "George permanently lost his fire magic.";
+  const r = await routed(`(storyCard.${type}: ${type === "location" ? "Great Hall" : "Rune Tattoo System"} = ${content})`, a => { a.messages[0].content = content; });
+  expect(r.checked.proposals[0].proposal.requiresReview).toBe(true);
+  expect(r.checked.proposals[0].proposal.rationale).toContain("Character profile changes require Character placement");
 });

@@ -234,9 +234,12 @@ export function equivalentStoryCardSuggestions(a: MemoryProposal, b: MemoryPropo
 export function mergeStoryCardSuggestions(existing: MemoryProposal, incoming: MemoryProposal): MemoryProposal {
   const preferModel = incoming.storyCardReview?.origin === "model" && !incoming.storyCardReview.candidateOnly;
   const chosen = preferModel ? incoming : existing;
+  // A merge is not a fresh review of the older evidence. Keep unresolved restrictions.
+  // Once both drafts have been independently cleared, no restriction is carried forward.
+  const candidateOnly = Boolean(existing.storyCardReview?.candidateOnly || incoming.storyCardReview?.candidateOnly);
   return { ...chosen, id: existing.id, status: existing.status, createdAt: existing.createdAt,
     sourceText: chosen.placementValidation ? chosen.sourceText : [...new Set([existing.sourceText, incoming.sourceText])].join("\n"),
-    storyCardReview: chosen.storyCardReview ? { ...chosen.storyCardReview,
+    storyCardReview: chosen.storyCardReview ? { ...chosen.storyCardReview, candidateOnly,
       evidenceQuotes: [existing.storyCardReview, incoming.storyCardReview].flatMap(review => review?.evidenceQuotes ?? [])
         .filter((quote, index, all) => all.findIndex(other => other.messageId === quote.messageId && other.quote === quote.quote) === index),
       additionalSources: [existing.storyCardReview, incoming.storyCardReview].flatMap(review => review ? [
@@ -244,7 +247,8 @@ export function mergeStoryCardSuggestions(existing: MemoryProposal, incoming: Me
         ...(review.additionalSources ?? []),
       ] : []).filter((source, index, all) => all.findIndex(other => other.id === source.id && other.content === source.content) === index),
       origin: existing.storyCardReview?.origin === incoming.storyCardReview?.origin ? chosen.storyCardReview.origin : "both" } : undefined,
-    requiresReview: chosen.requiresReview };
+    requiresReview: Boolean(existing.requiresReview || incoming.requiresReview || candidateOnly),
+    rationale: [...new Set([existing.rationale, incoming.rationale])].join(" ") };
 }
 
 /** A processed-source marker, invalidated by either side of the exchange changing. */

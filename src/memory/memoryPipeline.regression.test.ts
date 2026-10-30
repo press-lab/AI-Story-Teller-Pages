@@ -174,7 +174,8 @@ it("runs the six-result loose parser to router to validation to reducer producti
     sources: result.sources.map(result => ({ result, checkpoint: batch.checkpoints.find(c => c.sourceId === result.sourceId)!.checkpoint })) };
   a = adventureReducer(a, commit);
   expectSixLooseProposals(a, ids);
-  expect(a.storyCards).toEqual(originalCards); expect(a.brains.filter(b => b.id !== "brain-george")).toEqual(originalBrains.filter(b => b.id !== "brain-george"));
+  expect(a.storyCards.find(c => c.id === "business")?.content).toContain("96 rune tattoos");
+  expect(a.storyCards.filter(c => c.id !== "business" && originalCards.some(old => old.id === c.id))).toEqual(originalCards.filter(c => c.id !== "business")); expect(a.brains.filter(b => b.id !== "brain-george")).toEqual(originalBrains.filter(b => b.id !== "brain-george"));
   expect(Object.values(a.brains.find(b => b.id === "brain-george")!.thoughts)).toEqual([expect.stringContaining("I believe the business can grow beyond individual customers.")]); expect(a.components).toEqual(originalComponents);
   expect(adventureReducer(a, commit)).toBe(a);
   expect(send).toHaveBeenCalledTimes(1); expect(send.mock.calls[0][3]).toBe("singlePass");

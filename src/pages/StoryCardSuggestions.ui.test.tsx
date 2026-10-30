@@ -431,3 +431,42 @@ it("retains confirmed pending corrections across the actual JSON export/import b
     expect(loreDateConfirmed(imported, proposal)).toBe(true);
   }
 });
+
+
+it("keeps the Story Cards toggle bound and persisted, with auto-approved history and understandable pending review", async () => {
+  const { looseMemoryFixture } = await import("../test/looseMemory");
+  const { prepareSinglePassMemoryBatch, parseSinglePassMemoryResponse } = await import("../memory/singlePassMemory");
+  let { a } = looseMemoryFixture(); a.storyCards = [];
+  a.messages[0].content = "The research team gained access to the library archives. Eleanor is a sixth-year Ravenclaw.";
+  const batch = await prepareSinglePassMemoryBatch(a, ["narrator-1"]);
+  const result = parseSinglePassMemoryResponse("(lore: Archive access = The research team gained access to the library archives.)\n(character: Eleanor Vale = Eleanor is a sixth-year Ravenclaw.)",
+    ["narrator-1"], a, batch.outputAliases, batch).sources[0];
+  a = adventureReducer(a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
+  a = adventureReducer(a, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId, sources: [{ result, checkpoint: batch.checkpoints[0].checkpoint }] });
+  function ApprovalSettings({ initial }: { initial: Adventure }) {
+    const [adventure, dispatch] = useReducer(adventureReducer, initial);
+    return <><MemoryInboxPage adventure={adventure} dispatch={dispatch} /><output data-testid="approval-state">{JSON.stringify(adventure)}</output></>;
+  }
+  const page = render(<ApprovalSettings initial={a} />); const user = userEvent.setup();
+  expect(screen.getByLabelText("Memory suggestion counts")).toHaveTextContent("1 pending");
+  const history = screen.getByText("History (1)").closest("details")!;
+  expect(history).toHaveTextContent("Archive access"); expect(history).toHaveTextContent("approved");
+  expect(screen.getAllByText(/Character profile changes require author review/).length).toBeGreaterThan(0);
+  await user.click(screen.getByText("Memory Approval Rules"));
+  const toggle = screen.getByRole("checkbox", { name: "Story Cards" });
+  expect(toggle).toBeChecked();
+  expect(screen.getByText("Story Cards: automatically applies validated suggestions when enabled. Protected, ambiguous, conflicting, and uncertain suggestions still require review.")).toBeInTheDocument();
+  await user.click(toggle); expect(toggle).not.toBeChecked();
+  const disabled = JSON.parse(screen.getByTestId("approval-state").textContent!) as Adventure;
+  expect(disabled.memoryAutoApprove.storyCard).toBe(false);
+  await saveAdventure(disabled);
+  const loaded = normalizeAdventure((await getAdventure(disabled.id))!);
+  page.unmount(); render(<ApprovalSettings initial={loaded} />);
+  await user.click(screen.getByText("Memory Approval Rules"));
+  expect(screen.getByRole("checkbox", { name: "Story Cards" })).not.toBeChecked();
+  await user.click(screen.getByRole("checkbox", { name: "Story Cards" }));
+  expect(JSON.parse(screen.getByTestId("approval-state").textContent!).activeState.memoryProposals.find((p: { title: string }) => p.title === "Eleanor Vale").status).toBe("pending");
+  const pending = screen.getByRole("region", { name: /CREATE character: Eleanor Vale suggestions/i });
+  await user.click(within(pending).getByRole("button", { name: "Approve" }));
+  expect(JSON.parse(screen.getByTestId("approval-state").textContent!).storyCards.some((c: { title: string }) => c.title === "Eleanor Vale")).toBe(true);
+});

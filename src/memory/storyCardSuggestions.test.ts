@@ -273,3 +273,19 @@ it("attaches explicit source chronology instead of stale recorded chronology wit
     lore: { occurredAt: { date: "2001-09-04" }, lastChangedAt: { date: "2001-09-04" } } });
   expect(state.messages[0].storyTime?.date).toBe("2001-09-02");
 });
+
+
+it("merging clean findings preserves unresolved candidate or destination review, but adds none after both are cleared", async () => {
+  const { mergeStoryCardSuggestions } = await import("./storyCardSuggestions");
+  const a = seed(); a.messages = [{ id: "source", role: "assistant", content: "Mira joined the council.", createdAt: "2026-01-01" }];
+  const clean = makeStoryCardSuggestion(a, "source", a.messages[0].content, { title: "Council membership", content: a.messages[0].content,
+    evidence: a.messages[0].content, reason: "Validated source.", type: "lore", candidateOnly: false, evidenceReviewed: true, origin: "model" });
+  for (const candidateOnly of [false, true]) {
+    const uncertain = { ...clean, id: "old-pending", requiresReview: true, rationale: candidateOnly ? "Recovered evidence." : "Ambiguous destination.",
+      storyCardReview: { ...clean.storyCardReview!, candidateOnly } };
+    const merged = mergeStoryCardSuggestions(uncertain, clean);
+    expect(merged).toMatchObject({ id: "old-pending", status: "pending", requiresReview: true, storyCardReview: { candidateOnly } });
+    expect(merged.rationale).toContain(uncertain.rationale);
+  }
+  expect(mergeStoryCardSuggestions(clean, clean)).toMatchObject({ requiresReview: false, storyCardReview: { candidateOnly: false } });
+});

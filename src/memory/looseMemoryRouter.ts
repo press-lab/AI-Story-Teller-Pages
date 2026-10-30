@@ -5,6 +5,7 @@ import { normalizeSinglePassFinding } from "./singlePassMemory";
 import { validateSinglePassSource } from "./singlePassMemoryValidation";
 import { safeLoreAppendTarget, storyCardTargets } from "./storyCardSuggestions";
 import { matchingStoryCardEntities, characterParticipants } from "./storyCardEntities";
+import { generatedStoryCardTriggers } from "./resolveMemoryTarget";
 import { factsCovered } from "./factCoverage";
 
 const normalize = (s: string) => s.normalize("NFKC").toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
@@ -106,7 +107,9 @@ export function buildLooseFinding(a: Adventure, source: Source, op: LooseMemoryO
   if (!narrator) return undefined;
   const evidenceQuotes = [{ messageId: narrator.id, quote: narrator.content }];
   const kind = destination.category.category === "component" ? destination.category.subtype as SinglePassMemoryFinding["kind"] : destination.category.category;
-  const base: SinglePassMemoryFinding = { kind, targetId: destination.targetId, title: op.subject, candidateOnly: kind !== "brain",
+  const base: SinglePassMemoryFinding = { kind, targetId: destination.targetId, title: op.subject, candidateOnly: kind === "storyCard"
+    ? op.category === "unclassified" || destination.category.subtype === "character" || Boolean(destination.diagnostic)
+    : kind !== "brain",
     reason: destination.diagnostic ?? (op.category === "unclassified" ? "Unclassified assignment recovered as review-required Lore." : "Extracted factual candidate; narrator provenance attached locally."),
     evidenceQuotes, operation: destination.operation };
   if (kind === "storyCard" && destination.category.subtype === "lore" && !destination.targetId
@@ -129,6 +132,7 @@ export function buildLooseFinding(a: Adventure, source: Source, op: LooseMemoryO
       base.participants = characterParticipants(a.storyCards, op.content);
       base.operation = card ? "append" : "create";
       base.memoryMode = card?.memoryMode ?? "static";
+      base.suggestedTriggers = generatedStoryCardTriggers(a, base.title, op.content, undefined, card?.id, base.memoryMode, base.storyCardType);
       // An attached source proves provenance, not completion. Preserve all factual modality in content.
       base.eventStatus = "unresolved";
       base.destinationCandidates = destination.candidates;

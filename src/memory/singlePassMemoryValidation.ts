@@ -1,8 +1,9 @@
+import { storyCardMeaningReviewReason } from "./storyCardMeaningReview";
 import { validateLoreChronology } from "./validateLoreChronology";
 import type { Adventure, MemoryProposal, SinglePassMemoryCheckpoint, SinglePassMemoryFinding, SinglePassMemorySourceResult } from "../types/adventure";
 import { bindPlacement, characterProfileChangeError, placementValidationError } from "./storyCardPlacement";
 import { makeStoryCardSuggestion, storyCardTargets } from "./storyCardSuggestions";
-import { proposalCoverage, loreNovelty, factsCovered, factKey, facts } from "./factCoverage";
+import { proposalCoverage, loreNovelty, factsCovered, factKey, facts, loreTitleKey } from "./factCoverage";
 import { memoryEvidenceWindow } from "./memoryEvidenceWindow";
 import { memoryTargetSnapshot } from "./memoryCycleState";
 import { singlePassFindingSchemaError } from "./singlePassMemory";
@@ -32,6 +33,7 @@ export function validateSinglePassFinding(a: Adventure, sourceId: string, checkp
     const words = f.content!.trim().split(/\s+/).length;
     if (words > 120) return "Story Card delta exceeds 120 words.";
     if (words > 70 && f.candidateOnly !== true) return "Story Card delta exceeds 70 words; manual review required.";
+    if (f.identityChange && f.storyCardType !== "character") return "Character profile corrections require Character placement and author review.";
     const target = a.storyCards.find(c => c.id === f.targetId);
     if (f.targetId && (!target || target.type !== f.storyCardType || f.operation !== "append")) return "Invalid destination type or append operation.";
     if (!f.targetId && f.operation !== "create") return "New Story Cards require create.";
@@ -61,23 +63,32 @@ export function toSinglePassProposal(a: Adventure, sourceId: string, checkpoint:
   const target = f.targetId ? memoryTargetSnapshot(a, targetKind, f.targetId) : undefined;
   const protectedTarget = f.kind === "storyCard" ? a.storyCards.find(c => c.id === f.targetId)?.protected
     : f.kind === "brain" ? a.brains.find(b => b.id === f.targetId)?.protected : a.components.find(c => c.id === f.targetId)?.protected;
-  // Private interpretation is intended Brain content; these cues only restrict other memory types.
-  const interpretive = f.kind !== "brain" && /\b(attempt(?:s|ed|ing)?|kiss(?:es|ed|ing)?|romantic|romance|date|yesterday|last week|previously|completed event|invitation|invited|withdrawn|withdrew|unconfirmed|relationship|privately|secretly|felt|feels?|thought|knew|learned|realized|understood|interprets?|believes?|assumes?|might|perhaps|uncertain|unconfirmed)\b/i.test(`${f.content ?? ""} ${JSON.stringify(f.brainPatch ?? {})} ${f.reason} ${f.evidenceQuotes.map(q => q.quote).join(" ")}`);
+  const meaningReason = f.kind === "storyCard" ? storyCardMeaningReviewReason(f, checkpoint.evidence
+    .filter(e => a.messages.some(m => m.id === e.id && m.role === "assistant"))) : undefined;
   const globalApprovalRequired = a.semanticEvaluationSettings.requireApprovalForAutoUpdates;
-  const mandatoryReview = Boolean(protectedTarget) || globalApprovalRequired || f.candidateOnly;
-  const review = f.kind === "brain" ? mandatoryReview
-    : mandatoryReview || f.kind === "immediateMomentum" || f.storyCardType === "character" || f.eventStatus === "unresolved" || interpretive;
+  const reviewReasons = [
+    protectedTarget ? "Protected Story Card or memory destination." : undefined,
+    globalApprovalRequired ? "Global manual approval enabled." : undefined,
+    f.candidateOnly ? "Uncertain finding or recovered metadata: " + f.reason : undefined,
+    f.kind === "storyCard" && f.storyCardType === "character" ? "Character profile changes require author review." : undefined,
+    meaningReason,
+  ].filter((reason): reason is string => Boolean(reason));
+  // Preserve the existing conservative component policy; Brain approval is independent.
+  const componentInterpretive = !["brain", "storyCard"].includes(f.kind) && /\b(attempt(?:s|ed|ing)?|kiss(?:es|ed|ing)?|romantic|romance|date|yesterday|last week|previously|completed event|invitation|invited|withdrawn|withdrew|unconfirmed|relationship|privately|secretly|felt|feels?|thought|knew|learned|realized|understood|interprets?|believes?|assumes?|might|perhaps|uncertain|unconfirmed)\b/i.test(`${f.content ?? ""} ${f.reason} ${f.evidenceQuotes.map(q => q.quote).join(" ")}`);
+  const review = reviewReasons.length > 0 || f.kind === "immediateMomentum" || componentInterpretive;
   let p: MemoryProposal;
   if (f.kind === "storyCard") {
     p = makeStoryCardSuggestion(a, sourceId, checkpoint.sourceContent, { title: f.title, content: f.content!, evidence: f.evidenceQuotes.map(q => q.quote).join("\n"),
       reason: f.reason, type: f.storyCardType, targetId: f.targetId ?? undefined, triggers: f.suggestedTriggers, participants: f.participants,
-      candidateOnly: review, evidenceReviewed: true, origin: "model" });
+      candidateOnly: f.candidateOnly, evidenceReviewed: true, origin: "model" });
     // Routing chooses placement. The helper supplies chronology and established trigger generation.
     const choices = f.destinationCandidates ?? storyCardTargets(a, { title: f.title, content: f.content!, participants: f.participants, targetId: f.targetId ?? undefined, type: f.storyCardType }).filter(id => a.storyCards.some(c => c.id === id && c.type === f.storyCardType));
+    if (!f.targetId && choices.length) reviewReasons.push("Ambiguous destination; select an existing Story Card or confirm creation.");
+    if (!f.targetId && a.storyCards.some(c => c.type === f.storyCardType && loreTitleKey(c.title) === loreTitleKey(f.title))) reviewReasons.push("Existing Story Card title conflict.");
     p = { ...p, content: f.content!, title: f.title, targetId: f.targetId ?? undefined, storyCardType: f.storyCardType, memoryMode: f.memoryMode,
-      cardOperation: f.operation === "append" ? "append" : "create", appendContent: f.operation === "append" ? true : undefined, requiresReview: review || choices.length > 1 || (!f.targetId && choices.length > 0),
+      cardOperation: f.operation === "append" ? "append" : "create", appendContent: f.operation === "append" ? true : undefined, requiresReview: review || reviewReasons.length > 0,
       lore: f.storyCardType === "lore" ? { ...p.lore, status: f.eventStatus!, sourceMessageIds: ids } : undefined };
-    if (p.storyCardReview) p.storyCardReview = { ...p.storyCardReview, candidateOnly: Boolean(p.requiresReview), operation: f.operation === "append" ? "update" : "create",
+    if (p.storyCardReview) p.storyCardReview = { ...p.storyCardReview, candidateOnly: f.candidateOnly, operation: f.operation === "append" ? "update" : "create",
       targetCandidates: choices,
       additionalSources: checkpoint.evidence.filter(m => ids.includes(m.id) && m.id !== sourceId) };
     p = bindPlacement(a, p, { kind: f.operation === "append" ? "append" : "create", reason: f.reason, newFact: f.content!, identityChange: f.identityChange }, ids);
@@ -89,7 +100,8 @@ export function toSinglePassProposal(a: Adventure, sourceId: string, checkpoint:
       suggestedTriggers: [], confidence: review ? 0.45 : 0.8, rationale: f.reason, status: "pending", requiresReview: review, createdAt: nowIso(), updatedAt: nowIso() };
   }
   p.evaluationSource = { messages: checkpoint.evidence, target };
-  if (validateLoreChronology(a, p).status === "conflict") p.requiresReview = true;
+  if (validateLoreChronology(a, p).status === "conflict") { p.requiresReview = true; reviewReasons.push("Date conflict; confirm the event date."); }
+  if (f.kind === "storyCard" && reviewReasons.length) p.rationale += " Review required: " + reviewReasons.join(" ");
   return p;
 }
 export function validateSinglePassSource(a: Adventure, result: SinglePassMemorySourceResult, checkpoint: SinglePassMemoryCheckpoint) {

@@ -50,8 +50,8 @@ it("requires the Character identity-change evidence contract", async () => {
 
 it.each([
   ["An explicit kiss attempt was withdrawn before contact.", "They kissed.", "completed"],
-  ["Hermione accepted tomorrow's research dinner invitation; dinner has not occurred.", "Hermione accepted the research dinner invitation.", "completed"],
-  ["Hermione privately interpreted the offer as a sign of trust.", "Hermione secretly believed the offer meant trust.", "unresolved"],
+  ["Hermione accepted tomorrow's research dinner invitation; dinner has not occurred.", "Hermione attended the research dinner.", "completed"],
+  ["Hermione did not disclose her thoughts about the offer.", "Hermione secretly believed the offer meant trust.", "unresolved"],
 ])("holds unsupported or interpretive certainty for author review: %s", async (evidence, content, eventStatus) => {
   let { a, ids } = singlePassFixture(1); a.memoryAutoApprove.storyCard = true; a.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
   a.messages.find(m => m.id === ids[0])!.content = evidence;
@@ -93,7 +93,8 @@ it("keeps separate Hermione developments and an attempted kiss distinct without 
   ].map(f => ({ ...f, participants: ["Hermione"], evidenceQuotes: [{ messageId: ids[0], quote: evidence }] }));
   a = reduce(a, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId, sources: [{ checkpoint: batch.checkpoints[0].checkpoint, result: { sourceId: ids[0], findings, rejected: [] } }] });
   expect(a.activeState.memoryProposals).toHaveLength(2);
-  expect(a.activeState.memoryProposals.every(p => p.storyCardType === "lore" && p.status === "pending")).toBe(true);
+  expect(a.activeState.memoryProposals.find(p => p.title === "Hermione's research dinner agreement")?.status).toBe("approved");
+  expect(a.activeState.memoryProposals.find(p => p.title === "Hermione's withdrawn kiss attempt")?.status).toBe("pending");
   expect(a.activeState.memoryProposals.some(p => /romantic date|completed kiss/.test(p.content))).toBe(false);
 });
 it("keeps explicitly uncertain absent NPC knowledge and past-event pressure under review", async () => {
@@ -422,4 +423,64 @@ it.each([false, true])("Brain auto-approval and failed sibling checkpoints work 
     const failed = reduce(claimed, { type: "FAIL_SINGLE_PASS_MEMORY_BATCH", batchId: retry.batchId, sourceIds: ids, reason: "offline interruption" });
     expect(failed.messages[0].memoryEvaluation?.singlePass).toMatchObject({ ...retry.checkpoints[0].checkpoint, status: "failed", failureReason: "offline interruption" });
   } finally { debugLogging.MEMORY_DEBUG_LOGGING = true; }
+});
+
+
+import { parseLooseMemoryOperations } from "./looseMemoryParser";
+import { routeLooseMemoryOperations } from "./looseMemoryRouter";
+import { looseMemoryFixture } from "../test/looseMemory";
+
+it.each([
+  ["Fred and George agreed to produce 96 rune tattoos tomorrow.", "Fred and George agreed to produce 96 rune tattoos tomorrow.", false],
+  ["The research team gained access to the library archives.", "The research team gained access to the library archives.", false],
+  ["Draconia learned the tattoos fade after several days.", "Draconia learned the tattoos fade after several days.", false],
+  ["Both confirmed their agreement: the relationship is now exclusive.", "The relationship is now exclusive.", false],
+  ["They shared their first kiss.", "They shared their first kiss.", false],
+  ["Hermione accepted the invitation to meet.", "Hermione accepted the invitation to meet.", false],
+  ["He attempted to kiss her but stopped before contact.", "They kissed.", true],
+  ["Mira planned to open the sealed gate tomorrow.", "Mira opened the sealed gate.", true],
+  ["They never kissed; he stopped before contact.", "They kissed.", true],
+  ["Yesterday they shared their first kiss.", "Yesterday they shared their first kiss.", false],
+  ["They agreed to produce tattoos tomorrow. Today they shared their first kiss.", "They shared their first kiss.", false],
+  ["They agreed to meet tomorrow.", "They attended their meeting.", true],
+  ["He attempted to kiss her but stopped before contact. They agreed to meet tomorrow.", "They kissed and agreed to meet tomorrow.", true],
+  ["He failed to kiss her.", "They kissed.", true],
+  ["A rumor suggests the headmaster stole the relic.", "The headmaster stole the relic.", true],
+  ["Draco was absent and nobody told him about the agreement.", "Draco secretly knew about the agreement.", true],
+  ["Perhaps the relic is cursed.", "The relic might be cursed.", true],
+])("classifies actual loose findings using concrete source risk: %s", async (evidence, content, requiresReview) => {
+  const { a, ids } = looseMemoryFixture(); a.storyCards = []; a.messages[0].content = evidence;
+  const batch = await prepareSinglePassMemoryBatch(a, [ids[0]]);
+  const result = routeLooseMemoryOperations(a, batch, parseLooseMemoryOperations(`(lore: Relationship research development = ${content})`, ["S1"])).sources[0];
+  const checked = validateSinglePassSource(a, result, batch.checkpoints[0].checkpoint);
+  expect(checked.rejected).toEqual([]);
+  expect(checked.proposals).toHaveLength(1);
+  const p = checked.proposals[0].proposal;
+  expect(p).toMatchObject({ requiresReview, storyCardReview: { candidateOnly: false }, lore: { status: "unresolved" } });
+  if (requiresReview) expect(p.rationale).toMatch(/Unsupported|Uncertain/);
+});
+
+it.each(["global", "protected", "candidate", "recovery"])("separates factual uncertainty from %s review restrictions", async condition => {
+  const { a, ids } = looseMemoryFixture();
+  a.messages[0].content = "The research team gained access to the library archives.";
+  a.storyCards = [makeStoryCard({ id: "archive", type: "lore", title: "Archive access", content: "The library was founded in 1700.", protected: condition === "protected" })];
+  a.semanticEvaluationSettings.requireApprovalForAutoUpdates = condition === "global";
+  const batch = await prepareSinglePassMemoryBatch(a, [ids[0]]);
+  const result = routeLooseMemoryOperations(a, batch, parseLooseMemoryOperations("(lore: Archive access = The research team gained access to the library archives.)", ["S1"])).sources[0];
+  if (condition === "candidate") result.findings[0].candidateOnly = true;
+  if (condition === "recovery") {
+    const incomplete = { ...result.findings[0], reason: undefined };
+    result.findings[0] = normalizeSinglePassFinding(incomplete, ids[0], a)!;
+  }
+  const p = validateSinglePassSource(a, result, batch.checkpoints[0].checkpoint).proposals[0].proposal;
+  expect(p).toMatchObject({ requiresReview: true, storyCardReview: { candidateOnly: ["candidate", "recovery"].includes(condition) } });
+});
+
+it("retains advisory choices without overriding an authoritative exact APPEND", async () => {
+  const { a, ids } = looseMemoryFixture();
+  const batch = await prepareSinglePassMemoryBatch(a, [ids[0]]);
+  const result = routeLooseMemoryOperations(a, batch, parseLooseMemoryOperations("(lore: Weasley Tattoo Business = Fred and George agreed to produce 96 rune tattoos tomorrow.)", ["S1"])).sources[0];
+  result.findings[0].destinationCandidates = ["business", "advisory-other"];
+  const p = validateSinglePassSource(a, result, batch.checkpoints[0].checkpoint).proposals[0].proposal;
+  expect(p).toMatchObject({ requiresReview: false, targetId: "business", storyCardReview: { candidateOnly: false, targetCandidates: ["business", "advisory-other"] } });
 });

@@ -247,6 +247,7 @@ function MemorySuggestionsPage({ adventure, dispatch, onRegenerateProposal, onRe
           <CheckboxField label="Story Cards" checked={autoApprove.storyCard} onChange={(storyCard) => setAutoApprove({ storyCard })} />
           <CheckboxField label="Characters" checked={autoApprove.brainUpdate} onChange={(v) => setAutoApprove({ brainUpdate: v })} />
         </div>
+        <p className="muted">Story Cards: automatically applies validated suggestions when enabled. Protected, ambiguous, conflicting, and uncertain suggestions still require review.</p>
         <p className="muted">Settings controls evaluation frequency. Component and Brain controls set their cooldowns. Story Cards use relevance-based selection.</p>
       </details>
 
