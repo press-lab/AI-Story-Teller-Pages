@@ -1,5 +1,5 @@
 import { MEMORY_HISTORY_COMPRESSION_ENABLED } from "../config/memoryHistoryCompression";
-import { Blob as NodeBlob } from "node:buffer";
+import { Blob as NodeBlob, Buffer as NodeBuffer } from "node:buffer";
 /** @vitest-environment jsdom */
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
@@ -21,6 +21,9 @@ it.each([false, true])("disabled compression with logging %s performs no scans, 
   expect(MEMORY_HISTORY_COMPRESSION_ENABLED).toBe(false);
   logging.MEMORY_DEBUG_LOGGING = enabled;
   vi.stubGlobal("Blob", NodeBlob);
+  // Keep real SHA-256 verification; adapt JSDOM buffers for Node 20 Web Crypto.
+  const digest = crypto.subtle.digest.bind(crypto.subtle);
+  vi.spyOn(crypto.subtle, "digest").mockImplementation((algorithm, data) => digest(algorithm, NodeBuffer.from(data as ArrayBuffer)));
   const initial = createDefaultAdventure();
   const proposal = makeMemoryProposal({ status: "approved" });
   initial.activeState.memoryProposals = [proposal];

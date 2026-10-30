@@ -1,4 +1,4 @@
-import { Blob as NodeBlob } from "node:buffer";
+import { Blob as NodeBlob, Buffer as NodeBuffer } from "node:buffer";
 import { withArchivedRecord } from "../test/archivedMemoryFixture";
 import { makeMemoryProposal } from "../test/goldenAdventure";
 import { decompressHistory } from "../memory/historyCodec";
@@ -149,6 +149,9 @@ describe("adventureDb IndexedDB persistence", () => {
 
   it("preserves historical archive bytes across ordinary saves and never compresses new saves", async () => {
     vi.stubGlobal("Blob", NodeBlob);
+    // Keep real SHA-256 verification; adapt JSDOM buffers for Node 20 Web Crypto.
+    const digest = crypto.subtle.digest.bind(crypto.subtle);
+    vi.spyOn(crypto.subtle, "digest").mockImplementation((algorithm, data) => digest(algorithm, NodeBuffer.from(data as ArrayBuffer)));
     try {
       const a = createDefaultAdventure("Existing compressed save");
       const p = makeMemoryProposal({ status: "approved" });
@@ -165,7 +168,7 @@ describe("adventureDb IndexedDB persistence", () => {
       const fresh = createDefaultAdventure("New save"); fresh.activeState.memoryProposals = [p];
       await saveAdventure(fresh);
       expect((await getAdventure(fresh.id))!.activeState.compressedMemoryHistory).toBeUndefined();
-    } finally { vi.unstubAllGlobals(); }
+    } finally { vi.restoreAllMocks(); vi.unstubAllGlobals(); }
   });
 
 });
