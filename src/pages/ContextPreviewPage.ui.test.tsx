@@ -137,3 +137,14 @@ describe("ContextPreviewPage condense", () => {
     expect(screen.getByRole("button", { name: "Delete Duplicate" })).toBeInTheDocument();
   });
 });
+
+it("shows the source and matched phrase of a chained Story Card in Context Decisions", () => {
+  const adventure = createDefaultAdventure("Chained preview");
+  adventure.components = [makeComponent({ title: "Plot Essentials", type: "plotEssentials", content: "Fenchurch is a magical bird." })];
+  adventure.storyCards = [makeStoryCard({ title: "Fenchurch", content: "An enchanted bird.", keys: ["Fenchurch"] })];
+  const contextResult = buildContext(adventure);
+  render(<ContextPreviewPage adventure={adventure} dispatch={vi.fn()} contextResult={contextResult} onBuildContext={vi.fn()} providerConfig={providerConfig} />);
+  const decisions = screen.getByText(/^Context Decisions/).closest("details")!;
+  expect(within(decisions).getByText(/chained_trigger/)).toHaveTextContent("One-hop Component trigger: Plot Essentials → Fenchurch; matched ‘Fenchurch’.");
+  cleanup();
+});

@@ -3,6 +3,7 @@ import type { Adventure, MemoryPriorityMode, TokenBudgetSettings } from "../type
 import { createDefaultAdventure, defaultNarrationRulesContent, makeBrain, makeComponent, makeStoryCard } from "../state/defaults";
 import { approximateTokenCount } from "../tokenizer/approximateTokenCount";
 import { goldenAdventure, makeMemoryProposal } from "../test/goldenAdventure";
+import { resolveChainedStoryCardTriggers } from "./chainedStoryCardTriggers";
 import { buildContext, buildMemoryTagInstruction, extractInlineThoughts } from "./contextBuilder";
 
 function adventureForContext(): Adventure {
@@ -906,4 +907,192 @@ it.each(["included", "dropped", "truncated", "unrelated", "pinned"])("exposes pr
   expect(context.sections.find(s => s.id === "storyCards")!.items.some(i => i.id === id)).toBe(!["dropped", "unrelated"].includes(state));
   expect(context.excludedItems.some(i => i.id === id && i.reason === "budget_exceeded")).toBe(state === "dropped");
   expect(context.decisions.some(i => i.itemId === id && i.action === "truncated")).toBe(state === "truncated");
+});
+
+describe("one-hop chained Story Cards", () => {
+  function fixture(): Adventure {
+    const adventure = createDefaultAdventure("Chained retrieval");
+    adventure.components = [];
+    adventure.brains = [];
+    adventure.messages = [];
+    adventure.openingScene = "";
+    adventure.tokenBudgetSettings.maxContextTokens = 10000;
+    adventure.storyCards = [
+      makeStoryCard({ id: "fenchurch", title: "Fenchurch", content: "Fenchurch is an enchanted bird containing a Horcrux.", keys: ["Fenchurch"] }),
+      makeStoryCard({ id: "horcrux", title: "Horcrux", content: "Horcruxes contain fragmented souls. Voldemort made one.", keys: ["Horcrux"] }),
+      makeStoryCard({ id: "voldemort", title: "Voldemort", content: "An unknown wizard.", keys: ["Voldemort"] }),
+    ];
+    return adventure;
+  }
+  const build = (adventure: Adventure, currentInput = "Draconia picks up Fenchurch.") => buildContext(adventure, { currentInput });
+  const cards = (result: ReturnType<typeof build>) => result.sections.find(s => s.id === "storyCards")!.items;
+
+  it("loads one hop, preserves direct decisions and arc signals, and never mutates saved data", () => {
+    const adventure = fixture();
+    const before = JSON.stringify(adventure);
+    const result = build(adventure);
+    expect(cards(result).map(c => c.id).sort()).toEqual(["fenchurch", "horcrux"]);
+    expect(result.messages[0].content).toContain("Horcruxes contain fragmented souls");
+    expect(result.triggeredThreadIds).toEqual(["fenchurch"]);
+    expect(result.decisions).toContainEqual(expect.objectContaining({ itemId: "fenchurch", action: "included", reason: "included" }));
+    expect(result.decisions).toContainEqual(expect.objectContaining({ itemId: "horcrux", action: "included", reason: "chained_trigger", detail: expect.stringContaining("Fenchurch → Horcrux") }));
+    expect(result.excludedItems.some(c => c.id === "horcrux")).toBe(false);
+    expect(build(adventure)).toEqual(result);
+    expect(JSON.stringify(adventure)).toBe(before);
+  });
+
+  it.each(["narrationRules", "aiInstructions", "plotEssentials", "activePressure", "currentArc", "authorNote", "custom"] as const)("uses included %s rendered content", type => {
+    const adventure = fixture();
+    adventure.components = [makeComponent({ id: "source", type, title: "Plot Essentials", content: "Fenchurch is a magical bird.", alwaysOn: true })];
+    const result = build(adventure, "Wait.");
+    expect(cards(result).map(c => c.id)).toEqual(["fenchurch"]);
+    expect(result.decisions).toContainEqual(expect.objectContaining({ itemId: "fenchurch", reason: "chained_trigger", detail: expect.stringContaining("Component trigger: Plot Essentials") }));
+  });
+
+  it("deduplicates destinations and prefers Story Card sources deterministically", () => {
+    const adventure = fixture();
+    adventure.components = ["b", "a"].map(id => makeComponent({ title: "Source " + id, id, content: "Horcrux", alwaysOn: true }));
+    const result = build(adventure);
+    expect(cards(result).filter(c => c.id === "horcrux")).toHaveLength(1);
+    const inclusions = result.decisions.filter(d => d.itemId === "horcrux" && d.action === "included");
+    expect(inclusions).toHaveLength(1);
+    expect(inclusions[0].detail).toContain("Story Card trigger: Fenchurch");
+  });
+
+  it("protects inactive/manual destinations and excludes inactive or unloaded sources and metadata", () => {
+    const adventure = fixture();
+    adventure.storyCards[1].active = false;
+    adventure.storyCards[2].inclusionPolicy = "manual";
+    adventure.storyCards[0].content = "Horcrux Voldemort";
+    expect(cards(build(adventure)).map(c => c.id)).toEqual(["fenchurch"]);
+    expect(build(adventure).excludedItems).toContainEqual(expect.objectContaining({ id: "horcrux", reason: "inactive" }));
+    adventure.components = [
+      makeComponent({ title: "Source", content: "Fenchurch", active: false, alwaysOn: true }),
+      makeComponent({ title: "Source", content: "Fenchurch", type: "custom", inclusionPolicy: "manual", alwaysOn: false, pinned: false }),
+      makeComponent({ title: "Fenchurch", content: "Nothing relevant", alwaysOn: true }),
+    ];
+    adventure.activeState.nextTurnNote = { ...adventure.activeState.nextTurnNote, active: true, content: "Fenchurch" };
+    expect(cards(build(adventure, "Wait."))).toEqual([]);
+  });
+
+  it.each([
+    ["keyword", "HORCRUX", "Horcrux"],
+    ["phrase", "a soul fragment lives here", "soul fragment"],
+    ["regex", "SOUL-42", "soul-\\d+"],
+  ] as const)("reuses %s matching", (matchType, content, key) => {
+    const adventure = fixture();
+    adventure.storyCards[0].content = content;
+    adventure.storyCards[1].title = "Destination";
+    adventure.storyCards[1].keys = [key];
+    adventure.storyCards[1].matchType = matchType;
+    expect(cards(build(adventure)).map(c => c.id)).toContain("horcrux");
+  });
+
+  it("preserves historical participant/cue specificity and the three-event cap per source", () => {
+    const adventure = fixture();
+    adventure.storyCards[0].type = "character";
+    adventure.storyCards = [adventure.storyCards[0], ...Array.from({ length: 4 }, (_, i) => makeStoryCard({
+      id: `event-${i}`, title: `Old event ${i}`, type: "lore", memoryMode: "historical", keys: ["Fenchurch"], content: "A past promise.", priority: i,
+      eventMemory: { kind: "commitment", participants: ["Fenchurch"], recallCues: ["our promise"], sourceMessageIds: [] },
+    }))];
+    adventure.storyCards[0].content = "Fenchurch rests.";
+    expect(cards(build(adventure))).toHaveLength(1);
+    adventure.storyCards[0].content = "Fenchurch remembers our promise.";
+    const result = build(adventure);
+    expect(cards(result).map(c => c.id).sort()).toEqual(["event-1", "event-2", "event-3", "fenchurch"]);
+    expect(cards(result).filter(c => c.id.startsWith("event")).every(c => c.content.startsWith("Historical reference;"))).toBe(true);
+  });
+
+  it("caps additional cards at six with source type, priority, and ID ordering", () => {
+    const adventure = fixture();
+    adventure.storyCards[0].content = "tokenA tokenB tokenC tokenD tokenE tokenF tokenG";
+    adventure.storyCards = [adventure.storyCards[0], ..."ABCDEFG".split("").reverse().map(letter => makeStoryCard({ id: letter, title: `token${letter}`, content: "Details.", priority: 10 }))];
+    adventure.components = [makeComponent({ title: "Source", content: "ComponentOnly", alwaysOn: true })];
+    adventure.storyCards.push(makeStoryCard({ id: "component-only", title: "ComponentOnly", priority: 999, content: "Details." }));
+    expect(cards(build(adventure)).map(c => c.id).sort()).toEqual(["A", "B", "C", "D", "E", "F", "fenchurch"]);
+  });
+
+  it("skips oversized candidates, admits fitting ones, and preserves every baseline item", () => {
+    const adventure = fixture();
+    adventure.storyCards[0].content = "Horcrux Voldemort";
+    adventure.storyCards[1].content = "Huge detail ".repeat(300);
+    adventure.storyCards[1].priority = 100;
+    const baselineAdventure = { ...adventure, storyCards: [adventure.storyCards[0]] };
+    const baseline = build(baselineAdventure);
+    adventure.tokenBudgetSettings.maxContextTokens = baseline.totalEstimatedTokens + 50;
+    const result = build(adventure);
+    expect(cards(result).map(c => c.id).sort()).toEqual(["fenchurch", "voldemort"]);
+    expect(result.totalEstimatedTokens).toBeLessThanOrEqual(adventure.tokenBudgetSettings.maxContextTokens);
+    for (const entry of baseline.sections.flatMap(s => s.items)) expect(result.sections.flatMap(s => s.items)).toContainEqual(entry);
+    expect(result.excludedItems).toContainEqual(expect.objectContaining({ id: "horcrux", reason: "budget_exceeded", detail: expect.stringContaining("Matched but could not fit") }));
+    expect(result.decisions.some(d => d.itemId === "horcrux" && d.reason === "not_triggered")).toBe(false);
+    adventure.tokenBudgetSettings.maxContextTokens = baseline.totalEstimatedTokens;
+    expect(cards(build(adventure)).map(c => c.id)).toEqual(["fenchurch"]);
+  });
+
+  it.each(["storyCard", "component"])("never scans a %s source dropped by baseline budgeting", sourceType => {
+    const adventure = fixture();
+    adventure.storyCards[0].content = "Horcrux ".repeat(1000);
+    adventure.storyCards[0].priority = -100;
+    adventure.tokenBudgetSettings.allowSystemToDropUnpinnedTriggeredCards = true;
+    adventure.tokenBudgetSettings.maxContextTokens = build({ ...adventure, storyCards: [] }).totalEstimatedTokens + 10;
+    if (sourceType === "component") {
+      adventure.components = [makeComponent({ title: "Large source", id: "large-source", content: "Horcrux ".repeat(1000), alwaysOn: true, priority: -100 })];
+      adventure.storyCards = adventure.storyCards.slice(1);
+    }
+    const result = build(adventure);
+    expect(cards(result)).toEqual([]);
+    expect(result.excludedItems).toContainEqual(expect.objectContaining({ id: sourceType === "component" ? "large-source" : "fenchurch", reason: "budget_exceeded" }));
+  });
+
+  it("returns transient provenance and picks stable sources regardless of saved order", () => {
+    const adventure = fixture();
+    adventure.components = ["z", "a"].map(id => makeComponent({ id, title: "Source " + id, content: "Horcrux", alwaysOn: true }));
+    const baseline = buildContext({ ...adventure, storyCards: [] });
+    const sources = baseline.sections.flatMap(s => s.items).filter(i => i.sourceType === "component");
+    const expected = resolveChainedStoryCardTriggers(adventure, sources, []);
+    expect(expected).toEqual([{
+      destinationId: "horcrux", sourceType: "component", sourceId: "a", sourceTitle: "Source a",
+      matchedTriggerPhrase: "Horcrux", sourceContent: "Horcrux",
+    }]);
+    expect(resolveChainedStoryCardTriggers({ ...adventure, storyCards: [...adventure.storyCards].reverse() }, [...sources].reverse(), [])).toEqual(expected);
+  });
+
+  it("uses matched source content to choose a relevant chained Lore excerpt", () => {
+    const adventure = fixture();
+    adventure.storyCards[0].content = "Horcrux sapphire sanctuary";
+    adventure.storyCards[1].type = "lore";
+    adventure.storyCards[1].tokenBudget = 20;
+    adventure.storyCards[1].content = "A sapphire sanctuary protects souls.\n" + Array.from({ length: 40 }, (_, i) => "Unrelated distant history " + i).join("\n");
+    const result = build(adventure);
+    expect(cards(result).find(c => c.id === "horcrux")?.content).toContain("sapphire sanctuary");
+    expect(result.decisions).toContainEqual(expect.objectContaining({ itemId: "horcrux", action: "truncated" }));
+  });
+
+  it("handles self references, cycles, pins, always policy and forced baseline sources", () => {
+    for (const policy of ["pin", "always", "force", "direct"]) {
+      const adventure = fixture();
+      adventure.storyCards[0].content = "Fenchurch Horcrux";
+      adventure.storyCards[1].content = "Fenchurch Voldemort";
+      if (policy === "pin") adventure.storyCards[0].pinned = true;
+      if (policy === "always") adventure.storyCards[0].inclusionPolicy = "always";
+      if (policy === "force") {
+        adventure.storyCards[0].inclusionPolicy = "manual";
+        adventure.activeState.forceIncludeNextTurn.push({ id: "force", createdAt: "2026-01-01", targetId: "fenchurch", targetType: "storyCard", expiresTurn: 100 });
+      }
+      const result = build(adventure, policy === "direct" ? "Fenchurch" : "Wait.");
+      expect(cards(result).map(c => c.id).sort()).toEqual(["fenchurch", "horcrux"]);
+    }
+  });
+
+  it("scans gated arc content and bounded Lore excerpts rather than hidden saved content", () => {
+    const adventure = fixture();
+    adventure.components = [makeComponent({ title: "Arc", type: "currentArc", content: "Wait.", arcSimmerInstruction: "Stay quiet.", arcBreakInstruction: "Fenchurch" })];
+    expect(cards(build(adventure, "Wait."))).toEqual([]);
+    adventure.components = [];
+    adventure.storyCards[0].type = "lore";
+    adventure.storyCards[0].tokenBudget = 15;
+    adventure.storyCards[0].content = "Horcrux " + "irrelevant ".repeat(500) + "\nFenchurch rests.";
+    expect(cards(build(adventure)).map(c => c.id)).toEqual(["fenchurch"]);
+  });
 });

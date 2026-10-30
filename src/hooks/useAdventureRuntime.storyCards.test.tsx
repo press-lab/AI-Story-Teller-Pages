@@ -3,10 +3,12 @@ import { offlinePlacementReview } from "../test/memoryPlacement";
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { createDefaultAdventure, defaultModelConfig, makeBrain } from "../state/defaults";
+import { createDefaultAdventure, defaultModelConfig, makeBrain, makeStoryCard, makeComponent } from "../state/defaults";
 import { adventureReducer } from "../state/adventureReducer";
 import { sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
 import { suggestionSourceValid } from "../memory/storyCardSuggestions";
+import { exportAdventureJson } from "../utils/json";
+import { buildContext } from "../contextBuilder/contextBuilder";
 import { useAdventureRuntime } from "./useAdventureRuntime";
 import type { Adventure } from "../types/adventure";
 
@@ -70,4 +72,43 @@ vi.mock("../providers/memoryCompletion", async importOriginal => {
   const actual = await importOriginal<typeof import("../providers/memoryCompletion")>();
   return { ...actual, sendMemoryCompletion: vi.fn(async (...args: Parameters<typeof actual.sendMemoryCompletion>) =>
     offlinePlacementReview({ messages: args[2] }) ?? actual.sendMemoryCompletion(...args)) };
+});
+
+it("sends direct and chained cards in one narration request without changing saved cards, Components or logs", async () => {
+  const initial = createDefaultAdventure("Chained runtime");
+  initial.memoryDetectionSettings.enabled = false;
+  initial.systemTriggers.enabled = false;
+  initial.components = [makeComponent({ title: "Plot Essentials", type: "plotEssentials", content: "The bird is safe." })];
+  initial.brains = [];
+  initial.storyCards = [
+    makeStoryCard({ id: "fenchurch", title: "Fenchurch", content: "An enchanted bird containing a Horcrux.", keys: ["Fenchurch"] }),
+    makeStoryCard({ id: "horcrux", title: "Horcrux", content: "Horcruxes contain fragmented souls.", keys: ["Horcrux"] }),
+  ];
+  const original = JSON.stringify(initial);
+  const first = buildContext(initial, { currentInput: "Draconia picks up Fenchurch." });
+  expect(buildContext(initial, { currentInput: "Draconia picks up Fenchurch." })).toEqual(first);
+  expect(sendOpenAICompatibleChatCompletion).not.toHaveBeenCalled();
+  expect(JSON.stringify(initial)).toBe(original);
+  vi.mocked(sendOpenAICompatibleChatCompletion).mockResolvedValue({ raw: {}, content: "The bird settles on her shoulder, feathers rustling softly as she walks toward the window. The evening breeze carries the scent of rain." });
+  const hook = renderHook(() => {
+    const [adventure, setAdventure] = useState<Adventure | undefined>(initial);
+    const runtime = useAdventureRuntime(adventure, setAdventure, { ...defaultModelConfig, apiKey: "test" }, vi.fn(), vi.fn(), vi.fn(), async () => undefined, initial.memoryDetectionSettings);
+    return { adventure, runtime };
+  });
+  await act(async () => { await hook.result.current.runtime.submitTurn("Draconia picks up Fenchurch."); });
+  expect(hook.result.current.runtime.error).toBeUndefined();
+  expect(sendOpenAICompatibleChatCompletion).toHaveBeenCalledTimes(1);
+  const request = vi.mocked(sendOpenAICompatibleChatCompletion).mock.calls[0][0];
+  expect(request.purpose).toBe("narration");
+  expect(request.messages[0].content).toContain("An enchanted bird containing a Horcrux.");
+  expect(request.messages[0].content).toContain("Horcruxes contain fragmented souls.");
+  const next = hook.result.current.adventure!;
+  expect(next.storyCards).toEqual(initial.storyCards);
+  expect(next.components).toEqual(initial.components);
+  expect(next.brains).toEqual(initial.brains);
+  expect(next.activeState.triggerLog).toEqual(initial.activeState.triggerLog);
+  expect(next.activeState.evaluationLog).toEqual(initial.activeState.evaluationLog);
+  expect(next.activeState.memoryProposals).toEqual(initial.activeState.memoryProposals);
+  expect(Object.keys(JSON.parse(exportAdventureJson(next))).sort()).toEqual(Object.keys(initial).sort());
+  expect(exportAdventureJson(next)).not.toContain("chained_trigger");
 });

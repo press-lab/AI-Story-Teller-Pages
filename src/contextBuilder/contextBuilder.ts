@@ -1,3 +1,4 @@
+import { resolveChainedStoryCardTriggers } from "./chainedStoryCardTriggers";
 import { isHistoricalLore, loreExcerpt } from "../memory/storyCardArchitecture";
 import { formatStoryTime } from "../memory/storyTime";
 import { selectEventMemories } from "../memory/eventMemory";
@@ -509,6 +510,7 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
 
   // F. Story Cards + Auto-Cards
   const storyCardItems: ContextItem[] = [];
+  const unmatchedStoryCards: Adventure["storyCards"] = [];
   const recalledEvents = selectEventMemories(adventure.storyCards, triggerText);
   for (const card of prioritySort(adventure.storyCards)) {
     const forced = isForced(adventure, "storyCard", card.id);
@@ -530,7 +532,7 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
       if (excerpt.truncated) decisions.push(decision(next, "truncated", "budget_exceeded", "Lore excerpt bounded by card token budget; full history remains in Content."));
       storyCardItems.push(next);
     } else {
-      pushExcluded("storyCard", card.id, card.title, "not_triggered", "No story card trigger matched current input, output, or recent history.");
+      unmatchedStoryCards.push(card);
     }
   }
 
@@ -747,6 +749,41 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
           ? applyHybridBudget()
           : applyUserLockedBudget();
     if (!changed) break;
+  }
+
+  // Freeze sources after baseline trimming. Supplemental cards never displace them
+  // and never become sources during this build.
+  const baselineItems = sections.flatMap(entry => entry.items);
+  const chainedCandidates = resolveChainedStoryCardTriggers(
+    adventure,
+    baselineItems.filter(entry => entry.sourceType === "component"),
+    baselineItems.filter(entry => entry.sourceType === "storyCard"),
+  );
+  const resolvedChainedIds = new Set<string>();
+  for (const candidate of chainedCandidates) {
+    // A baseline-selected card removed by the budget keeps its original exclusion.
+    if (excludedItems.some(entry => entry.sourceType === "storyCard" && entry.id === candidate.destinationId)) continue;
+    const card = adventure.storyCards.find(entry => entry.id === candidate.destinationId)!;
+    const historical = isHistoricalLore(card) || card.memoryMode === "historical";
+    const excerpt = loreExcerpt(card, storyCardContextContent(card), candidate.sourceContent);
+    const next = item(card.id, "storyCard", card.title, (historical ? "Historical reference; use only when relevant, do not force a callback.\n" : "") + excerpt.content, card.priority, card.protected, card.pinned, card.active, card.inclusionPolicy, "user");
+    const detail = `One-hop ${candidate.sourceType === "storyCard" ? "Story Card" : "Component"} trigger: ${candidate.sourceTitle} → ${card.title}; matched ‘${candidate.matchedTriggerPhrase}’.`;
+    const proposed = recalculate(sections.map(entry => entry.id === "storyCards"
+      ? { ...entry, items: prioritySort([...entry.items, next]) }
+      : entry));
+    resolvedChainedIds.add(card.id);
+    if (totalTokens(sections) >= budget || totalTokens(proposed) > budget) {
+      pushExcluded("storyCard", card.id, card.title, "budget_exceeded", `${detail} Matched but could not fit in the remaining context budget.`);
+      continue;
+    }
+    sections = proposed;
+    decisions.push(decision(next, "included", "chained_trigger", detail));
+    if (excerpt.truncated) decisions.push(decision(next, "truncated", "budget_exceeded", "Lore excerpt bounded by card token budget; full history remains in Content."));
+  }
+  for (const card of unmatchedStoryCards) {
+    if (!resolvedChainedIds.has(card.id)) {
+      pushExcluded("storyCard", card.id, card.title, "not_triggered", "No story card trigger matched current input, output, recent history, or included baseline content.");
+    }
   }
 
   sections.forEach((contextSection) => {
