@@ -126,10 +126,6 @@ export function goldenAdventure(): Adventure {
     components: [aiInstructions, plotEssentials, authorNote, pinnedNormal, inactiveNormal],
     storyCards: [jokeCard, beastCard, inactiveCard],
     brains: [margoBrain, sethBrain],
-    rollingSummary: {
-      content: "Seth and Margo entered the old city while the Beast drew closer.",
-      updatedAt: timestamp,
-    },
     messages: [
       { id: "msg-1", role: "assistant", content: "Rain tapped against the glass.", createdAt: timestamp },
       { id: "msg-2", role: "user", content: "I ask Margo about the ward.", createdAt: timestamp },
@@ -149,14 +145,8 @@ export function goldenAdventure(): Adventure {
       memoryPriorityMode: "userLocked",
       allowSystemToPrioritizeMemory: false,
       allowSystemToDropUnpinnedTriggeredCards: true,
-      allowSystemToTruncateSummary: true,
       recentMessageWindow: 6,
       sectionBudgets: {},
-      autoSummarize: false,
-      autoSummarizeEveryNTurns: 20,
-      autoSceneStateEveryNTurns: 1,
-      sceneStateEnabled: true,
-      summaryEnabled: true,
     },
   };
 }

@@ -128,7 +128,7 @@ export function memoryDecisionState(adventure: Adventure, sourceId: string): str
     brains: a.brains.filter(b => b.active && (a.activeState.pendingBrainDeltas?.some(d => d.brainId === b.id) || matchPatterns(excerpt, [b.characterName, ...b.triggers].filter(Boolean), "phrase").matched)).map(meaningful),
     plot: a.components.filter(c => c.active && ["plotEssentials", "activePressure", "currentArc"].includes(c.type)).map(meaningful),
     coverage: relevantProposalCoverage(a, excerpt, cards.map(c => c.id), evidence.map(m => m.id)),
-    controls: { autoApprove: a.memoryAutoApprove, detection: a.memoryDetectionSettings, review: a.semanticEvaluationSettings.requireApprovalForAutoUpdates },
+    controls: { autoApprove: a.memoryAutoApprove, detection: a.memoryDetectionSettings },
   });
 }
 

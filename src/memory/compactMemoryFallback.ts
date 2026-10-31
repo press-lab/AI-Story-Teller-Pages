@@ -79,8 +79,6 @@ export async function runCompactMemoryFallback(
     ...targeted.components.filter(component => component.active).map(component => `${component.type} — ${component.title}:\n${component.content}`),
     ...targeted.storyCards.map(card => `Story Card [${card.id}, ${card.type}] — ${card.title}:\n${card.content}`),
     ...context.sections.filter(section => section.id === "brains").flatMap(section => section.items.map(item => `Brain — ${item.title}:\n${item.content}`)),
-    ...(adventure.sceneState?.content ? ["Scene reference:\n" + adventure.sceneState.content] : []),
-    ...(adventure.rollingSummary.content ? ["Continuity summary (may be older than the source):\n" + adventure.rollingSummary.content] : []),
   ];
   const memoryRules = instruction.replace(
     /Write the requested narrative first,[\s\S]*?(?=Each update has:)/,

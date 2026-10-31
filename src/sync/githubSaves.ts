@@ -1,4 +1,4 @@
-import { normalizeAdventure } from "../state/defaults";
+import { normalizeAdventure, sanitizeAdventureForPersistence } from "../state/defaults";
 import type { Adventure, CloudSyncSettings, GitHubSaveSettings, GitHubSaveSlot, ISODateString } from "../types/adventure";
 import { encodeBase64Utf8, ensureRepo, fetchGitHubFileContent, githubRequest, resolveOwner } from "./githubSync";
 
@@ -29,7 +29,7 @@ function assertSettings(settings: CloudSyncSettings): void {
 
 function sanitizeSave(adventure: Adventure): Adventure {
   const { apiKey: _apiKey, ...modelConfig } = adventure.modelConfig;
-  return normalizeAdventure({ ...adventure, modelConfig });
+  return sanitizeAdventureForPersistence(normalizeAdventure({ ...adventure, modelConfig }));
 }
 
 function repoBase(cloudSettings: CloudSyncSettings, owner: string): string {

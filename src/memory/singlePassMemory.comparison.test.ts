@@ -83,7 +83,7 @@ it("compares actual mocked HTTP calls on identical stored sources with a declare
 
 it.each(["brain", "card", "plotEssentials", "activePressure", "currentArc"] as const)("uses one actual HTTP attempt for manual %s and none for local validation", async kind => {
   const a = createDefaultAdventure(); a.semanticEvaluationSettings.memoryEvaluationApi = "chat";
-  a.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
+  a.memoryAutoApprove.brainUpdate = true;
   a.messages = [{ id: "source", role: "assistant", content: "Mira finds the sealed harbor gate. The watch orders her to leave before dusk.", createdAt: "2026-10-26" }];
   a.brains = [makeBrain({ id: "brain", characterName: "Mira", active: true, thoughts: {} })];
   a.storyCards = [makeStoryCard({ id: "card", type: "lore", title: "Harbor gate", content: "The gate stands at the harbor." })];
@@ -97,7 +97,7 @@ it.each(["brain", "card", "plotEssentials", "activePressure", "currentArc"] as c
   expect(fetch).toHaveBeenCalledTimes(1); expect(result.logEntry.errors).toEqual([]);
   const next = result.actions.reduce(reduce, a);
   if (kind === "brain") expect(next.brains[0].thoughts.harbor_order).toContain("before dusk");
-  else expect(next.activeState.memoryProposals).toContainEqual(expect.objectContaining({ status: "pending", requiresReview: true }));
+  else expect(next.activeState.memoryProposals).toContainEqual(expect.objectContaining({ status: "pending" }));
   expect(fetch).toHaveBeenCalledTimes(1);
 });
 it("does not retry a failed manual HTTP attempt", async () => {
@@ -125,7 +125,7 @@ it("uses zero HTTP attempts for local recovery, validation and duplicate suppres
 });
 it.each([false, true])("keeps Brain-derived Lore notes review-only when global review=%s", async review => {
   const a = createDefaultAdventure(); a.semanticEvaluationSettings.memoryEvaluationApi = "chat";
-  a.semanticEvaluationSettings.requireApprovalForAutoUpdates = review; a.memoryAutoApprove.storyCard = true;
+   a.memoryAutoApprove.loreStoryCard = true; a.memoryAutoApprove.otherStoryCard = true;
   a.messages = [{ id: "source", role: "assistant", content: "Mira sees the gate close.", createdAt: "2026-10-26" }];
   a.storyCards = [makeStoryCard({ id: "card", title: "Harbor gate", type: "lore", content: "The harbor has a gate." })];
   a.brains = [makeBrain({ id: "brain", characterName: "Mira", active: true, linkedStoryCardId: "card", thoughts: {} })];
@@ -137,7 +137,7 @@ it.each([false, true])("keeps Brain-derived Lore notes review-only when global r
   expect(next.activeState.memoryProposals).toContainEqual(expect.objectContaining({ proposedType: "storyCard", requiresReview: true, status: "pending", sourceTurnId: "source" }));
 });
 it("rejects a Brain note on a Character profile without making a second request", async () => {
-  const a = createDefaultAdventure(); a.semanticEvaluationSettings.memoryEvaluationApi = "chat"; a.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
+  const a = createDefaultAdventure(); a.semanticEvaluationSettings.memoryEvaluationApi = "chat";
   a.messages = [{ id: "source", role: "assistant", content: "Mira sees the gate close.", createdAt: "2026-10-26" }];
   a.storyCards = [makeStoryCard({ id: "card", title: "Mira", type: "character", content: "Mira is a harbor guard." })];
   a.brains = [makeBrain({ id: "brain", characterName: "Mira", active: true, linkedStoryCardId: "card", thoughts: {} })];

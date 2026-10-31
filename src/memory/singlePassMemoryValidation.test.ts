@@ -24,7 +24,7 @@ it("rejects missing Brain destinations instead of creating biography", async () 
 });
 it("retains protected and uncertain findings for review through existing reducers", async () => {
   let { a, ids } = singlePassFixture();
-  a.memoryAutoApprove.storyCard = true;
+  a.memoryAutoApprove.loreStoryCard = true; a.memoryAutoApprove.otherStoryCard = true;
   const card = makeStoryCard({ type: "lore", title: "Workshop collaboration", content: "The workshop exists.", protected: true }); a.storyCards.push(card);
   const batch = await prepareSinglePassMemoryBatch(a, ids);
   a = reduce(a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
@@ -53,7 +53,7 @@ it.each([
   ["Hermione accepted tomorrow's research dinner invitation; dinner has not occurred.", "Hermione attended the research dinner.", "completed"],
   ["Hermione did not disclose her thoughts about the offer.", "Hermione secretly believed the offer meant trust.", "unresolved"],
 ])("holds unsupported or interpretive certainty for author review: %s", async (evidence, content, eventStatus) => {
-  let { a, ids } = singlePassFixture(1); a.memoryAutoApprove.storyCard = true; a.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
+  let { a, ids } = singlePassFixture(1); a.memoryAutoApprove.loreStoryCard = true; a.memoryAutoApprove.otherStoryCard = true;
   a.messages.find(m => m.id === ids[0])!.content = evidence;
   const batch = await prepareSinglePassMemoryBatch(a, ids);
   a = reduce(a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
@@ -63,7 +63,7 @@ it.each([
   expect(a.storyCards.some(c => c.type === "lore")).toBe(false);
 });
 it("validates an evidenced permanent Character ability but keeps profile changes reviewable", async () => {
-  let { a, ids } = singlePassFixture(1); a.memoryAutoApprove.storyCard = true; a.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
+  let { a, ids } = singlePassFixture(1); a.memoryAutoApprove.loreStoryCard = true; a.memoryAutoApprove.otherStoryCard = true;
   const target = a.storyCards[0];
   const content = "Casey permanently gained the ability to see magical wards.";
   a.messages.find(m => m.id === ids[0])!.content = content;
@@ -82,7 +82,7 @@ it("validates an evidenced permanent Character ability but keeps profile changes
 });
 
 it("keeps separate Hermione developments and an attempted kiss distinct without inventing an outcome", async () => {
-  let { a, ids } = singlePassFixture(1); a.memoryAutoApprove.storyCard = true; a.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
+  let { a, ids } = singlePassFixture(1); a.memoryAutoApprove.loreStoryCard = true; a.memoryAutoApprove.otherStoryCard = true;
   const evidence = "Hermione accepted a research dinner invitation. Later, she attempted a kiss, but withdrew before contact.";
   a.messages.find(m => m.id === ids[0])!.content = evidence;
   const batch = await prepareSinglePassMemoryBatch(a, ids);
@@ -100,7 +100,7 @@ it("keeps separate Hermione developments and an attempted kiss distinct without 
 it("keeps explicitly uncertain absent NPC knowledge and past-event pressure under review", async () => {
   const { makeBrain, makeComponent } = await import("../state/defaults");
   let { a, ids } = singlePassFixture(1); a.memoryAutoApprove.brainUpdate = true; a.memoryAutoApprove.plotPressureUpdate = true;
-  a.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
+
   a.messages.find(m => m.id === ids[0])!.content = "Yesterday Casey resolved the workshop debt. Draco was absent and did not witness the agreement.";
   const brain = makeBrain({ characterName: "Draco", active: true, triggers: ["Draco"], thoughts: {} }); a.brains = [brain];
   const pressure = makeComponent({ title: "Active Pressure", type: "activePressure", content: "No immediate external pressure.", active: true, autoUpdate: true }); a.components = [pressure];
@@ -151,8 +151,8 @@ it("rejects existing Brain thought overwrites and empty patches locally", async 
 async function commandValidationFixture(evidence: string) {
   const { a, ids } = singlePassFixture(1);
   a.messages.find(m => m.id === ids[0])!.content = evidence;
-  a.memoryAutoApprove.storyCard = true; a.memoryAutoApprove.brainUpdate = true; a.memoryAutoApprove.plotPressureUpdate = true;
-  a.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
+  a.memoryAutoApprove.loreStoryCard = true; a.memoryAutoApprove.otherStoryCard = true; a.memoryAutoApprove.brainUpdate = true; a.memoryAutoApprove.plotPressureUpdate = true;
+
   a.brains = [makeBrain({ id: "casey-brain", characterName: "Casey Vale", active: true, triggers: ["Casey"], thoughts: {} })];
   a.components = [makeComponent({ id: "pressure", title: "Pressure", type: "activePressure", active: true, autoUpdate: true, content: "No immediate pressure." })];
   const batch = await prepareSinglePassMemoryBatch(a, ids);
@@ -377,7 +377,7 @@ it.each([
   "I believe this partnership suits us.",
 ])("allows intended private interpretation without mandatory review: %s", async content => {
   const { a, ids } = qualityFixture();
-  a.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
+
   const batch = await prepareSinglePassMemoryBatch(a, ids);
   const finding = { ...thoughtFinding("George", content), candidateOnly: false };
   const checked = validateSinglePassSource(a, { sourceId: ids[0], findings: [finding], rejected: [] }, batch.checkpoints[0].checkpoint);
@@ -388,7 +388,7 @@ it.each([
 it.each(["dialogue", "duplicate"])("retains the %s quality safeguard with Character auto-approval enabled", async mode => {
   let { a, ids } = qualityFixture();
   a.memoryAutoApprove.brainUpdate = true;
-  a.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
+
   const before = structuredClone(a.brains);
   const batch = await prepareSinglePassMemoryBatch(a, ids);
   const finding = { ...thoughtFinding("Fred", mode === "dialogue" ? spokenFred : "I protect the people who trust me."), candidateOnly: false };
@@ -407,7 +407,7 @@ it.each([false, true])("Brain auto-approval and failed sibling checkpoints work 
   try {
     let { a, ids } = qualityFixture();
     a.memoryAutoApprove.brainUpdate = true;
-    a.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
+
     const batch = await prepareSinglePassMemoryBatch(a, ids);
     a = reduce(a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
     const checkpoint = batch.checkpoints[0].checkpoint;
@@ -460,11 +460,11 @@ it.each([
   if (requiresReview) expect(p.rationale).toMatch(/Unsupported|Uncertain/);
 });
 
-it.each(["global", "protected", "candidate", "recovery"])("separates factual uncertainty from %s review restrictions", async condition => {
+it.each(["protected", "candidate", "recovery"])("separates factual uncertainty from %s review restrictions", async condition => {
   const { a, ids } = looseMemoryFixture();
   a.messages[0].content = "The research team gained access to the library archives.";
   a.storyCards = [makeStoryCard({ id: "archive", type: "lore", title: "Archive access", content: "The library was founded in 1700.", protected: condition === "protected" })];
-  a.semanticEvaluationSettings.requireApprovalForAutoUpdates = condition === "global";
+
   const batch = await prepareSinglePassMemoryBatch(a, [ids[0]]);
   const result = routeLooseMemoryOperations(a, batch, parseLooseMemoryOperations("(lore: Archive access = The research team gained access to the library archives.)", ["S1"])).sources[0];
   if (condition === "candidate") result.findings[0].candidateOnly = true;
@@ -488,8 +488,8 @@ it("retains advisory choices without overriding an authoritative exact APPEND", 
 
 it.each([false, true])("scopes semantic risk to referenced full narrator messages (withdrawn=%s)", async withdrawn => {
   const { a, ids } = singlePassFixture();
-  a.memoryAutoApprove.storyCard = true;
-  a.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
+  a.memoryAutoApprove.loreStoryCard = true; a.memoryAutoApprove.otherStoryCard = true;
+
   a.messages.find(m => m.id === ids[0])!.content = "Fred and George might produce rune tattoos next week.";
   const sourceId = ids.at(-1)!;
   const content = withdrawn ? "They kissed." : "The research team gained access to the library archives.";

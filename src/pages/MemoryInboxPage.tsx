@@ -25,7 +25,6 @@ const proposalTypes: MemoryProposalType[] = [
   "arcProposal",
   "plotPressureUpdate",
   "plotMomentumUpdate",
-  "summaryUpdate",
   "ignore",
 ];
 const storyCardTypes: StoryCardType[] = ["character", "location", "lore", "custom"];
@@ -191,6 +190,20 @@ function MemorySuggestionsPage({ adventure, dispatch, onRegenerateProposal, onRe
 
   return (
     <section className="page editor-surface memory-inbox-page">
+      <section className="panel" aria-label="Auto-approval — This adventure">
+        <h3>Auto-approval — This adventure</h3>
+        <div className="auto-approve-toggles">
+          <CheckboxField label="Plot Essentials" checked={autoApprove.plotEssentialsUpdate} onChange={(v) => setAutoApprove({ plotEssentialsUpdate: v })} />
+          <CheckboxField label="Active Pressure" checked={autoApprove.plotPressureUpdate} onChange={(v) => setAutoApprove({ plotPressureUpdate: v })} />
+          <CheckboxField label="Current Arc" checked={autoApprove.currentArcUpdate} onChange={(v) => setAutoApprove({ currentArcUpdate: v })} />
+          <CheckboxField label="Arc Proposals" checked={autoApprove.arcProposal} onChange={(v) => setAutoApprove({ arcProposal: v })} />
+          <CheckboxField label="Character Self" checked={autoApprove.brainUpdate} onChange={(v) => setAutoApprove({ brainUpdate: v })} />
+          <CheckboxField label="Story Cards — Lore" checked={autoApprove.loreStoryCard} onChange={(v) => setAutoApprove({ loreStoryCard: v })} />
+          <CheckboxField label="Story Cards — Everything Else" checked={autoApprove.otherStoryCard} onChange={(v) => setAutoApprove({ otherStoryCard: v })} />
+        </div>
+        <p className="muted">Enabled categories apply valid new suggestions automatically. Existing pending suggestions still need review.</p>
+      </section>
+
       <div className="editor-page-summary">
         <p className="muted">
           Review proposed memory writes before they become active story context. Story Card suggestions wait for approval by default. Unconfirmed candidates and sensitive changes always need review.
@@ -225,11 +238,11 @@ function MemorySuggestionsPage({ adventure, dispatch, onRegenerateProposal, onRe
       </div>
 
       <details className="panel editor-tools-panel">
-        <summary>Memory Approval Rules</summary>
+        <summary>Suggestion tools and settings</summary>
         <h3>Memory Suggestions</h3>
         <p className="muted">
           Memory Suggestions holds AI-proposed changes to your story data — new Story Cards, Character Self updates,
-          Plot Essentials rewrites, Active Pressure updates, and legacy Summary changes. The AI generates these automatically after turns or when
+          Plot Essentials rewrites, Active Pressure updates, and Current Arc changes. The AI generates these automatically after turns or when
           you use <strong>Remember This</strong>. Review each proposal and <strong>Approve</strong> to apply it,
           <strong> Reject</strong> to dismiss it cleanly, or <strong>Ignore</strong> to remove it from view without applying.
           You can edit the content before approving.
@@ -237,24 +250,6 @@ function MemorySuggestionsPage({ adventure, dispatch, onRegenerateProposal, onRe
           Be especially careful with Character Self and plot updates: approving emotional escalation or relationship milestones
           unchecked is how characters drift. Edit proposals before approving, or reject ones that pull the story somewhere you don't want.
         </p>
-        <p className="muted">These settings control whether AIST applies a memory suggestion automatically. They do not control when AIST evaluates story turns.</p>
-        <div className="auto-approve-toggles">
-          <span className="auto-approve-label muted">Auto-approve:</span>
-          <CheckboxField label="Legacy Summary" checked={autoApprove.summaryUpdate} onChange={(v) => setAutoApprove({ summaryUpdate: v })} />
-          <CheckboxField label="Plot Essentials" checked={autoApprove.plotEssentialsUpdate} onChange={(v) => setAutoApprove({ plotEssentialsUpdate: v })} />
-          <CheckboxField label="Active Pressure" checked={autoApprove.plotPressureUpdate} onChange={(v) => setAutoApprove({ plotPressureUpdate: v })} />
-          <CheckboxField label="Current Arc" checked={autoApprove.currentArcUpdate} onChange={(v) => setAutoApprove({ currentArcUpdate: v })} />
-          <CheckboxField label="Arc Proposals" checked={autoApprove.arcProposal} onChange={(v) => setAutoApprove({ arcProposal: v })} />
-          <CheckboxField label="Story Cards" checked={autoApprove.storyCard} onChange={(storyCard) => setAutoApprove({ storyCard })} />
-          <p aria-live="polite">{!autoApprove.storyCard ? "Story Card auto-approval is disabled."
-            : adventure.semanticEvaluationSettings.requireApprovalForAutoUpdates
-              ? "Story Card auto-approval is blocked because Require review for automatic updates is enabled."
-              : "Story Card auto-approval is active. Valid suggestions can apply automatically."}</p>
-          <CheckboxField label="Characters" checked={autoApprove.brainUpdate} onChange={(v) => setAutoApprove({ brainUpdate: v })} />
-        </div>
-        <CheckboxField label="Require review for automatic updates" checked={adventure.semanticEvaluationSettings.requireApprovalForAutoUpdates}
-          onChange={requireApprovalForAutoUpdates => dispatch({ type: "SET_SEMANTIC_EVALUATION_SETTINGS", settings: { ...adventure.semanticEvaluationSettings, requireApprovalForAutoUpdates } })} />
-        <p className="muted">Global manual review overrides individual auto-approval settings. Protected, uncertain, or conflicting suggestions can still require review when global approval is disabled.</p>
         <p className="muted">Settings controls evaluation frequency. Component and Brain controls set their cooldowns. Story Cards use relevance-based selection.</p>
       </details>
 
@@ -394,6 +389,7 @@ interface ProposalCardProps {
 
 function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }: ProposalCardProps) {
   const isPending = proposal.status === "pending";
+  const targetCard = proposal.proposedType === "storyCard" ? adventure.storyCards.find(card => card.id === proposal.targetId) : undefined;
   const autoApprovalBlockers = isPending && proposal.proposedType === "storyCard" ? storyCardAutoApprovalBlockers(adventure, proposal) : [];
   const sourceValid = suggestionSourceValid(adventure, proposal);
   const placementError = placementValidationError(adventure, proposal);
@@ -563,10 +559,11 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
             <>
               <Field label="Card Type">
                 <select
-                  value={proposal.storyCardType ?? "custom"}
+                  value={targetCard?.type ?? proposal.storyCardType ?? ""}
                   onChange={(event) => onUpdate(proposal, { storyCardType: event.target.value as StoryCardType, targetId: undefined, appendContent: undefined, placementValidation: undefined })}
-                  disabled={!isPending}
+                  disabled={!isPending || Boolean(targetCard)}
                 >
+                  <option value="">Select a card type</option>
                   {storyCardTypes.map((type) => <option key={type} value={type}>{type}</option>)}
                 </select>
               </Field>

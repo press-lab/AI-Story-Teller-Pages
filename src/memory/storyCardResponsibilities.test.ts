@@ -8,7 +8,7 @@ import { makeStoryCardSuggestion, scanStoryCardExchange, suggestionSourceValid }
 function fixture() {
   const state = createDefaultAdventure();
   state.memoryDetectionSettings.enabled = true;
-  state.memoryAutoApprove.storyCard = false;
+  state.memoryAutoApprove.loreStoryCard = false; state.memoryAutoApprove.otherStoryCard = false;
   state.storyCards = [
     ["Seth", "Seth"], ["Draconia", "Draconia"], ["Hermione Granger", "Hermione"],
     ["Lucius Malfoy", "Lucius"], ["Severus Snape", "Snape"], ["Aberforth Dumbledore", "Aberforth"],
@@ -75,8 +75,8 @@ describe("Story Card detection responsibilities", () => {
   });
   it.each([false, true])("routes a newly occurring Character status change to explicit review (auto-approval=%s)", async autoApprove => {
     const state = fixture();
-    state.memoryAutoApprove.storyCard = autoApprove;
-    state.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
+    state.memoryAutoApprove.loreStoryCard = autoApprove; state.memoryAutoApprove.otherStoryCard = autoApprove;
+
     const text = "Lucius died defending the bridge during the battle.";
     const next = await narrate(text, [finding("Lucius Malfoy died defending the bridge.", text, { kind: "card", target: "Lucius Malfoy", targetId: "Lucius Malfoy" })], state);
     const identity = inbox(next).find(p => p.storyCardType === "character")!;

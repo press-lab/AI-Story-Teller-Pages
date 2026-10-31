@@ -33,7 +33,7 @@ it("compares automatic Brain, manual Brain, existing Lore and unrequested-group 
   const metrics = [];
   for (const scenario of ["automatic-three-turn-brain", "manual-brain", "existing-lore", "unrequested-brains"]) {
     let a = createDefaultAdventure(); a.components = []; a.storyCards = []; a.brains = [];
-    a.messages = []; a.semanticEvaluationSettings.requireApprovalForAutoUpdates = true;
+    a.messages = [];
     a.memoryDetectionSettings.enabled = true; a.memoryDetectionSettings.everyNTurns = 1;
     if (scenario === "existing-lore") a.storyCards = [makeStoryCard({ id: "lore", title: "Ward research", type: "lore", keys: ["ward"], content: "The ward was sealed." })];
     else a.brains = [makeBrain({ id: "mira", characterName: "Mira", active: true })];
@@ -107,7 +107,7 @@ it("measures recovery and assessment retry request counts with mocked HTTP", asy
     let a = createDefaultAdventure(); a.components = []; a.storyCards = []; a.messages = [];
     a.brains = [makeBrain({ id: "mira", characterName: "Mira", active: true })];
     a.memoryDetectionSettings.enabled = true; a.memoryDetectionSettings.everyNTurns = 1;
-    a.semanticEvaluationSettings.requireApprovalForAutoUpdates = true;
+
     const stages: string[] = []; let failDiscovery = false, failValidation = false;
     const http = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
       const body = JSON.parse(String(init?.body));
@@ -185,8 +185,8 @@ it("compares identical three-source standalone and batched assessment HTTP usage
       "Hermione attempted a kiss during research, but stepped back before contact."].map((content, i) => ({ id: `cost-${i}`, role: "assistant" as const,
         content, createdAt: "2026-10-26", memoryEvaluation: { turn: i + 1, attempts: 0, completedGroups: [], status: "pending" as const } }));
     base.memoryDetectionSettings.enabled = true; base.memoryDetectionSettings.everyNTurns = 1;
-    base.semanticEvaluationSettings.requireApprovalForAutoUpdates = true;
-    base.memoryAutoApprove.storyCard = false;
+
+    base.memoryAutoApprove.loreStoryCard = false; base.memoryAutoApprove.otherStoryCard = false;
     const count = scenario === "two-idle" ? 2 : scenario === "one-manual" ? 1 : 3;
     base.messages = base.messages.slice(0, count);
     const measurements = [];

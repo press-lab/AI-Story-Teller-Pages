@@ -37,7 +37,7 @@ export function syntheticMemoryAdventure(recordedMeeting = false) {
     for (let index = 0; index < 10; index++) a.storyCards.push(makeStoryCard({ title: `Visitor ${index}`, type: "character",
       content: "An established visitor.", keys: ["Morgan", "Rowan", "ordinary visitor"] }));
   }
-  a.memoryAutoApprove.storyCard = false;
+  a.memoryAutoApprove.loreStoryCard = false; a.memoryAutoApprove.otherStoryCard = false;
   a.memoryDetectionSettings = { enabled: true, generateContent: true, evaluator: "dedicated", everyNTurns: 0 };
   a.semanticEvaluationSettings.backgroundProviderConfig = undefined;
   a.semanticEvaluationSettings.memoryEvaluationApi = "chat";

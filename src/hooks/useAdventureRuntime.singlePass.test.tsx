@@ -112,7 +112,7 @@ it("explicitly retries the three October 27 sources in one HTTP request and pres
   const fixture = (await import("../memory/fixtures/memory-failure-20261027.json")).default;
   const a = createDefaultAdventure();
   a.memoryDetectionSettings.pipeline = "singlePass";
-  a.memoryAutoApprove.storyCard = true;
+  a.memoryAutoApprove.loreStoryCard = true; a.memoryAutoApprove.otherStoryCard = true;
   a.storyCards = [
     makeStoryCard({ ...fixture.existingLoreTarget, type: "lore", content: "The products have four designs.", keys: ["production", "supply", "tattoo paper"] }),
     makeStoryCard({ id: "twins", title: "Fred and George", type: "character", content: "The twins are students." }),
@@ -184,7 +184,7 @@ it("delivers all six loose operations to the Memory Inbox with one HTTP extracti
 
 it.each([false, true])("keeps mixed Brain/Lore extraction to one call with Character auto-approval=%s", async autoApprove => {
   const { qualityFixture, qualitySource, spokenFred, privateGeorge } = await import("../test/memoryQuality");
-  const { a } = qualityFixture(); a.messages = []; a.memoryAutoApprove.brainUpdate = autoApprove; a.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
+  const { a } = qualityFixture(); a.messages = []; a.memoryAutoApprove.brainUpdate = autoApprove;
   let memoryCalls = 0, narrationCalls = 0;
   const forbidden = [vi.spyOn(semantic, "runMemoryCycle"), vi.spyOn(assessment, "assessMemory"), vi.spyOn(review, "validateMemoryUpdate")];
   vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
@@ -232,8 +232,8 @@ it.each([false, true])("keeps a fixed chronology batch at one memory API request
   debugLogging.MEMORY_DEBUG_LOGGING = true;
   const a = createDefaultAdventure();
   a.memoryDetectionSettings.pipeline = "singlePass";
-  a.memoryAutoApprove.storyCard = true;
-  a.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
+  a.memoryAutoApprove.loreStoryCard = true; a.memoryAutoApprove.otherStoryCard = true;
+
   const content = "Mira received exclusive archive access.";
   a.messages = ["clock-a", "clock-b", "clock-c"].map((id, index) => ({ id, role: "assistant" as const,
     content: index === 2 ? content : "Mira waits beside the gate.", createdAt: "2026-10-29",
@@ -362,8 +362,8 @@ it("Story Card auto-approval changes only local outcomes across a realistic mult
     a.messages[0].content = "Fred and George might produce rune tattoos next week.";
     a.messages[1].content = fact + " " + attempt + " Hermione accepted the invitation to meet.";
     a.messages[2].content = "The team returned to its workshop to discuss tomorrow's research plans.";
-    a.memoryAutoApprove.storyCard = enabled;
-    a.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
+    a.memoryAutoApprove.loreStoryCard = enabled; a.memoryAutoApprove.otherStoryCard = enabled;
+
     const hook = setup(a);
     await act(async () => { await hook.result.current.runtime.evaluateMemorySources(a.messages.map(m => m.id)); await settle(); });
     await waitFor(() => expect(hook.result.current.adventure!.messages.every(m => m.memoryEvaluation?.status === "complete")).toBe(true));

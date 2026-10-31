@@ -390,10 +390,6 @@ Example lines: "I sent three of me. One came back offended." / "Your alibi survi
 - Tamsin's investigation is not automatically hostile. It can become protection, leverage, warning, or betrayal depending on what she learns and how Seth behaves.`,
       }),
     ],
-    rollingSummary: {
-      content: "Seth is beginning as a provisional powered mercenary at The Rookery. Hollis has offered one courier-extraction contract to test his restraint, reliability, and ability to work with a crew that does not trust him yet.",
-      updatedAt: timestamp,
-    },
     messages: [
       {
         id: ids.message,
@@ -414,7 +410,6 @@ Example lines: "I sent three of me. One came back offended." / "Your alibi survi
       enabled: true,
       showLog: true,
       maxParallelUpdateCalls: 2,
-      requireApprovalForAutoUpdates: true,
     },
     tokenBudgetSettings: {
       ...base.tokenBudgetSettings,

@@ -70,7 +70,7 @@ it("keeps recovered single-pass metadata in the existing inbox until approval", 
   const { singlePassFixture, groundedFinding } = await import("../test/singlePassMemory");
   const { prepareSinglePassMemoryBatch, parseSinglePassMemoryResponse } = await import("./singlePassMemory");
   let { a, ids } = singlePassFixture(1); a.storyCards = [];
-  a.memoryAutoApprove.storyCard = true; a.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
+  a.memoryAutoApprove.loreStoryCard = true; a.memoryAutoApprove.otherStoryCard = true;
   const batch = await prepareSinglePassMemoryBatch(a, ids);
   a = adventureReducer(a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
   const f = groundedFinding();

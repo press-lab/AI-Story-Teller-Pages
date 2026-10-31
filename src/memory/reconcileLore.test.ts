@@ -23,7 +23,7 @@ function seed() {
   a.components = []; a.brains = [];
   a.storyCards = corridor.cards.map(card => makeStoryCard({ ...card, type: "character", memoryMode: "static" }));
   a.messages = corridor.messages.map(message => ({ ...message, role: message.role as MessageRole }));
-  a.memoryAutoApprove.storyCard = false;
+  a.memoryAutoApprove.loreStoryCard = false; a.memoryAutoApprove.otherStoryCard = false;
   return a;
 }
 function proposals(actions: AdventureAction[]) {

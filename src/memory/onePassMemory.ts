@@ -3,7 +3,6 @@ import { matchingStoryCardEntities } from "./storyCardEntities";
 import { STORY_CARD_MEMORY_CHECK, STORY_CARD_OUTPUT_SCHEMA, makeStoryCardSuggestion } from "./storyCardSuggestions";
 import type { Adventure, AdventureAction, BrainEntry, ContextBuildResult, MemoryProposal, Message, StoryCardType } from "../types/adventure";
 import { createId, nowIso } from "../utils/id";
-import { applyAIMemoryUpdate } from "./applyAIMemoryUpdate";
 
 export const ONE_PASS_MEMORY_ID = "one-pass-memory";
 export const MEMORY_OUTPUT_RESERVE = 1400;
@@ -156,9 +155,8 @@ export function onePassMemoryActions(adventure: Adventure, context: ContextBuild
         && !continuousThoughtParticipant(adventure, target, story, playerInput, sourceTurnId)) { reject(`${target}: character absent from this turn`); continue; }
       if (Object.values({ ...brain.archivedThoughts, ...brain.thoughts }).some(t => norm(t).includes(norm(content)))) { suppress("Duplicate existing Brain thought."); continue; }
       const patch = { thoughts: { [`${adventure.activeState.turn}_${sourceTurnId}`]: `${adventure.activeState.turn} → ${content}` } };
-      const boundary = applyAIMemoryUpdate(adventure, [{ type: "brainPatch", brainId: brain.id, patch, mode: "append", turn: adventure.activeState.turn, preview: content }]);
-      if (adventure.memoryAutoApprove.brainUpdate) actions.push(...boundary.actions.map(action => action.type === "APPLY_BRAIN_UPDATE" ? { ...action, diagnosticSourceId: sourceTurnId } : action));
-      else actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal: { ...proposal, proposedType: "brainUpdate", targetId: brain.id, content: JSON.stringify(patch) } });
+      actions.push({ type: "ADD_MEMORY_PROPOSAL", proposal: { ...proposal, proposedType: "brainUpdate", targetId: brain.id,
+        brainUpdateMode: "append", requiresReview: brain.protected, content: JSON.stringify(patch) } });
       executed.push(`Thought: ${target}`);
       continue;
     }

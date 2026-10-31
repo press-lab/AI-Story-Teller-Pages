@@ -168,7 +168,7 @@ it("shares an outstanding worker with manual evaluation instead of issuing dupli
 it("includes a committed automatic memory update in the next prompt without additional checks", async () => {
   const initial = createDefaultAdventure("Consistency");
   initial.components = [makeComponent({ id: "pressure", type: "activePressure", title: "Pressure", content: "A dormant threat." })];
-  initial.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
+
   initial.memoryAutoApprove.plotPressureUpdate = true;
   const validation = deferred(); let sourceIds: string[] = []; let checks = 0;
   provider.mockImplementation(async request => {
@@ -199,7 +199,7 @@ it("includes a committed automatic memory update in the next prompt without addi
 it("rejects a destination edited while validation is outstanding and retains the user's change", async () => {
   const initial = createDefaultAdventure("Destination edit");
   initial.components = [makeComponent({ id: "pressure", type: "activePressure", title: "Pressure", content: "A dormant threat." })];
-  initial.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
+
   initial.memoryAutoApprove.plotPressureUpdate = true;
   const validation = deferred(); let sourceIds: string[] = [];
   provider.mockImplementation(async request => {
@@ -267,7 +267,7 @@ it("continues a queued submission after an incomplete batch without paid repair"
 function brainWorkerSeed() {
   const a = createDefaultAdventure("Batch worker"); a.components = []; a.storyCards = [];
   a.brains = [makeBrain({ id: "mira", characterName: "Mira", active: true })];
-  a.semanticEvaluationSettings.requireApprovalForAutoUpdates = true;
+
   return a;
 }
 function mockBrainWorker(waiting?: ReturnType<typeof deferred>) {

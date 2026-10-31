@@ -245,13 +245,9 @@ it("keeps global memory cadence visible and separate from custom rules and appro
   expect(interval).toHaveValue(0);
   await user.click(screen.getByLabelText("Automatic memory evaluation"));
   expect(screen.getByLabelText("Automatic memory evaluation")).not.toBeChecked();
-  for (const label of ["Legacy Summary", "Plot Essentials", "Active Pressure", "Current Arc (off: review generated events before they become canon)", "Arc Proposals", "Story Cards", "Characters"]) {
-    expect(screen.getByLabelText(label)).toBeVisible();
+  for (const label of ["Legacy Summary", "Plot Essentials", "Active Pressure", "Arc Proposals", "Story Cards — Lore", "Story Cards — Everything Else", "Require review for automatic updates"]) {
+    expect(screen.queryByLabelText(label)).not.toBeInTheDocument();
   }
-  await user.click(screen.getByLabelText("Story Cards"));
-  expect(dispatch).toHaveBeenLastCalledWith({ type: "SET_MEMORY_AUTO_APPROVE", settings: { ...adventure.memoryAutoApprove, storyCard: !adventure.memoryAutoApprove.storyCard } });
-  await user.click(screen.getByLabelText("Require review for automatic updates"));
-  expect(dispatch).toHaveBeenLastCalledWith({ type: "SET_SEMANTIC_EVALUATION_SETTINGS", settings: { ...adventure.semanticEvaluationSettings, requireApprovalForAutoUpdates: false } });
   expect(adventure.memoryDetectionSettings.everyNTurns).toBe(17);
   cleanup();
 });

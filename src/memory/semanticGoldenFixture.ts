@@ -16,11 +16,9 @@ export function semanticGoldenAdventure(selection: Pick<GoldenMemoryCase, "sourc
     return content === undefined ? card : { ...card, content };
   });
   if (selection.canon?.clearSummary) {
-    a.rollingSummary.content = "";
-    if (a.sceneState) a.sceneState.content = "";
   }
   a.brains = []; // This public-Lore benchmark does not expose private Brains.
-  a.memoryAutoApprove.storyCard = false;
+  a.memoryAutoApprove.loreStoryCard = false; a.memoryAutoApprove.otherStoryCard = false;
   a.memoryDetectionSettings = { enabled: true, generateContent: true, evaluator: "dedicated", everyNTurns: 0 };
   return a;
 }

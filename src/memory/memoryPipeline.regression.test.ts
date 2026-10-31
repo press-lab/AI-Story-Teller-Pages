@@ -15,7 +15,7 @@ function fixture() {
   const a = createDefaultAdventure("Blackfriars regression");
   a.memoryDetectionSettings.enabled = true;
   a.systemTriggers.enabled = true;
-  a.memoryAutoApprove.storyCard = false;
+  a.memoryAutoApprove.loreStoryCard = false; a.memoryAutoApprove.otherStoryCard = false;
   return a;
 }
 function update(text: string) {
@@ -111,7 +111,7 @@ it.each([0, 1, 2])("retains October 27 fixture case %i with one extraction reque
   const c = fixture.cases[index];
   let a = createDefaultAdventure();
   a.memoryDetectionSettings.pipeline = "singlePass";
-  a.memoryAutoApprove.storyCard = true;
+  a.memoryAutoApprove.loreStoryCard = true; a.memoryAutoApprove.otherStoryCard = true;
   a.storyCards = [
     makeStoryCard({ ...fixture.existingLoreTarget, type: "lore", content: "Four product designs exist.", keys: ["production", "supply", "tattoo paper"] }),
     makeStoryCard({ id: "twins", title: "Fred and George", type: "character", content: "The twins are students." }),

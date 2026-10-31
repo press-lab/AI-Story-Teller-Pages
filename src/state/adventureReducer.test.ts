@@ -75,8 +75,6 @@ const testedActionTypes = [
   "APPLY_CURRENT_STORY_DATE_TO_PENDING_LORE",
   "REJECT_MEMORY_PROPOSAL",
   "IGNORE_MEMORY_PROPOSAL",
-  "UPDATE_ROLLING_SUMMARY",
-  "UPDATE_SCENE_STATE",
   "SET_TOKEN_BUDGET_SETTINGS",
   "SET_SYSTEM_TRIGGER_SETTINGS",
   "SET_MODEL_CONFIG",
@@ -94,7 +92,6 @@ const testedActionTypes = [
   "SET_CHALLENGE_MODE",
   "SET_LAST_MEMORY_CYCLE_TURN",
   "SET_LAST_SEMANTIC_EVAL_TURN",
-  "SET_LAST_SCENE_STATE_TURN",
   "RESET_RUNTIME_STATE",
   "ACCUMULATE_BACKGROUND_TOKENS",
   "RECORD_API_CALL",
@@ -158,7 +155,6 @@ function baseAdventure(): Adventure {
       backgroundTokenUsage: { promptTokens: 0, completionTokens: 0 },
       challengeMode: false,
     },
-    rollingSummary: { content: "summary", updatedAt: "2026-01-01T00:00:00.000Z" },
   };
 }
 
@@ -173,7 +169,7 @@ describe("adventureReducer", () => {
     expect(new Set(testedActionTypes).size).toBe(testedActionTypes.length);
   });
 
-  it("handles title, metadata, messages, turn, settings, provider, flags, summary, and runtime reset actions", () => {
+  it("handles title, metadata, messages, turn, settings, provider, flags, and runtime reset actions", () => {
     let state = baseAdventure();
     state = reduce(state, { type: "SET_TITLE", title: "New Title" });
     expect(state.title).toBe("New Title");
@@ -211,8 +207,6 @@ describe("adventureReducer", () => {
     expect(state.activeState.forceIncludeNextTurn).toHaveLength(0);
     expect(state.activeState.challengeMode).toBe(false);
 
-    state = reduce(state, { type: "UPDATE_ROLLING_SUMMARY", content: "new summary" });
-    expect(state.rollingSummary.content).toBe("new summary");
 
     state = reduce(state, {
       type: "SET_TOKEN_BUDGET_SETTINGS",
@@ -243,7 +237,7 @@ describe("adventureReducer", () => {
 
     state = reduce(state, {
       type: "SET_SEMANTIC_EVALUATION_SETTINGS",
-      settings: { evaluationModel: "eval-model", messagesIncluded: 6, enabled: false, showLog: false, maxParallelUpdateCalls: 2, requireApprovalForAutoUpdates: false, semanticEvalEveryNTurns: 1 },
+      settings: { evaluationModel: "eval-model", messagesIncluded: 6, enabled: false, showLog: false, maxParallelUpdateCalls: 2, semanticEvalEveryNTurns: 1 },
     });
     expect(state.semanticEvaluationSettings.evaluationModel).toBe("eval-model");
 
@@ -299,7 +293,6 @@ describe("adventureReducer", () => {
 
     state = reduce(state, { type: "RESET_RUNTIME_STATE" });
     expect(state.messages).toEqual([]);
-    expect(state.rollingSummary.content).toBe("");
     expect(state.activeState.turn).toBe(0);
     expect(state.activeState.nextTurnNote.content).toBe("");
     expect(state.triggerRules[0].lastFiredTurn).toBeUndefined();
@@ -483,7 +476,7 @@ describe("adventureReducer", () => {
     let state = {
       ...baseAdventure(),
       brains: [brain],
-      memoryAutoApprove: { ...baseAdventure().memoryAutoApprove, storyCard: true },
+      memoryAutoApprove: { ...baseAdventure().memoryAutoApprove, loreStoryCard: true, otherStoryCard: true },
     };
 
     state = reduce(state, {
@@ -656,15 +649,6 @@ describe("adventureReducer", () => {
       next: { content: "The Beast is actively hunting Seth tonight." },
     });
 
-    const summaryProposal = makeMemoryProposal({
-      id: "proposal-summary",
-      proposedType: "summaryUpdate",
-      title: "Summary",
-      content: "Seth and Margo reached the old city.",
-    });
-    state = reduce(state, { type: "ADD_MEMORY_PROPOSAL", proposal: summaryProposal });
-    state = reduce(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: "proposal-summary" });
-    expect(state.rollingSummary.content).toBe("Seth and Margo reached the old city.");
 
     const momentum = makeComponent({ id: "component-momentum", title: "Immediate Momentum", type: "immediateMomentum", content: "Old next beat." });
     const momentumProposal = makeMemoryProposal({
@@ -1011,7 +995,7 @@ describe("adventureReducer", () => {
       memoryAutoApprove: {
         ...baseAdventure().memoryAutoApprove,
         plotEssentialsUpdate: true,
-        storyCard: true,
+        loreStoryCard: true, otherStoryCard: true,
       },
     };
 
@@ -1046,7 +1030,7 @@ describe("adventureReducer", () => {
     let state = reduce(
       {
         ...base,
-        memoryAutoApprove: { ...base.memoryAutoApprove, storyCard: true },
+        memoryAutoApprove: { ...base.memoryAutoApprove, loreStoryCard: true, otherStoryCard: true },
       },
       {
         type: "ADD_MEMORY_PROPOSAL",
@@ -1484,7 +1468,7 @@ describe("adventureReducer", () => {
     let state = {
       ...baseAdventure(),
       components: [plot],
-      memoryAutoApprove: { ...baseAdventure().memoryAutoApprove, storyCard: true },
+      memoryAutoApprove: { ...baseAdventure().memoryAutoApprove, loreStoryCard: true, otherStoryCard: true },
     };
 
     state = reduce(state, {
@@ -1648,24 +1632,6 @@ describe("adventureReducer", () => {
     expect(state.activeState.storyUndoStack.length).toBeGreaterThan(0);
   });
 
-  it("clamps rolling summary indexes when story sections are erased or reset", () => {
-    let state: Adventure = {
-      ...baseAdventure(),
-      rollingSummary: {
-        content: "The current transcript has already been summarized.",
-        updatedAt: "2026-01-01T00:00:00.000Z",
-        lastSummarizedMessageIndex: 2,
-      },
-    };
-
-    state = reduce(state, { type: "DELETE_LAST_MESSAGE" });
-    expect(state.messages).toHaveLength(1);
-    expect(state.rollingSummary.lastSummarizedMessageIndex).toBe(1);
-
-    state = reduce(state, { type: "RESET_RUNTIME_STATE" });
-    expect(state.messages).toHaveLength(0);
-    expect(state.rollingSummary.lastSummarizedMessageIndex).toBeUndefined();
-  });
 
   it("advances arc pacing from engagement, auto-fires the break, then settles into aftermath", () => {
     let state = baseAdventure();
@@ -1760,7 +1726,7 @@ it("normalizes interrupted single-pass requests as explicit-retry failures while
 it("completes a mixed-validity source with its committed sibling and precise rejections while unexamined sources stay pending", async () => {
   const { singlePassFixture, groundedFinding } = await import("../test/singlePassMemory");
   const { prepareSinglePassMemoryBatch, parseSinglePassMemoryResponse } = await import("../memory/singlePassMemory");
-  let { a, ids } = singlePassFixture(); a.storyCards = []; a.semanticEvaluationSettings.requireApprovalForAutoUpdates = false; a.memoryAutoApprove.storyCard = true;
+  let { a, ids } = singlePassFixture(); a.storyCards = [];  a.memoryAutoApprove.loreStoryCard = true; a.memoryAutoApprove.otherStoryCard = true;
   const sourceId = ids.at(-1)!; const batch = await prepareSinglePassMemoryBatch(a, [sourceId]);
   a = adventureReducer(a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
   const result = parseSinglePassMemoryResponse(JSON.stringify({ sources: [{ sourceId, findings: [groundedFinding(), { ...groundedFinding(), targetId: "missing", operation: "append" }] }] }), [sourceId], a).sources[0];
@@ -1830,8 +1796,8 @@ it("prevents duplicate titles created by approval ordering and supports an expli
 });
 
 it("retains CREATE title collisions for explicit review even with automatic Story Card approval enabled", async () => {
-  let { a, ids } = qualityFixture(); a.memoryAutoApprove.storyCard = true;
-  a.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
+  let { a, ids } = qualityFixture(); a.memoryAutoApprove.loreStoryCard = true; a.memoryAutoApprove.otherStoryCard = true;
+
   const batch = await prepareSinglePassMemoryBatch(a, ids);
   const p = toSinglePassProposal(a, ids[0], batch.checkpoints[0].checkpoint, { ...loreFinding("They opened a new workshop."), targetId: null, operation: "create" });
   p.requiresReview = false; p.storyCardReview!.candidateOnly = false;
@@ -1859,12 +1825,12 @@ it.each(["bracketed", "metadata"])("retains distinct %s dated occurrences throug
   else expect(content.match(/Draconia kissed Seth/g)).toHaveLength(2);
 });
 
-it.each(["enabled", "disabled", "global", "protected", "explicit", "metadata", "evidence"])("single-pass Brain approval respects %s controls through parsing, routing and commit", async mode => {
+it.each(["enabled", "disabled", "protected", "explicit", "metadata", "evidence"])("single-pass Brain approval respects %s controls through parsing, routing and commit", async mode => {
   const { looseMemoryFixture } = await import("../test/looseMemory");
   const { parseSinglePassMemoryResponse } = await import("../memory/singlePassMemory");
   let { a, ids } = looseMemoryFixture();
   a.memoryAutoApprove.brainUpdate = mode !== "disabled";
-  a.semanticEvaluationSettings.requireApprovalForAutoUpdates = mode === "global";
+
   a.brains[1].protected = mode === "protected";
   const before = structuredClone(a.brains);
   const batch = await prepareSinglePassMemoryBatch(a, [ids[0]]);
@@ -1898,7 +1864,7 @@ it.each(["enabled", "disabled", "global", "protected", "explicit", "metadata", "
   }
 });
 
-it.each(["missingSource", "changedSource", "staleTarget", "missingTarget", "protectedTarget", "global", "disabled", "missingEvidence", "malformedPatch", "overwrite"])("single-pass Brain auto-approval fails safely for %s", async mode => {
+it.each(["missingSource", "changedSource", "staleTarget", "missingTarget", "protectedTarget", "disabled", "missingEvidence", "malformedPatch", "overwrite"])("single-pass Brain auto-approval fails safely for %s", async mode => {
   const { looseMemoryFixture } = await import("../test/looseMemory");
   const { parseSinglePassMemoryResponse } = await import("../memory/singlePassMemory");
   let { a, ids } = looseMemoryFixture();
@@ -1914,7 +1880,6 @@ it.each(["missingSource", "changedSource", "staleTarget", "missingTarget", "prot
   if (mode === "staleTarget") a.brains[1].notes = "Author correction.";
   if (mode === "missingTarget") a.brains = a.brains.filter(b => b.id !== "brain-george");
   if (mode === "protectedTarget") a.brains[1].protected = true;
-  if (mode === "global") a.semanticEvaluationSettings.requireApprovalForAutoUpdates = true;
   if (mode === "disabled") a.memoryAutoApprove.brainUpdate = false;
   const before = structuredClone(a.brains), cards = structuredClone(a.storyCards);
   a = adventureReducer(a, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId, sources: [{ result, checkpoint: batch.checkpoints[0].checkpoint }] });
@@ -1961,8 +1926,8 @@ describe("Lore chronology approval boundary", () => {
   const day = (date: string) => ({ text: date, date, precision: "day" as const });
   function chronologyFixture(conflict = true, append = false) {
     let state = createDefaultAdventure();
-    state.memoryAutoApprove.storyCard = true;
-    state.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
+    state.memoryAutoApprove.loreStoryCard = true; state.memoryAutoApprove.otherStoryCard = true;
+
     state.messages = [{ id: "chronology-source", role: "assistant", content: "They received exclusive archive access.", storyTime: day("2001-09-05"), createdAt: "2026-10-29" }];
     if (append) state.storyCards = [makeStoryCard({ id: "chronology-target", type: "lore", title: "3 September — Research Agreement", content: "They signed the initial research agreement.",
       lore: { status: "ongoing", sourceMessageIds: ["original"], occurredAt: day("2001-09-03") } })];
@@ -2154,7 +2119,7 @@ async function commitLooseCard(state: Adventure, response: string, sourceId = "n
   return adventureReducer(state, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId, sources: [{ result, checkpoint: batch.checkpoints[0].checkpoint }] });
 }
 
-it.each(["create", "append", "disabled", "global", "protected", "ambiguous", "date", "recovered"])("Story Card auto-approval complete loose pipeline: %s", async mode => {
+it.each(["create", "append", "disabled", "protected", "ambiguous", "date", "recovered"])("Story Card auto-approval complete loose pipeline: %s", async mode => {
   const { looseMemoryFixture } = await import("../test/looseMemory");
   let { a } = looseMemoryFixture();
   const fact = "The research team gained access to the library archives.";
@@ -2166,8 +2131,8 @@ it.each(["create", "append", "disabled", "global", "protected", "ambiguous", "da
   if (["append", "protected", "ambiguous"].includes(mode)) a.storyCards.push(makeStoryCard({ id: "archive", type: "lore", title: "Archive access", content: prior,
     protected: mode === "protected", lore: { status: "ongoing", sourceMessageIds: ["old-source"], occurredAt: { text: "2001-09-01", date: "2001-09-01", precision: "day" } } }));
   if (mode === "ambiguous") a.storyCards.push({ ...a.storyCards[0], id: "other-archive" });
-  a.memoryAutoApprove.storyCard = mode !== "disabled";
-  a.semanticEvaluationSettings.requireApprovalForAutoUpdates = mode === "global";
+  a.memoryAutoApprove.loreStoryCard = mode !== "disabled"; a.memoryAutoApprove.otherStoryCard = mode !== "disabled";
+
   const before = structuredClone(a.storyCards);
   let response = `(lore: ${mode === "date" ? "2001-09-04 - Archive access" : "Archive access"} = ${fact})`;
   if (mode === "recovered") response = JSON.stringify({ sources: [{ sourceId: "narrator-1", findings: [{ kind: "storyCard", targetId: null,
@@ -2231,11 +2196,11 @@ it.each([false, true])("keeps mixed loose batch approval independent (Brain auto
 
 it("Story Card toggle leaves historical pending proposals alone and applies only new eligible facts", async () => {
   const { looseMemoryFixture } = await import("../test/looseMemory");
-  let { a } = looseMemoryFixture(); a.memoryAutoApprove.storyCard = false; a.storyCards = [];
+  let { a } = looseMemoryFixture(); a.memoryAutoApprove.loreStoryCard = false; a.memoryAutoApprove.otherStoryCard = false; a.storyCards = [];
   a.messages[0].content = "Mira joined the council.";
   a = await commitLooseCard(a, "(lore: Council membership = Mira joined the council.)");
   const pending = structuredClone(a.activeState.memoryProposals);
-  a = adventureReducer(a, { type: "SET_MEMORY_AUTO_APPROVE", settings: { ...a.memoryAutoApprove, storyCard: true } });
+  a = adventureReducer(a, { type: "SET_MEMORY_AUTO_APPROVE", settings: { ...a.memoryAutoApprove, loreStoryCard: true, otherStoryCard: true } });
   expect(a.activeState.memoryProposals).toEqual(pending); expect(a.storyCards).toEqual([]);
   a.messages[1].content = "The research team gained access to the library archives.";
   a = await commitLooseCard(a, "(lore: Archive access = The research team gained access to the library archives.)", "narrator-2");
@@ -2247,10 +2212,10 @@ it("Story Card toggle leaves historical pending proposals alone and applies only
 import { storyCardAutoApprovalBlockers } from "../memory/storyCardAutoApproval";
 import { makeStoryCardSuggestion } from "../memory/storyCardSuggestions";
 for (const path of ["insert", "merge", "scan", "final"] as const) {
-  it.each(["eligible", "global", "disabled", "both", "protected", "ambiguous", "date", "stale", "uncertain", "candidate", "placement"])(`shared Story Card approval gates: ${path} / %s`, mode => {
+  it.each(["eligible", "disabled", "both", "protected", "ambiguous", "date", "stale", "uncertain", "candidate", "placement"])(`shared Story Card approval gates: ${path} / %s`, mode => {
     let a = createDefaultAdventure();
-    a.memoryAutoApprove.storyCard = !["disabled", "both"].includes(mode);
-    a.semanticEvaluationSettings.requireApprovalForAutoUpdates = ["global", "both"].includes(mode);
+    a.memoryAutoApprove.loreStoryCard = !["disabled", "both"].includes(mode); a.memoryAutoApprove.otherStoryCard = !["disabled", "both"].includes(mode);
+
     const content = "The research team gained access to the library archives.";
     a.messages = [{ id: "approval-source", role: "assistant", content, createdAt: "2026-10-29",
       storyTime: { text: "2001-09-02", date: "2001-09-02", precision: "day" } }];
@@ -2280,8 +2245,8 @@ for (const path of ["insert", "merge", "scan", "final"] as const) {
 
 it.each([false, true])("companion Story Cards respect current global review (%s) and placement safeguards", global => {
   const a = createDefaultAdventure();
-  a.memoryAutoApprove.storyCard = true;
-  a.semanticEvaluationSettings.requireApprovalForAutoUpdates = global;
+  a.memoryAutoApprove.loreStoryCard = true; a.memoryAutoApprove.otherStoryCard = true;
+
   const brain = makeBrain({ characterName: "Mira", notes: "The research team gained archive access." });
   a.brains = [brain];
   const next = adventureReducer(a, { type: "APPLY_BRAIN_UPDATE", brainId: brain.id, patch: { notes: "A different present concern." }, mode: "replace" });
@@ -2293,7 +2258,7 @@ it.each([false, true])("companion Story Cards respect current global review (%s)
 });
 
 it.each(["rejected", "ignored"] as const)("automatic approval never resurrects %s suggestions", status => {
-  const a = createDefaultAdventure(); a.memoryAutoApprove.storyCard = true; a.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
+  const a = createDefaultAdventure(); a.memoryAutoApprove.loreStoryCard = true; a.memoryAutoApprove.otherStoryCard = true;
   const p = makeMemoryProposal({ status }); a.activeState.memoryProposals = [p];
   expect(adventureReducer(a, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: p.id, automatic: true })).toBe(a);
 });
@@ -2302,11 +2267,11 @@ it.each(["rejected", "ignored"] as const)("automatic approval never resurrects %
 it("computes Story Card blockers deterministically without mutating saved state or proposals", () => {
   const a = createDefaultAdventure();
   const p = { ...makeMemoryProposal({ rationale: "Part of this fact may already exist." }), requiresReview: true };
-  a.semanticEvaluationSettings = { ...a.semanticEvaluationSettings, requireApprovalForAutoUpdates: true };
+  a.semanticEvaluationSettings = { ...a.semanticEvaluationSettings, };
   const before = JSON.stringify({ a, p });
   const first = storyCardAutoApprovalBlockers(a, p);
   expect(first).toEqual(storyCardAutoApprovalBlockers(a, p));
-  expect(first).toContain("Global manual review is enabled.");
+  expect(first).not.toContain("Global manual review is enabled.");
   expect(first).toContain("This proposal was previously marked for manual review. Part of this fact may already exist.");
   expect(JSON.stringify({ a, p })).toBe(before);
 });

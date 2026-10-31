@@ -77,7 +77,7 @@ export function TriggersPage({ adventure, dispatch }: AdventurePageProps) {
           to evaluate natural-language conditions after the turn completes in the background.
         </p>
         <p className="muted">
-          Supported actions depend on the rule mode. Semantic rules skip Plot Component and legacy summary writes.
+          Supported actions depend on the rule mode. Semantic rules skip Plot Component writes.
           Use Trigger History and Evaluation Log to see what fired and why.
         </p>
       </details>
@@ -215,8 +215,8 @@ export function TriggersPage({ adventure, dispatch }: AdventurePageProps) {
                     <JsonTextarea value={rule.actions} onValidChange={(actions) => dispatch({ type: "UPDATE_TRIGGER_RULE", triggerRuleId: rule.id, patch: { actions } })} rows={8} />
                   </Field>
                   {(rule.evaluationMode === undefined || rule.evaluationMode === "semantic")
-                    && rule.actions.some(action => ["updateComponent", "updateComponentPressure", "updateComponentArc", "updateSummary"].includes(action.type)) && (
-                    <p className="notice" role="alert">This semantic rule cannot write Plot Components or the legacy summary. AIST skips these actions. Use automatic memory evaluation or a manual update tool.</p>
+                    && rule.actions.some(action => ["updateComponent", "updateComponentPressure", "updateComponentArc"].includes(action.type)) && (
+                    <p className="notice" role="alert">This semantic rule cannot write Plot Components . AIST skips these actions. Use automatic memory evaluation or a manual update tool.</p>
                   )}
                   <p className="muted">Last fired turn: {rule.lastFiredTurn ?? "never"}</p>
                   <button type="button" className="danger" onClick={() => dispatch({ type: "DELETE_TRIGGER_RULE", triggerRuleId: rule.id })}>

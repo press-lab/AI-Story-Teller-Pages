@@ -596,11 +596,6 @@ export function createDevelopmentAdventure(): Adventure {
     storyCards,
     brains,
     triggerRules,
-    rollingSummary: {
-      content:
-        "Prince Setu, twenty-four-year-old son of Fire Lord Zuko and Fire Lady Mai, is the Dragon's Heir — a gold-fire prodigy and the crown's quiet blade. Sparring with Nyxa — the brilliant blue-fire heir of ruined House Renzan, called Nyx by those close to her — he is summoned by his father: the New Ozai Society has struck the harbor armory. Behind the loyalists is a patient hand that runs close to House Renzan, and close to the woman Setu is falling for. The peace his father built is real and fragile, and someone wants the old empire back.",
-      updatedAt: timestamp,
-    },
     messages: [
       {
         id: ids.message,

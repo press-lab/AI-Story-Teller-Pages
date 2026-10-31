@@ -48,7 +48,6 @@ function baseAdventure(): Adventure {
       enabled: true,
       showLog: true,
       maxParallelUpdateCalls: 2,
-      requireApprovalForAutoUpdates: false,
       semanticEvalEveryNTurns: 1,
     },
     activeState: {
@@ -209,8 +208,7 @@ describe("live Groq provider integration", () => {
       semanticEvaluationSettings: {
         ...createDevelopmentAdventure().semanticEvaluationSettings,
         maxParallelUpdateCalls: 1,
-        requireApprovalForAutoUpdates: false,
-      },
+        },
     };
     const plotId = "dev-component-plot-essentials";
     const cardId = "dev-card-betrothal-pressure";

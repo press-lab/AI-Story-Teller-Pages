@@ -25,7 +25,7 @@ function seed() {
   a.storyCards = fixture.cards.map(card => makeStoryCard({ ...card, type: card.type as StoryCardType, memoryMode: card.memoryMode as "static", autoUpdate: false }));
   a.storyCards.push(makeStoryCard({ id: "venture", title: "Tattoo venture", type: "lore", memoryMode: "historical", autoUpdate: false,
     content: "Seth agreed to work with Fred and George on rune tattoos.", keys: ["tattoo venture"] }));
-  a.memoryAutoApprove.storyCard = false;
+  a.memoryAutoApprove.loreStoryCard = false; a.memoryAutoApprove.otherStoryCard = false;
   return a;
 }
 function candidate(a: Adventure, test = cases[0]) {

@@ -18,7 +18,7 @@ const candidate = { kind: "lore", target: "The Glass King's defeat", content: st
 function seed() {
   const adventure = createDefaultAdventure();
   adventure.memoryDetectionSettings.enabled = true;
-  adventure.memoryAutoApprove.storyCard = false;
+  adventure.memoryAutoApprove.loreStoryCard = false; adventure.memoryAutoApprove.otherStoryCard = false;
   return adventure;
 }
 

@@ -10,7 +10,7 @@ import { ONE_PASS_MEMORY_ID, continuousThoughtParticipant, isSceneRecapForCharac
 function fixture() {
   const adventure = createDefaultAdventure("One-pass quality checks");
   adventure.memoryDetectionSettings = { ...adventure.memoryDetectionSettings, enabled: true };
-  adventure.memoryAutoApprove = { ...adventure.memoryAutoApprove, storyCard: false, brainUpdate: true, plotEssentialsUpdate: true };
+  adventure.memoryAutoApprove = { ...adventure.memoryAutoApprove, loreStoryCard: false, otherStoryCard: false, brainUpdate: true, plotEssentialsUpdate: true };
   adventure.brains = [makeBrain({ id: "mira-brain", characterName: "Mira", active: true, thoughts: { old: "I distrust the duke." } })];
   adventure.storyCards = [makeStoryCard({ id: "mira-card", title: "Mira", type: "character", content: "Mira is a scout.", active: true, protected: false, pinned: true })];
   adventure.components = [
@@ -47,8 +47,8 @@ describe("one-pass memory quality boundary", () => {
     expect(result.adventure.storyCards).toHaveLength(1);
     expect(result.adventure.storyCards[0].content).toContain("scout");
     expect(result.adventure.storyCards[0].content).not.toContain("Silver");
-    expect(result.adventure.activeState.memoryProposals[0]).toMatchObject({ storyCardType: "character", targetId: "mira-card", status: "pending" });
-    expect(result.adventure.activeState.memoryProposals[0]).toMatchObject({ sourceTurnId: "new-story", sourceText: update.evidence });
+    expect(result.adventure.activeState.memoryProposals.find(p => p.proposedType === "storyCard")).toMatchObject({ storyCardType: "character", targetId: "mira-card", status: "pending" });
+    expect(result.adventure.activeState.memoryProposals.find(p => p.proposedType === "storyCard")).toMatchObject({ sourceTurnId: "new-story", sourceText: update.evidence });
     expect(result.adventure.activeState.memoryDiagnostics).toEqual(expect.arrayContaining([expect.objectContaining({ sourceId: "new-story", outcome: "automatically_approved" })]));
     expect(Object.values(result.adventure.brains[0].thoughts)).toEqual(expect.arrayContaining(["I distrust the duke.", expect.stringContaining("stop fearing")]));
     expect(result.adventure.components.find(c => c.id === "pressure")?.content).toBe("The duke demands tribute.");
@@ -300,7 +300,7 @@ describe("continuous conversation attribution", () => {
     const context = buildContext(a, { currentInput: "I listen." });
     const actions = onePassMemoryActions(a, context, [{ kind: "thought", target: "Mira",
       content: "I should explain my design carefully.", evidence: current, reason: "A private plan for the discussion" }], current, "new-source");
-    expect(actions.some(action => action.type === "APPLY_BRAIN_UPDATE")).toBe(accepted);
+    expect(actions.some(action => action.type === "ADD_MEMORY_PROPOSAL" && action.proposal.proposedType === "brainUpdate")).toBe(accepted);
   });
   it("keeps legacy adapter instructions out of normal narration payloads", () => {
     const a = fixture();

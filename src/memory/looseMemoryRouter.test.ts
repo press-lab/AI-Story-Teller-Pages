@@ -25,7 +25,7 @@ function expectFinding(r: Awaited<ReturnType<typeof routed>>, kind: string, subt
   if (kind === "storyCard") expect(f.storyCardType).toBe(subtype);
   if (kind === "brain") expect(Object.keys(f.brainPatch!)).toEqual([subtype]);
   expect(r.checked.proposals).toHaveLength(1);
-  expect(r.checked.proposals[0].proposal).toMatchObject({ proposedType: proposalType, requiresReview: candidateOnly || Boolean(r.a.storyCards.find(c => c.id === id)?.protected) || Boolean(r.a.brains.find(b => b.id === id)?.protected) || r.a.semanticEvaluationSettings.requireApprovalForAutoUpdates, status: "pending" });
+  expect(r.checked.proposals[0].proposal).toMatchObject({ proposedType: proposalType, requiresReview: candidateOnly || Boolean(r.a.storyCards.find(c => c.id === id)?.protected) || Boolean(r.a.brains.find(b => b.id === id)?.protected), status: "pending" });
   expect(r.checked.proposals[0].proposal.targetId ?? null).toBe(id);
 }
 describe("Brain routing", () => {
@@ -178,7 +178,6 @@ describe("Component routing", () => {
   });
   it("applies Immediate Momentum only after manual approval to its exact existing target", async () => {
     const r = await routed("(component.immediateMomentum: Target = The report must be delivered.)", a => {
-      a.memoryAutoApprove.plotMomentumUpdate = true;
       a.components = [makeComponent({ id: "target", title: "Target", type: "immediateMomentum", active: true, autoUpdate: true, content: "Old momentum." })];
     });
     let saved = reduce(r.a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: r.batch.checkpoints });

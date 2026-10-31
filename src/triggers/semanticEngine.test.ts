@@ -52,7 +52,6 @@ function baseAdventure(): Adventure {
       enabled: true,
       showLog: true,
       maxParallelUpdateCalls: 2,
-      requireApprovalForAutoUpdates: false,
       semanticEvalEveryNTurns: 1,
     },
     messages: [
@@ -172,7 +171,7 @@ describe("runManualBrainUpdate", () => {
     const result = await runManualBrainUpdate(adventure, providerConfig, "brain-seth");
 
     expect(mockProvider).toHaveBeenCalledOnce();
-    expect(result.actions.some((a) => a.type === "APPLY_BRAIN_UPDATE")).toBe(true);
+    expect(result.actions.some((a) => a.type === "ADD_MEMORY_PROPOSAL" && a.proposal.proposedType === "brainUpdate")).toBe(true);
     expect(result.logEntry.conditionsFired).toContain("manualBrain:brain-seth");
   });
 
@@ -214,13 +213,14 @@ describe("runManualBrainUpdate", () => {
     });
 
     const result = await runManualBrainUpdate(adventure, providerConfig, "brain-seth");
-    const action = result.actions.find((entry) => entry.type === "APPLY_BRAIN_UPDATE") as Extract<
+    const action = result.actions.find((entry) => entry.type === "ADD_MEMORY_PROPOSAL") as Extract<
       typeof result.actions[number],
-      { type: "APPLY_BRAIN_UPDATE" }
+      { type: "ADD_MEMORY_PROPOSAL" }
     >;
 
-    expect(action.patch.relationshipPressure).toBe("bound by command");
-    expect(action.patch.thoughts).toEqual({ seth_watches_court: "5 → Watch the court. Do not flinch." });
+    const patch = JSON.parse(action.proposal.content);
+    expect(patch.relationshipPressure).toBe("bound by command");
+    expect(patch.thoughts).toEqual({ seth_watches_court: "5 → Watch the court. Do not flinch." });
     expect(result.logEntry.errors).toEqual([]);
   });
 });
@@ -310,7 +310,7 @@ describe("AI memory builders", () => {
         ...baseAdventure().memoryAutoApprove,
         plotEssentialsUpdate: true,
         plotPressureUpdate: true,
-        storyCard: true,
+        loreStoryCard: true, otherStoryCard: true,
       },
       messages: [
         ...baseAdventure().messages,

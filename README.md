@@ -59,7 +59,7 @@ Context sections, in fixed order:
 | `challengeMode` | M. Continuity Challenge | One-turn correction instruction when the player challenges continuity |
 | `recentMessages` | K. Recent Messages | Short-term transcript window |
 
-Rolling Summary, Scene State, Quest State, Auto-Cards, and Immediate Momentum are legacy/save-compatible surfaces only. They are not assembled into the default model context.
+Quest State, Auto-Cards, and Immediate Momentum are legacy/save-compatible surfaces only. They are not assembled into the default model context.
 
 Memory Proposals (`activeState.memoryProposals`) are shown in Context Preview under "Memory Proposals / Pending Updates" but are never included in the model payload until approved. `ContextBuildResult.pendingProposals` carries the pending set.
 
@@ -80,7 +80,7 @@ Budget cuts are deterministic but configurable:
 - Only the system shell and user-marked `protected` context are absolutely non-droppable.
 - `pinned` means strongly prioritized, not automatically non-droppable.
 - `memoryPriorityMode` controls the drop order: `userLocked` (drop old messages first), `systemSuggested` (drop lowest-scored item first), `hybrid` (drop system-suggested context before user-locked context).
-- `allowSystemToDropUnpinnedTriggeredCards` and `allowSystemToPrioritizeMemory` gate additional budget behaviors. `allowSystemToTruncateSummary` is legacy because Rolling Summary is no longer assembled into context.
+- `allowSystemToDropUnpinnedTriggeredCards` and `allowSystemToPrioritizeMemory` gate additional budget behaviors.
 
 The Context Preview page shows:
 1. **Ordered Sections** — each section with per-item token estimate, priority, protected/pinned flags, inclusion policy, and generatedBy.
@@ -90,17 +90,16 @@ The Context Preview page shows:
 ## Memory Architecture
 
 - **Adventure Chronicle**: `adventure.messages`, the full persisted transcript. Inspectable in the Chronicle tab. Never automatically compressed or flooded into model context.
-- **Rolling Summary**: `adventure.rollingSummary`, legacy compression of the Chronicle retained for save compatibility. It is not emitted as a model context section.
 - **Next Output Bias**: `activeState.nextTurnNote`, a visible short-term steering note. It appears in section J, is token-counted, and expires after one successful generation by default.
 - **Story Cards**: durable triggered records for one subject: character, location, faction, object, relationship, secret, rule, or completed event. Cards carry `memoryMode` (`static`, `living`, or `historical`) so generated updates know whether to write always-true facts, current evolving state, or past-tense history. The Story Cards page can turn a user description into a pending AI-generated Memory Proposal for review. Optional AI auto-updates use a per-card cooldown and can be routed through Memory Inbox when approval is required.
 - **Brains**: opt-in character-internal state for major characters only. AI may update a Brain only when a `BrainEntry` already exists. Do not create Brains for random NPCs.
 - **Plot Essentials**: tiny always-on current operating truth: what is happening now, open tensions, obligations, and major constraints that should shape every scene. PE replacement proposals overwrite the block; outgoing facts become pending historical Story Card proposals for review. Section C.
-- **Active Pressure**: one sentence naming the current external threat, obligation, or force pressing on the player character. Section C. Auto-updated and auto-approved by default.
+- **Active Pressure**: one sentence naming the current external threat, obligation, or force pressing on the player character. Section C. Auto-updated and pending by default.
 - **Immediate Momentum**: disabled legacy component type. It is not generated, imported, auto-updated, or sent to the model.
 - **Narration Rules**: the primary per-adventure behavior contract, copied from defaults but editable during creation and afterward. Loaded with the system shell before other context.
 - **AI Instructions**: optional persistent scenario-specific behavior rules in section B. Use them for genre, drift prevention, scene-loop, and prose contracts, not facts. They are not required when Narration Rules already contain the complete stable contract. Avoid duplicating the same rule across both surfaces. AI must not modify these.
 - **Author's Note**: author-layer mood or tonal constraints. Section D. AI must not modify these.
-- **Memory Inbox / Proposals**: `activeState.memoryProposals`, where AI-suggested durable memories wait for user approval. Pending proposals appear in Context Preview but are not model context. Approving converts them to Story Cards, Brain updates, Plot Essentials edits, Active Pressure edits, or legacy Summary updates through reducer actions.
+- **Memory Inbox / Proposals**: `activeState.memoryProposals`, where AI-suggested durable memories wait for user approval. Pending proposals appear in Context Preview but are not model context. Approving converts them to Story Cards, Brain updates, Plot Essentials edits, Active Pressure edits, or Current Arc updates through reducer actions.
 - **Protected**: non-droppable during token truncation. `aiInstructions`, `plotEssentials`, and `authorNote` components are protected by default.
 - **Pinned**: prioritized for inclusion and ordering, but droppable if budget is exhausted and the item is not also protected.
 
@@ -156,17 +155,16 @@ The context builder in `src/contextBuilder/contextBuilder.ts` follows the requir
 - Trigger matching for keyword, phrase, and regex; deterministic priority order; cooldowns; trigger log.
 - LLM semantic trigger evaluation with generated updates for brains, story cards, Plot Essentials, Current Arc, and Active Pressure.
 - Full trigger action suite wired through the reducer.
-- Legacy quest, Auto-Card, Rolling Summary, and Scene State fields preserved for older saves, but not part of default runtime context.
+- Legacy quest and Auto-Card fields preserved for older saves, but not part of default runtime context.
 - AIST adventure JSON backup/restore for full playable saves.
 - Approximate token estimator in `src/tokenizer/approximateTokenCount.ts`.
 
 ## Architecture Decision: Semantic Engine and Memory Proposals
 
-The semantic post-turn evaluator can apply brain, story card, Plot Essentials, Current Arc, and Active Pressure updates through reducer-backed proposal/update paths. When `semanticEvaluationSettings.requireApprovalForAutoUpdates` is `true`, generated updates become Memory Inbox proposals and do not mutate active memory until approved.
 
 Memory Inbox / Memory Proposals is the path for unstructured AI-suggested new memory (the `classifyMemory` flow), where the AI is making a novel durable-memory suggestion the user has not pre-authorized.
 
-Rolling Summary and Scene State remain as legacy save-compatible data fields. They are not emitted into the model payload by `buildContext`.
+Older adventure JSON files containing Rolling Summary or Scene State are supported for import. These fields are ignored and are not saved in the current format.
 
 See `AGENTS.md` for implementation guidance if you want to change this behavior.
 
@@ -206,3 +204,11 @@ The live suite verifies the OpenAI-compatible Groq provider call, semantic trigg
 4. Decide where the surface appears in context and update context contract tests.
 5. If AI can write to it, route through `applyAIMemoryUpdate` or add a tested approval/proposal path.
 6. Make the surface visible in UI before treating it as product behavior.
+
+## Adventure approval
+
+Auto-approval belongs to each adventure. New adventures start with all seven switches OFF: Plot Essentials, Active Pressure, Current Arc, Arc Proposals, Character Self, Story Cards — Lore, and Story Cards — Everything Else. The permanent panel appears at the top of Memory Suggestions, including when its queue is empty. Settings has no approval controls, and global localStorage approval properties are discarded.
+
+The shared policy reads only `adventure.memoryAutoApprove`. Existing cards use their stored type. Lore uses `loreStoryCard`; character, location, legacy plot, and custom use `otherStoryCard`. Unknown new card types wait for classification. Missing-Brain card fallbacks use the card category. Existing pending proposals are never replayed when a switch changes. Evidence, duplicate, destination, protection, chronology, and companion-proposal checks remain in the reducer pipeline.
+
+Migration preserves boolean active settings. Lore falls back to the old broad Story Card preference only when its own preference is absent. Both split Character and Other preferences must be true to enable the combined category; an isolated split preference is ambiguous and leaves it OFF. A saved broad Story Card preference covers all cards. Invalid and missing preferences are false.

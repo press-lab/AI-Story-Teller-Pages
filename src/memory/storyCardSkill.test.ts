@@ -7,7 +7,7 @@ import { makeStoryCardSuggestion, scanStoryCardExchange, storyCardScanFingerprin
 
 function seed(autoApprove = false) {
   const state = createDefaultAdventure();
-  state.memoryAutoApprove.storyCard = autoApprove;
+  state.memoryAutoApprove.loreStoryCard = autoApprove; state.memoryAutoApprove.otherStoryCard = autoApprove;
   state.storyCards = ["Seth", "Draconia", "Voldemort"].map(title => makeStoryCard({ id: title.toLowerCase(), title, type: "character", keys: [title], content: `${title} is established.` }));
   return state;
 }
@@ -98,7 +98,7 @@ describe("Story Card skill policy", () => {
     expect(proposals(state)).toContainEqual(expect.objectContaining({ title: "Engagement", sourceText: "Yes.", status: "pending", requiresReview: true }));
   });
   it("keeps model-only findings pending with the default approval preference", async () => {
-    expect(createDefaultAdventure().memoryAutoApprove.storyCard).toBe(false);
+    expect(createDefaultAdventure().memoryAutoApprove.loreStoryCard).toBe(false);
     const text = 'Draconia says, "Fuck the Ministry. I am with you."';
     const state = await play(text, [finding(text)]);
     expect(proposals(state)[0].status).toBe("pending");
@@ -106,7 +106,7 @@ describe("Story Card skill policy", () => {
   });
   it("honors explicit opt-in for model findings after binding the completed exchange", async () => {
     const text = "Seth and Draconia shared their first kiss.";
-    const initial = seed(true); initial.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
+    const initial = seed(true);
     const state = await play(text, [finding(text, "Their first kiss")], initial);
     expect(proposals(state)).toHaveLength(1);
     expect(proposals(state)[0]).toMatchObject({ status: "approved", storyCardReview: { origin: "model", candidateOnly: false } });
@@ -116,7 +116,7 @@ describe("Story Card skill policy", () => {
   it("does not apply unrelated older pending work when finalizing a new source", async () => {
     let state = seed();
     state.activeState.memoryProposals = [{ id: "older", proposedType: "storyCard", storyCardType: "custom", title: "An older draft", content: "A draft awaiting review.", sourceTurnId: "manual", sourceText: "Manual draft", rationale: "Manual draft", suggestedTriggers: [], confidence: 0.8, status: "pending", createdAt: "2026-01-01", updatedAt: "2026-01-01" }];
-    state.memoryAutoApprove.storyCard = true;
+    state.memoryAutoApprove.loreStoryCard = true; state.memoryAutoApprove.otherStoryCard = true;
     state = await play("Seth and Draconia discuss the weather.", [], state);
     expect(proposals(state).find(p => p.id === "older")?.status).toBe("pending");
     expect(state.storyCards).toHaveLength(3);

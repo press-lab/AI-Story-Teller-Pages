@@ -9,7 +9,7 @@ import type { Message } from "../types/adventure";
 function fixture(index: number) {
   const a = createDefaultAdventure("Hogwarts reliability");
   a.memoryDetectionSettings.enabled = true;
-  a.memoryAutoApprove.storyCard = false;
+  a.memoryAutoApprove.loreStoryCard = false; a.memoryAutoApprove.otherStoryCard = false;
   a.memoryAutoApprove.brainUpdate = false;
   a.messages = sequences[index].messages as Message[];
   a.brains = [makeBrain({ characterName: "Draconia", active: true })];

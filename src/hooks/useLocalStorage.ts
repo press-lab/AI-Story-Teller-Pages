@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-export function useLocalStorage<T>(key: string, initialValue: T): [T, (value: T) => void] {
+export function useLocalStorage<T>(key: string, initialValue: T, normalize?: (value: T) => T): [T, (value: T) => void] {
   const [value, setValue] = useState<T>(() => {
     try {
       const stored = localStorage.getItem(key);
@@ -10,7 +10,8 @@ export function useLocalStorage<T>(key: string, initialValue: T): [T, (value: T)
       if (Array.isArray(initialValue) || Array.isArray(parsed) || typeof initialValue !== "object" || initialValue === null) {
         return parsed;
       }
-      return { ...initialValue, ...parsed } as T;
+      const merged = { ...initialValue, ...parsed } as T;
+      return normalize ? normalize(merged) : merged;
     } catch {
       return initialValue;
     }

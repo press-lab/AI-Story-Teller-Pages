@@ -119,7 +119,6 @@ export function triggerActionToAdventureActions(
     case "updateComponentPressure":
     case "updateComponentMomentum":
     case "updateComponentArc":
-    case "updateSummary":
       return [];
     case "forceIncludeNextTurn":
       return [{ type: "FORCE_INCLUDE_NEXT_TURN", targetType: triggerAction.targetType, targetId: triggerAction.targetId }];

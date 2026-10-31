@@ -11,7 +11,7 @@ import { buildContext } from "../contextBuilder/contextBuilder";
 function seed() {
   const state = createDefaultAdventure();
   state.storyClock = { origin: "established", current: { text: "2019-02-01", date: "2019-02-01", precision: "day" } };
-  state.memoryAutoApprove = { ...state.memoryAutoApprove, storyCard: false, brainUpdate: true, currentArcUpdate: true, plotPressureUpdate: true, plotEssentialsUpdate: true };
+  state.memoryAutoApprove = { ...state.memoryAutoApprove, loreStoryCard: false, otherStoryCard: false, brainUpdate: true, currentArcUpdate: true, plotPressureUpdate: true, plotEssentialsUpdate: true };
   state.storyCards = ["Seth", "Draconia", "Voldemort"].map(title => makeStoryCard({ id: title.toLowerCase(), title, type: "character", keys: [title], content: `${title} is an established character.` }));
   return state;
 }

@@ -217,7 +217,7 @@ function deterministicRecommendations(brains: BrainEntry[]): BrainAuditRecommend
   return results;
 }
 
-function buildPrompt(brains: BrainEntry[], rollingSummary: string, recentStory: string, thoughtReviewWindow: number): string {
+function buildPrompt(brains: BrainEntry[], recentStory: string, thoughtReviewWindow: number): string {
   const brainList = brains
     .map((brain) => {
       const thoughts = recentThoughtsForReview(brain, thoughtReviewWindow);
@@ -238,9 +238,6 @@ archivedThoughts: ${archivedCount}`;
 
 BRAINS UNDER REVIEW:
 ${brainList || "(none)"}
-
-STORY SO FAR (summary):
-${rollingSummary || "(none)"}
 
 RECENT STORY:
 ${recentStory || "(none)"}
@@ -356,7 +353,7 @@ export async function runBrainAudit(
   let llmRecs: BrainAuditRecommendation[] = [];
   if (llmBrains.length > 0) {
     const config = resolvedProviderConfig(adventure, providerConfig);
-    const prompt = buildPrompt(llmBrains, adventure.rollingSummary.content, formatMessages(recentMessages), reviewWindow);
+    const prompt = buildPrompt(llmBrains, formatMessages(recentMessages), reviewWindow);
     try {
       const response = await sendOpenAICompatibleChatCompletion({
         config,

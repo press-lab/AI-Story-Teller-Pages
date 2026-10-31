@@ -3,7 +3,6 @@ import type {
   Adventure,
   AdventureAction,
   CloudSyncSettings,
-  MemoryAutoApproveSettings,
   MemoryDetectionSettings,
   MemoryPriorityMode,
   OpenRouterProviderSort,
@@ -148,16 +147,11 @@ export function SettingsPage({
     onGlobalAdventureSettingsChange({ ...globalAdventureSettings, memoryDetectionSettings: { ...globalAdventureSettings.memoryDetectionSettings, ...patch } });
   }
 
-  function updateMemoryAutoApprove(patch: Partial<MemoryAutoApproveSettings>) {
-    if (adventure) { dispatch({ type: "SET_MEMORY_AUTO_APPROVE", settings: { ...adventure.memoryAutoApprove, ...patch } }); return; }
-    onGlobalAdventureSettingsChange({ ...globalAdventureSettings, memoryAutoApprove: { ...activeSettings.memoryAutoApprove, ...patch } });
-  }
 
   const activeSettings: GlobalAdventureSettings = adventure ? {
     tokenBudgetSettings: adventure.tokenBudgetSettings,
     semanticEvaluationSettings: adventure.semanticEvaluationSettings,
     memoryDetectionSettings: adventure.memoryDetectionSettings,
-    memoryAutoApprove: adventure.memoryAutoApprove,
   } : globalAdventureSettings;
   const activeModelLabel = activePreset?.label || activePreset?.model || "No model";
   const backgroundStatus = activeSettings.semanticEvaluationSettings.enabled
@@ -445,14 +439,8 @@ export function SettingsPage({
                   checked={activeSettings.tokenBudgetSettings.allowSystemToDropUnpinnedTriggeredCards}
                   onChange={(allowSystemToDropUnpinnedTriggeredCards) => updateBudget({ allowSystemToDropUnpinnedTriggeredCards })}
                 />
-                <CheckboxField
-                  label="Allow system to truncate rolling summary (legacy)"
-                  checked={activeSettings.tokenBudgetSettings.allowSystemToTruncateSummary}
-                  onChange={(allowSystemToTruncateSummary) => updateBudget({ allowSystemToTruncateSummary })}
-                />
               </div>
               <div>
-                <p className="muted">Legacy summary and scene-state schedules are stored for compatibility. These settings do not control the current automatic memory evaluator.</p>
                 <Field label="Section Budgets JSON">
                   <JsonTextarea
                     value={activeSettings.tokenBudgetSettings.sectionBudgets}
@@ -510,29 +498,6 @@ export function SettingsPage({
               />
             </Field>
             <p className="muted">This setting limits concurrent update requests. It does not set the evaluation interval.</p>
-            <h4>Automatic Update Approval</h4>
-            <CheckboxField
-              label="Require review for automatic updates"
-              checked={activeSettings.semanticEvaluationSettings.requireApprovalForAutoUpdates ?? true}
-              onChange={(requireApprovalForAutoUpdates) => updateSemanticSettings({ requireApprovalForAutoUpdates })}
-            />
-            <p className="muted">
-              When enabled, AIST sends automatic updates to Memory Suggestions. When disabled, a memory type can use its auto-approval setting. Protected or uncertain updates can still require review.
-            </p>
-            <div className="auto-approve-toggles">
-              <span className="auto-approve-label muted">Auto-approve:</span>
-              <CheckboxField label="Legacy Summary" checked={activeSettings.memoryAutoApprove.summaryUpdate} onChange={(summaryUpdate) => updateMemoryAutoApprove({ summaryUpdate })} />
-              <CheckboxField label="Plot Essentials" checked={activeSettings.memoryAutoApprove.plotEssentialsUpdate} onChange={(plotEssentialsUpdate) => updateMemoryAutoApprove({ plotEssentialsUpdate })} />
-              <CheckboxField label="Active Pressure" checked={activeSettings.memoryAutoApprove.plotPressureUpdate} onChange={(plotPressureUpdate) => updateMemoryAutoApprove({ plotPressureUpdate })} />
-              <CheckboxField label="Current Arc (off: review generated events before they become canon)" checked={activeSettings.memoryAutoApprove.currentArcUpdate} onChange={(currentArcUpdate) => updateMemoryAutoApprove({ currentArcUpdate })} />
-              <CheckboxField label="Arc Proposals" checked={activeSettings.memoryAutoApprove.arcProposal} onChange={(arcProposal) => updateMemoryAutoApprove({ arcProposal })} />
-              <CheckboxField label="Story Cards" checked={activeSettings.memoryAutoApprove.storyCard} onChange={(storyCard) => updateMemoryAutoApprove({ storyCard })} />
-              <CheckboxField label="Characters" checked={activeSettings.memoryAutoApprove.brainUpdate} onChange={(brainUpdate) => updateMemoryAutoApprove({ brainUpdate })} />
-            </div>
-            <p className="muted">
-              These toggles apply to Memory Suggestions created by automatic detection, manual builders,
-              and independent evaluation. Story Card auto-approval is off by default. Unconfirmed candidates, ambiguous destinations, protected cards and exceptional identity changes always require review. Plot Essentials requires component auto-update permission; Current Arc and Active Pressure respect explicit opt-outs.
-            </p>
             <h4>Background Provider</h4>
             <p className="muted">
               Route background tasks through a separate provider. Leave blank to use the active preset.
@@ -710,7 +675,7 @@ export function SettingsPage({
                 <h3>{developmentAdventureTitle}</h3>
                 <p className="muted">
                   Loads a complete adult Fire Nation AU scenario with World Blocks, Story Cards, Characters,
-                  semantic triggers, a quest, legacy rolling summary data, and one opening message.
+                  semantic triggers, a quest, and one opening message.
                 </p>
               </div>
             </div>

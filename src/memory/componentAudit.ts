@@ -191,7 +191,7 @@ function deterministicRecommendations(components: ComponentEntry[]): ComponentAu
   return results;
 }
 
-function buildPrompt(components: ComponentEntry[], rollingSummary: string, recentStory: string): string {
+function buildPrompt(components: ComponentEntry[], recentStory: string): string {
   const componentList = components
     .map((component) => `[${component.id}] "${component.title}" (${component.type})\n${component.content.slice(0, 2400)}`)
     .join("\n\n---\n\n");
@@ -200,9 +200,6 @@ function buildPrompt(components: ComponentEntry[], rollingSummary: string, recen
 
 COMPONENTS UNDER REVIEW:
 ${componentList || "(none)"}
-
-STORY SO FAR (summary):
-${rollingSummary || "(none)"}
 
 RECENT STORY:
 ${recentStory || "(none)"}
@@ -278,7 +275,6 @@ export async function runComponentAudit(
   options: ComponentAuditOptions = {},
 ): Promise<ComponentAuditRecommendation[]> {
   const recentMessages = lastNTurns(adventure.messages, nTurns);
-  const summary = adventure.rollingSummary.content;
   const auditable = adventure.components.filter((component) => AUDITABLE_TYPES.has(component.type));
 
   const deterministic = deterministicRecommendations(auditable);
@@ -296,7 +292,7 @@ export async function runComponentAudit(
   let llmRecs: ComponentAuditRecommendation[] = [];
   if (llmComponents.length > 0) {
     const config = resolvedProviderConfig(adventure, providerConfig);
-    const prompt = buildPrompt(llmComponents, summary, formatMessages(recentMessages));
+    const prompt = buildPrompt(llmComponents, formatMessages(recentMessages));
     try {
       const response = await sendOpenAICompatibleChatCompletion({
         config,

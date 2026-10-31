@@ -53,18 +53,6 @@ Only has an effect in `systemSuggested` or `hybrid` modes.
 
 When over budget, lets the system drop triggered story cards that aren't pinned. Pinned cards are never dropped by this path. Safe to enable if you have many cards and regularly hit the budget.
 
-### Allow system to truncate rolling summary
-
-Legacy setting. Rolling Summary is retained in saves but is not assembled into the default model context, so this has no effect on the current provider payload.
-
-### Auto-summarize in background
-
-Legacy setting. Rolling Summary content can still be retained in adventure data, but it is not sent to the model by default and should not be relied on for active context.
-
-### Auto-summarize every N turns
-
-Legacy setting for old summary workflows.
-
 ### Section Budgets JSON
 
 Per-section hard token caps. Expert setting. Lets you constrain a specific section (e.g., story cards) so it can never crowd out others. Touch only if you see a specific section dominating context at the expense of everything else.
@@ -149,6 +137,17 @@ When **on**: the AI writes the full proposal body (title + content + triggers) i
 
 When **off**: the AI only identifies *what* to store (title and type), leaving the body blank for you to fill in. Useful if you prefer to write card content yourself and just want the AI to flag *that* something is noteworthy.
 
-### Auto-approve brain state updates
+### Character Self approval
 
-Brain state (Brains panel — character mental state) is typically lower-stakes than story cards. When on, brain update proposals skip your inbox and apply directly. Story cards and plot essentials still go to Memory Suggestions for review.
+Use the Character Self switch in the permanent Memory Suggestions panel. Valid new updates apply only with this adventure's consent. Protected or uncertain updates still require review.
+
+## Adventure approval
+
+Auto-approval belongs to each adventure. New adventures start with all seven switches OFF: Plot Essentials, Active Pressure, Current Arc, Arc Proposals, Character Self, Story Cards — Lore, and Story Cards — Everything Else. The permanent panel appears at the top of Memory Suggestions, including when its queue is empty. Settings has no approval controls, and global localStorage approval properties are discarded.
+
+The shared policy reads only `adventure.memoryAutoApprove`. Existing cards use their stored type. Lore uses `loreStoryCard`; character, location, legacy plot, and custom use `otherStoryCard`. Unknown new card types wait for classification. Missing-Brain card fallbacks use the card category. Existing pending proposals are never replayed when a switch changes. Evidence, duplicate, destination, protection, chronology, and companion-proposal checks remain in the reducer pipeline.
+
+Migration preserves boolean active settings. Lore falls back to the old broad Story Card preference only when its own preference is absent. Both split Character and Other preferences must be true to enable the combined category; an isolated split preference is ambiguous and leaves it OFF. A saved broad Story Card preference covers all cards. Invalid and missing preferences are false.
+
+
+Older adventure JSON files containing Rolling Summary or Scene State are supported for import. These fields are ignored and are not saved in the current format.

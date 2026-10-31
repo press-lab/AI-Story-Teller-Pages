@@ -64,8 +64,8 @@ describe("primary Story Card architecture", () => {
   });
 
   it("appends a reviewed death to a Character without creating redundant supporting Lore", () => {
-    let state = createDefaultAdventure(); state.memoryAutoApprove.storyCard = true;
-    state.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
+    let state = createDefaultAdventure(); state.memoryAutoApprove.loreStoryCard = true; state.memoryAutoApprove.otherStoryCard = true;
+
     state.storyCards = [makeStoryCard({ id: "voldemort", title: "Voldemort", type: "character", content: "Voldemort is a dark wizard." })];
     state = dated(state, "death", "Current story date: February 1, 2019\nVoldemort dies at Seth's hands.");
     const p = reviewedProposal(state, makeMemoryProposal({ id: "death", title: "Voldemort", targetId: "voldemort", sourceTurnId: "death", content: "Voldemort dies at Seth's hands.", proposedType: "storyCard" }));
@@ -199,7 +199,7 @@ it("reconciles the story clock when date evidence is edited and undone", () => {
 
 it("does not bypass identity durability through a location alias", () => {
   let state = createDefaultAdventure();
-  state.memoryAutoApprove.storyCard = true;
+  state.memoryAutoApprove.loreStoryCard = true; state.memoryAutoApprove.otherStoryCard = true;
   const place = makeStoryCard({ id: "ministry", title: "Ministry of Magic", type: "location", keys: ["Ministry"], content: "A durable magical institution." });
   state.storyCards = [place];
   state = reduce(state, { type: "ADD_MEMORY_PROPOSAL", proposal: makeMemoryProposal({ id: "alias", userInitiated: false, title: "Ministry", content: "Seth negotiated research access there.", proposedType: "storyCard", memoryMode: "static" }) });
@@ -240,7 +240,7 @@ it("single-pass sibling appends preserve original Lore, history and both source 
   const { prepareSinglePassMemoryBatch } = await import("./singlePassMemory");
   let { a, ids } = singlePassFixture(2);
   const card = makeStoryCard({ title: "Workshop agreements", type: "lore", content: "Original authored workshop facts.", keys: ["workshop agreements"] });
-  a.storyCards.push(card); a.memoryAutoApprove.storyCard = true; a.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
+  a.storyCards.push(card); a.memoryAutoApprove.loreStoryCard = true; a.memoryAutoApprove.otherStoryCard = true;
   const batch = await prepareSinglePassMemoryBatch(a, ids);
   a = reduce(a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
   const contents = ["Avery proposed sharing sales proceeds for custom designs.", "Avery Stone shook Casey Vale's hand to confirm the agreement."];

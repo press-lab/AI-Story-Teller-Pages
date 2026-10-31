@@ -19,7 +19,7 @@ function seed() {
   const a = createDefaultAdventure("Seattle");
   a.memoryDetectionSettings.enabled = true;
   a.memoryDetectionSettings.generateContent = true;
-  a.memoryAutoApprove.storyCard = true;
+  a.memoryAutoApprove.loreStoryCard = true; a.memoryAutoApprove.otherStoryCard = true;
   a.storyCards = [makeStoryCard({ title: "Edythe", type: "character", content: "Edythe is a vampire.", keys: ["Edythe"] })];
   a.messages = [{ id: "door", role: "assistant", content, createdAt: "2026-09-27T00:00:00Z" }];
   return a;
@@ -41,7 +41,7 @@ describe("Event Memories", () => {
 
   it("discovers an event independently of an existing character, requires approval, and preserves evidence", async () => {
     const reviewState = seed();
-    reviewState.memoryAutoApprove.storyCard = false;
+    reviewState.memoryAutoApprove.loreStoryCard = false; reviewState.memoryAutoApprove.otherStoryCard = false;
     provider.mockImplementation(async r => offlinePlacementReview(r) ?? { content: JSON.stringify([candidate]), raw: {} });
     const result = await detectStoryCardProposals(reviewState, config);
     expect(result.errors).toEqual([]);

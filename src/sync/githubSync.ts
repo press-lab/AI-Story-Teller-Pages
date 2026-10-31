@@ -1,4 +1,4 @@
-import { normalizeAdventure } from "../state/defaults";
+import { normalizeAdventure, sanitizeAdventureForPersistence } from "../state/defaults";
 import type { Adventure, CloudSyncSettings } from "../types/adventure";
 
 export interface CloudSyncBundle {
@@ -45,7 +45,7 @@ function assertSettings(settings: CloudSyncSettings): void {
 
 function sanitizeAdventure(adventure: Adventure): Adventure {
   const { apiKey: _apiKey, ...modelConfig } = adventure.modelConfig;
-  return normalizeAdventure({ ...adventure, modelConfig });
+  return sanitizeAdventureForPersistence(normalizeAdventure({ ...adventure, modelConfig }));
 }
 
 export function encodeBase64Utf8(text: string): string {

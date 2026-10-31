@@ -25,9 +25,10 @@ afterEach(cleanup);
 function seed(review: boolean) {
   const a = createDefaultAdventure();
   a.activeState.turn = 30;
-  a.semanticEvaluationSettings = { ...a.semanticEvaluationSettings, requireApprovalForAutoUpdates: review };
+  a.semanticEvaluationSettings = { ...a.semanticEvaluationSettings, };
   a.brains = [makeBrain({ id: "mira", characterName: "Mira", updateMode: "append", thoughts: { turn_900: "9 → I used to distrust the key." } })];
   a.messages = [{ id: "evidence", role: "assistant", content: "Mira discovers the recovered ward.", createdAt: "2026-10-24" }];
+  a.memoryAutoApprove.brainUpdate = !review;
   return a;
 }
 function Editor({ initial }: { initial: Adventure }) {

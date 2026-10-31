@@ -8,6 +8,7 @@ import { decompressHistory } from "../memory/historyCodec";
 import { IDBFactory, IDBKeyRange, IDBObjectStore } from "fake-indexeddb";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createDefaultAdventure } from "../state/defaults";
+import { legacyAdventure, retiredKeys } from "../test/legacyAdventure";
 import { deleteAdventure, getAdventure, listAdventures, saveAdventure } from "./adventureDb";
 
 const DB_NAME = "ai-story-teller";
@@ -32,6 +33,25 @@ describe("adventureDb IndexedDB persistence", () => {
       configurable: true,
     });
     await deleteDb();
+  });
+
+  it("sanitizes legacy objects that bypass import before writing IndexedDB", async () => {
+    const old = legacyAdventure();
+    await saveAdventure(old);
+    const raw = await new Promise<unknown>((resolve, reject) => {
+      const request = indexedDB.open(DB_NAME);
+      request.onsuccess = () => {
+        const db = request.result;
+        const read = db.transaction("adventures").objectStore("adventures").get(old.id);
+        read.onsuccess = () => { resolve(read.result); db.close(); };
+        read.onerror = () => reject(read.error);
+      };
+      request.onerror = () => reject(request.error);
+    });
+    expect(JSON.stringify(raw)).not.toMatch(retiredKeys);
+    const loaded = await getAdventure(old.id);
+    expect(loaded?.messages).toEqual(old.messages);
+    expect(loaded?.memoryAutoApprove).toMatchObject({ brainUpdate: true, loreStoryCard: true, otherStoryCard: false });
   });
 
   it("saves and reloads adventures without persisting provider API keys or runtime session ids", async () => {

@@ -722,11 +722,6 @@ Example lines: "Survival changes the question." / "Pain is not a barrier. Only a
     components,
     storyCards,
     brains,
-    rollingSummary: {
-      content:
-        "Jinx has killed Silco and fired a rocket into the Piltover Council chamber. Seth, a proven mage Councilor whose always-on physical wards saved him, begins amid the burning aftermath: Jayce and Mel survive, Viktor is near death, Cassandra Kiramman, Irius Bolbok, and Torman Hoskel are dead, Salo is crippled, and Piltover's first response starts to fracture every relationship around him.",
-      updatedAt: timestamp,
-    },
     messages: [],
     activeState: {
       ...base.activeState,
@@ -741,7 +736,6 @@ Example lines: "Survival changes the question." / "Pain is not a barrier. Only a
       enabled: true,
       showLog: true,
       maxParallelUpdateCalls: 2,
-      requireApprovalForAutoUpdates: true,
     },
     tokenBudgetSettings: {
       ...base.tokenBudgetSettings,

@@ -17,7 +17,6 @@ function adventureForContext(): Adventure {
     components: [always, pinned],
     storyCards: [story],
     brains: [brain],
-    rollingSummary: { content: "Old summary events. Recent summary events.", updatedAt: "2026-01-01T00:00:00.000Z" },
     messages: [
       { id: "old-msg", role: "user", content: "Old message about the road.", createdAt: "2026-01-01T00:00:00.000Z" },
       { id: "new-msg", role: "assistant", content: "New message about the lantern.", createdAt: "2026-01-01T00:01:00.000Z" },
@@ -312,7 +311,6 @@ describe("buildContext", () => {
       storyCards: [],
 
       brains: [],
-      rollingSummary: { content: "", updatedAt: "2026-01-01T00:00:00.000Z" },
       messages: [
         { id: "old", role: "user", content: "old ".repeat(80), createdAt: "2026-01-01T00:00:00.000Z" },
         { id: "middle", role: "assistant", content: "middle ".repeat(80), createdAt: "2026-01-01T00:01:00.000Z" },
@@ -329,23 +327,8 @@ describe("buildContext", () => {
     expect(result.messages.some(message => message.content.includes("[ONE-PASS MEMORY]"))).toBe(false);
   });
 
-  it("rolling summary is not injected into context (deprecated)", () => {
-    const adventure = {
-      ...adventureForContext(),
-      rollingSummary: {
-        content: "This is old rolling summary content that should not appear.",
-        updatedAt: "2026-01-01T00:00:00.000Z",
-      },
-    } satisfies Adventure;
 
-    const result = buildContext(adventure);
-    // rollingSummary section no longer exists in the sections array
-    expect(result.sections.find((s) => s.id === "rollingSummary")).toBeUndefined();
-    // Summary content does not appear in the provider payload
-    expect(result.messages[0].content).not.toContain("rolling summary content");
-  });
-
-  it("drops lowest-priority triggered cards after message and summary cuts", () => {
+  it("drops lowest-priority triggered cards after message cuts", () => {
     const low = makeStoryCard({ title: "Low Priority", content: "low ".repeat(100), keys: ["signal"], active: true, priority: 1 });
     const high = makeStoryCard({ title: "High Priority", content: "high ".repeat(100), keys: ["signal"], active: true, priority: 10 });
     const adventure = {
@@ -355,7 +338,6 @@ describe("buildContext", () => {
 
       brains: [],
       messages: [],
-      rollingSummary: { content: "", updatedAt: "2026-01-01T00:00:00.000Z" },
       // Budget sized to fit system rows + the high-priority card only.
       tokenBudgetSettings: budget({ maxContextTokens: 920, maxRecentMessages: 0, recentMessageWindow: 0, sectionBudgets: {} }),
     } satisfies Adventure;
@@ -381,7 +363,6 @@ describe("buildContext", () => {
 
       brains: [],
       messages: [],
-      rollingSummary: { content: "", updatedAt: "2026-01-01T00:00:00.000Z" },
       tokenBudgetSettings: budget({ maxContextTokens: 10, maxRecentMessages: 0, recentMessageWindow: 0, sectionBudgets: {} }),
     } satisfies Adventure;
 
@@ -423,7 +404,6 @@ describe("buildContext", () => {
       storyCards: [lowSystemSuggested, highUserCard],
 
       brains: [],
-      rollingSummary: { content: "", updatedAt: "2026-01-01T00:00:00.000Z" },
       messages: [
         { id: "old", role: "user", content: "old ".repeat(80), createdAt: "2026-01-01T00:00:00.000Z" },
         { id: "new", role: "assistant", content: "new ".repeat(80), createdAt: "2026-01-01T00:01:00.000Z" },
@@ -470,7 +450,6 @@ describe("buildContext", () => {
       storyCards: [low, high],
 
       brains: [],
-      rollingSummary: { content: "", updatedAt: "2026-01-01T00:00:00.000Z" },
       messages: [{ id: "m1", role: "user", content: "signal", createdAt: "2026-01-01T00:00:00.000Z" }],
       tokenBudgetSettings: budget({ maxContextTokens: 10000, maxRecentMessages: 1, recentMessageWindow: 1 }),
     } satisfies Adventure;
@@ -496,7 +475,6 @@ describe("buildContext", () => {
       storyCards: [inactive],
       brains: [],
       messages: [],
-      rollingSummary: { content: "", updatedAt: "2026-01-01T00:00:00.000Z" },
     } satisfies Adventure;
 
     const result = buildContext(adventure, { currentInput: "lantern" });
@@ -511,7 +489,6 @@ describe("buildContext", () => {
       storyCards: [],
       brains: [aiBrain],
       messages: [{ id: "msg-user", role: "user", content: "npc appears.", createdAt: "2026-01-01T00:00:00.000Z" }],
-      rollingSummary: { content: "", updatedAt: "2026-01-01T00:00:00.000Z" },
       tokenBudgetSettings: budget({ maxContextTokens: 5000, maxRecentMessages: 2, recentMessageWindow: 2 }),
     } satisfies Adventure;
 
@@ -572,9 +549,8 @@ describe("buildContext", () => {
         ...adventureForContext(),
         components: [],
         storyCards: [],
-  
+
         brains: [],
-        rollingSummary: { content: "", updatedAt: "2026-01-01T00:00:00.000Z" },
         messages: [],
         activeState: {
           ...adventureForContext().activeState,
@@ -662,7 +638,6 @@ describe("buildContext", () => {
       storyCards: [],
 
       brains: [],
-      rollingSummary: { content: "", updatedAt: "2026-01-01T00:00:00.000Z" },
       messages: chronicle,
       tokenBudgetSettings: budget({ maxContextTokens: 50000, maxRecentMessages: 5, recentMessageWindow: 5, sectionBudgets: {} }),
     } satisfies Adventure;

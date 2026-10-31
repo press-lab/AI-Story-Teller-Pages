@@ -20,8 +20,8 @@ export const looseNarrations = [
 export function looseMemoryFixture(withSources = true) {
   const a = createDefaultAdventure("Synthetic loose memory routing");
   a.memoryDetectionSettings = { ...a.memoryDetectionSettings, pipeline: "singlePass", enabled: true, everyNTurns: 1, generateContent: true };
-  a.memoryAutoApprove.storyCard = true; a.memoryAutoApprove.brainUpdate = true; a.memoryAutoApprove.plotPressureUpdate = true;
-  a.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
+  a.memoryAutoApprove.loreStoryCard = true; a.memoryAutoApprove.otherStoryCard = true; a.memoryAutoApprove.brainUpdate = true; a.memoryAutoApprove.plotPressureUpdate = true;
+
   a.storyCards = [
     makeStoryCard({ id: "business", title: "Weasley Tattoo Business", type: "lore", keys: ["rune tattoos", "tattoo business"], content: "Fred and George run a tattoo business." }),
     ...["Fred Weasley", "George Weasley", "Draconia Malfoy"].map(name => makeStoryCard({

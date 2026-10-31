@@ -108,7 +108,7 @@ describe("Seattle memory quality", () => {
     const result = await runManualPEComponentUpdate(a, config, "pe");
     const state = result.actions.reduce(adventureReducer, a);
     expect(state.components.map(c => c.content)).toEqual(a.components.map(c => c.content));
-    expect(state.activeState.memoryProposals).toContainEqual(expect.objectContaining({ status: "pending", requiresReview: true }));
+    expect(state.activeState.memoryProposals).toContainEqual(expect.objectContaining({ status: "pending" }));
     expect(provider).toHaveBeenCalledTimes(1);
   });
 
@@ -146,7 +146,7 @@ describe("Seattle memory quality", () => {
   });
 
   it("does not recycle corrected Plot Essentials into cards, even with auto-approval", () => {
-    const a = seattle(); a.memoryAutoApprove.storyCard = true; a.memoryAutoApprove.plotEssentialsUpdate = true;
+    const a = seattle(); a.memoryAutoApprove.loreStoryCard = true; a.memoryAutoApprove.otherStoryCard = true; a.memoryAutoApprove.plotEssentialsUpdate = true;
     const state = adventureReducer(a, { type: "ADD_MEMORY_PROPOSAL", proposal: makeMemoryProposal({ proposedType: "plotEssentialsUpdate", title: "Plot Essentials", targetId: "pe", content: "Seth is informed but unconvinced and has arrived at the Cullen home." }) });
     expect(state.storyCards).toHaveLength(0);
     expect(state.activeState.memoryProposals.filter(p => p.proposedType === "storyCard")).toHaveLength(0);
@@ -178,7 +178,7 @@ describe("Seattle pressure and identity regressions", () => {
     const result = await runManualPEComponentUpdate(a, config, "pressure");
     const state = result.actions.reduce(adventureReducer, a);
     expect(state.components.map(c => c.content)).toEqual(a.components.map(c => c.content));
-    expect(state.activeState.memoryProposals).toContainEqual(expect.objectContaining({ status: "pending", requiresReview: true }));
+    expect(state.activeState.memoryProposals).toContainEqual(expect.objectContaining({ status: "pending" }));
     expect(provider).toHaveBeenCalledTimes(1);
   });
 

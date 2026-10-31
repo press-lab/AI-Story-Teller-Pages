@@ -82,7 +82,7 @@ it.each(["content", "source", "destination"])("blocks stale automatic approval a
   expect(reduce(next, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: p.id, automatic: true }).storyCards).toEqual(before);
 });
 it("keeps protected destinations eligible but requires review", async () => {
-  const a = seed(); a.storyCards[0].protected = true; a.memoryAutoApprove.storyCard = true;
+  const a = seed(); a.storyCards[0].protected = true; a.memoryAutoApprove.loreStoryCard = true; a.memoryAutoApprove.otherStoryCard = true;
   provider.mockResolvedValue(response(verdict())); const p = (await validateStoryCardProposal(a, config, draft(a))).proposal!;
   expect(p).toMatchObject({ targetId: "subject", requiresReview: true });
   const next = reduce(a, { type: "ADD_MEMORY_PROPOSAL", proposal: p });

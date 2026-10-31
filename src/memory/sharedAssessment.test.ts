@@ -109,7 +109,7 @@ it("normalizes absent negative discovery evidence in one assessment without repa
 });
 it.each(["storyCard", "brain"])("normalizes an exact %s prefix omission and preserves the approval pipeline", async kind => {
   const a = seed();
-  a.semanticEvaluationSettings.requireApprovalForAutoUpdates = true;
+
   a.storyCards = [makeStoryCard({ id: "invitation", title: "Dinner invitation", type: "lore", content: "A dinner was offered.", keys: ["invitation"] })];
   a.brains = [makeBrain({ id: "h", characterName: "Hermione", active: true })];
   fired = [kind === "brain" ? "brain:h" : "storyCard:invitation"];
@@ -354,7 +354,7 @@ it("rejects stale negative assessments at commit even when no proposal supplied 
 });
 
 it("preserves a valid positive decision through local normalization, validation, and approval", async () => {
-  const a = seed(); a.semanticEvaluationSettings.requireApprovalForAutoUpdates = true;
+  const a = seed();
   a.storyCards = [makeStoryCard({ id: "invitation", title: "Dinner invitation", type: "lore", content: "A dinner was offered.", keys: ["invitation"] })];
   fired = ["storyCard:invitation"];
   const original = provider.getMockImplementation()!;
@@ -386,7 +386,7 @@ function batchSeed() {
   a.brains = [makeBrain({ id: "h", characterName: "Hermione", active: true, thoughts: { old: "I remember the original agreement." } }),
     makeBrain({ id: "d", characterName: "Draconia", active: true })];
   a.memoryDetectionSettings.enabled = true; a.memoryDetectionSettings.everyNTurns = 1;
-  a.semanticEvaluationSettings.requireApprovalForAutoUpdates = true;
+
   const original = provider.getMockImplementation()!;
   provider.mockImplementation(async request => {
     const text = request.messages.map(m => m.content).join("\n");
@@ -934,8 +934,8 @@ it("reuses all batch decisions after an automatic Brain write and still invalida
 
 it("reuses sibling assessments through actual automatic Lore appends without losing any distinct delta", async () => {
   let a = assessmentBatchSeed();
-  a.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
-  a.memoryAutoApprove.storyCard = true;
+
+  a.memoryAutoApprove.loreStoryCard = true; a.memoryAutoApprove.otherStoryCard = true;
   a.storyCards = [makeStoryCard({ id: "research", type: "lore", title: "Research", keys: ["research", "invitation", "kiss"], content: "Research history." })];
   fired = ["storyCard:research"];
   const base = provider.getMockImplementation()!;

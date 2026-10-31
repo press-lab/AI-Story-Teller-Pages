@@ -1,3 +1,5 @@
+import { normalizeMemoryAutoApproveSettings } from "./defaults";
+import { shouldAutoApprove, storyCardApprovalCategory } from "../memory/approvalPolicy";
 import { ENABLE_HISTORY_COMPRESSION } from "../config/memoryHistoryCompression";
 import { storyCardAutoApprovalBlockers } from "../memory/storyCardAutoApproval";
 import { pendingLoreDateCorrectionEligibility, validateLoreChronology, isLoreProposal, loreChronologyFingerprint, loreDateConfirmed, validLoreDate } from "../memory/validateLoreChronology";
@@ -158,18 +160,8 @@ function recordStoryCardMemoryUpdate(
 }
 
 function touchAdventure(state: Adventure, patch: Partial<Adventure>): Adventure {
-  let next = { ...state, ...patch, updatedAt: nowIso() };
+  const next = { ...state, ...patch, updatedAt: nowIso() };
   if (patch.messages && !("storyClock" in patch)) next.storyClock = reconcileStoryClock(state.storyClock, patch.messages);
-  const summarizedIndex = next.rollingSummary.lastSummarizedMessageIndex;
-  if (summarizedIndex !== undefined && summarizedIndex > next.messages.length) {
-    return {
-      ...next,
-      rollingSummary: {
-        ...next.rollingSummary,
-        lastSummarizedMessageIndex: next.messages.length,
-      },
-    };
-  }
   return next;
 }
 
@@ -691,6 +683,7 @@ function normalizedReplacementContent(content: string): string {
 }
 
 function sanitizeProposal(proposal: MemoryProposal): MemoryProposal | null {
+  if (!["storyCard", "brainUpdate", "plotEssentialsUpdate", "plotPressureUpdate", "currentArcUpdate", "arcProposal", "plotMomentumUpdate", "ignore"].includes(proposal.proposedType)) return null;
   const rawContent = stripThink(proposal.content ?? "").trim();
   const title = stripThink(proposal.title ?? "").trim();
   const content = proposal.proposedType === "storyCard" ? stripLeadingCardTitle(title, rawContent) : rawContent;
@@ -698,8 +691,6 @@ function sanitizeProposal(proposal: MemoryProposal): MemoryProposal | null {
     ? Math.max(0, Math.round(proposal.autoUpdateCooldownTurns ?? 0))
     : undefined;
 
-  // summaryUpdate with blank content would immediately overwrite the real summary — hard drop
-  if (proposal.proposedType === "summaryUpdate" && !content) return null;
 
   // arcProposal: content must be JSON carrying a non-empty premise, or the seed is meaningless
   if (proposal.proposedType === "arcProposal") {
@@ -738,8 +729,10 @@ function sanitizeProposal(proposal: MemoryProposal): MemoryProposal | null {
 }
 
 function routedProposal(state: Adventure, proposal: MemoryProposal): MemoryProposal {
+  const originalCardType = proposal.storyCardType;
   if (proposal.proposedType === "storyCard") {
     const target = state.storyCards.find(c => proposal.targetId ? c.id === proposal.targetId : c.title.toLocaleLowerCase() === proposal.title.toLocaleLowerCase() || (c.type === "location" && !proposal.storyCardType && cardMatchesName(c, proposal.title)));
+    if (target) proposal = { ...proposal, storyCardType: target.type };
     if (proposal.placementValidation) return proposal;
     const legacyEvent = proposal.storyCardType === "event";
     proposal = { ...proposal, storyCardType: proposal.storyCardType ? primaryStoryCardType(proposal.storyCardType) : undefined };
@@ -765,7 +758,8 @@ function routedProposal(state: Adventure, proposal: MemoryProposal): MemoryPropo
     ...proposal,
     title: routed.title,
     content: routed.content,
-    storyCardType: routed.storyCardType ?? proposal.storyCardType,
+    storyCardType: proposal.proposedType === "storyCard" && !routed.targetId && storyCardApprovalCategory(originalCardType) === undefined
+      ? originalCardType : state.storyCards.find(card => card.id === routed.targetId)?.type ?? routed.storyCardType ?? proposal.storyCardType,
     suggestedTriggers: routed.suggestedTriggers,
     targetId: routed.targetId,
     appendContent: routed.appendContent,
@@ -852,7 +846,7 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal,
       (card) => proposal.targetId ? card.id === proposal.targetId : !proposal.storyCardReview && normalizeProposalTitle(card.title) === normalizeProposalTitle(proposal.title),
     );
     // A manual approval updates the chosen card without undoing a later type change.
-    if (manualApproval && existing) proposal = { ...proposal, storyCardType: existing.type };
+    if (existing) proposal = { ...proposal, storyCardType: existing.type };
     proposal = { ...proposal, suggestedTriggers: generatedStoryCardTriggers(state, cardTitle, safeContent, proposal.suggestedTriggers,
       existing?.id, proposal.memoryMode ?? existing?.memoryMode, proposal.storyCardType ? primaryStoryCardType(proposal.storyCardType) : existing?.type) };
     if (!manualApproval) {
@@ -942,7 +936,7 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal,
       // Not JSON — fall through to plain-string append
     }
     const brain = parsedPatch
-      ? applyBrainUpdate(existing, parsedPatch, "append", state.activeState.turn, proposal.content.slice(0, 500))
+      ? applyBrainUpdate(existing, parsedPatch, proposal.brainUpdateMode ?? "append", state.activeState.turn, proposal.content.slice(0, 500))
       : touch({
           ...existing,
           recentDevelopments: [existing.recentDevelopments, proposal.content].filter(Boolean).join("\n"),
@@ -1112,12 +1106,6 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal,
     return { components: upsertById(state.components, seededArc), storyCards };
   }
 
-  if (proposal.proposedType === "summaryUpdate") {
-    if (!proposal.content.trim()) return {};
-    const existing = state.rollingSummary.content.trim();
-    const content = (proposal.appendContent && existing) ? `${existing}\n\n${proposal.content}` : proposal.content;
-    return { rollingSummary: { content, updatedAt: nowIso() } };
-  }
 
   return {};
 }
@@ -1135,7 +1123,7 @@ function applyCompanionMemoryProposals(
     const clean = sanitizeProposal(routedProposal(workingState, proposal));
     if (!clean) continue;
     if (validateLoreChronology(workingState, clean).status === "conflict") clean.requiresReview = true;
-    const autoApprove = workingState.memoryAutoApprove?.[clean.proposedType as keyof typeof workingState.memoryAutoApprove] ?? false;
+    const autoApprove = shouldAutoApprove(workingState, clean);
     if (clean.proposedType === "storyCard" ? storyCardAutoApprovalBlockers(workingState, clean).length > 0
       : !autoApprove || clean.requiresReview || placementValidationError(workingState, clean)) {
       recorded.push(clean);
@@ -1469,7 +1457,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
       }
       // The one-pass model runs before its source is persisted. Opt-in approval waits
       // for the final saved source; local-only and ambiguous candidates still need review.
-      if (next.memoryAutoApprove.storyCard) for (const proposal of next.activeState.memoryProposals) {
+      for (const proposal of next.activeState.memoryProposals) {
         if (proposal.status === "pending" && proposal.proposedType === "storyCard" && proposal.storyCardReview?.sourceMessageId === source.id && storyCardAutoApprovalBlockers(next, proposal).length === 0
           && suggestionSourceValid(next, proposal)) next = adventureReducer(next, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id, automatic: true });
       }
@@ -1603,10 +1591,6 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
     case "SET_LAST_SEMANTIC_EVAL_TURN":
       return touchAdventure(state, {
         activeState: { ...state.activeState, lastSemanticEvalTurn: action.turn },
-      });
-    case "SET_LAST_SCENE_STATE_TURN":
-      return touchAdventure(state, {
-        activeState: { ...state.activeState, lastSceneStateTurn: action.turn },
       });
     case "UPSERT_COMPONENT":
       return touchAdventure(state, { components: upsertById(state.components, touch(action.component)) });
@@ -1979,7 +1963,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
       if (duplicatesPending || duplicatesDismissed || duplicatesCard || duplicatesStoryCardContent || duplicatesExistingCardContent || duplicatesExistingTargetContent || duplicatesCurrentPressure) return suppressed(
         duplicatesPending ? "Duplicate pending proposal" : duplicatesDismissed ? "Duplicate rejected or ignored proposal" : duplicatesCard ? "Story Card title already exists" : duplicatesStoryCardContent ? "Duplicate proposal content" : duplicatesExistingCardContent ? "Duplicate existing Story Card content" : duplicatesExistingTargetContent ? "Target already contains this content" : "Current pressure already contains this content");
       const autoApprove = clean.proposedType === "storyCard" ? storyCardAutoApprovalBlockers(state, clean).length === 0
-        : !placementValidationError(state, clean) && suggestionSourceValid(state, clean) && (state.memoryAutoApprove?.[clean.proposedType as keyof typeof state.memoryAutoApprove] ?? false);
+        : !placementValidationError(state, clean) && suggestionSourceValid(state, clean) && shouldAutoApprove(state, clean);
       if (autoApprove && !clean.requiresReview) {
         const approved = updateMemoryProposal(clean, { status: "approved" });
         const applied = applyApprovedMemoryProposal(state, approved);
@@ -2054,7 +2038,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
       if (action.automatic && existing.proposedType === "storyCard" && existing.status !== "pending") return state;
       if (action.automatic && (existing.proposedType === "storyCard" ? storyCardAutoApprovalBlockers(state, existing).length > 0
         : (!suggestionSourceValid(state, existing) || existing.requiresReview
-        || state.semanticEvaluationSettings.requireApprovalForAutoUpdates
+        || !shouldAutoApprove(state, existing)
         || state.storyCards.some(card => card.id === existing.targetId && card.protected)))) return state;
       const proposal = sanitizeProposal(proposalWithEdits(existing, action.editedProposal));
       if (!proposal) return state;
@@ -2133,18 +2117,6 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
           ),
         },
       });
-    case "UPDATE_ROLLING_SUMMARY":
-      return touchAdventure(state, {
-        rollingSummary: {
-          content: action.content,
-          updatedAt: nowIso(),
-          lastSummarizedMessageIndex: action.lastSummarizedMessageIndex ?? state.rollingSummary.lastSummarizedMessageIndex,
-        },
-      });
-    case "UPDATE_SCENE_STATE":
-      return touchAdventure(state, {
-        sceneState: { content: action.content, updatedAt: nowIso() },
-      });
     case "SET_TOKEN_BUDGET_SETTINGS":
       return touchAdventure(state, { tokenBudgetSettings: action.settings });
     case "SET_SYSTEM_TRIGGER_SETTINGS":
@@ -2154,7 +2126,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
     case "SET_SEMANTIC_EVALUATION_SETTINGS":
       return touchAdventure(state, { semanticEvaluationSettings: action.settings });
     case "SET_MEMORY_AUTO_APPROVE":
-      return touchAdventure(state, { memoryAutoApprove: action.settings });
+      return touchAdventure(state, { memoryAutoApprove: normalizeMemoryAutoApproveSettings(action.settings) });
     case "SET_MEMORY_DETECTION_SETTINGS":
       return touchAdventure(state, { memoryDetectionSettings: action.settings });
     case "SET_STATE_FLAG":
@@ -2289,7 +2261,6 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
     case "RESET_RUNTIME_STATE":
       return touchAdventure(state, {
         messages: [],
-        rollingSummary: { content: "", updatedAt: nowIso() },
         activeState: {
           ...state.activeState,
           turn: 0,

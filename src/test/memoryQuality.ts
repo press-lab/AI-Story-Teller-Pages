@@ -20,7 +20,7 @@ export const repeatedLore = [
 export function qualityFixture(count = 1) {
   const a = createDefaultAdventure("Synthetic memory quality");
   a.components = []; a.brains = []; a.storyCards = [];
-  a.memoryAutoApprove.storyCard = false; a.memoryAutoApprove.brainUpdate = false;
+  a.memoryAutoApprove.loreStoryCard = false; a.memoryAutoApprove.otherStoryCard = false; a.memoryAutoApprove.brainUpdate = false;
   a.memoryDetectionSettings = { ...a.memoryDetectionSettings, pipeline: "singlePass", enabled: true, generateContent: true, everyNTurns: 1 };
   for (const name of ["Fred", "George", "Draconia", "Hermione"]) {
     a.storyCards.push(makeStoryCard({ id: "profile-" + name, title: name, type: "character", keys: [name],

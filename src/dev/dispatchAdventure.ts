@@ -607,11 +607,6 @@ export function createDispatchAdventure(): Adventure {
     storyCards,
     brains,
     triggerRules,
-    rollingSummary: {
-      content:
-        "Seth Prest — codename Titan, power Absolute Adaptation, effectively unkillable — has just been brought into SDN by Blonde Blazer after a failed solo fight against Shroud and the Red Ring cost him his standing. In the conference room, Track Star (who dispatches both teams) lays out the deal: train with Z-Team, work missions under SDN supervision, rebuild his name. Z-Team — Visi, Flambae, Malevola, and Nix — sizes him up from the front row; X-Team — Waterboy, Sightline, Punch Up, Phenomaman, and Breach — watches from behind, where Nix's estranged older sister Breach pointedly will not look at her. Nix (in love, building him gear), Visi, and Blazer form a sharp, unresolved romantic tangle around Seth, with Nix the current center. Shroud — who killed Seth's father and leads the Red Ring — is moving again behind the scenes, building toward something larger than another heist.",
-      updatedAt: timestamp,
-    },
     messages: [
       {
         id: ids.message,

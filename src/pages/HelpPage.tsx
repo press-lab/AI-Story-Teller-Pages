@@ -135,7 +135,7 @@ npm.cmd run test:live   # optional, uses .env.test.local`}</pre>
         </p>
         <p>
           Pending proposals are not active context. Approving a proposal routes it to a Story Card, Brain
-          update, Plot Essentials update, Active Pressure update, or legacy Rolling Summary update through reducer-backed paths.
+          update, Plot Essentials update, Active Pressure update, or Current Arc update through reducer-backed paths.
         </p>
       </>
     ),
@@ -475,15 +475,13 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
     id: "memory-surfaces",
     title: "Memory Surfaces",
     category: "Memory",
-    summary: "Chronicle, legacy Rolling Summary, Next Turn Note, Story Cards, Brains, Plot Essentials, and Memory Suggestions roles.",
+    summary: "Chronicle, Next Turn Note, Story Cards, Brains, Plot Essentials, and Memory Suggestions roles.",
     tags: ["memory", "chronicle", "summary", "next turn note", "story cards", "brains"],
     body: (
       <>
         <dl>
           <dt>Adventure Chronicle</dt>
           <dd>The complete transcript. Stored locally, not compressed, not automatically dumped into context.</dd>
-          <dt>Rolling Summary</dt>
-          <dd>Legacy save-compatible continuity data. Retained in adventures, but not emitted as a default context section.</dd>
           <dt>Next Turn Note</dt>
           <dd>Short-term user-written steering for the next generation. It is visible, token-counted, and expires after use by default.</dd>
           <dt>Story Cards</dt>
@@ -689,35 +687,6 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
         <p><strong>Format:</strong> 4-7 tight bullets or short labeled lines. PE updates replace the full block. Change PE only when its foundations change. Replaced text stays in component history; removal does not create an event card.</p>
         <p><strong>Good PE entry:</strong> <code>• Seth is an exile whose unstable bond with the ward threatens both his freedom and the sanctuary he seeks.</code></p>
         <p><strong>Bad PE entry:</strong> <code>• Seth and Margo are currently standing near the threshold discussing the ward.</code> (scene state, not a permanent truth)</p>
-      </>
-    ),
-  },
-  {
-    id: "best-practices-summary",
-    title: "Durable Summary — Best Practices",
-    category: "Best Practices",
-    summary: "What the legacy Rolling Summary field is for and what replaced it in active context.",
-    tags: ["rolling summary", "summary", "continuity", "best practices"],
-    body: (
-      <>
-        <p>
-          Rolling Summary is a legacy save-compatible field. It is retained on the adventure object for old saves, but it is not emitted as a default model context section. Use Current Arc, Plot Essentials, Active Pressure, Story Cards, Brains, and Recent Messages for active continuity.
-        </p>
-        <p><strong>What belongs:</strong></p>
-        <ul>
-          <li>Arc beats — the key moments that moved the story forward.</li>
-          <li>Permanent changes — decisions made, things revealed, bridges burned.</li>
-          <li>Open plot threads — unresolved problems, active threats, things the player character still needs to do.</li>
-          <li>Relationship shifts — changes in how characters relate to each other.</li>
-        </ul>
-        <p><strong>The most important rule:</strong> If the summary fills with emotional beats and relationship milestones without any external threat, unresolved problem, or active obligation, the model will write a relationship story. Keep at least one external arc, unresolved problem, or active threat visible here alongside personal developments.</p>
-        <p><strong>What does NOT belong:</strong></p>
-        <ul>
-          <li>Scene descriptions or current location.</li>
-          <li>Character inner thoughts — those belong in Brains.</li>
-          <li>Permanent world facts that belong in Story Cards or Plot Essentials.</li>
-        </ul>
-        <p>For current adventures, keep external stakes visible through Active Pressure and Current Arc instead of relying on auto-summary settings.</p>
       </>
     ),
   },

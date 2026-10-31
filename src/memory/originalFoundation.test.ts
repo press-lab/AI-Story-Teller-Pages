@@ -175,11 +175,11 @@ describe("original independent foundation", () => {
     expect(result.state.activeState.memoryProposals.find(proposal => proposal.storyCardType === "lore")).toMatchObject({ memoryMode: "historical", lore: { status: "completed" } });
   });
   it("honors explicit auto-approval while keeping protected Brains under review", async () => {
-    const a = seed(); a.semanticEvaluationSettings.requireApprovalForAutoUpdates = false; a.memoryAutoApprove.brainUpdate = true;
+    const a = seed();  a.memoryAutoApprove.brainUpdate = true;
     const applied = await evaluate(a);
     expect(Object.values(applied.state.brains[0].thoughts)).toContain(`1 → ${reaction("Mira")}`);
     const protectedAdventure = seed(); protectedAdventure.brains[0].protected = true;
-    protectedAdventure.semanticEvaluationSettings.requireApprovalForAutoUpdates = false; protectedAdventure.memoryAutoApprove.brainUpdate = true;
+     protectedAdventure.memoryAutoApprove.brainUpdate = true;
     const protectedResult = await evaluate(protectedAdventure);
     expect(protectedResult.state.brains[0].thoughts).toEqual(protectedAdventure.brains[0].thoughts);
     expect(protectedResult.state.activeState.memoryProposals[0].status).toBe("pending");
@@ -338,8 +338,8 @@ describe("interpersonal discovery reliability paths", () => {
     a.storyCards = [makeStoryCard({ id: "hermione", type: "character", title: "Hermione", keys: ["Hermione"], content: "A scholar.", autoUpdate: false, protected: true, memoryMode: "static" })];
     a.messages[0].content = scene.player; a.messages[1].content = scene.narrator;
     discoveries = [{ ...finding(a, scene.fact), title: scene.name, candidateOnly: scene.candidateOnly, eventStatus: scene.eventStatus }];
-    a.semanticEvaluationSettings.requireApprovalForAutoUpdates = false;
-    a.memoryAutoApprove.storyCard = true;
+
+    a.memoryAutoApprove.loreStoryCard = true; a.memoryAutoApprove.otherStoryCard = true;
     const result = await evaluate(a);
     expect(result.state.storyCards.find(card => card.id === "hermione")).toEqual(a.storyCards[0]);
     const proposal = result.state.activeState.memoryProposals.find(item => item.storyCardType === "lore")!;

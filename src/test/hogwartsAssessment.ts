@@ -24,8 +24,8 @@ export function assessmentFixture(name: AssessmentCase): Adventure {
       .map(c => makeStoryCard({ ...c, type: "lore", lore: undefined }));
     a.storyCards.push(...fixture.identities.map(c => makeStoryCard({ ...c, type: "character", content: "" })));
   }
-  a.memoryAutoApprove.storyCard = false;
-  a.semanticEvaluationSettings.requireApprovalForAutoUpdates = true;
+  a.memoryAutoApprove.loreStoryCard = false; a.memoryAutoApprove.otherStoryCard = false;
+
   return a;
 }
 

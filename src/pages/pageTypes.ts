@@ -1,6 +1,7 @@
+import { stripRetiredTokenSettings } from "../state/legacyAdventureInput";
 import type { ReactNode } from "react";
-import type { Adventure, AdventureAction, ContextBuildResult, InputMode, MemoryAutoApproveSettings, MemoryDetectionSettings, ProviderConfig, SemanticEvaluationSettings, TokenBudgetSettings } from "../types/adventure";
-import { defaultMemoryAutoApproveSettings, defaultMemoryDetectionSettings, defaultSemanticEvaluationSettings, defaultTokenBudgetSettings } from "../state/defaults";
+import type { Adventure, AdventureAction, ContextBuildResult, InputMode, MemoryDetectionSettings, ProviderConfig, SemanticEvaluationSettings, TokenBudgetSettings } from "../types/adventure";
+import { defaultMemoryDetectionSettings, defaultSemanticEvaluationSettings, defaultTokenBudgetSettings } from "../state/defaults";
 
 export interface UiPreferences {
   darkMode: boolean;
@@ -18,15 +19,22 @@ export interface GlobalAdventureSettings {
   tokenBudgetSettings: TokenBudgetSettings;
   semanticEvaluationSettings: SemanticEvaluationSettings;
   memoryDetectionSettings: MemoryDetectionSettings;
-  memoryAutoApprove: MemoryAutoApproveSettings;
 }
 
 export const defaultGlobalAdventureSettings: GlobalAdventureSettings = {
   tokenBudgetSettings: defaultTokenBudgetSettings,
   semanticEvaluationSettings: defaultSemanticEvaluationSettings,
   memoryDetectionSettings: defaultMemoryDetectionSettings,
-  memoryAutoApprove: { ...defaultMemoryAutoApproveSettings },
 };
+
+export function normalizeGlobalAdventureSettings(settings: GlobalAdventureSettings): GlobalAdventureSettings {
+  const { requireApprovalForAutoUpdates: _retired, ...semanticSettings } = (settings.semanticEvaluationSettings ?? {}) as Partial<SemanticEvaluationSettings> & { requireApprovalForAutoUpdates?: unknown };
+  return {
+    tokenBudgetSettings: { ...defaultTokenBudgetSettings, ...stripRetiredTokenSettings(settings.tokenBudgetSettings) },
+    semanticEvaluationSettings: { ...defaultSemanticEvaluationSettings, ...semanticSettings },
+    memoryDetectionSettings: { ...defaultMemoryDetectionSettings, ...settings.memoryDetectionSettings },
+  };
+}
 
 export const defaultUiPreferences: UiPreferences = {
   darkMode: false,

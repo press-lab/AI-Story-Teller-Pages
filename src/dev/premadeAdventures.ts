@@ -209,10 +209,6 @@ function createCrucibleProtocolAdventure(): Adventure {
     },
     components,
     storyCards,
-    rollingSummary: {
-      content: "Seth Prest, codename Crucible, has entered SDN after the Harbor Grid disaster. The intake scanner attacked him and Absolute Conversion neutralized it in front of Z-Team and X-Team. Nix cracked open a Red Ring device displaying HELLO, CRUCIBLE, confirming Shroud is still watching and has engineered pressure around Seth, Nix's inventions, Waterboy's hidden scale, and the Knox-sisters fracture.",
-      updatedAt: timestamp,
-    },
     messages: [
       {
         id: "crucible-msg-opening",

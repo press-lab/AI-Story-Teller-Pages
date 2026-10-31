@@ -17,7 +17,6 @@ import { ContextPreviewPage } from "./ContextPreviewPage";
 import { ImportExportPage } from "./ImportExportPage";
 import { MemoryInboxPage } from "./MemoryInboxPage";
 import { StoryCardsPage } from "./StoryCardsPage";
-import { SummaryPage } from "./SummaryPage";
 import { TriggersPage } from "./TriggersPage";
 
 const timestamp = "2026-01-01T00:00:00.000Z";
@@ -497,11 +496,10 @@ describe("side menu page smoke coverage", () => {
     const user = userEvent.setup();
     renderWithAdventure((adventure, dispatch) => <MemoryInboxPage adventure={adventure} dispatch={dispatch} />);
 
-    await user.click(screen.getByText("Memory Approval Rules", { selector: "summary" }));
-    expect(screen.getByText(/They do not control when AIST evaluates story turns/)).toBeVisible();
+    await user.click(screen.getByText("Suggestion tools and settings", { selector: "summary" }));
     expect(screen.getByText(/Story Cards use relevance-based selection/)).toBeVisible();
-    await user.click(screen.getByLabelText("Story Cards", { exact: true }));
-    expect(screen.getByLabelText("Story Cards", { exact: true })).toBeChecked();
+    await user.click(screen.getByLabelText("Story Cards — Lore", { exact: true }));
+    expect(screen.getByLabelText("Story Cards — Lore", { exact: true })).toBeChecked();
 
     await user.type(screen.getByLabelText("Source Text"), "Margo calls Seth hedge prince as a private joke.");
     await user.click(screen.getByRole("button", { name: "Create Suggestion" }));
@@ -528,7 +526,7 @@ describe("side menu page smoke coverage", () => {
     });
   });
 
-  it("covers Inspector pages and Chronicle/Summary entry points", async () => {
+  it("covers Inspector pages and Chronicle entry points", async () => {
     const user = userEvent.setup();
     const onBuildContext = vi.fn();
     const onImportAdventure = vi.fn(async () => undefined);
@@ -557,16 +555,6 @@ describe("side menu page smoke coverage", () => {
     expect(screen.getByRole("tab", { name: /Back Up/i })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("tab", { name: /Restore/i })).toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: /Migrate/i })).not.toBeInTheDocument();
-    cleanup();
-
-    const onGenerateDurableSummary = vi.fn(async () => "Generated durable summary.");
-    const onGenerateSceneState = vi.fn(async () => "Generated scene state.");
-    renderWithAdventure((adventure, dispatch) => (
-      <SummaryPage adventure={adventure} dispatch={dispatch} onGenerateDurableSummary={onGenerateDurableSummary} onGenerateSceneState={onGenerateSceneState} />
-    ));
-    const regenerateButtons = screen.getAllByRole("button", { name: "Regenerate" });
-    await user.click(regenerateButtons[0]);
-    expect(onGenerateDurableSummary).toHaveBeenCalledTimes(1);
     cleanup();
 
     renderWithAdventure((adventure, dispatch) => <ChroniclePage adventure={adventure} dispatch={dispatch} />);

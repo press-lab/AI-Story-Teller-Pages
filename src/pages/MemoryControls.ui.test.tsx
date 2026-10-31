@@ -64,12 +64,11 @@ it("shows component eligibility defaults and dispatches each component's own coo
   }
 });
 
-const warning = "This semantic rule cannot write Plot Components or the legacy summary. AIST skips these actions. Use automatic memory evaluation or a manual update tool.";
+const warning = "This semantic rule cannot write Plot Components . AIST skips these actions. Use automatic memory evaluation or a manual update tool.";
 const blockedActions: TriggerAction[] = [
   { type: "updateComponent", componentId: "pe", patch: { content: "Saved instruction" } },
   { type: "updateComponentPressure", componentId: "pressure" },
   { type: "updateComponentArc", componentId: "arc" },
-  { type: "updateSummary" },
 ];
 
 it.each(blockedActions)("warns for a semantic $type action without changing stored actions", async action => {
@@ -133,10 +132,10 @@ it("preserves current and legacy memory settings through save and reload after a
   Object.defineProperty(globalThis, "IDBKeyRange", { value: IDBKeyRange, configurable: true });
   const a = createDefaultAdventure();
   a.memoryDetectionSettings = { ...a.memoryDetectionSettings, enabled: false, everyNTurns: 0 };
-  a.semanticEvaluationSettings = { ...a.semanticEvaluationSettings, semanticEvalEveryNTurns: 7, requireApprovalForAutoUpdates: false };
-  a.memoryAutoApprove = { ...a.memoryAutoApprove, storyCard: true, currentArcUpdate: true };
+  a.semanticEvaluationSettings = { ...a.semanticEvaluationSettings, semanticEvalEveryNTurns: 7, };
+  a.memoryAutoApprove = { ...a.memoryAutoApprove, loreStoryCard: true, otherStoryCard: true, currentArcUpdate: true };
   a.systemTriggers = { ...a.systemTriggers, enabled: false };
-  a.tokenBudgetSettings = { ...a.tokenBudgetSettings, autoSummarize: false, autoSummarizeEveryNTurns: 37, autoSceneStateEveryNTurns: 11 };
+  a.tokenBudgetSettings = { ...a.tokenBudgetSettings };
   a.storyCards = [makeStoryCard({ title: "Legacy settings", content: "Facts", autoUpdate: false, autoUpdateCooldownTurns: 19 })];
   a.brains = [makeBrain({ characterName: "Mira", autoUpdateCooldownTurns: 6, lastUpdatedTurn: 8 })];
   a.components = [makeComponent({ id: "pe", type: "plotEssentials", title: "Plot Essentials", content: "Premise", autoUpdate: true, autoUpdateCooldownTurns: 3, lastAutoUpdateTurn: 4 })];
