@@ -230,4 +230,4 @@ it("OFF does not scan completed evaluations or resolved proposals for new archiv
 });
 
 // Isolated legacy writer coverage; this override never applies to the shipped build.
-vi.mock("../config/memoryHistoryCompression", () => ({ MEMORY_HISTORY_COMPRESSION_ENABLED: true }));
+vi.mock("../config/memoryHistoryCompression", () => ({ ENABLE_HISTORY_COMPRESSION: true }));

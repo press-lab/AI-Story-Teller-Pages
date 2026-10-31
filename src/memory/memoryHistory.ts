@@ -1,4 +1,4 @@
-import { MEMORY_HISTORY_COMPRESSION_ENABLED } from "../config/memoryHistoryCompression";
+import { ENABLE_HISTORY_COMPRESSION } from "../config/memoryHistoryCompression";
 import { MEMORY_DEBUG_LOGGING } from "../config/debugLogging";
 import type { Adventure, MemoryEvaluationState, MemoryHistoryRecord, MemoryProposal } from "../types/adventure";
 
@@ -23,7 +23,7 @@ export function eligibleHistory(record: MemoryHistoryRecord): boolean {
 }
 /** One record per job: never clone the entire adventure to a worker. */
 export function nextHistoryRecord(a: Adventure, attempted: WeakSet<object>): MemoryHistoryRecord | undefined {
-  if (!MEMORY_HISTORY_COMPRESSION_ENABLED || !MEMORY_DEBUG_LOGGING) return;
+  if (!ENABLE_HISTORY_COMPRESSION || !MEMORY_DEBUG_LOGGING) return;
   if (a.activeState.compressedMemoryHistory && a.activeState.compressedMemoryHistory.version !== 1) return;
   for (const m of a.messages) {
     const value = m.memoryEvaluation;

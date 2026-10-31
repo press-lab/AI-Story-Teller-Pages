@@ -1,4 +1,4 @@
-import { MEMORY_HISTORY_COMPRESSION_ENABLED } from "../config/memoryHistoryCompression";
+import { ENABLE_HISTORY_COMPRESSION } from "../config/memoryHistoryCompression";
 import { MEMORY_DEBUG_LOGGING } from "../config/debugLogging";
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import type { Adventure } from "../types/adventure";
@@ -12,7 +12,7 @@ export function useMemoryHistoryCompression(adventure: Adventure | undefined, se
   const [error, setError] = useState<string>();
   useEffect(() => { latest.current = adventure; }, [adventure]);
   useEffect(() => {
-    if (!MEMORY_HISTORY_COMPRESSION_ENABLED || !MEMORY_DEBUG_LOGGING || !adventure) return;
+    if (!ENABLE_HISTORY_COMPRESSION || !MEMORY_DEBUG_LOGGING || !adventure) return;
     if (typeof Worker === "undefined") { setError("Background history compression is unavailable in this browser. Original history retained."); return; }
     const adventureId = adventure.id;
     const attempted = new WeakSet<object>();
@@ -40,7 +40,7 @@ export function useMemoryHistoryCompression(adventure: Adventure | undefined, se
   // Compression never gates narrator or memory saves. Each replacement is one
   // immutable adventure containing BOTH the portable block and compact record.
   useEffect(() => {
-    if (!MEMORY_HISTORY_COMPRESSION_ENABLED || !MEMORY_DEBUG_LOGGING || !adventure) return;
+    if (!ENABLE_HISTORY_COMPRESSION || !MEMORY_DEBUG_LOGGING || !adventure) return;
     let active = true;
     let persisted = adventure.activeState.compressedMemoryHistory;
     let saving = false;

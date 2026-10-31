@@ -1,8 +1,10 @@
-import { MEMORY_HISTORY_COMPRESSION_ENABLED } from "../config/memoryHistoryCompression";
+import { ENABLE_HISTORY_COMPRESSION } from "../config/memoryHistoryCompression";
 import { Blob as NodeBlob, Buffer as NodeBuffer } from "node:buffer";
 /** @vitest-environment jsdom */
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
+import type { Adventure } from "../types/adventure";
+import * as codec from "../memory/historyCodec";
 import { useMemoryHistoryCompression } from "./useMemoryHistoryCompression";
 import { createDefaultAdventure } from "../state/defaults";
 import { compressHistoryInWorker } from "../memory/memoryHistoryWorker";
@@ -18,7 +20,7 @@ vi.mock("../db/adventureDb", () => ({ saveAdventure: vi.fn(async () => undefined
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.clearAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 it.each([false, true])("disabled compression with logging %s performs no scans, timers, workers, state updates, warnings or saves", async enabled => {
-  expect(MEMORY_HISTORY_COMPRESSION_ENABLED).toBe(false);
+  expect(ENABLE_HISTORY_COMPRESSION).toBe(false);
   logging.MEMORY_DEBUG_LOGGING = enabled;
   vi.stubGlobal("Blob", NodeBlob);
   // Keep real SHA-256 verification; adapt JSDOM buffers for Node 20 Web Crypto.
@@ -29,6 +31,8 @@ it.each([false, true])("disabled compression with logging %s performs no scans, 
   initial.activeState.memoryProposals = [proposal];
   const archived = await withArchivedRecord(initial, { kind: "proposal", id: proposal.id, value: proposal });
   const before = structuredClone(archived);
+  const encode = vi.spyOn(codec, "compressHistory");
+  const decode = vi.spyOn(codec, "decompressHistory");
   vi.useFakeTimers();
   // Missing Worker must not even produce an availability warning.
   vi.stubGlobal("Worker", undefined);
@@ -43,6 +47,7 @@ it.each([false, true])("disabled compression with logging %s performs no scans, 
   expect(timeout).not.toHaveBeenCalled(); expect(interval).not.toHaveBeenCalled();
   expect(vi.getTimerCount()).toBe(0);
   expect(worker).not.toHaveBeenCalled(); expect(compressHistoryInWorker).not.toHaveBeenCalled();
+  expect(encode).not.toHaveBeenCalled(); expect(decode).not.toHaveBeenCalled();
   expect(set).not.toHaveBeenCalled(); expect(saveAdventure).not.toHaveBeenCalled();
   expect(hook.result.current).toBeUndefined();
   expect(archived).toStrictEqual(before);
@@ -51,4 +56,28 @@ it.each([false, true])("disabled compression with logging %s performs no scans, 
     get messages(): typeof archived.messages { throw new Error("history scanned"); },
     get activeState(): typeof archived.activeState { throw new Error("proposals scanned"); }
   }, new WeakSet())).toBeUndefined();
+});
+
+it("keeps hook order across adventure loading and switching without inspecting large histories", () => {
+  const a = createDefaultAdventure();
+  const guarded: Adventure = { ...a,
+    get messages(): Adventure["messages"] { throw new Error("Chronicle scanned"); },
+    activeState: { ...a.activeState,
+      get memoryProposals(): Adventure["activeState"]["memoryProposals"] { throw new Error("Proposals scanned"); },
+      get compressedMemoryHistory(): Adventure["activeState"]["compressedMemoryHistory"] { throw new Error("Archive scanned"); },
+    },
+  };
+  vi.useFakeTimers();
+  const worker = vi.fn(), encode = vi.fn(), decode = vi.fn();
+  vi.stubGlobal("Worker", worker); vi.stubGlobal("CompressionStream", encode); vi.stubGlobal("DecompressionStream", decode);
+  const timeout = vi.spyOn(globalThis, "setTimeout"), interval = vi.spyOn(globalThis, "setInterval");
+  const set = vi.fn();
+  const hook = renderHook(({ adventure }: { adventure: Adventure | undefined }) => useMemoryHistoryCompression(adventure, set),
+    { initialProps: { adventure: undefined as Adventure | undefined } });
+  hook.rerender({ adventure: guarded });
+  hook.rerender({ adventure: undefined });
+  hook.rerender({ adventure: { ...a, id: "another-adventure" } });
+  expect(timeout).not.toHaveBeenCalled(); expect(interval).not.toHaveBeenCalled();
+  expect(worker).not.toHaveBeenCalled(); expect(encode).not.toHaveBeenCalled(); expect(decode).not.toHaveBeenCalled();
+  expect(set).not.toHaveBeenCalled(); expect(hook.result.current).toBeUndefined();
 });
