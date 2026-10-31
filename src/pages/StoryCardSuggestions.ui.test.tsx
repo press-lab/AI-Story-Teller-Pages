@@ -137,67 +137,23 @@ function DatedReview({ update = false }) {
 
 const savedReview = (): Adventure => JSON.parse(screen.getByTestId("saved").textContent!);
 
-it.each([false, true])("edits Event Date before approval, persists it, and keeps the clock unchanged (UPDATE=%s)", async update => {
+it.each([false, true])("uses the single confirmed clock and persists approved history (APPEND=%s)", async update => {
   Object.defineProperty(globalThis, "indexedDB", { value: new IDBFactory(), configurable: true });
   render(<DatedReview update={update} />);
-  const user = userEvent.setup();
   const before = savedReview();
-  const input = screen.getByLabelText("Event Date");
-  expect(input).toHaveValue("2019-02-01");
-  await user.clear(input);
-  await user.type(input, "2019-02-14");
-  const corrected = { text: "2019-02-14", date: "2019-02-14", precision: "day" };
-  expect(savedReview().activeState.memoryProposals[0].lore).toMatchObject({ occurredAt: update ? before.storyCards[0].lore!.occurredAt : corrected, lastChangedAt: corrected });
-  expect(savedReview().storyClock).toEqual(before.storyClock);
-  // A pending correction survives both JSON and the real IndexedDB persistence boundary.
-  await saveAdventure(normalizeAdventure(JSON.parse(JSON.stringify(savedReview()))));
-  expect((await getAdventure(before.id))?.activeState.memoryProposals[0].lore?.lastChangedAt).toEqual(corrected);
-  expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
-  await user.click(screen.getByRole("button", { name: "Confirm this event date" }));
-  expect(screen.getByRole("button", { name: "Approve" })).toBeEnabled();
-  await user.click(screen.getByRole("button", { name: "Approve" }));
+  expect(screen.queryByLabelText("Event Date", { exact: true })).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("Event Date precision")).not.toBeInTheDocument();
+  await userEvent.setup().click(screen.getByRole("button", { name: "Approve" }));
   const approved = savedReview();
-  expect(approved.storyCards).toHaveLength(1);
-  expect(approved.storyCards[0].lore?.occurredAt).toEqual(update ? before.storyCards[0].lore?.occurredAt : corrected);
-  expect(approved.storyCards[0].lore?.lastChangedAt).toEqual(corrected);
-  if (update) expect(approved.storyCards[0].content).toContain("Their original meeting.\n[2019-02-14]");
+  expect(approved.activeState.memoryProposals[0].status).toBe("approved");
+  expect(approved.storyCards[0].lore?.occurredAt).toEqual(update ? before.storyCards[0].lore?.occurredAt : before.storyClock!.current);
+  expect(approved.storyCards[0].lore?.lastChangedAt).toEqual(before.storyClock!.current);
+  expect(screen.getByText("Approved — memory updated.")).toBeInTheDocument();
   expect(approved.storyClock).toEqual(before.storyClock);
   await saveAdventure(normalizeAdventure(JSON.parse(JSON.stringify(approved))));
   const reloaded = await getAdventure(before.id);
   expect(reloaded?.storyCards[0].lore).toEqual(approved.storyCards[0].lore);
-  expect(reloaded?.storyClock).toEqual(before.storyClock);
-});
-
-it.each([
-  ["around midwinter", "approximate"],
-  ["12 Frostfall, Year of the Dragon", "day"],
-  ["three days before the coronation", "relative"],
-  ["", "unknown"],
-] as const)("approves textual/unknown Event Date %s with precision %s", async (text, precision) => {
-  render(<DatedReview />);
-  const user = userEvent.setup();
-  await user.clear(screen.getByLabelText("Event Date"));
-  if (text) await user.type(screen.getByLabelText("Event Date"), text);
-  await user.selectOptions(screen.getByLabelText("Event Date precision"), precision);
-  await user.click(screen.getByRole("button", { name: "Approve" }));
-  const saved = normalizeAdventure(JSON.parse(JSON.stringify(savedReview())));
-  expect(saved.storyCards[0].lore?.occurredAt).toEqual({ text, precision });
-  expect(saved.storyClock?.current?.date).toBe("2019-02-01");
-});
-
-it.each(["2019-02-30", "February 30, 2019", "2023-02-29"])("keeps unrecognized Event Date %s as text and allows approval", async text => {
-  render(<DatedReview />);
-  const user = userEvent.setup();
-  await user.clear(screen.getByLabelText("Event Date"));
-  await user.type(screen.getByLabelText("Event Date"), text);
-  expect(screen.getByLabelText("Event Date")).toHaveAttribute("aria-invalid", "true");
-  expect(screen.getByRole("button", { name: "Approve" })).toBeEnabled();
-  expect(savedReview().activeState.memoryProposals[0].lore?.occurredAt).toEqual({ text, precision: "unknown" });
-  expect(savedReview().storyCards).toHaveLength(0);
-  expect(savedReview().storyClock?.current?.date).toBe("2019-02-01");
-  await user.click(screen.getByRole("button", { name: "Approve" }));
-  expect(savedReview().storyCards[0].lore?.occurredAt).toEqual({ text, precision: "unknown" });
-  expect(normalizeAdventure(savedReview()).storyCards[0].lore?.occurredAt).toEqual({ text, precision: "unknown" });
+  expect(reloaded?.activeState.memoryProposals[0].status).toBe("approved");
 });
 
 it("shows the actual card type and converts a legacy identity draft into reviewed Lore before approval", async () => {
@@ -284,28 +240,6 @@ it("opens archived history beside grouped pending proposals without changing eit
 });
 
 
-it("adds no date confirmation for normal proposals and invalidates a deliberate override after editing", async () => {
-  render(<DatedReview />);
-  const user = userEvent.setup();
-  expect(screen.queryByRole("button", { name: "Confirm this event date" })).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Approve" })).toBeEnabled();
-  const input = screen.getByLabelText("Event Date");
-  await user.clear(input); await user.type(input, "2019-02-04");
-  expect(screen.getByText("Date conflict: this event’s proposed date does not agree with its source chronology.")).toBeVisible();
-  expect(screen.getByText(/Source event date 2019-02-01; proposed occurrence 2019-02-04/)).toBeVisible();
-  await user.click(screen.getByRole("button", { name: "Confirm this event date" }));
-  expect(screen.getByRole("button", { name: "Approve" })).toBeEnabled();
-  await user.type(screen.getByDisplayValue("First kiss"), " privately");
-  expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
-  expect(screen.getByRole("button", { name: "Confirm this event date" })).toBeVisible();
-  await user.clear(input); await user.type(input, "2019-02-01");
-  expect(screen.queryByRole("button", { name: "Confirm this event date" })).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Approve" })).toBeEnabled();
-  await user.click(screen.getByRole("button", { name: "Approve" }));
-  expect(savedReview().activeState.memoryProposals[0].status).toBe("approved");
-});
-
-
 import { loreCorrectionFixture } from "../test/loreDateCorrection";
 import type { AdventureAction } from "../types/adventure";
 
@@ -319,83 +253,14 @@ function BulkReview({ onAction = (_action: AdventureAction) => {} }: { onAction?
   </>;
 }
 
-it("shows the clock above evaluation tools, starts unselected, and offers selection only for pending Lore", async () => {
+it("keeps one clock above evaluation tools without proposal date controls", () => {
   render(<BulkReview />);
   expect(screen.getByRole("heading", { name: "Current Story Date: 2001-09-08 (Saturday)" })).toBeVisible();
   expect(screen.getByRole("region", { name: "Current Story Date" }).compareDocumentPosition(screen.getByText("Check Recent Entries")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  const boxes = screen.getAllByRole("checkbox", { name: /^Select Lore:/ });
-  expect(boxes).toHaveLength(4); boxes.forEach(box => expect(box).not.toBeChecked());
-  expect(screen.queryByRole("button", { name: "Review Date Changes" })).not.toBeInTheDocument();
-  const before = savedReview();
-  await userEvent.setup().click(screen.getByRole("checkbox", { name: "Select Lore: Archive discovery" }));
-  expect(screen.getByText("1 selected · 1 eligible for correction")).toBeVisible();
-  expect(screen.getByRole("checkbox", { name: "Select Lore: Royal appointment" })).not.toBeChecked();
-  expect(savedReview()).toEqual(before);
+  expect(screen.queryByLabelText("Event Date", { exact: true })).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("Event Date precision")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /Confirm.*date|Select visible eligible Lore/i })).not.toBeInTheDocument();
 });
-
-it("selects only visible eligible Lore and leaves explicitly historical suggestions for individual review", async () => {
-  render(<BulkReview />); const user = userEvent.setup();
-  await user.type(screen.getByPlaceholderText("Search suggestions..."), "Archive discovery");
-  await user.click(screen.getByRole("button", { name: "Select visible eligible Lore" }));
-  expect(screen.getByText("1 selected · 1 eligible for correction")).toBeVisible();
-  await user.clear(screen.getByPlaceholderText("Search suggestions..."));
-  expect(screen.getByRole("checkbox", { name: "Select Lore: Royal appointment" })).not.toBeChecked();
-  await user.click(screen.getByRole("checkbox", { name: "Select Lore: Trade treaty" }));
-  expect(screen.getByText("2 selected · 1 eligible for correction")).toBeVisible();
-  expect(screen.getByText(/Excluded: The source establishes a different/)).toBeVisible();
-  expect(screen.getAllByLabelText("Event Date")).toHaveLength(4);
-});
-
-it("requires review and confirmation, allows cancellation, and commits one batch without approval", async () => {
-  const actions = vi.fn(); render(<BulkReview onAction={actions} />); const user = userEvent.setup();
-  const before = savedReview();
-  await user.click(screen.getByRole("checkbox", { name: "Select Lore: Archive discovery" }));
-  await user.click(screen.getByRole("checkbox", { name: "Select Lore: Archive agreement" }));
-  await user.click(screen.getByRole("button", { name: "Review Date Changes" }));
-  expect(savedReview()).toEqual(before); expect(actions).not.toHaveBeenCalled();
-  expect(screen.getByText("This replaces the proposed event dates for the selected pending Lore. Original Chronicle messages and existing approved Story Cards will not change.")).toBeVisible();
-  await user.click(screen.getByRole("button", { name: "Cancel date changes" }));
-  expect(savedReview()).toEqual(before);
-  await user.click(screen.getByRole("button", { name: "Review Date Changes" }));
-  await user.click(screen.getByRole("button", { name: "Confirm and Apply Dates" }));
-  expect(actions).toHaveBeenCalledTimes(1);
-  expect(actions.mock.calls[0][0].type).toBe("APPLY_CURRENT_STORY_DATE_TO_PENDING_LORE");
-  const after = savedReview();
-  expect(after.activeState.memoryProposals[0]).toMatchObject({ status: "pending", lore: { occurredAt: { date: "2001-09-08" } } });
-  expect(after.activeState.memoryProposals[2]).toMatchObject({ lore: { occurredAt: { date: "2001-09-04" }, lastChangedAt: { date: "2001-09-08" } } });
-  expect(after.messages).toEqual(before.messages); expect(after.storyCards).toEqual(before.storyCards);
-  expect(after.activeState.memoryProposals.slice(4)).toEqual(before.activeState.memoryProposals.slice(4));
-  expect(screen.getByRole("status", { name: "Saved Lore date changes" })).toHaveTextContent("Archive discovery: 2001-09-08 (Saturday) — saved");
-  expect(screen.queryByRole("button", { name: "Review Date Changes" })).not.toBeInTheDocument();
-  Object.defineProperty(globalThis, "indexedDB", { value: new IDBFactory(), configurable: true });
-  await saveAdventure(normalizeAdventure(JSON.parse(JSON.stringify(after))));
-  const loaded = await getAdventure(after.id);
-  expect(loaded?.activeState.memoryProposals[0].lore).toEqual(after.activeState.memoryProposals[0].lore);
-  expect(loaded?.activeState.memoryProposals[0].chronologyConfirmationFingerprint).toBe(after.activeState.memoryProposals[0].chronologyConfirmationFingerprint);
-});
-
-it.each(["Advance externally", "Edit selected externally"])("blocks stale confirmation after %s", async button => {
-  render(<BulkReview />); const user = userEvent.setup();
-  await user.click(screen.getByRole("checkbox", { name: "Select Lore: Archive discovery" }));
-  await user.click(screen.getByRole("button", { name: "Review Date Changes" }));
-  await user.click(screen.getByRole("button", { name: button }));
-  expect(screen.getByRole("button", { name: "Confirm and Apply Dates" })).toBeDisabled();
-  expect(savedReview().activeState.memoryProposals[0].lore?.occurredAt?.date).toBe("2001-09-02");
-});
-
-it("removes resolved selections and never persists or restores local selection", async () => {
-  const view = render(<BulkReview />); const user = userEvent.setup();
-  const before = JSON.stringify(savedReview());
-  await user.click(screen.getByRole("checkbox", { name: "Select Lore: Archive discovery" }));
-  expect(JSON.stringify(savedReview())).toBe(before);
-  await user.click(screen.getByRole("button", { name: "Resolve selected source" }));
-  expect(screen.queryByRole("button", { name: "Review Date Changes" })).not.toBeInTheDocument();
-  await user.click(screen.getByRole("checkbox", { name: "Select Lore: Royal appointment" }));
-  const saved = savedReview(); view.unmount();
-  render(<MemoryInboxPage adventure={normalizeAdventure(JSON.parse(JSON.stringify(saved)))} dispatch={vi.fn()} />);
-  screen.getAllByRole("checkbox", { name: /^Select Lore:/ }).forEach(box => expect(box).not.toBeChecked());
-});
-
 
 it("applies the Suggestions clock draft to the saved adventure and persists its anchor", async () => {
   Object.defineProperty(globalThis, "indexedDB", { value: new IDBFactory(), configurable: true });
@@ -417,21 +282,12 @@ it("applies the Suggestions clock draft to the saved adventure and persists its 
 
 
 import { exportAdventureJson, importAdventureJson } from "../utils/json";
-import { loreDateConfirmed } from "../memory/validateLoreChronology";
-import { correctionBatch } from "../test/loreDateCorrection";
-it("retains confirmed pending corrections across the actual JSON export/import boundary", () => {
+it("loads existing JSON Lore chronology without rewriting historical snapshots", () => {
   const initial = loreCorrectionFixture();
-  const corrected = adventureReducer(initial, correctionBatch(initial));
-  const imported = importAdventureJson(exportAdventureJson(corrected));
-  expect(imported.storyClock).toEqual(corrected.storyClock);
-  for (const id of ["stale", "append"]) {
-    const proposal = imported.activeState.memoryProposals.find(p => p.id === id)!;
-    expect(proposal.lore).toEqual(corrected.activeState.memoryProposals.find(p => p.id === id)!.lore);
-    expect(proposal.status).toBe("pending");
-    expect(loreDateConfirmed(imported, proposal)).toBe(true);
-  }
+  const imported = importAdventureJson(exportAdventureJson(initial));
+  expect(imported.storyClock).toEqual(initial.storyClock);
+  expect(imported.storyCards[0].lore).toEqual(initial.storyCards[0].lore);
 });
-
 
 it("keeps the Story Cards toggle bound and persisted, with auto-approved history and understandable pending review", async () => {
   const { looseMemoryFixture } = await import("../test/looseMemory");

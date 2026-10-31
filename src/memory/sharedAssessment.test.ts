@@ -269,11 +269,13 @@ it("suppresses pending paraphrases and produces an approval no-op after another 
   expect(second.activeState.memoryProposals.every(p => p.status === "approved")).toBe(true);
   expect(second.activeState.memoryDiagnostics).toContainEqual(expect.objectContaining({ outcome: "candidate_suppressed", reason: expect.stringContaining("no-op") }));
 });
-it("keeps a partially overlapping reviewed draft pending until edited/revalidated", () => {
+it("applies the remaining content of an explicitly approved overlapping draft", () => {
   const a = seed(); a.storyCards = [makeStoryCard({ id: "invitation", title: "Dinner invitation", type: "lore", content: "Hermione accepted the invitation." })];
   const p = suggestion(a, "mixed", "Hermione accepted the invitation.\nDraconia agreed to share the notebook."); a.activeState.memoryProposals = [p];
   const r = reduce(a, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: p.id });
-  expect(r.storyCards).toEqual(a.storyCards); expect(r.activeState.memoryProposals[0]).toMatchObject({ content: p.content, status: "pending", requiresReview: true });
+  expect(r.storyCards[0].content).toContain("Draconia agreed to share the notebook.");
+  expect(r.storyCards[0].content.match(/Hermione accepted the invitation/g)).toHaveLength(1);
+  expect(r.activeState.memoryProposals[0]).toMatchObject({ content: p.content, status: "approved" });
 });
 it.each([
   ["Hermione offered the invitation.", "Hermione accepted the invitation."],

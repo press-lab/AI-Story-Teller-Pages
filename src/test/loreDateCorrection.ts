@@ -1,7 +1,6 @@
-import type { AdventureAction, StoryTime } from "../types/adventure";
+import type { StoryTime } from "../types/adventure";
 import { createDefaultAdventure, makeStoryCard } from "../state/defaults";
 import { makeStoryCardSuggestion } from "../memory/storyCardSuggestions";
-import { loreChronologyFingerprint } from "../memory/validateLoreChronology";
 import { makeMemoryProposal } from "./goldenAdventure";
 import { reviewedProposal } from "./memoryPlacement";
 
@@ -26,8 +25,4 @@ export function loreCorrectionFixture() {
   a.activeState.memoryProposals.push(makeMemoryProposal({ id: "brain", proposedType: "brainUpdate", title: "Private thought" }));
   for (const type of ["character", "location", "custom"] as const) a.activeState.memoryProposals.push({ ...stale, id: type, title: type, storyCardType: type });
   return a;
-}
-export function correctionBatch(a: ReturnType<typeof loreCorrectionFixture>, ids = ["stale", "historical", "append"]): Extract<AdventureAction, { type: "APPLY_CURRENT_STORY_DATE_TO_PENDING_LORE" }> {
-  return { type: "APPLY_CURRENT_STORY_DATE_TO_PENDING_LORE", expectedClockDate: a.storyClock!.current!.date!,
-    proposals: ids.map(id => ({ id, expectedFingerprint: loreChronologyFingerprint(a, a.activeState.memoryProposals.find(p => p.id === id)!) })) };
 }

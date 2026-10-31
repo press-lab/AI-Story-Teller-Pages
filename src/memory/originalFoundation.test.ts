@@ -303,13 +303,13 @@ describe("original independent foundation", () => {
     expect(result.adventure.messages.at(-1)?.memoryEvaluation?.status).toBe("pending");
     expect(result.adventure.messages.at(-1)?.content).toBe("Mira reveals the hidden key.");
   });
-  it("does not timestamp old imported discoveries with the current story date or borrow later evidence", async () => {
+  it("uses the confirmed memory-operation date without borrowing later evidence", async () => {
     const a = seed(); a.storyClock = { origin: "established", current: { text: "2030-10-01", date: "2030-10-01", precision: "day" } };
     a.messages.push({ id: "future", role: "assistant", content: "The ward exploded years later.", createdAt: "2026-10-24" });
     discoveries = [finding({ ...a, messages: a.messages.slice(0, 2) })];
     const result = await evaluate(a);
     const proposal = result.state.activeState.memoryProposals.find(proposal => proposal.storyCardType === "lore")!;
-    expect(proposal.lore?.occurredAt?.date).toBeUndefined();
+    expect(proposal.lore?.occurredAt?.date).toBe("2030-10-01");
     expect(proposal.evaluationSource?.messages.map(message => message.id)).not.toContain("future");
   });
 });

@@ -263,14 +263,15 @@ const debugLogging = vi.hoisted(() => ({ MEMORY_DEBUG_LOGGING: true }));
 vi.mock("../config/debugLogging", () => debugLogging);
 
 
-it("attaches explicit source chronology instead of stale recorded chronology without changing findings", () => {
+it("uses the confirmed clock without changing findings or source chronology", () => {
   const state = seed();
+  state.storyClock = { origin: "established", current: { text: "2001-09-08", date: "2001-09-08", precision: "day" } };
   state.messages = [{ id: "stale", role: "assistant", content: "September 4, 2001 — Morning\nThey signed the research agreement.",
     storyTime: { text: "2001-09-02", date: "2001-09-02", precision: "day" }, createdAt: "2026-10-29" }];
   const finding = { title: "4 September — Research agreement", content: "They signed the research agreement.", evidence: "They signed the research agreement.", reason: "An agreement" };
   const p = makeStoryCardSuggestion(state, "stale", state.messages[0].content, finding);
   expect(p).toMatchObject({ title: finding.title, content: finding.content, sourceText: finding.evidence,
-    lore: { occurredAt: { date: "2001-09-04" }, lastChangedAt: { date: "2001-09-04" } } });
+    lore: { occurredAt: { date: "2001-09-08" }, lastChangedAt: { date: "2001-09-08" } } });
   expect(state.messages[0].storyTime?.date).toBe("2001-09-02");
 });
 

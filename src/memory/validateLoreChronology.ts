@@ -1,6 +1,4 @@
 import type { Adventure, MemoryProposal, Message, StoryTime } from "../types/adventure";
-import { suggestionSourceValid } from "./storyCardSuggestions";
-import { placementValidationError } from "./storyCardPlacement";
 import { readStoryTime, transitionKey } from "./storyTime";
 
 export type LoreChronologyValidation =
@@ -18,7 +16,7 @@ function sourceText(adventure: Adventure, proposal: LoreInformation, source?: Me
 }
 
 /** Source chronology, never wall-clock timestamps or generated title dates. */
-export function resolveLoreEventDate(adventure: Adventure, proposal: LoreInformation, source?: Message): StoryTime | undefined {
+export function sourceLoreEventDate(adventure: Adventure, proposal: LoreInformation, source?: Message): StoryTime | undefined {
   source ??= adventure.messages.find(m => m.id === proposal.sourceTurnId);
   const text = sourceText(adventure, proposal, source);
   const observed = readStoryTime(text, source ? undefined : adventure.storyClock);
@@ -79,7 +77,7 @@ export function validateLoreChronology(adventure: Adventure, proposal: MemoryPro
   source ??= adventure.messages.find(m => m.id === proposal.sourceTurnId);
   // Once a proposal exists, a missing source cannot borrow the moving clock.
   // Pre-persistence clock fallback belongs only to proposal construction.
-  const evidence = source ? resolveLoreEventDate(adventure, proposal, source)
+  const evidence = source ? sourceLoreEventDate(adventure, proposal, source)
     : readStoryTime(sourceText(adventure, proposal)).time;
   const append = proposal.cardOperation === "append" || Boolean(proposal.targetId);
   const event = append ? proposal.lore?.lastChangedAt ?? proposal.lore?.occurredAt : proposal.lore?.occurredAt;
@@ -104,64 +102,7 @@ export function validateLoreChronology(adventure: Adventure, proposal: MemoryPro
   return { status: "valid" };
 }
 
-/** Confirmation is bound to the displayed draft and live source, never a generic bypass. */
-export function loreChronologyFingerprint(adventure: Adventure, proposal: MemoryProposal): string {
-  const text = JSON.stringify([proposal.sourceTurnId, sourceText(adventure, proposal),
-    adventure.messages.find(m => m.id === proposal.sourceTurnId)?.storyTime,
-    proposal.title, proposal.content, proposal.targetId, proposal.cardOperation, proposal.appendContent,
-    proposal.lore?.occurredAt, proposal.lore?.lastChangedAt,
-    proposal.proposedType, proposal.storyCardType, proposal.sourceText, proposal.storyCardPatch,
-    // Multi-exchange evidence is as authoritative as the primary source. A later
-    // edit to any reviewed source must invalidate its chronology confirmation.
-    [...new Set([...(proposal.evaluationSource?.messages.map(m => m.id) ?? []),
-      ...(proposal.storyCardReview?.additionalSources?.map(m => m.id) ?? []),
-      ...(proposal.storyCardReview?.playerMessageId ? [proposal.storyCardReview.playerMessageId] : [])])]
-      .map(id => { const message = adventure.messages.find(m => m.id === id); return [id, message?.content, message?.storyTime]; })]);
-  let hash = 2166136261;
-  for (let index = 0; index < text.length; index++) hash = Math.imul(hash ^ text.charCodeAt(index), 16777619);
-  return `chronology-v1:${(hash >>> 0).toString(16)}:${text.length}`;
-}
-
-export function loreDateConfirmed(adventure: Adventure, proposal: MemoryProposal): boolean {
-  return Boolean(proposal.chronologyConfirmationFingerprint
-    && proposal.chronologyConfirmationFingerprint === loreChronologyFingerprint(adventure, proposal)
-    && validLoreDate(proposal.lore?.occurredAt) && validLoreDate(proposal.lore?.lastChangedAt));
-}
-
-export type DateCorrectionEligibility = { eligible: true } | { eligible: false; reason: string };
-
-/** Explicit batch correction may override stored chronology, never source evidence. */
-export function pendingLoreDateCorrectionEligibility(adventure: Adventure, proposal: MemoryProposal, current: StoryTime | undefined): DateCorrectionEligibility {
-  const exclude = (reason: string): DateCorrectionEligibility => ({ eligible: false, reason });
-  if (proposal.status !== "pending" || proposal.archivedMemoryHistoryId) return exclude("Only pending suggestions can be corrected.");
-  if (!isLoreProposal(adventure, proposal)) return exclude("Only Lore Story Card suggestions can be corrected.");
-  if (!current?.date || !["day", "time"].includes(current.precision) || !validLoreDate(current)
-    || readStoryTime("Date: " + current.text).time?.date !== current.date) return exclude("The current story date must be a valid exact Gregorian date.");
-  if (adventure.storyClock?.origin !== "established") return exclude("Establish the current story date first; the default assumed clock cannot date a batch.");
-  const source = adventure.messages.find(m => m.id === proposal.sourceTurnId);
-  if (!source || !source.content.trim() || !suggestionSourceValid(adventure, proposal)) return exclude("The source evidence is missing or changed.");
-  const evidence = [source, ...(proposal.evaluationSource?.messages ?? []), ...(proposal.storyCardReview?.additionalSources ?? [])];
-  // Generated suggestions can contain multiple joined quotes or labelled exchange
-  // excerpts. Their existing snapshot/placement guards validate that evidence;
-  // only unsnapshotted manual drafts need a direct quote match here.
-  const boundEvidence = Boolean(proposal.storyCardReview || proposal.evaluationSource || proposal.placementValidation);
-  if (!proposal.content.trim() || !proposal.sourceText.trim()
-    || !boundEvidence && !evidence.some(m => m.content.includes(proposal.sourceText.trim()))) return exclude("There is insufficient matching source evidence for this event.");
-  const target = adventure.storyCards.find(c => c.id === proposal.targetId);
-  if (proposal.targetId && (!target || target.type !== "lore")
-    || proposal.cardOperation === "append" && !target
-    || target && (proposal.cardOperation !== "append" || !proposal.appendContent)
-    || !target && proposal.cardOperation !== "create") return exclude("The Lore destination or operation is no longer valid.");
-  const placementError = placementValidationError(adventure, proposal);
-  if (placementError) return exclude(placementError);
-  const observed = readStoryTime(source.content);
-  if (observed.flashback) return exclude("The source explicitly describes a flashback; review its Event Date individually.");
-  if (observed.time && !transitionKey(source.content)
-    && (!observed.time.date || observed.time.date !== current.date || !validLoreDate(observed.time))) return exclude("The source establishes a different or ambiguous explicit event date.");
-  const sourcePrefix = eventPrefix(source.content);
-  if (sourcePrefix && !prefixAgrees(sourcePrefix, current.date)) return exclude("The source establishes a different explicit event-date heading.");
-  const prefixes = [eventPrefix(proposal.content), eventPrefix(proposal.title)];
-  if (prefixes.some(prefix => prefix && !prefixAgrees(prefix, current.date!))) return exclude("The proposed title or event-content prefix identifies a different event date.");
-  if (target && !validLoreDate(target.lore?.occurredAt)) return exclude("The destination occurrence date needs individual review.");
-  return { eligible: true };
+/** The saved, established clock alone dates new memory operations. */
+export function resolveLoreEventDate(adventure: Adventure, _proposal?: LoreInformation, _source?: Message): StoryTime | undefined {
+  return adventure.storyClock?.origin === "established" ? adventure.storyClock.current : undefined;
 }

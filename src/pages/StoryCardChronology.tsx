@@ -54,8 +54,7 @@ export function LoreChronologyEditor({ card, dispatch, messages }: { card: Story
     dispatch({ type: "UPDATE_STORY_CARD", storyCardId: card.id, patch: { lore: { ...lore, ...patch } } });
   }
   return <fieldset><legend>Lore chronology and knowledge</legend>
-    <TimeFields label="Occurred at" value={lore.occurredAt} onChange={occurredAt => update({ occurredAt })} />
-    <TimeFields label="Last meaningful change" value={lore.lastChangedAt} onChange={lastChangedAt => update({ lastChangedAt })} />
+    <p>Occurred: {formatStoryTimeForDisplay(lore.occurredAt)} · Last meaningful change: {formatStoryTimeForDisplay(lore.lastChangedAt)}</p>
     <Field label="Lore status"><select value={lore.status} onChange={event => update({ status: event.target.value as LoreMetadata["status"] })}>
       {["completed", "ongoing", "unresolved", "superseded"].map(status => <option key={status} value={status}>{status}</option>)}
     </select></Field>

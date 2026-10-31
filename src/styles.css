@@ -1260,7 +1260,7 @@ details.story-card-item:not([open]) > :not(summary) {
 
 .proposal-approved { border-left: 3px solid #4ade80; }
 .proposal-rejected { border-left: 3px solid #f87171; }
-.proposal-ignored  { border-left: 3px solid var(--border); opacity: 0.7; }
+.proposal-ignored  { border-left: 3px solid var(--border); }
 .proposal-pending  { border-left: 3px solid transparent; }
 
 :root.dark-mode .proposal-approved { border-left-color: #16a34a; }
@@ -4132,7 +4132,7 @@ mark.search-highlight {
 }
 
 .audit-rec-rejected {
-  opacity: 0.45;
+  opacity: 1;
 }
 
 .audit-rec-header {
@@ -5693,3 +5693,5 @@ summary {
   font-size: 12px;
   line-height: 1;
 }
+
+.manual-approval:not(:disabled) { opacity: 1; cursor: pointer; }

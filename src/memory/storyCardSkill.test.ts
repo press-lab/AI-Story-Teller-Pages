@@ -201,7 +201,7 @@ describe("calendar progression", () => {
     state.messages.push(source);
     const proposal = makeStoryCardSuggestion(state, source.id, source.content, { title: "Old kiss", content: source.content, evidence: source.content, reason: "Historical source" });
     expect(proposal.lore?.occurredAt?.date).toBeUndefined();
-    expect(proposal.lore?.occurredAt?.precision).toBe("relative");
+    expect(proposal.lore?.occurredAt).toBeUndefined();
   });
   it.each([["The following morning, they return.", "2019-02-01"], ["One month later, they return.", "2019-02-28"], ["Two months later, they return.", "2019-03-31"]])("counts %s once", (text, expected) => {
     let state = seed();

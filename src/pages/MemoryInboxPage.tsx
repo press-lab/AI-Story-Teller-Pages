@@ -1,13 +1,10 @@
 import { storyCardAutoApprovalBlockers } from "../memory/storyCardAutoApproval";
-import { isLoreProposal, pendingLoreDateCorrectionEligibility, loreChronologyFingerprint, validateLoreChronology, loreDateConfirmed, validLoreDate } from "../memory/validateLoreChronology";
+import { validateLoreChronology } from "../memory/validateLoreChronology";
 import { ArchivedMemoryDetails } from "./ArchivedMemoryDetails";
 import { placementValidationError, proposalDestinationLabel } from "../memory/storyCardPlacement";
 import { MemoryDecisionsPage } from "./MemoryDecisionsPage";
-import { proposalLore } from "../memory/storyCardArchitecture";
 import { suggestionSourceValid } from "../memory/storyCardSuggestions";
 import { memoryTargetSnapshot } from "../memory/memoryCycleState";
-import { formatStoryTimeForDisplay } from "./storyTimeDisplay";
-import { ProposalEventDate } from "./ProposalEventDate";
 import { useEffect, useState } from "react";
 import { StoryClockEditor } from "./StoryCardChronology";
 import { classifyMemory } from "../memory/classificationPolicy";
@@ -75,34 +72,6 @@ function MemorySuggestionsPage({ adventure, dispatch, onRegenerateProposal, onRe
   const [reconcileEntryCount, setReconcileEntryCount] = useState(20);
   const [reconcileIncludeBrains, setReconcileIncludeBrains] = useState(true);
   const [search, setSearch] = useState(initialSearch);
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  type DateReview = { expectedClockDate: string; rows: Array<{ proposal: MemoryProposal; expectedFingerprint: string; resultFingerprint: string; eligibility: ReturnType<typeof pendingLoreDateCorrectionEligibility> }> };
-  const [dateReview, setDateReview] = useState<DateReview>();
-  const [appliedReview, setAppliedReview] = useState<DateReview>();
-  useEffect(() => { setSelectedIds([]); setDateReview(undefined); setAppliedReview(undefined); }, [adventure.id]);
-  useEffect(() => {
-    setSelectedIds(ids => {
-      const pendingIds = ids.filter(id => adventure.activeState.memoryProposals.some(p => p.id === id && p.status === "pending" && isLoreProposal(adventure, p)));
-      return pendingIds.length === ids.length ? ids : pendingIds;
-    });
-  }, [adventure.activeState.memoryProposals, adventure.id]);
-  const selected = allProposals.filter(p => selectedIds.includes(p.id) && p.status === "pending" && isLoreProposal(adventure, p));
-  const dateRows = selected.map(proposal => {
-    const target = adventure.storyCards.find(c => c.id === proposal.targetId);
-    const current = adventure.storyClock?.current;
-    const preview = { ...proposal, lore: { ...(proposal.lore ?? { status: "unresolved" as const, sourceMessageIds: [proposal.sourceTurnId] }),
-      occurredAt: target ? target.lore?.occurredAt : current, lastChangedAt: current } };
-    return { proposal, expectedFingerprint: loreChronologyFingerprint(adventure, proposal), resultFingerprint: loreChronologyFingerprint(adventure, preview),
-      eligibility: pendingLoreDateCorrectionEligibility(adventure, proposal, current) };
-  });
-  const reviewRows = dateReview?.rows ?? dateRows;
-  const eligibleCount = reviewRows.filter(row => row.eligibility.eligible).length;
-  const reviewStale = dateReview && (dateReview.expectedClockDate !== adventure.storyClock?.current?.date
-    || dateReview.rows.some(row => {
-      const live = allProposals.find(p => p.id === row.proposal.id);
-      return !live || live.status !== "pending" || row.expectedFingerprint !== loreChronologyFingerprint(adventure, live)
-        || row.eligibility.eligible !== pendingLoreDateCorrectionEligibility(adventure, live, adventure.storyClock?.current).eligible;
-    }));
   const searchLower = search.toLowerCase().trim();
   const visibleProposals = allProposals.filter((proposal) => !searchLower
     || proposal.title.toLowerCase().includes(searchLower)
@@ -216,6 +185,7 @@ function MemorySuggestionsPage({ adventure, dispatch, onRegenerateProposal, onRe
       </div>
 
       <StoryClockEditor adventure={adventure} dispatch={dispatch} inline />
+      <p aria-live="polite">{allProposals.filter(p => p.status === "approved" && p.approvalFeedback).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]?.approvalFeedback}</p>
 
       {onFindEventMemories && <div className="panel">
         <button type="button" disabled={loading || Boolean(eventScan)} onClick={async () => {
@@ -297,56 +267,12 @@ function MemorySuggestionsPage({ adventure, dispatch, onRegenerateProposal, onRe
         </button>
       </details>
 
-      <div className="panel" aria-label="Pending Lore date selection">
-        <button type="button" onClick={() => {
-          setDateReview(undefined); setAppliedReview(undefined);
-          setSelectedIds(ids => [...new Set([...ids, ...pending.filter(p => pendingLoreDateCorrectionEligibility(adventure, p, adventure.storyClock?.current).eligible).map(p => p.id)])]);
-        }}>Select visible eligible Lore</button>
-        {selected.length > 0 && <button type="button" onClick={() => { setSelectedIds([]); setDateReview(undefined); }}>Clear Lore selection</button>}
-      </div>
-      {(selected.length > 0 || dateReview) && <section className="panel" aria-label="Apply Current Date to Selected Lore">
-        <h3>Apply Current Date to Selected Lore</h3>
-        <p>Current story date: {formatStoryTimeForDisplay(adventure.storyClock?.current)}</p>
-        <p>{reviewRows.length} selected · {eligibleCount} eligible for correction</p>
-        <ul>{reviewRows.map(({ proposal, eligibility }) => <li key={proposal.id}>
-          <strong>{proposal.title}</strong>: {eligibility.eligible
-            ? <>{formatStoryTimeForDisplay(proposal.targetId ? proposal.lore?.lastChangedAt : proposal.lore?.occurredAt)} → {formatStoryTimeForDisplay(dateReview ? { text: dateReview.expectedClockDate, date: dateReview.expectedClockDate, precision: "day" } : adventure.storyClock?.current)}{proposal.targetId ? " (last development; original occurrence preserved)" : " (occurrence and last development)"}</>
-            : <>Excluded: {eligibility.reason}</>}
-        </li>)}</ul>
-        {dateReview ? <div role="region" aria-label="Confirm Lore date changes">
-          <p>This replaces the proposed event dates for the selected pending Lore. Original Chronicle messages and existing approved Story Cards will not change.</p>
-          {reviewStale && <p role="alert">The clock, selected proposals, or eligibility changed. Cancel and review the current dates again.</p>}
-          <button type="button" disabled={Boolean(reviewStale) || eligibleCount === 0} onClick={() => {
-            dispatch({ type: "APPLY_CURRENT_STORY_DATE_TO_PENDING_LORE", expectedClockDate: dateReview.expectedClockDate,
-              proposals: dateReview.rows.map(({ proposal, expectedFingerprint }) => ({ id: proposal.id, expectedFingerprint })) });
-            setAppliedReview(dateReview); setDateReview(undefined); setSelectedIds([]);
-          }}>Confirm and Apply Dates</button>
-          <button type="button" onClick={() => setDateReview(undefined)}>Cancel date changes</button>
-        </div> : <button type="button" disabled={eligibleCount === 0} onClick={() => {
-          setAppliedReview(undefined); setDateReview({ expectedClockDate: adventure.storyClock!.current!.date!, rows: dateRows });
-        }}>Review Date Changes</button>}
-      </section>}
-      {appliedReview && <div className="panel" role="status" aria-label="Saved Lore date changes">
-        <p>Saved proposal dates after batch review (proposals remain pending):</p>
-        <ul>{appliedReview.rows.map(row => {
-          const live = allProposals.find(p => p.id === row.proposal.id);
-          const event = live?.targetId ? live.lore?.lastChangedAt : live?.lore?.occurredAt;
-          return <li key={row.proposal.id}>{row.proposal.title}: {formatStoryTimeForDisplay(event)}{!row.eligibility.eligible ? ` — excluded: ${row.eligibility.reason}`
-            : live && loreChronologyFingerprint(adventure, live) === row.resultFingerprint && row.resultFingerprint !== row.expectedFingerprint
-              ? " — saved" : " — unchanged or stale; review individually"}</li>;
-        })}</ul>
-      </div>}
-
       <div className="list">
         {pending.length === 0 && <p className="muted">No pending memory suggestions.</p>}
         {[...groups.values()].map(group => <section className="panel memory-destination-group" key={group.proposals[0].id} aria-label={`${group.label} suggestions`}>
           <h3>{group.label} <span className="badge">{group.proposals.length} {group.proposals.length === 1 ? "proposal" : "proposals"}</span></h3>
           <p className="muted">{group.proposals.slice(0, 3).map(p => p.content.replace(/\s+/g, " ").slice(0, 100)).join(" · ")}{group.proposals.length > 3 ? " …" : ""}</p>
           {group.proposals.map(proposal => <div key={proposal.id}>
-            {isLoreProposal(adventure, proposal) && <CheckboxField label={`Select Lore: ${proposal.title}`} checked={selectedIds.includes(proposal.id)} onChange={checked => {
-              setDateReview(undefined); setAppliedReview(undefined);
-              setSelectedIds(ids => checked ? [...new Set([...ids, proposal.id])] : ids.filter(id => id !== proposal.id));
-            }} />}
             <ProposalCard adventure={adventure} proposal={proposal} dispatch={dispatch} onUpdate={updateProposal} onRegenerate={onRegenerateProposal} />
           </div>)}
         </section>)}
@@ -397,9 +323,8 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
   const [regenerationError, setRegenerationError] = useState<string>();
   const [regenerating, setRegenerating] = useState(false);
   const isLore = proposal.proposedType === "storyCard" && (proposal.storyCardType === "lore" || adventure.storyCards.some(card => card.id === proposal.targetId && card.type === "lore"));
-  const lore = isLore ? proposalLore(adventure, proposal) : undefined;
   const chronology = validateLoreChronology(adventure, proposal);
-  const dateConflict = chronology.status === "conflict" && !loreDateConfirmed(adventure, proposal);
+  const dateConflict = chronology.status === "conflict";
 
   async function handleRegenerate(convertToLore = false) {
     if (!onRegenerate || regenerating) return;
@@ -435,13 +360,13 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
           <input
             value={proposal.title}
             onChange={(event) => onUpdate(proposal, { title: event.target.value })}
-            disabled={!isPending}
+            disabled={proposal.status === "approved"}
           />
         </div>
         <div className="row">
           <button
             type="button"
-            disabled={proposal.status === "approved" || dateConflict}
+            className="manual-approval" disabled={proposal.status === "approved"}
             onClick={() => dispatch({ type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id })}
           >
             Approve
@@ -475,6 +400,7 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
       {isPending && placementError && <p role="status">{placementError} You can still approve this draft manually.</p>}
       {isPending && !sourceValid && <p role="status">The source evidence or destination changed. Review the current draft; you can still approve it.</p>}
       {proposal.placementValidation && <p>{proposal.placementValidation.reason}</p>}
+      {proposal.status !== "approved" && proposal.approvalFeedback && <p role="status">{proposal.approvalFeedback}</p>}
       {regenerationError && <p role="alert">{regenerationError}</p>}
       {proposal.evaluationSource && <details><summary>Independent evaluation evidence</summary>
         <p>Destination: {proposal.targetId ?? "new Story Card"}</p>
@@ -485,23 +411,33 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
         {Boolean(proposal.storyCardReview.evidenceQuotes?.length) && <details><summary>Supporting source quotes</summary>
           <ul>{proposal.storyCardReview.evidenceQuotes!.map((item, index) => <li key={`${item.messageId}-${index}`}><code>{item.messageId}</code><blockquote>{item.quote}</blockquote></li>)}</ul>
         </details>}
-        {proposal.lore && <p>Occurred: {formatStoryTimeForDisplay(proposal.lore.occurredAt)} · {proposal.lore.status} · Sources: {proposal.lore.sourceMessageIds.join(", ")}</p>}
-        <Field label="Story Card destination"><select value={proposal.targetId ?? ""} disabled={!isPending}
+        {proposal.lore && <p>{proposal.lore.status} · Sources: {proposal.lore.sourceMessageIds.join(", ")}</p>}
+        <Field label="Story Card destination"><select value={proposal.targetId ?? ""} disabled={proposal.status === "approved"}
           onChange={event => {
             const card = adventure.storyCards.find(card => card.id === event.target.value);
             const suggestedTitle = proposal.storyCardReview!.suggestedTitle;
-            const createTitle = adventure.storyCards.some(existing => existing.title.toLowerCase() === suggestedTitle.toLowerCase())
-              ? `${suggestedTitle}: ${proposal.content.slice(0, 60)}` : suggestedTitle;
+            const createTitle = suggestedTitle;
             onUpdate(proposal, { targetId: card?.id, title: card?.title ?? createTitle,
               ...(proposal.evaluationSource ? { evaluationSource: { ...proposal.evaluationSource, target: card ? memoryTargetSnapshot(adventure, "storyCard", card.id) : undefined } } : {}),
               cardOperation: card ? "append" : "create", storyCardType: card?.type ?? proposal.storyCardType, appendContent: card ? true : undefined, memoryMode: card?.memoryMode ?? proposal.memoryMode,
               storyCardReview: { ...proposal.storyCardReview!, operation: card ? "update" : "create" } });
           }}>
           <option value="">CREATE — new Story Card</option>
+          {proposal.targetId && !adventure.storyCards.some(card => card.id === proposal.targetId) && <option value={proposal.targetId}>Missing destination — choose another</option>}
           {adventure.storyCards.map(card => <option key={card.id} value={card.id}>APPEND — {card.title}{proposal.storyCardReview!.targetCandidates.includes(card.id) ? " (suggested)" : ""}</option>)}
         </select></Field>
         {proposal.storyCardReview.targetCandidates.length > 1 && !proposal.targetId && <p>Several continuing subjects may fit. Choose an update target or keep this as a separate card.</p>}
       </div>}
+      {proposal.proposedType === "storyCard" && !proposal.storyCardReview && <Field label="Story Card destination">
+        <select value={proposal.targetId ?? ""} disabled={proposal.status === "approved"} onChange={event => {
+          const card = adventure.storyCards.find(card => card.id === event.target.value);
+          onUpdate(proposal, { targetId: card?.id, cardOperation: card ? "append" : "create", storyCardType: card?.type ?? proposal.storyCardType });
+        }}>
+          <option value="">CREATE — new Story Card</option>
+          {proposal.targetId && !adventure.storyCards.some(card => card.id === proposal.targetId) && <option value={proposal.targetId}>Missing destination — choose another</option>}
+          {adventure.storyCards.map(card => <option key={card.id} value={card.id}>APPEND — {card.title}</option>)}
+        </select>
+      </Field>}
       {isPending && proposal.proposedType === "storyCard" && <div aria-label="Automatic approval status">
         {autoApprovalBlockers.length ? <ul>{autoApprovalBlockers.map(reason => <li key={reason}>{reason}</li>)}</ul>
           : <p>This suggestion remains pending. Auto-approval settings apply to new suggestions; review this draft explicitly.</p>}
@@ -509,11 +445,7 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
       {isPending && dateConflict && <div role="alert">
         <p>Date conflict: this event’s proposed date does not agree with its source chronology.</p>
         <p>{chronology.status === "conflict" ? chronology.reason : ""}</p>
-        <button type="button" disabled={!validLoreDate(lore?.occurredAt) || !validLoreDate(lore?.lastChangedAt)}
-          onClick={() => dispatch({ type: "CONFIRM_MEMORY_PROPOSAL_DATE", proposalId: proposal.id })}>Confirm this event date</button>
       </div>}
-      {isPending && lore && <ProposalEventDate value={proposal.targetId ? lore.lastChangedAt ?? lore.occurredAt : lore.occurredAt}
-        onChange={time => onUpdate(proposal, { lore: { ...lore, occurredAt: proposal.targetId ? lore.occurredAt : time, lastChangedAt: time } })} />}
       <textarea
         rows={5}
         value={proposal.content}
@@ -546,7 +478,7 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
             <select
               value={proposal.proposedType}
               onChange={(event) => onUpdate(proposal, { proposedType: event.target.value as MemoryProposalType })}
-              disabled={!isPending}
+              disabled={proposal.status === "approved"}
             >
               {proposalTypes.map((type) => (
                 <option key={type} value={type}>
@@ -561,7 +493,7 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
                 <select
                   value={targetCard?.type ?? proposal.storyCardType ?? ""}
                   onChange={(event) => onUpdate(proposal, { storyCardType: event.target.value as StoryCardType, targetId: undefined, appendContent: undefined, placementValidation: undefined })}
-                  disabled={!isPending || Boolean(targetCard)}
+                  disabled={proposal.status === "approved" || Boolean(targetCard)}
                 >
                   <option value="">Select a card type</option>
                   {storyCardTypes.map((type) => <option key={type} value={type}>{type}</option>)}
@@ -588,7 +520,7 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
           <div className="grid two">
             {proposal.storyCardPatch && (
               <Field label="Story Card Patch">
-                {isPending ? (
+                {proposal.status !== "approved" ? (
                   <JsonTextarea
                     rows={3}
                     value={proposal.storyCardPatch}
@@ -601,7 +533,7 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
             )}
             {proposal.componentPatch && (
               <Field label="Plot Patch">
-                {isPending ? (
+                {proposal.status !== "approved" ? (
                   <JsonTextarea
                     rows={3}
                     value={proposal.componentPatch}

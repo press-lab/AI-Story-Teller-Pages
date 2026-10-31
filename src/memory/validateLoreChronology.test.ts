@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createDefaultAdventure, makeStoryCard } from "../state/defaults";
 import { makeMemoryProposal } from "../test/goldenAdventure";
 import { readStoryTime } from "./storyTime";
-import { resolveLoreEventDate, validateLoreChronology, loreChronologyFingerprint, loreDateConfirmed } from "./validateLoreChronology";
+import { sourceLoreEventDate, resolveLoreEventDate, validateLoreChronology } from "./validateLoreChronology";
 import type { MemoryProposal, StoryTime } from "../types/adventure";
 
 const day = (date: string): StoryTime => ({ text: date, date, precision: "day" });
@@ -18,7 +18,7 @@ function fixture(text = "They signed a research agreement.", stored: StoryTime |
 describe("deterministic Lore chronology", () => {
   it("prefers an explicit source date over stale recorded time and the advanced adventure clock", () => {
     const { a, p } = fixture("September 4, 2001 — Morning\nThey signed a research agreement.");
-    const time = resolveLoreEventDate(a, p);
+    const time = sourceLoreEventDate(a, p);
     expect(time?.date).toBe("2001-09-04");
     p.title = "4 September — Research Agreement";
     p.lore = { ...p.lore!, occurredAt: time, lastChangedAt: time };
@@ -27,29 +27,29 @@ describe("deterministic Lore chronology", () => {
   });
   it("uses a saved source date even after the clock advances", () => {
     const { a, p } = fixture();
-    expect(resolveLoreEventDate(a, p)).toEqual(day("2001-09-02"));
+    expect(sourceLoreEventDate(a, p)).toEqual(day("2001-09-02"));
     expect(validateLoreChronology(a, p)).toEqual({ status: "valid" });
     p.title = "4 September — Research Agreement";
     expect(validateLoreChronology(a, p)).toMatchObject({ status: "conflict", reason: expect.stringContaining("4 September") });
-    expect(resolveLoreEventDate(a, p)).toEqual(day("2001-09-02"));
+    expect(sourceLoreEventDate(a, p)).toEqual(day("2001-09-02"));
   });
   it.each(["around midwinter", "three days before the coronation", "three days before September 4, 2001", "unknown", "12 Frostfall, Year of the Dragon"])("retains textual chronology: %s", text => {
     const stored = readStoryTime("Date: " + text).time!;
     const { a, p } = fixture("They signed a research agreement.", stored);
     p.title = "Research Agreement";
-    expect(resolveLoreEventDate(a, p)).toEqual(stored);
-    expect(resolveLoreEventDate(a, p)?.date).toBeUndefined();
+    expect(sourceLoreEventDate(a, p)).toEqual(stored);
+    expect(sourceLoreEventDate(a, p)?.date).toBeUndefined();
     expect(validateLoreChronology(a, p).status).toBe("uncertain");
   });
   it("does not date an undated saved source using today's adventure clock", () => {
     const { a, p } = fixture(); delete a.messages[0].storyTime;
     p.lore = { status: "completed", sourceMessageIds: ["source"] };
-    expect(resolveLoreEventDate(a, p)).toBeUndefined();
+    expect(sourceLoreEventDate(a, p)).toBeUndefined();
     expect(validateLoreChronology(a, p).status).toBe("uncertain");
   });
   it("uses the established fallback only before the source is persisted", () => {
     const { a, p } = fixture(); a.messages = [];
-    expect(resolveLoreEventDate(a, p)).toEqual(day("2001-10-01"));
+    expect(sourceLoreEventDate(a, p)).toEqual(day("2001-10-01"));
   });
   it("validates APPEND with lastChangedAt and ignores the earlier card title", () => {
     const { a, p } = fixture("They received exclusive archive access.", day("2001-09-05"));
@@ -64,7 +64,7 @@ describe("deterministic Lore chronology", () => {
   it("dates a flashback event without changing the present clock", () => {
     const { a, p } = fixture("Flashback: September 1, 2001\nThey signed a research agreement.");
     const before = a.storyClock;
-    expect(resolveLoreEventDate(a, p)?.date).toBe("2001-09-01");
+    expect(sourceLoreEventDate(a, p)?.date).toBe("2001-09-01");
     expect(a.storyClock).toBe(before);
   });
   it("ignores future plans and incidental dates in generated prose", () => {
@@ -80,14 +80,7 @@ describe("deterministic Lore chronology", () => {
     p.content = "[2001-09-04] They signed the agreement.";
     expect(validateLoreChronology(a, p).status).toBe("conflict");
   });
-  it.each(["title", "content", "targetId", "sourceTurnId", "cardOperation"] as const)("binds confirmation to %s and the live source", key => {
-    const { a, p } = fixture();
-    p.chronologyConfirmationFingerprint = loreChronologyFingerprint(a, p);
-    expect(loreDateConfirmed(a, p)).toBe(true);
-    expect(loreDateConfirmed(a, { ...p, [key]: "changed" })).toBe(false);
-    a.messages[0].content += " Revised evidence.";
-    expect(loreDateConfirmed(a, p)).toBe(false);
-  });
+
 });
 
 
@@ -105,97 +98,24 @@ it("detects contradictory generated date prefixes without treating either as aut
   p.title = "4 September 2001 — Agreement";
   p.content = "5 September 2001 — They signed the agreement.";
   expect(validateLoreChronology(a, p).status).toBe("conflict");
-  expect(resolveLoreEventDate(a, p)).toBeUndefined();
+  expect(sourceLoreEventDate(a, p)).toBeUndefined();
 });
 
 
 it("keeps inconsistent source weekdays under review even when the stored source date is stale", () => {
   const { a, p } = fixture("Wednesday, 4 September 2001\nThey signed an agreement.");
-  expect(resolveLoreEventDate(a, p)?.date).toBeUndefined();
+  expect(sourceLoreEventDate(a, p)?.date).toBeUndefined();
   expect(validateLoreChronology(a, p)).toMatchObject({ status: "conflict", reason: expect.stringContaining("Wednesday") });
 });
 
 
-import { pendingLoreDateCorrectionEligibility } from "./validateLoreChronology";
-import { loreCorrectionFixture, correctionDay, correctionBatch } from "../test/loreDateCorrection";
-import { adventureReducer } from "../state/adventureReducer";
-import { reviewedProposal } from "../test/memoryPlacement";
 
-describe("pending Lore date correction eligibility", () => {
-  it("allows stale stored chronology and an APPEND's earlier occurrence", () => {
-    const a = loreCorrectionFixture();
-    for (const id of ["stale", "append"]) expect(pendingLoreDateCorrectionEligibility(a, a.activeState.memoryProposals.find(p => p.id === id)!, a.storyClock!.current)).toEqual({ eligible: true });
-  });
-  it.each([
-    ["scene heading", "September 3, 2001\nMira discovered the lost royal archive."],
-    ["flashback", "Flashback: September 3, 2001\nMira discovered the lost royal archive."],
-    ["undated flashback", "Mira remembers when she discovered the lost royal archive."],
-    ["invalid date", "September 31, 2001\nMira discovered the lost royal archive."],
-    ["fictional source date", "Date: Third Frost, Year of the Raven\nMira discovered the lost royal archive."],
-  ])("excludes actual %s evidence", (_, content) => {
-    const a = loreCorrectionFixture(); a.messages[0].content = content;
-    const p = a.activeState.memoryProposals[0]; p.storyCardReview!.sourceContent = content;
-    a.activeState.memoryProposals[0] = reviewedProposal(a, p);
-    expect(pendingLoreDateCorrectionEligibility(a, a.activeState.memoryProposals[0], a.storyClock!.current)).toMatchObject({ eligible: false, reason: expect.any(String) });
-  });
-  it.each(["title", "content"] as const)("excludes a conflicting dated %s", key => {
-    const a = loreCorrectionFixture(); const p = a.activeState.memoryProposals[0];
-    p[key] = "September 3, 2001 — " + p[key];
-    const reviewed = reviewedProposal(a, p);
-    expect(pendingLoreDateCorrectionEligibility(a, reviewed, a.storyClock!.current)).toMatchObject({ eligible: false, reason: expect.stringContaining("prefix") });
-  });
-  it.each(["missing", "changed", "empty quote", "empty content", "placement", "destination", "assumed", "invalid", "fictional"])("excludes %s", kind => {
-    const a = loreCorrectionFixture(); const p = a.activeState.memoryProposals[0];
-    if (kind === "missing") a.messages.shift();
-    if (kind === "changed") a.messages[0].content += " Revised.";
-    if (kind === "empty quote") p.sourceText = "";
-    if (kind === "empty content") p.content = "";
-    if (kind === "placement") p.placementValidation = undefined;
-    if (kind === "destination") p.targetId = "missing";
-    if (kind === "assumed") a.storyClock!.origin = "assumed";
-    if (kind === "invalid") a.storyClock!.current = correctionDay("2001-02-30");
-    if (kind === "fictional") a.storyClock!.current = { text: "Third Frost", precision: "unknown" };
-    expect(pendingLoreDateCorrectionEligibility(a, p, a.storyClock!.current)).toMatchObject({ eligible: false, reason: expect.any(String) });
-  });
-  it("accepts an explicit matching source date and confirms only the stale stored-date conflict", () => {
-    let a = loreCorrectionFixture();
-    a = adventureReducer(a, correctionBatch(a, ["stale"]));
-    const p = a.activeState.memoryProposals[0];
-    expect(validateLoreChronology(a, p).status).toBe("conflict");
-    expect(loreDateConfirmed(a, p)).toBe(true);
-    expect(loreDateConfirmed(a, { ...p, content: p.content + " Edited." })).toBe(false);
-    const matching = loreCorrectionFixture();
-    matching.messages[0].content = "Date: September 8, 2001\n" + matching.messages[0].content;
-    matching.activeState.memoryProposals[0].storyCardReview!.sourceContent = matching.messages[0].content;
-    const reviewed = reviewedProposal(matching, matching.activeState.memoryProposals[0]);
-    expect(pendingLoreDateCorrectionEligibility(matching, reviewed, matching.storyClock!.current)).toEqual({ eligible: true });
-  });
-});
-
-
-it("invalidates chronology confirmation when supporting exchange evidence changes", () => {
-  const a = loreCorrectionFixture(); const p = a.activeState.memoryProposals[0];
-  a.messages.push({ id: "support", role: "user", content: "I open the royal archive.", createdAt: "2026-10-29" });
-  p.storyCardReview!.additionalSources = [{ id: "support", content: a.messages.at(-1)!.content }];
-  p.chronologyConfirmationFingerprint = loreChronologyFingerprint(a, p);
-  expect(loreDateConfirmed(a, p)).toBe(true);
-  a.messages.at(-1)!.content = "I do not open the royal archive.";
-  expect(loreDateConfirmed(a, p)).toBe(false);
-});
-
-
-it("accepts validated joined evidence without requiring all quotes to be one contiguous excerpt", () => {
-  const a = loreCorrectionFixture(); const p = a.activeState.memoryProposals[0];
-  a.messages[0].content += " Mira catalogued the recovered royal documents.";
-  p.storyCardReview!.sourceContent = a.messages[0].content;
-  p.sourceText = "Mira discovered the lost royal archive.\nMira catalogued the recovered royal documents.";
-  const reviewed = reviewedProposal(a, p);
-  expect(pendingLoreDateCorrectionEligibility(a, reviewed, a.storyClock!.current)).toEqual({ eligible: true });
-});
-
-it("protects an APPEND with an explicitly conflicting dated title even while its earlier occurrence metadata is allowed", () => {
-  const a = loreCorrectionFixture(); const p = a.activeState.memoryProposals[2];
-  a.storyCards[0].title = p.title = "September 4, 2001 — Archive agreement";
-  const reviewed = reviewedProposal(a, p);
-  expect(pendingLoreDateCorrectionEligibility(a, reviewed, a.storyClock!.current)).toMatchObject({ eligible: false, reason: expect.stringContaining("prefix") });
+it("dates new operations only from the established story clock", () => {
+  const { a, p } = fixture();
+  a.storyClock!.origin = "established";
+  expect(resolveLoreEventDate(a, p)).toEqual(a.storyClock!.current);
+  a.storyClock!.origin = "assumed";
+  expect(resolveLoreEventDate(a, p)).toBeUndefined();
+  a.storyClock = undefined;
+  expect(resolveLoreEventDate(a, p)).toBeUndefined();
 });

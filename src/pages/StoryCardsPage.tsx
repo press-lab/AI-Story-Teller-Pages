@@ -1,4 +1,4 @@
-import { StoryClockEditor, LoreChronologyEditor } from "./StoryCardChronology";
+import { LoreChronologyEditor } from "./StoryCardChronology";
 import { PRIMARY_STORY_CARD_TYPES, primaryStoryCardType, isHistoricalLore } from "../memory/storyCardArchitecture";
 import { useEffect, useRef, useState } from "react";
 import type { ContextInclusionPolicy, StoryCard, StoryCardAIBuilderIntent, StoryCardType, TriggerMatchType, StoryCardAIBuilderRequest } from "../types/adventure";
@@ -184,6 +184,16 @@ export function StoryCardsPage({
   }
 
   function approveRec(rec: AuditRecommendation) {
+    if (rec.decision === "approved") return;
+    if (rec.action !== "create" && !adventure.storyCards.some(card => card.id === rec.cardId)) {
+      setAudit(previous => previous && { ...previous, errorMessage: "Unable to apply — destination card is missing. Keep this recommendation and choose an existing card or create a new one." });
+      return;
+    }
+    if (rec.action !== "delete" && !rec.editedContent.trim()) {
+      setAudit(previous => previous && { ...previous, errorMessage: "Unable to apply — recommendation content is empty. Edit the recommendation before approval." });
+      return;
+    }
+    if (rec.action === "delete" && !window.confirm(`Delete Story Card “${rec.title}”?`)) return;
     if (rec.action === "delete" && rec.cardId) {
       dispatch({ type: "DELETE_STORY_CARD", storyCardId: rec.cardId });
     } else if (rec.action === "edit" && rec.cardId) {
@@ -193,7 +203,7 @@ export function StoryCardsPage({
         patch: {
           content: rec.editedContent,
           keys: rec.editedKeys.split(",").map((k) => k.trim()).filter(Boolean),
-          type: rec.suggestedType,
+          type: primaryStoryCardType(rec.suggestedType),
         },
       });
     } else if (rec.action === "create") {
@@ -315,7 +325,6 @@ export function StoryCardsPage({
         For always-on world lore that should load every turn regardless, use a <strong>World Block</strong>.
       </p>
 
-      <StoryClockEditor adventure={adventure} dispatch={dispatch} />
       {onBuildStoryCardMemory && (
         <details className="panel">
           <summary>Draft a Story Card with AI</summary>
@@ -604,7 +613,7 @@ export function StoryCardsPage({
                 </div>
                 <p className="audit-rec-rationale">{rec.rationale}</p>
 
-                {rec.action !== "delete" && rec.decision === "pending" && (
+                {rec.action !== "delete" && rec.decision !== "approved" && (
                   <div className="audit-rec-fields">
                     <label className="field">
                       <span>Content</span>
@@ -639,15 +648,16 @@ export function StoryCardsPage({
                   </div>
                 )}
 
-                {rec.decision === "pending" && (
+                {rec.decision !== "approved" && (
                   <div className="audit-rec-actions">
-                    <button type="button" onClick={() => approveRec(rec)}>Approve</button>
+                    <button type="button" className="manual-approval" onClick={() => approveRec(rec)}>Approve</button>
                     <button type="button" className="danger" onClick={() => updateRec(rec.id, { decision: "rejected" })}>Reject</button>
                   </div>
                 )}
               </div>
             ))}
 
+            {audit.errorMessage && <p role="alert">{audit.errorMessage}</p>}
             <div className="audit-modal-footer">
               <button type="button" onClick={() => setAudit(null)}>Close</button>
             </div>

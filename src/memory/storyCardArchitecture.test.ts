@@ -331,7 +331,8 @@ it("anchors the manually set date for future source chronology without changing 
   const proposal = makeStoryCardSuggestion(state, "future", state.messages.at(-1)!.content, { title: "Royal seal", content: "Mira discovered a royal seal.", evidence: "Mira discovered a royal seal.", reason: "A discovery" });
   expect(proposal.lore?.occurredAt?.date).toBe("2001-09-08");
   const old = makeStoryCardSuggestion(state, "historical", before.messages[1].content, { title: "Historical treaty", content: "The council signed a trade treaty.", evidence: "The council signed a trade treaty.", reason: "Historical event" });
-  expect(old.lore?.occurredAt?.date).toBe("2001-09-03");
+  expect(old.lore?.occurredAt?.date).toBe("2001-09-08");
+  expect(old.content).toContain("trade treaty");
   const reloaded = importAdventureJson(exportAdventureJson(state));
   expect(reloaded.storyClock).toEqual(state.storyClock);
   state = dated(reloaded, "next", "The next morning\nMira returns.");

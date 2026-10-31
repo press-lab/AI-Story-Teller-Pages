@@ -239,6 +239,7 @@ it.each([false, true])("keeps a fixed chronology batch at one memory API request
     content: index === 2 ? content : "Mira waits beside the gate.", createdAt: "2026-10-29",
     storyTime: { text: "2001-09-02", date: "2001-09-02", precision: "day" as const },
     memoryEvaluation: { pipeline: "singlePass" as const, status: "pending" as const, attempts: 0, turn: index + 1, completedGroups: [] } }));
+  a.storyClock = { origin: "established", current: { text: "2001-09-02", date: "2001-09-02", precision: "day" } };
   const title = conflict ? "4 September — Archive access" : "2 September — Archive access";
   const responseBodies: string[] = [];
   const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
@@ -278,7 +279,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryInboxPage } from "../pages/MemoryInboxPage";
 import { loreCorrectionFixture } from "../test/loreDateCorrection";
 
-it("clock editing, selection, preview, and confirmed correction cost zero requests and leave single-pass accounting unchanged", async () => {
+it("clock editing and manual approval cost zero requests and leave single-pass accounting unchanged", async () => {
   debugLogging.MEMORY_DEBUG_LOGGING = false;
   const fixture = () => {
     const a = loreCorrectionFixture(); a.messages = a.messages.slice(0, 3).map((m, index) => ({ ...m,
@@ -311,14 +312,11 @@ it("clock editing, selection, preview, and confirmed correction cost zero reques
   await user.click(screen.getByRole("button", { name: "Apply Story Date" })); page.rerender(renderPage());
   expect(hook.result.current.adventure!.storyClock?.current?.date).toBe("2001-09-09");
   expect(fetch).not.toHaveBeenCalled();
-  await user.click(screen.getByRole("checkbox", { name: "Select Lore: Archive discovery" }));
-  expect(fetch).not.toHaveBeenCalled();
-  await user.click(screen.getByRole("button", { name: "Review Date Changes" }));
-  expect(fetch).not.toHaveBeenCalled();
-  await user.click(screen.getByRole("button", { name: "Confirm and Apply Dates" })); page.rerender(renderPage());
+  expect(screen.queryByLabelText("Event Date")).not.toBeInTheDocument();
+  await user.click(screen.getByRole("region", { name: "CREATE lore: Archive discovery suggestions" }).querySelector("button.manual-approval")!); page.rerender(renderPage());
   await act(async () => { await settle(); });
   const corrected = hook.result.current.adventure!;
-  expect(corrected.activeState.memoryProposals[0].lore?.occurredAt?.date).toBe("2001-09-09");
+  expect(corrected.storyCards.find(card => card.title === "Archive discovery")?.lore?.occurredAt?.date).toBe("2001-09-09");
   expect(fetch).not.toHaveBeenCalled();
   expect(corrected.activeState.apiCalls).toEqual(original.activeState.apiCalls);
   expect(corrected.activeState.backgroundTokenUsage).toEqual(original.activeState.backgroundTokenUsage);

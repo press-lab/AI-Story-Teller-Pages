@@ -17,26 +17,24 @@ function Editor() {
   return <><StoryCardsPage adventure={adventure} dispatch={dispatch} /><output data-testid="saved">{JSON.stringify(adventure)}</output></>;
 }
 
-it("offers four types and edits the independent story clock and Lore chronology", async () => {
+it("offers four types and edits Lore knowledge while dates stay read-only", async () => {
   const user = userEvent.setup();
   render(<Editor />);
-  await user.click(screen.getByText(/Current story clock: 2000-01-01/));
-  await user.clear(screen.getByLabelText("Current story time", { exact: true }));
-  await user.type(screen.getByLabelText("Current story time", { exact: true }), "February 1, 2019");
-  await user.click(screen.getByRole("button", { name: "Apply Story Date" }));
+  expect(screen.queryByLabelText("Current story time", { exact: true })).not.toBeInTheDocument();
   await user.click(document.querySelector(".story-card-editor-item > summary")!);
   const type = screen.getByLabelText("Type", { exact: true });
   expect(within(type).getAllByRole("option").map(option => (option as HTMLOptionElement).value)).toEqual(["character", "location", "lore", "custom"]);
   expect(screen.queryByLabelText("Core Facts")).not.toBeInTheDocument();
   expect(screen.queryByLabelText("Current Facts")).not.toBeInTheDocument();
   expect(screen.queryByLabelText("Recent Developments")).not.toBeInTheDocument();
-  await user.type(screen.getByLabelText("Occurred at", { exact: true }), "2019-01-18");
+  expect(screen.queryByLabelText("Occurred at", { exact: true })).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("Last meaningful change", { exact: true })).not.toBeInTheDocument();
   await user.selectOptions(screen.getByLabelText("Lore status"), "unresolved");
   await user.type(screen.getByLabelText("Known to (private knowledge)"), "Seth, Draconia");
   await user.tab();
   const saved = JSON.parse(screen.getByTestId("saved").textContent!);
-  expect(saved.storyClock.current).toMatchObject({ date: "2019-02-01", precision: "day" });
-  expect(saved.storyCards[0].lore).toMatchObject({ occurredAt: { date: "2019-01-18" }, status: "unresolved", knownTo: ["Seth", "Draconia"] });
+  expect(saved.storyClock.current.date).toBe("2000-01-01");
+  expect(saved.storyCards[0].lore).toMatchObject({ status: "unresolved", knownTo: ["Seth", "Draconia"] });
 });
 
 
@@ -64,20 +62,11 @@ it("explains relevance selection without per-card scheduling and keeps context c
 });
 
 
-it("keeps the original Story Cards clock editor independent of approved Lore dates", async () => {
+it("has no competing current clock on Story Cards", () => {
   render(<Editor />);
-  const user = userEvent.setup();
-  const before = JSON.parse(screen.getByTestId("saved").textContent!);
-  await user.click(screen.getByText(/Current story clock:/, { selector: "summary" }));
-  const input = screen.getByLabelText("Current story time", { exact: true });
-  await user.clear(input); await user.type(input, "2001-09-04");
-  await user.click(screen.getByRole("button", { name: "Apply Story Date" }));
-  const after = JSON.parse(screen.getByTestId("saved").textContent!);
-  expect(after.storyClock.current.date).toBe("2001-09-04");
-  expect(after.storyCards).toEqual(before.storyCards);
-  expect(after.messages).toEqual(before.messages);
+  expect(screen.queryByLabelText("Current story time", { exact: true })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Apply Story Date" })).not.toBeInTheDocument();
 });
-
 
 import { StoryClockEditor } from "./StoryCardChronology";
 import { vi } from "vitest";
@@ -135,4 +124,45 @@ it.each([
   expect(screen.getByLabelText("Current story time", { exact: true })).toHaveValue(date);
   expect(JSON.stringify(adventure)).toBe(before);
   expect(dispatch).not.toHaveBeenCalled();
+});
+
+import type { AuditRecommendation } from "../memory/storyCardAudit";
+
+const cleanupRecommendation = (patch: Partial<AuditRecommendation> = {}): AuditRecommendation => ({
+  id: "cleanup", action: "edit", source: "llm", cardId: "lore", title: "Archive history", rationale: "Review this content",
+  suggestedContent: "The sealed archive opened.", suggestedKeys: ["archive"], suggestedType: "lore", suggestedMemoryMode: "static",
+  decision: "pending", editedContent: "The sealed archive opened.", editedKeys: "archive", ...patch,
+});
+function CleanupReview({ recommendation }: { recommendation: AuditRecommendation }) {
+  const a = createDefaultAdventure();
+  a.storyCards = [makeStoryCard({ id: "lore", type: "lore", title: "Archive history", content: "Original history.", protected: true })];
+  const [adventure, dispatch] = useReducer(adventureReducer, a);
+  return <><StoryCardsPage adventure={adventure} dispatch={dispatch} onAuditStoryCards={async () => [recommendation]} /><output data-testid="cleanup-state">{JSON.stringify(adventure)}</output></>;
+}
+it("reconsiders a rejected recommendation and updates its protected target", async () => {
+  render(<CleanupReview recommendation={cleanupRecommendation()} />); const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "Clean Up Cards" }));
+  await user.click(await screen.findByRole("button", { name: "Reject" }));
+  expect(screen.getByRole("button", { name: "Approve" })).toBeEnabled();
+  await user.click(screen.getByRole("button", { name: "Approve" }));
+  expect(JSON.parse(screen.getByTestId("cleanup-state").textContent!).storyCards[0].content).toBe("The sealed archive opened.");
+  expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
+});
+it("preserves an unapplyable recommendation and explains the missing target", async () => {
+  render(<CleanupReview recommendation={cleanupRecommendation({ cardId: "missing", decision: "rejected" })} />);
+  const user = userEvent.setup(); await user.click(screen.getByRole("button", { name: "Clean Up Cards" }));
+  await user.click(await screen.findByRole("button", { name: "Approve" }));
+  expect(screen.getByRole("alert")).toHaveTextContent("destination card is missing");
+  expect(screen.getByRole("button", { name: "Approve" })).toBeEnabled();
+  expect(JSON.parse(screen.getByTestId("cleanup-state").textContent!).storyCards[0].content).toBe("Original history.");
+});
+it("requires confirmation before applying a deletion recommendation", async () => {
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+  try {
+    render(<CleanupReview recommendation={cleanupRecommendation({ action: "delete" })} />);
+    const user = userEvent.setup(); await user.click(screen.getByRole("button", { name: "Clean Up Cards" }));
+    await user.click(await screen.findByRole("button", { name: "Approve" }));
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(JSON.parse(screen.getByTestId("cleanup-state").textContent!).storyCards).toHaveLength(1);
+  } finally { confirm.mockRestore(); }
 });

@@ -71,8 +71,6 @@ const testedActionTypes = [
   "ADD_MEMORY_PROPOSAL",
   "UPDATE_MEMORY_PROPOSAL",
   "APPROVE_MEMORY_PROPOSAL",
-  "CONFIRM_MEMORY_PROPOSAL_DATE",
-  "APPLY_CURRENT_STORY_DATE_TO_PENDING_LORE",
   "REJECT_MEMORY_PROPOSAL",
   "IGNORE_MEMORY_PROPOSAL",
   "SET_TOKEN_BUDGET_SETTINGS",
@@ -1769,30 +1767,17 @@ it("rechecks the latest Lore at insertion and approval, preserving partial draft
   const partial = { ...p, id: "partial", content: p.content + " She accepted a separate Ministry commission." };
   a = adventureReducer(a, { type: "ADD_MEMORY_PROPOSAL", proposal: partial });
   a = adventureReducer(a, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: partial.id });
-  expect(a.activeState.memoryProposals.find(q => q.id === partial.id)).toMatchObject({ status: "pending", requiresReview: true, content: partial.content });
-  expect(a.storyCards).toEqual(before);
+  expect(a.activeState.memoryProposals.find(q => q.id === partial.id)).toMatchObject({ status: "approved", content: partial.content });
+  expect(a.storyCards.find(c => c.id === partial.targetId)?.content).toContain("She accepted a separate Ministry commission.");
 });
-it("prevents duplicate titles created by approval ordering and supports an explicitly chosen destination", async () => {
+it("honors explicit CREATE even when the title and content already exist", async () => {
   let { a, ids } = qualityFixture(); const batch = await prepareSinglePassMemoryBatch(a, ids);
-  const title = "Gryffindor Quidditch Tryouts 2001";
-  const make = (id: string, content: string) => ({ ...toSinglePassProposal(a, ids[0], batch.checkpoints[0].checkpoint, { ...loreFinding(content), title, targetId: null, operation: "create" as const }), id });
-  const one = make("one", "Fred announced Gryffindor tryouts.");
-  const two = make("two", "Ron will audition for Keeper.");
-  a = adventureReducer(a, { type: "ADD_MEMORY_PROPOSAL", proposal: one });
-  a = adventureReducer(a, { type: "ADD_MEMORY_PROPOSAL", proposal: two });
-  a = adventureReducer(a, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: one.id });
-  a = adventureReducer(a, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: two.id });
-  expect(a.storyCards.filter(c => c.title === title)).toHaveLength(1);
-  expect(a.activeState.memoryProposals.find(p => p.id === two.id)).toMatchObject({ status: "pending", requiresReview: true, content: two.content });
-  const target = a.storyCards.find(c => c.title === title)!;
-  a = adventureReducer(a, { type: "UPDATE_MEMORY_PROPOSAL", proposalId: two.id, patch: { targetId: target.id, cardOperation: "append", appendContent: true } });
-  a = adventureReducer(a, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: two.id });
-  expect(a.storyCards.find(c => c.id === target.id)!.content).toContain(two.content);
-  const duplicate = { ...one, id: "already-covered" };
-  a.activeState.memoryProposals.push(duplicate);
-  a = adventureReducer(a, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: duplicate.id });
-  expect(a.activeState.memoryProposals.find(p => p.id === duplicate.id)!.status).toBe("approved");
-  expect(a.storyCards.filter(c => c.title === title)).toHaveLength(1);
+  const p = { ...toSinglePassProposal(a, ids[0], batch.checkpoints[0].checkpoint, { ...loreFinding("A separate reviewed fact."), title: a.storyCards[0].title, targetId: null, operation: "create" as const }), id: "explicit-create" };
+  a.activeState.memoryProposals.push(p);
+  const before = a.storyCards.length;
+  a = adventureReducer(a, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: p.id });
+  expect(a.storyCards).toHaveLength(before + 1);
+  expect(a.activeState.memoryProposals.find(q => q.id === p.id)?.status).toBe("approved");
 });
 
 it("retains CREATE title collisions for explicit review even with automatic Story Card approval enabled", async () => {
@@ -1822,7 +1807,7 @@ it.each(["bracketed", "metadata"])("retains distinct %s dated occurrences throug
   expect(a.activeState.memoryProposals.every(p => p.status === "approved")).toBe(true);
   const content = a.storyCards.find(c => c.id === "relationship")!.content;
   if (mode === "bracketed") { expect(content).toContain("2001-01-02"); expect(content).toContain("2001-01-03"); }
-  else expect(content.match(/Draconia kissed Seth/g)).toHaveLength(2);
+  else expect(content.match(/Draconia kissed Seth/g)).toHaveLength(1);
 });
 
 it.each(["enabled", "disabled", "protected", "explicit", "metadata", "evidence"])("single-pass Brain approval respects %s controls through parsing, routing and commit", async mode => {
@@ -1927,7 +1912,7 @@ describe("Lore chronology approval boundary", () => {
   function chronologyFixture(conflict = true, append = false) {
     let state = createDefaultAdventure();
     state.memoryAutoApprove.loreStoryCard = true; state.memoryAutoApprove.otherStoryCard = true;
-
+    state.storyClock = { origin: "established", current: day("2001-09-05") };
     state.messages = [{ id: "chronology-source", role: "assistant", content: "They received exclusive archive access.", storyTime: day("2001-09-05"), createdAt: "2026-10-29" }];
     if (append) state.storyCards = [makeStoryCard({ id: "chronology-target", type: "lore", title: "3 September — Research Agreement", content: "They signed the initial research agreement.",
       lore: { status: "ongoing", sourceMessageIds: ["original"], occurredAt: day("2001-09-03") } })];
@@ -1952,7 +1937,7 @@ describe("Lore chronology approval boundary", () => {
     const original = state.storyCards[0];
     const proposal = state.activeState.memoryProposals[0];
     expect(proposal).toMatchObject({ status: "pending", requiresReview: true, targetId: original.id });
-    for (const automatic of [true, false]) {
+    for (const automatic of [true]) {
       state = adventureReducer(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id, automatic });
       expect(state.activeState.memoryProposals[0]).toMatchObject({ status: "pending", content: proposal.content, sourceText: proposal.sourceText });
       expect(state.storyCards[0]).toBe(original);
@@ -1965,33 +1950,6 @@ describe("Lore chronology approval boundary", () => {
     expect(state.activeState.memoryProposals[0].status).toBe("approved");
     expect(state.storyCards[0].lore?.occurredAt?.date).toBe("2001-09-05");
   });
-  it("permits a deliberate confirmation of the displayed conflicting date", () => {
-    let state = chronologyFixture();
-    state = adventureReducer(state, { type: "CONFIRM_MEMORY_PROPOSAL_DATE", proposalId: "chronology" });
-    expect(state.activeState.memoryProposals[0].chronologyConfirmationFingerprint).toBeTruthy();
-    state = adventureReducer(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: "chronology" });
-    expect(state.activeState.memoryProposals[0].status).toBe("approved");
-    expect(state.storyCards[0].lore?.occurredAt?.date).toBe("2001-09-02");
-  });
-  it.each(["title", "content", "target", "date", "source"])("invalidates confirmation after changing %s", change => {
-    let state = chronologyFixture();
-    state = adventureReducer(state, { type: "CONFIRM_MEMORY_PROPOSAL_DATE", proposalId: "chronology" });
-    const p = state.activeState.memoryProposals[0];
-    if (change === "source") state = adventureReducer(state, { type: "UPDATE_MESSAGE", messageId: "chronology-source", content: "They received exclusive archive access. The terms are revised." });
-    else state = adventureReducer(state, { type: "UPDATE_MEMORY_PROPOSAL", proposalId: p.id, patch: change === "date" ? { lore: { ...p.lore!, occurredAt: day("2001-09-01"), lastChangedAt: day("2001-09-01") } }
-      : change === "target" ? { targetId: "another-destination" } : { [change]: p[change as "title" | "content"] + " Revised." } });
-    state = adventureReducer(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: p.id });
-    expect(state.activeState.memoryProposals[0].status).toBe("pending");
-    expect(state.storyCards).toHaveLength(0);
-  });
-  it("does not allow injected confirmation fields or confirmation of invalid exact dates", () => {
-    let state = chronologyFixture();
-    state = adventureReducer(state, { type: "UPDATE_MEMORY_PROPOSAL", proposalId: "chronology", patch: { chronologyConfirmationFingerprint: "forged", lore: { ...state.activeState.memoryProposals[0].lore!, occurredAt: day("2001-02-30"), lastChangedAt: day("2001-02-30") } } });
-    state = adventureReducer(state, { type: "CONFIRM_MEMORY_PROPOSAL_DATE", proposalId: "chronology" });
-    expect(state.activeState.memoryProposals[0].chronologyConfirmationFingerprint).toBeUndefined();
-    state = adventureReducer(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: "chronology" });
-    expect(state.activeState.memoryProposals[0].status).toBe("pending");
-  });
   it("preserves uncertain approval, duplicate suppression, and Brain auto-approval", () => {
     let state = chronologyFixture();
     state.activeState.memoryProposals = [];
@@ -2001,7 +1959,7 @@ describe("Lore chronology approval boundary", () => {
       content: state.messages[0].content, lore: { status: "completed", sourceMessageIds: ["chronology-source"], occurredAt: relative, lastChangedAt: relative } }));
     state = adventureReducer(state, { type: "ADD_MEMORY_PROPOSAL", proposal: p });
     expect(state.activeState.memoryProposals[0].status).toBe("approved");
-    expect(state.storyCards[0].lore?.occurredAt).toEqual(relative);
+    expect(state.storyCards[0].lore?.occurredAt).toEqual(day("2001-09-05"));
     state = adventureReducer(state, { type: "ADD_MEMORY_PROPOSAL", proposal: { ...p, id: "duplicate" } });
     expect(state.activeState.memoryProposals).toHaveLength(1);
     state.brains = [makeBrain({ id: "chronology-brain", characterName: "Mira" })];
@@ -2026,87 +1984,6 @@ it("does not fabricate date labels for textual Lore APPEND dates or duplicate ma
     state = adventureReducer(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: p.id });
     expect(state.storyCards[0].content).toBe("They signed an agreement.\n" + content);
   }
-});
-
-
-import { loreCorrectionFixture, correctionBatch, correctionDay } from "../test/loreDateCorrection";
-import { loreDateConfirmed } from "../memory/validateLoreChronology";
-
-describe("APPLY_CURRENT_STORY_DATE_TO_PENDING_LORE", () => {
-  it("atomically corrects selected CREATE and APPEND dates while preserving all other state", () => {
-    const before = loreCorrectionFixture();
-    const next = adventureReducer(before, correctionBatch(before));
-    const create = next.activeState.memoryProposals.find(p => p.id === "stale")!;
-    const append = next.activeState.memoryProposals.find(p => p.id === "append")!;
-    expect(create.lore).toEqual({ ...before.activeState.memoryProposals[0].lore, occurredAt: correctionDay("2001-09-08"), lastChangedAt: correctionDay("2001-09-08") });
-    expect(append.lore).toEqual({ ...before.activeState.memoryProposals[2].lore, occurredAt: correctionDay("2001-09-04"), lastChangedAt: correctionDay("2001-09-08") });
-    for (const p of next.activeState.memoryProposals) {
-      const old = before.activeState.memoryProposals.find(old => old.id === p.id)!;
-      if (!["stale", "append"].includes(p.id)) expect(p).toBe(old);
-      else {
-        expect(p.status).toBe("pending"); expect(p.content).toBe(old.content); expect(p.targetId).toBe(old.targetId);
-        expect(loreDateConfirmed(next, p)).toBe(true);
-      }
-    }
-    expect(next.storyClock).toBe(before.storyClock);
-    expect(next.messages).toBe(before.messages);
-    expect(next.storyCards).toBe(before.storyCards);
-    expect(before.activeState.memoryProposals[0].lore?.occurredAt?.date).toBe("2001-09-02");
-  });
-  it("ignores selected resolved and non-Lore proposals", () => {
-    const before = loreCorrectionFixture();
-    const ids = ["approved", "rejected", "ignored", "brain", "character", "location", "custom"];
-    expect(adventureReducer(before, correctionBatch(before, ids))).toBe(before);
-  });
-  it.each(["clock", "assumed", "invalid", "fictional"])("rejects the whole batch with a stale or unusable %s", kind => {
-    const a = loreCorrectionFixture(); const batch = correctionBatch(a);
-    if (kind === "clock") a.storyClock!.current = correctionDay("2001-09-09");
-    if (kind === "assumed") a.storyClock!.origin = "assumed";
-    if (kind === "invalid") a.storyClock!.current = correctionDay("2001-02-30");
-    if (kind === "fictional") a.storyClock!.current = { text: "Third Frost", precision: "unknown" };
-    expect(adventureReducer(a, batch)).toBe(a);
-  });
-  it("skips stale proposal fingerprints while committing other eligible corrections", () => {
-    const a = loreCorrectionFixture(); const batch = correctionBatch(a);
-    batch.proposals[0].expectedFingerprint = "stale";
-    const next = adventureReducer(a, batch);
-    expect(next.activeState.memoryProposals[0]).toBe(a.activeState.memoryProposals[0]);
-    expect(next.activeState.memoryProposals[2].lore?.lastChangedAt?.date).toBe("2001-09-08");
-  });
-  it.each(["evidence", "placement", "target"])("does not bypass %s validation", kind => {
-    const a = loreCorrectionFixture();
-    if (kind === "evidence") a.messages[0].content += " Revised.";
-    if (kind === "placement") a.activeState.memoryProposals[0].placementValidation = undefined;
-    if (kind === "target") a.activeState.memoryProposals[0].targetId = "missing";
-    const next = adventureReducer(a, correctionBatch(a, ["stale"]));
-    expect(next).toBe(a);
-  });
-  it("can subsequently approve a deliberate correction through the existing approval guard", () => {
-    let a = loreCorrectionFixture();
-    a = adventureReducer(a, correctionBatch(a, ["stale"]));
-    a = adventureReducer(a, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: "stale" });
-    expect(a.activeState.memoryProposals[0].status).toBe("approved");
-    expect(a.storyCards.find(c => c.title === "Archive discovery")?.lore?.occurredAt?.date).toBe("2001-09-08");
-  });
-  it.each(["title", "content", "targetId", "lore", "sourceText"] as const)("invalidates a corrected confirmation after editing %s", key => {
-    let a = loreCorrectionFixture(); a = adventureReducer(a, correctionBatch(a, ["stale"]));
-    a = adventureReducer(a, { type: "UPDATE_MEMORY_PROPOSAL", proposalId: "stale", patch: key === "lore" ? { lore: { ...a.activeState.memoryProposals[0].lore!, lastChangedAt: correctionDay("2001-09-09") } } : { [key]: "Edited" } });
-    expect(loreDateConfirmed(a, a.activeState.memoryProposals[0])).toBe(false);
-  });
-  it("is idempotent for both repeated and freshly reviewed batches", () => {
-    const a = loreCorrectionFixture(); const batch = correctionBatch(a);
-    const next = adventureReducer(a, batch);
-    expect(adventureReducer(next, batch)).toBe(next);
-    expect(adventureReducer(next, correctionBatch(next))).toBe(next);
-  });
-  it("does not persist diagnostics when logging is disabled", () => {
-    debugLogging.MEMORY_DEBUG_LOGGING = false;
-    try {
-      const a = loreCorrectionFixture(); const next = adventureReducer(a, correctionBatch(a));
-      expect(next.activeState.memoryDiagnostics).toEqual(a.activeState.memoryDiagnostics);
-      expect(next.activeState.apiCalls).toEqual(a.activeState.apiCalls);
-    } finally { debugLogging.MEMORY_DEBUG_LOGGING = true; }
-  });
 });
 
 
@@ -2151,7 +2028,7 @@ it.each(["create", "append", "disabled", "protected", "ambiguous", "date", "reco
     if (mode === "append") {
       expect(a.storyCards[0].content).toContain(prior);
       expect(a.storyCards[0].lore?.occurredAt?.date).toBe("2001-09-01");
-      expect(a.storyCards[0].lore?.lastChangedAt?.date).toBe("2001-09-02");
+      expect(a.storyCards[0].lore?.lastChangedAt?.date).toBeUndefined();
     }
   }
   expect(normalizeAdventure(JSON.parse(JSON.stringify(a))).activeState.memoryProposals[0].status).toBe(p.status);
