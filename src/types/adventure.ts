@@ -156,6 +156,7 @@ export interface SinglePassMemoryCheckpoint {
   sourceContent: string;
   sourceRevision?: string;
   evidence: Array<{ id: string; content: string }>;
+  /** Versioned SHA-256 guard; legacy saves may contain the serialized inputs. */
   referenceState: string;
   status: "running" | "complete" | "failed";
   findings: SinglePassMemoryFinding[];
@@ -192,6 +193,7 @@ export interface MemoryEvaluationState {
 export interface MemoryTargetSnapshot {
   kind: "brain" | "storyCard" | "component";
   id: string;
+  /** Versioned SHA-256 guard; legacy serialized entries remain accepted. */
   value: string;
 }
 

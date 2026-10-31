@@ -1,3 +1,4 @@
+import { snapshotFingerprint } from "../utils/snapshotFingerprint";
 import { storyMemoryMessages } from "./memoryEvidenceWindow";
 import type { Adventure, MemoryTargetSnapshot } from "../types/adventure";
 
@@ -18,11 +19,11 @@ export function memoryCycleSources(adventure: Adventure) {
 
 export function memoryTargetSnapshot(adventure: Adventure, kind: MemoryTargetSnapshot["kind"], id: string): MemoryTargetSnapshot | undefined {
   const entry = (kind === "brain" ? adventure.brains : kind === "storyCard" ? adventure.storyCards : adventure.components).find(item => item.id === id);
-  return entry ? { kind, id, value: JSON.stringify(entry) } : undefined;
+  return entry ? { kind, id, value: snapshotFingerprint(JSON.stringify(entry)) } : undefined;
 }
 
 export function memoryTargetMatches(adventure: Adventure, target: MemoryTargetSnapshot) {
-  return memoryTargetSnapshot(adventure, target.kind, target.id)?.value === target.value;
+  return memoryTargetSnapshot(adventure, target.kind, target.id)?.value === snapshotFingerprint(target.value);
 }
 
 /** New marked sources only. Terminal or interrupted work always requires explicit Retry. */

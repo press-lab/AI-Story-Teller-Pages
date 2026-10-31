@@ -1,3 +1,4 @@
+import { snapshotFingerprint } from "../utils/snapshotFingerprint";
 import { normalizeMemoryAutoApproveSettings } from "./defaults";
 import { shouldAutoApprove, storyCardApprovalCategory } from "../memory/approvalPolicy";
 import { ENABLE_HISTORY_COMPRESSION } from "../config/memoryHistoryCompression";
@@ -1291,7 +1292,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
         const e = source?.memoryEvaluation;
         return source?.role === "assistant" && e?.pipeline === "singlePass" && e.status !== "complete" && e.status !== "running"
           && (action.manual || e.status === "pending" && e.attempts === 0)
-          && !singlePassSourceError(state, sourceId, checkpoint) && checkpoint.referenceState === singlePassReferenceState(state, sourceId);
+          && !singlePassSourceError(state, sourceId, checkpoint) && snapshotFingerprint(checkpoint.referenceState) === singlePassReferenceState(state, sourceId);
       });
       if (valid.length !== action.checkpoints.length) return state;
       return touchAdventure(state, { messages: state.messages.map(message => {
@@ -1319,7 +1320,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
         if (e?.status !== "running" || e.singlePass?.batchId !== action.batchId || checkpoint.batchId !== action.batchId
           || JSON.stringify(e.singlePass) !== JSON.stringify(checkpoint)) return undefined;
         const stale = singlePassSourceError(state, result.sourceId, checkpoint)
-          ?? (checkpoint.referenceState !== singlePassReferenceState(state, result.sourceId) ? "Memory references or author controls changed during extraction." : undefined);
+          ?? (snapshotFingerprint(checkpoint.referenceState) !== singlePassReferenceState(state, result.sourceId) ? "Memory references or author controls changed during extraction." : undefined);
         return { result, checkpoint, validation: stale ? undefined : validateSinglePassSource(state, result, checkpoint), stale };
       }).filter((entry): entry is NonNullable<typeof entry> => Boolean(entry))
         .sort((x, y) => state.messages.findIndex(m => m.id === x.result.sourceId) - state.messages.findIndex(m => m.id === y.result.sourceId));

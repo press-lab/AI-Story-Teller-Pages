@@ -102,3 +102,30 @@ and cleanup are reported separately; story content still grows with logging OFF.
 
 Required validation commands: `npm.cmd test`, `npm.cmd run build`, and
 `npm.cmd run smoke:prod`.
+
+## Compact operational guards
+
+Logging OFF does not remove failed evaluations or resolved proposals. They still
+carry retry state, evidence and duplicate-suppression decisions. Previously each
+single-pass `referenceState` retained the entire serialized reference context,
+and each proposal destination snapshot retained a serialized card, component or
+Brain. These copies could dominate exports even with debug logging OFF.
+
+New reference and destination guards store a versioned SHA-256 fingerprint of the
+same serialized inputs. The synchronous implementation encodes UTF-16 code units
+directly, including unpaired surrogates. The reducer still rejects changed source
+text, evidence, reference content, controls and destinations. Legacy serialized
+guards are accepted and converted on load, save and export, including memory
+records inside undo/redo history. No memory request, replay, archive compression
+or deletion of failed work is needed for this conversion.
+
+Proposal contents, readable source evidence, decision status, successful sibling
+work, errors, counters, API accounting and the Chronicle remain intact. This
+reduces redundant guards; it does not claim that all remaining proposal history
+is disposable. Existing compressed archives remain readable and unchanged.
+
+Regression coverage includes independent SHA-256 comparisons, legacy destination
+checks, failed evaluation reload/retry/commit, resolved proposal source and target
+invalidation, export/import, idempotence, and 86 large failed checkpoints plus 245
+resolved proposals. The large fixture is synthetic, not a measurement of a user's
+current save.

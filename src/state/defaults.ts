@@ -1,3 +1,4 @@
+import { compactMemoryGuards } from "../memory/compactMemoryGuards";
 import { stripRetiredAdventureFields, stripRetiredTokenSettings } from "./legacyAdventureInput";
 import { reconcileBrainBatchState } from "../memory/brainBatchRecovery";
 import { initialStoryClock } from "../memory/storyTime";
@@ -501,7 +502,7 @@ export function persistedSemanticEvaluationSettings(
 }
 
 export function sanitizeAdventureForPersistence(adventure: Adventure): Adventure {
-  const clean = stripRetiredAdventureFields(adventure, normalizeMemoryAutoApproveSettings);
+  const clean = compactMemoryGuards(stripRetiredAdventureFields(adventure, normalizeMemoryAutoApproveSettings));
   return {
     ...clean,
     memoryAutoApprove: normalizeMemoryAutoApproveSettings(adventure.memoryAutoApprove),
@@ -521,7 +522,7 @@ export function normalizeAdventure(adventure: Adventure): Adventure {
       singlePass: evaluation.singlePass ? { ...evaluation.singlePass, status: "failed" as const, failureReason: reason } : undefined } };
   });
   const migrateGuardedStoryCards = !adventure.activeState?.stateFlags?.compactStoryCardsMigrated;
-  return reconcileBrainBatchState({
+  return compactMemoryGuards(reconcileBrainBatchState({
     ...baseline,
     ...adventure,
     openingScene: adventure.openingScene ?? "",
@@ -648,5 +649,5 @@ export function normalizeAdventure(adventure: Adventure): Adventure {
         ...(adventure.modelConfig?.requestThrottle ?? {}),
       },
     },
-  });
+  }));
 }
