@@ -36,6 +36,15 @@ export function StoryClockEditor({ adventure, dispatch, compact = false, inline 
     {inline && <h3>Current Story Date: {formatStoryTimeForDisplay(current)}{adventure.storyClock?.origin === "assumed" ? " (assumed)" : ""}</h3>}
     <p className="muted">In-world time, independent of your computer clock. Explicit story-date headings and day skips can advance it; flashbacks do not. Ambiguous dates remain textual.</p>
     {adventure.storyClock?.pendingReference && <p role="alert">Unresolved time passage: {adventure.storyClock.pendingReference}. Correct the story clock when the duration is known.</p>}
+    <Field label="Choose story date"><input type="date" value={draft?.date ?? ""}
+      onClick={event => {
+        // Some browsers only open the native calendar when its icon is clicked.
+        try { event.currentTarget.showPicker?.(); } catch { /* Keep the native input usable when showPicker is unavailable. */ }
+      }}
+      onChange={event => {
+        const date = event.target.value;
+        if (date) setDraft({ text: date, date, precision: "day" });
+      }} /></Field>
     <TimeFields label="Current story time" value={draft} onChange={setDraft} />
     {!valid && draft?.text && <p role="alert">Enter a valid story date. Gregorian dates must be valid calendar dates.</p>}
     <button type="button" disabled={unchanged || !valid} onClick={() => {
