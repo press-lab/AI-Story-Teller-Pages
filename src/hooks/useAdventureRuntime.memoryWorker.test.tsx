@@ -416,7 +416,9 @@ it("a new narrator resets the idle deadline and two queued sources flush togethe
 });
 it("manual selection starts immediately and leaves an unrelated pending source queued", async () => {
   controlledBatchClock(); const hook = setup();
-  await act(async () => { await hook.result.current.runtime.continueTurn(); await hook.result.current.runtime.continueTurn(); });
+  // Each completed interaction commits its loading reset before the next click.
+  await act(async () => { await hook.result.current.runtime.continueTurn(); });
+  await act(async () => { await hook.result.current.runtime.continueTurn(); });
   const ids = hook.result.current.adventure!.messages.map(m => m.id);
   await act(async () => { await hook.result.current.runtime.evaluateMemorySources([ids[0]]); });
   expect(provider.mock.calls.filter(([r]) => r.memoryEvaluation)).toHaveLength(1);

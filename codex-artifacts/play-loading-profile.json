@@ -1,0 +1,768 @@
+{
+  "method": "Headless Chrome, Vite development modules, real PlayPage and useAdventureRuntime, fake pending provider. afterDotsPaint is an rAF followed by a task checkpoint, not a hardware display timestamp.",
+  "baseline": "862d714 request scheduling; measured by bypassing the new paint boundary in a temporary Vite transform",
+  "before": [
+    {
+      "stress": false,
+      "kind": "Action",
+      "counts": {
+        "messages": 1504,
+        "cards": 41,
+        "brains": 7,
+        "proposals": 981
+      },
+      "payloadHash": 2830901479,
+      "events": [
+        {
+          "name": "input",
+          "t": 1183
+        },
+        {
+          "name": "input",
+          "t": 1226.5999999046326
+        },
+        {
+          "name": "setLoading",
+          "t": 1227.0999999046326
+        },
+        {
+          "name": "prepareStart",
+          "t": 1227.1999998092651
+        },
+        {
+          "name": "loadingCommit",
+          "t": 1245.5999999046326
+        },
+        {
+          "name": "prepareEnd",
+          "t": 1246.1999998092651
+        },
+        {
+          "name": "dotsDOM",
+          "t": 1246.3000001907349
+        },
+        {
+          "name": "buildContextStart",
+          "t": 1246.9000000953674
+        },
+        {
+          "name": "resolveChainedStoryCardTriggersStart",
+          "t": 1279.3000001907349
+        },
+        {
+          "name": "resolveChainedStoryCardTriggersEnd",
+          "t": 1347.0999999046326
+        },
+        {
+          "name": "buildContextEnd",
+          "t": 1353.4000000953674
+        },
+        {
+          "name": "provider",
+          "t": 1355.3000001907349
+        },
+        {
+          "name": "afterDotsPaint",
+          "t": 1375.1999998092651
+        }
+      ],
+      "dots": true
+    },
+    {
+      "stress": false,
+      "kind": "Continue",
+      "counts": {
+        "messages": 1504,
+        "cards": 41,
+        "brains": 7,
+        "proposals": 981
+      },
+      "payloadHash": 1628675791,
+      "events": [
+        {
+          "name": "input",
+          "t": 475.30000019073486
+        },
+        {
+          "name": "setLoading",
+          "t": 475.80000019073486
+        },
+        {
+          "name": "prepareStart",
+          "t": 475.90000009536743
+        },
+        {
+          "name": "loadingCommit",
+          "t": 498.80000019073486
+        },
+        {
+          "name": "prepareEnd",
+          "t": 499.09999990463257
+        },
+        {
+          "name": "dotsDOM",
+          "t": 499.09999990463257
+        },
+        {
+          "name": "buildContextStart",
+          "t": 499.19999980926514
+        },
+        {
+          "name": "resolveChainedStoryCardTriggersStart",
+          "t": 549.6999998092651
+        },
+        {
+          "name": "resolveChainedStoryCardTriggersEnd",
+          "t": 631.8000001907349
+        },
+        {
+          "name": "buildContextEnd",
+          "t": 638.1999998092651
+        },
+        {
+          "name": "provider",
+          "t": 639.9000000953674
+        },
+        {
+          "name": "afterDotsPaint",
+          "t": 659.5
+        }
+      ],
+      "dots": true
+    },
+    {
+      "stress": false,
+      "kind": "Retry",
+      "counts": {
+        "messages": 1504,
+        "cards": 41,
+        "brains": 7,
+        "proposals": 981
+      },
+      "payloadHash": 1690755395,
+      "events": [
+        {
+          "name": "input",
+          "t": 474.80000019073486
+        },
+        {
+          "name": "setLoading",
+          "t": 475.30000019073486
+        },
+        {
+          "name": "prepareStart",
+          "t": 475.40000009536743
+        },
+        {
+          "name": "loadingCommit",
+          "t": 492.30000019073486
+        },
+        {
+          "name": "prepareEnd",
+          "t": 492.59999990463257
+        },
+        {
+          "name": "dotsDOM",
+          "t": 492.59999990463257
+        },
+        {
+          "name": "buildContextStart",
+          "t": 493.69999980926514
+        },
+        {
+          "name": "resolveChainedStoryCardTriggersStart",
+          "t": 523.9000000953674
+        },
+        {
+          "name": "resolveChainedStoryCardTriggersEnd",
+          "t": 590.5999999046326
+        },
+        {
+          "name": "buildContextEnd",
+          "t": 597
+        },
+        {
+          "name": "provider",
+          "t": 598.3000001907349
+        },
+        {
+          "name": "afterDotsPaint",
+          "t": 615.8000001907349
+        }
+      ],
+      "dots": true
+    },
+    {
+      "stress": true,
+      "kind": "Action",
+      "counts": {
+        "messages": 1504,
+        "cards": 1000,
+        "brains": 100,
+        "proposals": 2000
+      },
+      "payloadHash": 1037519370,
+      "events": [
+        {
+          "name": "input",
+          "t": 479.40000009536743
+        },
+        {
+          "name": "input",
+          "t": 510
+        },
+        {
+          "name": "setLoading",
+          "t": 510.5
+        },
+        {
+          "name": "prepareStart",
+          "t": 510.5
+        },
+        {
+          "name": "loadingCommit",
+          "t": 533.8000001907349
+        },
+        {
+          "name": "prepareEnd",
+          "t": 534
+        },
+        {
+          "name": "dotsDOM",
+          "t": 534.0999999046326
+        },
+        {
+          "name": "buildContextStart",
+          "t": 534.3000001907349
+        },
+        {
+          "name": "resolveChainedStoryCardTriggersStart",
+          "t": 555.6999998092651
+        },
+        {
+          "name": "resolveChainedStoryCardTriggersEnd",
+          "t": 592.3000001907349
+        },
+        {
+          "name": "buildContextEnd",
+          "t": 593.4000000953674
+        },
+        {
+          "name": "provider",
+          "t": 594.5
+        },
+        {
+          "name": "afterDotsPaint",
+          "t": 610.0999999046326
+        }
+      ],
+      "dots": true
+    },
+    {
+      "stress": true,
+      "kind": "Continue",
+      "counts": {
+        "messages": 1504,
+        "cards": 1000,
+        "brains": 100,
+        "proposals": 2000
+      },
+      "payloadHash": 4277168646,
+      "events": [
+        {
+          "name": "input",
+          "t": 444.5
+        },
+        {
+          "name": "setLoading",
+          "t": 444.90000009536743
+        },
+        {
+          "name": "prepareStart",
+          "t": 445
+        },
+        {
+          "name": "loadingCommit",
+          "t": 460.7000002861023
+        },
+        {
+          "name": "prepareEnd",
+          "t": 460.90000009536743
+        },
+        {
+          "name": "dotsDOM",
+          "t": 460.90000009536743
+        },
+        {
+          "name": "buildContextStart",
+          "t": 460.90000009536743
+        },
+        {
+          "name": "resolveChainedStoryCardTriggersStart",
+          "t": 486.2000002861023
+        },
+        {
+          "name": "resolveChainedStoryCardTriggersEnd",
+          "t": 524
+        },
+        {
+          "name": "buildContextEnd",
+          "t": 525.2000002861023
+        },
+        {
+          "name": "provider",
+          "t": 526.5
+        },
+        {
+          "name": "afterDotsPaint",
+          "t": 541.8000001907349
+        }
+      ],
+      "dots": true
+    },
+    {
+      "stress": true,
+      "kind": "Retry",
+      "counts": {
+        "messages": 1504,
+        "cards": 1000,
+        "brains": 100,
+        "proposals": 2000
+      },
+      "payloadHash": 4113844632,
+      "events": [
+        {
+          "name": "input",
+          "t": 434.30000019073486
+        },
+        {
+          "name": "setLoading",
+          "t": 434.69999980926514
+        },
+        {
+          "name": "prepareStart",
+          "t": 434.69999980926514
+        },
+        {
+          "name": "loadingCommit",
+          "t": 450.5
+        },
+        {
+          "name": "prepareEnd",
+          "t": 450.69999980926514
+        },
+        {
+          "name": "dotsDOM",
+          "t": 450.80000019073486
+        },
+        {
+          "name": "buildContextStart",
+          "t": 451.40000009536743
+        },
+        {
+          "name": "resolveChainedStoryCardTriggersStart",
+          "t": 474.5
+        },
+        {
+          "name": "resolveChainedStoryCardTriggersEnd",
+          "t": 511.59999990463257
+        },
+        {
+          "name": "buildContextEnd",
+          "t": 512.8000001907349
+        },
+        {
+          "name": "provider",
+          "t": 513.8000001907349
+        },
+        {
+          "name": "afterDotsPaint",
+          "t": 529.9000000953674
+        }
+      ],
+      "dots": true
+    }
+  ],
+  "after": [
+    {
+      "stress": false,
+      "kind": "Action",
+      "counts": {
+        "messages": 1504,
+        "cards": 41,
+        "brains": 7,
+        "proposals": 981
+      },
+      "payloadHash": 2830901479,
+      "events": [
+        {
+          "name": "input",
+          "t": 798.1000003814697
+        },
+        {
+          "name": "input",
+          "t": 840.4000000953674
+        },
+        {
+          "name": "setLoading",
+          "t": 841.6000003814697
+        },
+        {
+          "name": "loadingCommit",
+          "t": 864.4000000953674
+        },
+        {
+          "name": "dotsDOM",
+          "t": 865
+        },
+        {
+          "name": "afterDotsPaint",
+          "t": 866.6000003814697
+        },
+        {
+          "name": "prepareStart",
+          "t": 866.7000002861023
+        },
+        {
+          "name": "prepareEnd",
+          "t": 868.3000001907349
+        },
+        {
+          "name": "buildContextStart",
+          "t": 868.7000002861023
+        },
+        {
+          "name": "resolveChainedStoryCardTriggersStart",
+          "t": 901.7000002861023
+        },
+        {
+          "name": "resolveChainedStoryCardTriggersEnd",
+          "t": 976.1000003814697
+        },
+        {
+          "name": "buildContextEnd",
+          "t": 983.6000003814697
+        },
+        {
+          "name": "provider",
+          "t": 987
+        }
+      ],
+      "dots": true
+    },
+    {
+      "stress": false,
+      "kind": "Continue",
+      "counts": {
+        "messages": 1504,
+        "cards": 41,
+        "brains": 7,
+        "proposals": 981
+      },
+      "payloadHash": 1628675791,
+      "events": [
+        {
+          "name": "input",
+          "t": 466.2999997138977
+        },
+        {
+          "name": "setLoading",
+          "t": 466.8999996185303
+        },
+        {
+          "name": "loadingCommit",
+          "t": 497.69999980926514
+        },
+        {
+          "name": "dotsDOM",
+          "t": 498.3999996185303
+        },
+        {
+          "name": "afterDotsPaint",
+          "t": 500.7999997138977
+        },
+        {
+          "name": "prepareStart",
+          "t": 501
+        },
+        {
+          "name": "prepareEnd",
+          "t": 501
+        },
+        {
+          "name": "buildContextStart",
+          "t": 501
+        },
+        {
+          "name": "resolveChainedStoryCardTriggersStart",
+          "t": 544.7999997138977
+        },
+        {
+          "name": "resolveChainedStoryCardTriggersEnd",
+          "t": 624.2999997138977
+        },
+        {
+          "name": "buildContextEnd",
+          "t": 631.5
+        },
+        {
+          "name": "provider",
+          "t": 633.1999998092651
+        }
+      ],
+      "dots": true
+    },
+    {
+      "stress": false,
+      "kind": "Retry",
+      "counts": {
+        "messages": 1504,
+        "cards": 41,
+        "brains": 7,
+        "proposals": 981
+      },
+      "payloadHash": 1690755395,
+      "events": [
+        {
+          "name": "input",
+          "t": 459.1000003814697
+        },
+        {
+          "name": "setLoading",
+          "t": 459.5
+        },
+        {
+          "name": "loadingCommit",
+          "t": 485.80000019073486
+        },
+        {
+          "name": "dotsDOM",
+          "t": 486.1000003814697
+        },
+        {
+          "name": "afterDotsPaint",
+          "t": 487.80000019073486
+        },
+        {
+          "name": "prepareStart",
+          "t": 487.90000009536743
+        },
+        {
+          "name": "prepareEnd",
+          "t": 488
+        },
+        {
+          "name": "buildContextStart",
+          "t": 489.1000003814697
+        },
+        {
+          "name": "resolveChainedStoryCardTriggersStart",
+          "t": 518.4000000953674
+        },
+        {
+          "name": "resolveChainedStoryCardTriggersEnd",
+          "t": 584.7000002861023
+        },
+        {
+          "name": "buildContextEnd",
+          "t": 590.8000001907349
+        },
+        {
+          "name": "provider",
+          "t": 592.4000000953674
+        }
+      ],
+      "dots": true
+    },
+    {
+      "stress": true,
+      "kind": "Action",
+      "counts": {
+        "messages": 1504,
+        "cards": 1000,
+        "brains": 100,
+        "proposals": 2000
+      },
+      "payloadHash": 1037519370,
+      "events": [
+        {
+          "name": "input",
+          "t": 444.09999990463257
+        },
+        {
+          "name": "input",
+          "t": 469.69999980926514
+        },
+        {
+          "name": "setLoading",
+          "t": 470
+        },
+        {
+          "name": "loadingCommit",
+          "t": 496
+        },
+        {
+          "name": "dotsDOM",
+          "t": 496.40000009536743
+        },
+        {
+          "name": "afterDotsPaint",
+          "t": 497.69999980926514
+        },
+        {
+          "name": "prepareStart",
+          "t": 502.40000009536743
+        },
+        {
+          "name": "prepareEnd",
+          "t": 502.40000009536743
+        },
+        {
+          "name": "buildContextStart",
+          "t": 502.5
+        },
+        {
+          "name": "resolveChainedStoryCardTriggersStart",
+          "t": 522.0999999046326
+        },
+        {
+          "name": "resolveChainedStoryCardTriggersEnd",
+          "t": 558.5
+        },
+        {
+          "name": "buildContextEnd",
+          "t": 559.5999999046326
+        },
+        {
+          "name": "provider",
+          "t": 560.5
+        }
+      ],
+      "dots": true
+    },
+    {
+      "stress": true,
+      "kind": "Continue",
+      "counts": {
+        "messages": 1504,
+        "cards": 1000,
+        "brains": 100,
+        "proposals": 2000
+      },
+      "payloadHash": 4277168646,
+      "events": [
+        {
+          "name": "input",
+          "t": 445.7000002861023
+        },
+        {
+          "name": "setLoading",
+          "t": 446
+        },
+        {
+          "name": "loadingCommit",
+          "t": 471.1000003814697
+        },
+        {
+          "name": "dotsDOM",
+          "t": 471.5
+        },
+        {
+          "name": "afterDotsPaint",
+          "t": 472.90000009536743
+        },
+        {
+          "name": "prepareStart",
+          "t": 473
+        },
+        {
+          "name": "prepareEnd",
+          "t": 473.1000003814697
+        },
+        {
+          "name": "buildContextStart",
+          "t": 473.1000003814697
+        },
+        {
+          "name": "resolveChainedStoryCardTriggersStart",
+          "t": 496.7000002861023
+        },
+        {
+          "name": "resolveChainedStoryCardTriggersEnd",
+          "t": 532.9000000953674
+        },
+        {
+          "name": "buildContextEnd",
+          "t": 533.8000001907349
+        },
+        {
+          "name": "provider",
+          "t": 534.8000001907349
+        }
+      ],
+      "dots": true
+    },
+    {
+      "stress": true,
+      "kind": "Retry",
+      "counts": {
+        "messages": 1504,
+        "cards": 1000,
+        "brains": 100,
+        "proposals": 2000
+      },
+      "payloadHash": 4113844632,
+      "events": [
+        {
+          "name": "input",
+          "t": 446.2000002861023
+        },
+        {
+          "name": "setLoading",
+          "t": 446.5
+        },
+        {
+          "name": "loadingCommit",
+          "t": 470.6000003814697
+        },
+        {
+          "name": "dotsDOM",
+          "t": 470.90000009536743
+        },
+        {
+          "name": "afterDotsPaint",
+          "t": 472.40000009536743
+        },
+        {
+          "name": "prepareStart",
+          "t": 473
+        },
+        {
+          "name": "prepareEnd",
+          "t": 473
+        },
+        {
+          "name": "buildContextStart",
+          "t": 473.80000019073486
+        },
+        {
+          "name": "resolveChainedStoryCardTriggersStart",
+          "t": 497.80000019073486
+        },
+        {
+          "name": "resolveChainedStoryCardTriggersEnd",
+          "t": 534.2000002861023
+        },
+        {
+          "name": "buildContextEnd",
+          "t": 535.3000001907349
+        },
+        {
+          "name": "provider",
+          "t": 536.2000002861023
+        }
+      ],
+      "dots": true
+    }
+  ]
+}
