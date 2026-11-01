@@ -133,7 +133,7 @@ it.each(["assumed", "unknown"])("allows manual creation with an %s clock without
   expect(manualState().storyClock).toEqual(a.storyClock);
 });
 
-it("offers a missing destination fallback and honors CREATE with a duplicate title", async () => {
+it("offers a missing destination fallback and blocks Lore CREATE with a duplicate title", async () => {
   const a = approvalAdventure(); a.storyCards = [existingApprovalCard("lore")];
   a.activeState.memoryProposals = [approvalProposal("loreStoryCard", { title: "Mira", targetId: "missing" })];
   render(<ManualReview initial={a} />); const user = userEvent.setup();
@@ -142,8 +142,9 @@ it("offers a missing destination fallback and honors CREATE with a duplicate tit
   expect(manualState().activeState.memoryProposals[0].status).toBe("pending");
   await user.selectOptions(screen.getByLabelText("Story Card destination"), "");
   await user.click(screen.getByRole("button", { name: "Approve" }));
-  expect(manualState().storyCards).toHaveLength(2);
-  expect(manualState().storyCards.map(card => card.title)).toEqual(["Mira", "Mira"]);
+  expect(manualState().storyCards).toHaveLength(1);
+  expect(manualState().activeState.memoryProposals[0].status).toBe("pending");
+  expect(screen.getByText(/an equivalent Story Card title/, { selector: "p" })).toBeVisible();
 });
 
 it("reports structural errors without changing memory", async () => {

@@ -1770,24 +1770,24 @@ it("rechecks the latest Lore at insertion and approval, preserving partial draft
   expect(a.activeState.memoryProposals.find(q => q.id === partial.id)).toMatchObject({ status: "approved", content: partial.content });
   expect(a.storyCards.find(c => c.id === partial.targetId)?.content).toContain("She accepted a separate Ministry commission.");
 });
-it("honors explicit CREATE even when the title and content already exist", async () => {
+it("blocks saved Lore CREATE approval when the title now exists", async () => {
   let { a, ids } = qualityFixture(); const batch = await prepareSinglePassMemoryBatch(a, ids);
   const p = { ...toSinglePassProposal(a, ids[0], batch.checkpoints[0].checkpoint, { ...loreFinding("A separate reviewed fact."), title: a.storyCards[0].title, targetId: null, operation: "create" as const }), id: "explicit-create" };
   a.activeState.memoryProposals.push(p);
   const before = a.storyCards.length;
   a = adventureReducer(a, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: p.id });
-  expect(a.storyCards).toHaveLength(before + 1);
-  expect(a.activeState.memoryProposals.find(q => q.id === p.id)?.status).toBe("approved");
+  expect(a.storyCards).toHaveLength(before);
+  expect(a.activeState.memoryProposals.find(q => q.id === p.id)).toEqual({ ...p, approvalFeedback: expect.stringContaining("equivalent Story Card title") });
 });
 
-it("retains CREATE title collisions for explicit review even with automatic Story Card approval enabled", async () => {
+it("suppresses Lore CREATE title collisions even with automatic approval enabled", async () => {
   let { a, ids } = qualityFixture(); a.memoryAutoApprove.loreStoryCard = true; a.memoryAutoApprove.otherStoryCard = true;
 
   const batch = await prepareSinglePassMemoryBatch(a, ids);
   const p = toSinglePassProposal(a, ids[0], batch.checkpoints[0].checkpoint, { ...loreFinding("They opened a new workshop."), targetId: null, operation: "create" });
   p.requiresReview = false; p.storyCardReview!.candidateOnly = false;
   a = adventureReducer(a, { type: "ADD_MEMORY_PROPOSAL", proposal: p });
-  expect(a.activeState.memoryProposals.find(q => q.id === p.id)).toMatchObject({ status: "pending", requiresReview: true });
+  expect(a.activeState.memoryProposals.find(q => q.id === p.id)).toBeUndefined();
   expect(a.storyCards.filter(c => c.title === p.title)).toHaveLength(1);
 });
 
@@ -2015,6 +2015,11 @@ it.each(["create", "append", "disabled", "protected", "ambiguous", "date", "reco
   if (mode === "recovered") response = JSON.stringify({ sources: [{ sourceId: "narrator-1", findings: [{ kind: "storyCard", targetId: null,
     title: "Archive access", content: fact, evidenceQuotes: [{ messageId: "narrator-1", quote: fact }] }] }] });
   a = await commitLooseCard(a, response);
+  if (mode === "ambiguous") {
+    expect(a.activeState.memoryProposals).toEqual([]);
+    expect(a.storyCards).toEqual(before);
+    return;
+  }
   const p = a.activeState.memoryProposals[0];
   const eligible = ["create", "append"].includes(mode);
   expect(p).toMatchObject({ status: eligible ? "approved" : "pending", requiresReview: !["create", "append", "disabled"].includes(mode), content: fact });
@@ -2063,7 +2068,8 @@ it.each([false, true])("keeps mixed loose batch approval independent (Brain auto
     "(lore: Archive access = The research team gained access to the library archives.)",
     `(storyCard.character.update: George Weasley = ${profileFact} || The experiment established this lasting loss.)`,
   ].join("\n"));
-  expect(a.activeState.memoryProposals).toHaveLength(4);
+  expect(a.activeState.memoryProposals).toHaveLength(3);
+  expect(a.activeState.memoryProposals.some(p => p.title === "Archive access")).toBe(false);
   expect(a.activeState.memoryProposals.find(p => p.title === "Council membership")?.status).toBe("approved");
   expect(a.activeState.memoryProposals.find(p => p.proposedType === "brainUpdate")?.status).toBe(brainAuto ? "approved" : "pending");
   expect(a.activeState.memoryProposals.filter(p => p.title === "Archive access" || p.storyCardType === "character").every(p => p.status === "pending" && p.requiresReview)).toBe(true);
@@ -2114,7 +2120,7 @@ for (const path of ["insert", "merge", "scan", "final"] as const) {
       if (path === "scan") a = adventureReducer(a, { type: "SCAN_STORY_CARD_EXCHANGE", sourceMessageId: "approval-source", manual: true });
       if (path === "final") a = adventureReducer(a, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: p.id, automatic: true });
     }
-    expect(a.activeState.memoryProposals.find(entry => entry.id === p.id)?.status).toBe(mode === "eligible" ? "approved" : "pending");
+    expect(a.activeState.memoryProposals.find(entry => entry.id === p.id)?.status).toBe(mode === "eligible" && path !== "merge" ? "approved" : "pending");
     if (mode !== "eligible") expect(a.storyCards).toEqual(before);
     if (mode === "uncertain") expect(a.activeState.memoryProposals[0].requiresReview).toBe(true);
   });
@@ -2177,4 +2183,45 @@ it.each([false, true])("compression actions are identity no-ops independently of
     expect(restored.activeState.memoryProposals[0].archivedMemoryHistoryId).toBeUndefined();
     expect(restored.activeState.compressedMemoryHistory).toBe(archived.activeState.compressedMemoryHistory);
   } finally { debugLogging.MEMORY_DEBUG_LOGGING = true; }
+});
+
+
+it.each(["Weasley Formal Accessories", "  WEASLEY   Formal---Accessories!  "])("suppresses Lore CREATE title %s regardless of content or saved card type", async title => {
+  let { a, ids } = qualityFixture();
+  a.storyCards.push(makeStoryCard({ title: "Weasley Formal Accessories", type: title.startsWith(" ") ? "custom" : "lore", content: "Original catalog." }));
+  const batch = await prepareSinglePassMemoryBatch(a, ids);
+  const p = toSinglePassProposal(a, ids[0], batch.checkpoints[0].checkpoint,
+    { ...loreFinding("An entirely different fact about a new commission."), title, targetId: null, operation: "create" });
+  a = adventureReducer(a, { type: "ADD_MEMORY_PROPOSAL", proposal: p });
+  expect(a.activeState.memoryProposals).toHaveLength(0);
+});
+
+it.each([false, true])("deduplicates sequential batch Lore CREATE titles with auto-approval %s", async automatic => {
+  const { singlePassFixture, groundedFinding } = await import("../test/singlePassMemory");
+  const { parseSinglePassMemoryResponse } = await import("../memory/singlePassMemory");
+  let { a, ids } = singlePassFixture(1); a.storyCards = [];
+  a.memoryAutoApprove.loreStoryCard = automatic;
+  const batch = await prepareSinglePassMemoryBatch(a, ids);
+  const first = { ...groundedFinding(), title: "Weasley Formal Accessories" };
+  const second = { ...first, title: "  WEASLEY Formal---Accessories! ", content: "They accepted a separate commission for enchanted cufflinks." };
+  const third = { ...first, title: "Separate Workshop", content: "They opened a separate workshop for the new commission." };
+  const result = parseSinglePassMemoryResponse(JSON.stringify({ sources: [{ sourceId: ids[0], findings: [first, second, third] }] }), ids, a).sources[0];
+  a = adventureReducer(a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
+  a = adventureReducer(a, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId, sources: [{ result, checkpoint: batch.checkpoints[0].checkpoint }] });
+  expect(a.activeState.memoryProposals.map(p => p.title).sort()).toEqual(["Separate Workshop", "Weasley Formal Accessories"]);
+  expect(a.activeState.memoryProposals.every(p => p.status === (automatic ? "approved" : "pending"))).toBe(true);
+  expect(a.messages.find(m => m.id === ids[0])?.memoryEvaluation?.singlePass?.dispositions.map(d => d.status)).toEqual([automatic ? "accepted" : "review", "suppressed", automatic ? "accepted" : "review"]);
+});
+
+
+it("blocks saved Lore CREATE approval against another pending CREATE without changing the draft", async () => {
+  let { a, ids } = qualityFixture();
+  const batch = await prepareSinglePassMemoryBatch(a, ids);
+  const p = toSinglePassProposal(a, ids[0], batch.checkpoints[0].checkpoint,
+    { ...loreFinding("They accepted a new commission."), title: "Weasley Formal Accessories", targetId: null, operation: "create" });
+  a.activeState.memoryProposals = [p, { ...p, id: "other-pending", title: " WEASLEY Formal---Accessories! " }];
+  const before = structuredClone(a.storyCards);
+  a = adventureReducer(a, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: p.id });
+  expect(a.storyCards).toEqual(before);
+  expect(a.activeState.memoryProposals[0]).toEqual({ ...p, approvalFeedback: expect.stringContaining("equivalent Story Card title") });
 });

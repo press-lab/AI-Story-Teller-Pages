@@ -732,6 +732,19 @@ function sanitizeProposal(proposal: MemoryProposal): MemoryProposal | null {
   };
 }
 
+// Only CREATE suggestions reserve a title; dismissed history and APPENDs do not.
+function loreCreateTitleConflict(state: Adventure, proposal: MemoryProposal): boolean {
+  if (proposal.proposedType !== "storyCard" || proposal.storyCardType !== "lore"
+    || proposal.targetId || proposal.cardOperation === "append" || proposal.appendContent) return false;
+  const title = loreTitleKey(proposal.title);
+  return state.storyCards.some(card => loreTitleKey(card.title) === title)
+    || state.activeState.memoryProposals.some(other => other.id !== proposal.id
+      && (other.status === "pending" || other.status === "approved")
+      && other.proposedType === "storyCard" && !other.targetId
+      && other.cardOperation !== "append" && !other.appendContent
+      && loreTitleKey(other.title) === title);
+}
+
 function routedProposal(state: Adventure, proposal: MemoryProposal): MemoryProposal {
   const originalCardType = proposal.storyCardType;
   if (proposal.proposedType === "storyCard") {
@@ -1849,7 +1862,9 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
         candidate: { kind: action.proposal.storyCardType ?? action.proposal.proposedType, title: action.proposal.title, content: action.proposal.content.slice(0, 4000), evidence: (action.proposal.sourceText ?? "").slice(0, 4000), rationale: (action.proposal.rationale ?? "").slice(0, 600) },
       } });
       if (!clean) return suppressed("Proposal sanitization rejected the candidate.");
-      // Automatic processing must retain conflicts for explicit manual review.
+      if (loreCreateTitleConflict(state, { ...clean, storyCardType: action.proposal.storyCardType ?? clean.storyCardType }))
+        return suppressed("Lore CREATE title already exists as a Story Card or active CREATE suggestion.");
+      // Other automatic processing conflicts remain available for explicit manual review.
       delete clean.approvalFeedback;
       if (validateLoreChronology(state, clean).status === "conflict") clean.requiresReview = true;
       const comparableProposals = state.activeState.memoryProposals.filter(proposal => !proposal.storyCardReview || suggestionSourceValid(state, proposal)
@@ -2016,6 +2031,8 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
         && !state.components.some(c => c.type === "currentArc")) return fail("Current Arc destination is missing. Create a Current Arc component first.");
       const proposal = sanitizeProposal(draft);
       if (!proposal) return action.automatic ? state : fail("invalid structured memory content or unsupported memory type.");
+      if (loreCreateTitleConflict(state, proposal))
+        return fail("an equivalent Story Card title or active CREATE suggestion already exists. Select an existing card or edit the title.");
       if (!action.automatic && proposal.proposedType === "storyCard" && proposal.targetId
         && !state.storyCards.some(card => card.id === proposal.targetId)) return fail("destination card is missing. Select CREATE or an existing Story Card.");
       if (action.automatic && proposal.proposedType === "storyCard" && storyCardAutoApprovalBlockers(state, proposal).length) return state;

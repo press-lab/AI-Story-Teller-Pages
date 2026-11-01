@@ -204,15 +204,14 @@ it("resolves neither missing sources nor unsupported subtypes", async () => {
   expect(result.sources.map(s => s.findings.length)).toEqual([2, 2, 2]);
 });
 
-it("retains exact-title Lore ambiguity through the reducer", async () => {
+it("suppresses ambiguous exact-title Lore CREATE through the reducer", async () => {
   const r = await routed("(lore: Weasley Tattoo Business = The twins agreed to ship 96 tattoos.)", a => {
     a.storyCards.push({ ...a.storyCards[0], id: "second-business" });
   });
   expect(r.result.findings[0]).toMatchObject({ targetId: null, storyCardType: "lore", operation: "create", destinationCandidates: ["business", "second-business"] });
   let saved = reduce(r.a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: r.batch.checkpoints });
   saved = reduce(saved, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: r.batch.batchId, sources: [{ result: r.result, checkpoint: r.batch.checkpoints[0].checkpoint }] });
-  expect(saved.activeState.memoryProposals).toHaveLength(1);
-  expect(saved.activeState.memoryProposals[0].storyCardReview?.targetCandidates).toEqual(["business", "second-business"]);
+  expect(saved.activeState.memoryProposals).toHaveLength(0);
   expect(saved.storyCards).toEqual(r.a.storyCards);
 });
 it("does not bypass stale source revisions, historical evidence, destination or control edits", async () => {
