@@ -1,3 +1,4 @@
+import { paintNarrationLoading } from "./paintNarrationLoading";
 import { prepareSinglePassMemoryBatch, runSinglePassMemoryBatch } from "../memory/singlePassMemory";
 import { validateSinglePassSource } from "../memory/singlePassMemoryValidation";
 import { assessMemoryBatch } from "../memory/memoryAssessment";
@@ -316,11 +317,15 @@ export function useAdventureRuntime(
     setMemoryWork(undefined);
   }
 
-  async function prepareNarration() {
+  function beginNarration() {
     clearTimeout(assessmentIdleTimerRef.current);
     assessmentIdleTimerRef.current = undefined;
+    return paintNarrationLoading(() => { setLoading(true); setError(undefined); });
+  }
+
+  async function prepareNarration(adventureId: string) {
     const current = adventureRef.current;
-    if (!current) return;
+    if (!current || current.id !== adventureId) return;
     // The UI permits composing, but a new context cannot overtake the ordered worker.
     if (memoryWorkerRef.current?.adventureId === current.id) await memoryWorkerRef.current.promise;
     const latest = adventureRef.current;
@@ -701,14 +706,13 @@ export function useAdventureRuntime(
   async function submitTurn(text: string, mode: InputMode = "story"): Promise<boolean> {
     if (!adventure || loading || isSubmittingRef.current) return false;
     isSubmittingRef.current = true;
-    setLoading(true);
-    setError(undefined);
 
     let base: Adventure = adventure;
     let snapshotWithUserMsg: typeof adventure | undefined;
 
     try {
-      const ready = await prepareNarration();
+      await beginNarration();
+      const ready = await prepareNarration(adventure.id);
       if (!ready) return false;
       base = ready;
       if (mode !== "comms" && CHALLENGE_PHRASES.some(re => re.test(text))) base = adventureReducer(base, { type: "SET_CHALLENGE_MODE" });
@@ -785,11 +789,10 @@ export function useAdventureRuntime(
   async function continueTurn() {
     if (!adventure || loading || isSubmittingRef.current) return;
     isSubmittingRef.current = true;
-    setLoading(true);
-    setError(undefined);
 
     try {
-      const base = await prepareNarration();
+      await beginNarration();
+      const base = await prepareNarration(adventure.id);
       if (!base) return;
       isNarratingRef.current = true;
       const result = await runTurnPipeline({
@@ -845,20 +848,19 @@ export function useAdventureRuntime(
   async function regenerateLastResponse() {
     if (!adventure || loading || isSubmittingRef.current) return;
     isSubmittingRef.current = true;
-    setLoading(true);
-    setError(undefined);
-
-    const ready = await prepareNarration();
-    if (!ready) { isSubmittingRef.current = false; setLoading(false); return; }
-    isNarratingRef.current = true;
-    let next = ready;
-    next = adventureReducer(next, { type: "REMOVE_LAST_ASSISTANT_MESSAGE" });
-    const historyBaseline = next;
-    const lastUser = [...next.messages].reverse().find((m) => m.role === "user")?.content ?? "Continue.";
-    const context = buildContext(next, { currentInput: lastUser, latestModelOutput: latestAssistantOutput(next) });
-    setContextResult(context);
 
     try {
+      await beginNarration();
+      const ready = await prepareNarration(adventure.id);
+      if (!ready) return;
+      isNarratingRef.current = true;
+      let next = ready;
+      next = adventureReducer(next, { type: "REMOVE_LAST_ASSISTANT_MESSAGE" });
+      const historyBaseline = next;
+      const lastUser = [...next.messages].reverse().find((m) => m.role === "user")?.content ?? "Continue.";
+      const context = buildContext(next, { currentInput: lastUser, latestModelOutput: latestAssistantOutput(next) });
+      setContextResult(context);
+
       const regenConfig = applyResponseLengthHint(
         mergeProviderConfig(next, providerSettings),
         next.activeState.responseLengthHint,
