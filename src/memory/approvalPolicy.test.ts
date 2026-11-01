@@ -5,8 +5,8 @@ import { approvalAdventure, approvalCategories, approvalProposal, existingApprov
 import { reviewedProposal } from "../test/memoryPlacement";
 import type { StoryCardType } from "../types/adventure";
 
-describe("seven adventure approval categories", () => {
-  it.each(approvalCategories.flatMap(category => [false, true].map(enabled => ({ category, enabled }))))("$category ON=$enabled controls valid new proposals", ({ category, enabled }) => {
+describe("six adventure approval categories", () => {
+  it.each(approvalCategories.filter(category => category !== "plotPressureUpdate").flatMap(category => [false, true].map(enabled => ({ category, enabled }))))("$category ON=$enabled controls valid new proposals", ({ category, enabled }) => {
     const a = approvalAdventure();
     a.memoryAutoApprove[category] = enabled;
     let p = approvalProposal(category);

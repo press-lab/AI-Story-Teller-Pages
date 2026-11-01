@@ -145,7 +145,7 @@ describe("Story Card routing", () => {
   });
 });
 describe("Component routing", () => {
-  const proposals = { plotEssentials: "plotEssentialsUpdate", currentArc: "currentArcUpdate", activePressure: "plotPressureUpdate", immediateMomentum: "plotMomentumUpdate" };
+  const proposals = { plotEssentials: "plotEssentialsUpdate", currentArc: "currentArcUpdate", immediateMomentum: "plotMomentumUpdate" };
   it.each(Object.entries(proposals))("routes supported %s and preserves operation", async (type, proposalType) => {
     const r = await routed("(component." + type + ": Target = The Ministry expects the research report tomorrow.)", a => {
       a.components = [makeComponent({ id: "target", title: "Target", type: type as ComponentType, active: true, autoUpdate: true, content: "An existing different constraint.", arcPremise: type === "currentArc" ? "Investigate the Ministry report." : undefined })];
@@ -158,7 +158,7 @@ describe("Component routing", () => {
     expect(r.result.findings).toEqual([]); expect(r.result.rejected).toEqual([{ index: 0, reason: "Recognized component subtype; automatic memory routing is not permitted." }]);
   });
   it.each(["missing", "duplicate", "inactive", "optOut", "wrongSubtype", "plotEssentialsPermission"])("rejects unsafe component target %s", async mode => {
-    const r = await routed("(component." + (mode === "plotEssentialsPermission" ? "plotEssentials" : "activePressure") + ": Ministry Deadline = The report is due tomorrow.)", a => {
+    const r = await routed("(component." + (mode === "plotEssentialsPermission" ? "plotEssentials" : "plotEssentials") + ": Ministry Deadline = The report is due tomorrow.)", a => {
       if (mode === "missing") a.components = [];
       if (mode === "duplicate") a.components.push({ ...a.components[0], id: "second" });
       if (mode === "inactive") a.components[0].active = false;
@@ -169,8 +169,8 @@ describe("Component routing", () => {
     expect(r.checked.proposals).toEqual([]); expect(r.result.rejected[0].reason).toMatch(/component destination/);
   });
   it("requires review for a protected target", async () => {
-    const r = await routed("(component.activePressure: Ministry Deadline = The report is due tomorrow.)", a => { a.components[0].protected = true; });
-    expectFinding(r, "activePressure", "activePressure", "pressure", "replace", "plotPressureUpdate");
+    const r = await routed("(component.plotEssentials: Ministry Deadline = The report is due tomorrow.)", a => { a.components[0].protected = true; });
+    expectFinding(r, "plotEssentials", "plotEssentials", "pressure", "replace", "plotEssentialsUpdate");
   });
   it("rejects explicit Component creation", async () => {
     const r = await routed("(component.currentArc.create: New Arc = A new investigation began.)");
@@ -279,7 +279,7 @@ it.each(["inactive", "optOut", "missing", "wrongType"])("rejects unsafe Immediat
     if (mode === "inactive") a.components[0].active = false;
     if (mode === "optOut") a.components[0].autoUpdate = false;
     if (mode === "missing") a.components = [];
-    if (mode === "wrongType") a.components[0].type = "activePressure";
+    if (mode === "wrongType") a.components[0].type = "plotEssentials";
   });
   expect(r.result.findings).toEqual([]); expect(r.result.rejected[0].reason).toMatch(/Ineligible component/);
   expect(r.checked.proposals).toEqual([]);

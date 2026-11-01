@@ -22,6 +22,7 @@ export function singlePassSourceError(a: Adventure, sourceId: string, checkpoint
 export function validateSinglePassFinding(a: Adventure, sourceId: string, checkpoint: SinglePassMemoryCheckpoint, f: SinglePassMemoryFinding): string | undefined {
   const sourceError = singlePassSourceError(a, sourceId, checkpoint);
   if (sourceError) return sourceError;
+  if (f.kind === "activePressure") return "Active Pressure is retired.";
   const schemaError = singlePassFindingSchemaError(f);
   if (schemaError) return schemaError;
   const evidence = memoryEvidenceWindow(a, sourceId);
@@ -110,6 +111,9 @@ export function validateSinglePassSource(a: Adventure, result: SinglePassMemoryS
   const suppressionReasons: Record<number, string> = {};
   result.findings.forEach((finding, findingIndex) => {
     const index = result.findingIndexes?.[findingIndex] ?? findingIndex;
+    if (!sourceError && finding.kind === "activePressure") {
+      suppressed.push(index); suppressionReasons[index] = "Active Pressure is retired."; return;
+    }
     const error = sourceError ?? validateSinglePassFinding(a, result.sourceId, checkpoint, finding);
     if (error) { rejected.push({ index, reason: error }); return; }
     const brainTarget = finding.kind === "brain" ? a.brains.find(b => b.id === finding.targetId) : undefined;

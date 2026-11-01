@@ -268,7 +268,7 @@ const TYPE_DESCRIPTIONS: Record<ComponentType, string> = {
   aiInstructions: "Optional scenario-specific rules separated for organization. Use this only when you want a distinct drift-prevention or genre contract outside Narration Rules. Do not duplicate rules already present in Narration Rules; both blocks load every turn.",
   plotEssentials: "Current operating truth — what is happening now, open tensions, obligations, and major constraints that should shape every scene. Keep it compact and replace it when it drifts. Outgoing facts become reviewable historical Story Card proposals.",
   currentArc: "A running log of the active story arc — auto-updated as arc-relevant events occur. Seed it with a one-line Arc Premise that defines what this arc is about. The AI only appends entries when something genuinely advances or complicates that premise. When the arc is complete, graduate it to a Story Card and start fresh.",
-  activePressure: "One sentence naming the external threat, obligation, or force currently bearing on the player character. Auto-generated, approved via Memory Inbox. Must stay anchored to external stakes — a danger, a deadline, a pursuit, a debt. If this drifts to describing an emotional state or internal need, regenerate it.",
+  activePressure: "Retired legacy component; inactive and excluded from context and memory updates.",
   immediateMomentum: "Disabled legacy component. Immediate next-beat direction now belongs in Recent Messages or the one-turn Next Output Bias.",
   authorNote: "Near-context narrative direction — inserted just before Recent Messages for maximum influence on the next response. One per adventure. Most powerful mid-session correction tool: if a character is drifting too passive, too emotional, or too reactive, add a directive here before the next turn. 'Nix should have a project she is actively working on right now' resets the register immediately.",
   memory: "Legacy lore block. Move content to a Story Card with type Lore for triggered inclusion.",
@@ -340,7 +340,7 @@ type ComponentAuditState = {
 };
 
 const GENERATABLE_COMPONENT_TYPES = new Set<ComponentType>(["narrationRules", "aiInstructions", "authorNote"]);
-const COMPONENT_AUDIT_TYPES: ComponentType[] = ["plotEssentials", "activePressure", "currentArc", "custom", "memory"];
+const COMPONENT_AUDIT_TYPES: ComponentType[] = ["plotEssentials", "currentArc", "custom", "memory"];
 
 const PLOT_GROUP_DEFINITIONS: Array<{
   id: string;
@@ -358,7 +358,7 @@ const PLOT_GROUP_DEFINITIONS: Array<{
     id: "current-state",
     title: "Current Story State",
     description: "What is true right now and what pressure is active.",
-    types: ["plotEssentials", "activePressure", "currentArc"],
+    types: ["plotEssentials", "currentArc"],
   },
 ];
 
@@ -481,13 +481,13 @@ export function ComponentsPage({ adventure, dispatch, loading, onSuggestPlotUpda
   );
 
   const searchLower = search.toLowerCase().trim();
-  const visibleComponents = [...adventure.components]
+  const visibleComponents = adventure.components.filter(c => c.type !== "activePressure")
     .sort((a, b) => b.priority - a.priority)
     .filter((c) => !searchLower ||
       TYPE_LABELS[c.type].toLowerCase().includes(searchLower) ||
       c.content.toLowerCase().includes(searchLower)
     );
-  const activeCount = adventure.components.filter((component) => component.active).length;
+  const activeCount = adventure.components.filter((component) => component.active && component.type !== "activePressure").length;
   const groupedComponentIds = new Set<string>();
   const componentGroups = PLOT_GROUP_DEFINITIONS
     .map((group) => {
@@ -546,7 +546,7 @@ export function ComponentsPage({ adventure, dispatch, loading, onSuggestPlotUpda
         <details className="panel">
           <summary>Draft plot memory with AI</summary>
           <p className="muted">
-            Describe the current situation, pressure, or correction. The AI drafts a pending Plot Essentials or Active Pressure update using the app's placement rules.
+            Describe the current situation, pressure, or correction. The AI drafts a pending Plot Essentials update using the app's placement rules.
           </p>
           <div className="grid three">
             <Field label="Target">
@@ -558,7 +558,6 @@ export function ComponentsPage({ adventure, dispatch, loading, onSuggestPlotUpda
                 }}
               >
                 <option value="plotEssentials">Plot Essentials</option>
-                <option value="activePressure">Active Pressure</option>
               </select>
             </Field>
             <Field label="Component">
@@ -734,7 +733,7 @@ export function ComponentsPage({ adventure, dispatch, loading, onSuggestPlotUpda
                   </div>
                 </div>
                 <div className="row">
-                  {(component.type === "plotEssentials" || component.type === "activePressure" || component.type === "currentArc") && onUpdatePEComponentNow && (
+                  {(component.type === "plotEssentials" || component.type === "currentArc") && onUpdatePEComponentNow && (
                     <button
                       type="button"
                       disabled={loading}
@@ -840,7 +839,7 @@ export function ComponentsPage({ adventure, dispatch, loading, onSuggestPlotUpda
               )}
               <details className="brain-secondary-details item-secondary-details">
                 <summary>Automation, context settings, and actions</summary>
-              {(component.type === "plotEssentials" || component.type === "activePressure" || component.type === "currentArc") && (
+              {(component.type === "plotEssentials" || component.type === "currentArc") && (
                 <div className="grid two">
                   {component.type === "plotEssentials" && (
                     <CheckboxField
@@ -850,13 +849,13 @@ export function ComponentsPage({ adventure, dispatch, loading, onSuggestPlotUpda
                     />
                   )}
                     {component.type !== "plotEssentials" && <CheckboxField
-                      label={component.type === "currentArc" ? "Allow automatic Current Arc updates" : "Allow automatic Active Pressure updates"}
+                      label="Allow automatic Current Arc updates"
                       checked={component.autoUpdate !== false}
                       onChange={autoUpdate => dispatch({ type: "UPDATE_COMPONENT", componentId: component.id, patch: { autoUpdate } })}
                     />}
                   <Field label="Minimum turns between memory updates">
                     <NumberInput
-                        value={component.autoUpdateCooldownTurns ?? (component.type === "activePressure" ? 0 : component.type === "currentArc" ? 4 : 3)}
+                        value={component.autoUpdateCooldownTurns ?? (component.type === "currentArc" ? 4 : 3)}
                       min={0}
                       onChange={(value) => dispatch({ type: "UPDATE_COMPONENT", componentId: component.id, patch: { autoUpdateCooldownTurns: value } })}
                     />
@@ -936,7 +935,7 @@ export function ComponentsPage({ adventure, dispatch, loading, onSuggestPlotUpda
                 <button type="button" onClick={() => dispatch({ type: "REORDER_COMPONENT", componentId: component.id, direction: "down" })}>
                   Move Down
                 </button>
-                {(component.type === "plotEssentials" || component.type === "activePressure" || component.type === "currentArc") && onUpdatePEComponentNow && (
+                {(component.type === "plotEssentials" || component.type === "currentArc") && onUpdatePEComponentNow && (
                   <button
                     type="button"
                     disabled={loading}

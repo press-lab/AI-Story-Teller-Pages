@@ -67,8 +67,9 @@ describe("plot component parser", () => {
 
     expect(result.error).toBeUndefined();
     expect(result.openingScene).toBe("Rain falls upward from the Sump tonight.");
-    expect(result.skipped).toHaveLength(0);
-    expect(result.components).toHaveLength(2);
+    expect(result.skipped).toHaveLength(1);
+    expect(result.skipped[0].reason).toContain("retired");
+    expect(result.components).toHaveLength(1);
     expect(result.components[0].component).toMatchObject({
       id: "component-plot",
       title: "Plot Essentials",
@@ -80,13 +81,7 @@ describe("plot component parser", () => {
       protected: true,
       inclusionPolicy: "always",
     });
-    expect(result.components[1].component).toMatchObject({
-      title: "Active Pressure",
-      type: "activePressure",
-      content: "The relay is failing.",
-      priority: 245,
-      autoUpdate: true,
-    });
+
   });
 
   it("skips unknown or empty components with reviewable reasons", () => {

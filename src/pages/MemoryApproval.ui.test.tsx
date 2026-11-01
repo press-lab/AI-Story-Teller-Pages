@@ -11,7 +11,7 @@ import { defaultGlobalAdventureSettings, normalizeGlobalAdventureSettings, type 
 import { MemoryInboxPage } from "./MemoryInboxPage";
 
 const controls = [
-  ["Plot Essentials", "plotEssentialsUpdate"], ["Active Pressure", "plotPressureUpdate"],
+  ["Plot Essentials", "plotEssentialsUpdate"],
   ["Current Arc", "currentArcUpdate"], ["Arc Proposals", "arcProposal"],
   ["Story Cards — Lore", "loreStoryCard"], ["Story Cards — Everything Else", "otherStoryCard"], ["Character Self", "brainUpdate"],
 ] as const;
@@ -59,11 +59,11 @@ it("drops obsolete global approval preferences without changing the background p
   expect(JSON.parse(localStorage.getItem(key)!)).not.toHaveProperty("memoryAutoApprove");
 });
 
-it("keeps seven controls visible outside collapsed details when there are no suggestions", () => {
+it("keeps six controls visible outside collapsed details when there are no suggestions", () => {
   render(<MemoryInboxPage adventure={approvalAdventure()} dispatch={() => undefined} />);
   const panel = screen.getByRole("region", { name: "Auto-approval — This adventure" });
   expect(panel.closest("details")).toBeNull();
-  expect(panel.querySelectorAll('input[type="checkbox"]')).toHaveLength(7);
+  expect(panel.querySelectorAll('input[type="checkbox"]')).toHaveLength(6);
   for (const [label] of controls) expect(screen.getByLabelText(label)).toBeVisible();
 });
 

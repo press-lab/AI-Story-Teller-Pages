@@ -123,18 +123,7 @@ GENRE BOUNDARIES
         autoUpdate: true,
         autoUpdateCooldownTurns: 0,
       }),
-      makeComponent({
-        id: ids.components.pressure,
-        title: "Active Pressure",
-        type: "activePressure",
-        content: "Hollis has given Seth one provisional contract with a crew that does not trust him, and failure will close The Rookery's doors before his reputation begins.",
-        alwaysOn: true,
-        active: true,
-        pinned: false,
-        protected: false,
-        inclusionPolicy: "always",
-        priority: 245,
-      }),
+
       makeComponent({
         id: ids.components.loop,
         title: "Contract and Return Loop",

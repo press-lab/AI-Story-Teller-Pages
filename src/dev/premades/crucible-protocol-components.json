@@ -86,21 +86,6 @@
       "updatedAt": "2026-06-21T00:00:00.000Z"
     },
     {
-      "id": "cruc-comp-pressure",
-      "title": "Active Pressure",
-      "type": "activePressure",
-      "content": "The Red Ring device Nix just cracked open is displaying a message meant only for you — HELLO, CRUCIBLE — proof that Shroud engineered Harbor Grid to watch you convert that core and is still watching SDN now.",
-      "priority": 245,
-      "alwaysOn": true,
-      "active": true,
-      "pinned": true,
-      "protected": true,
-      "inclusionPolicy": "always",
-      "state": "",
-      "createdAt": "2026-06-21T00:00:00.000Z",
-      "updatedAt": "2026-06-21T00:00:00.000Z"
-    },
-    {
       "id": "cruc-comp-loop",
       "title": "SDN Dispatch Loop",
       "type": "custom",

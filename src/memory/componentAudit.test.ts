@@ -18,6 +18,7 @@ describe("runComponentAudit", () => {
     };
 
     const recommendations = await runComponentAudit(adventure, adventure.modelConfig, 20);
+    expect(recommendations.some(rec => rec.componentId === "active-pressure")).toBe(false);
 
     expect(recommendations).toHaveLength(1);
     expect(recommendations[0]).toMatchObject({
@@ -51,6 +52,7 @@ describe("runComponentAudit", () => {
     };
 
     const recommendations = await runComponentAudit(adventure, adventure.modelConfig, 20);
+    expect(recommendations.some(rec => rec.componentId === "active-pressure")).toBe(false);
 
     expect(recommendations).toEqual(
       expect.arrayContaining([
@@ -58,10 +60,7 @@ describe("runComponentAudit", () => {
           id: "det-duplicate-lines-plot-essentials",
           editedContent: "- The gate is sealed.\n- Margo has the ward key.",
         }),
-        expect.objectContaining({
-          id: "det-pressure-long-active-pressure",
-          editedContent: "The Red Ring is closing the city gates before Seth can extract Margo.",
-        }),
+
       ]),
     );
   });

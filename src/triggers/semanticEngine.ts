@@ -1,3 +1,4 @@
+import { isActivePressureTriggerAction } from "../state/activePressureRetirement";
 import { reconcileBrainBatchState } from "../memory/brainBatchRecovery";
 import { assessMemory, assessmentInputs, fingerprint, memoryDecisionState } from "../memory/memoryAssessment";
 import { factsCovered, proposalCoverage, relevantProposalCoverage } from "../memory/factCoverage";
@@ -157,27 +158,13 @@ ${current || "(empty)"}
 
 Compare each existing fact with the most recent story events and explicit player corrections: identify changed facts, obsolete claims, and still-valid constraints. Hearing an explanation but doubting it means informed but unconvinced, not unaware. Arrival supersedes travel. Claims stay attributed; plans stay uncompleted. Decide whether this block is stale or incomplete as the story's CURRENT OPERATING TRUTH. If it is still accurate, respond with an empty string.
 
-If it needs updating, rewrite the FULL replacement Plot Essentials block. Keep it compact (about 80-140 words or 4-7 tight bullets). Preserve the overarching premise, central long-term conflict, and persistent story-wide constraints. Immediate threats belong in Active Pressure and ongoing storyline progress belongs in Current Arc.
+If it needs updating, rewrite the FULL replacement Plot Essentials block. Keep it compact (about 80-140 words or 4-7 tight bullets). Preserve the overarching premise, central long-term conflict, and persistent story-wide constraints. Ongoing storyline progress belongs in Current Arc. Immediate scene details do not belong in Plot Essentials.
 
 Do NOT append. Do NOT preserve stale facts just because they used to be true. Do NOT include temporary room position, momentary action, character emotions, or throwaway scene details.
 
 Return ONLY the replacement Plot Essentials content (at most 180 words), or NONE if no meaningful update is needed. Never continue the scene or write dialogue.`;
   }
   return `You are updating a context component titled "${component.title}". Current content: "${component.content}". Based on what just happened, update this component. Return ONLY the new content as a plain string.`;
-}
-
-function plotPressurePrompt(adventure: Adventure): string {
-  const current = adventure.components.find((c) => c.type === "activePressure")?.content ?? "(none)";
-  return `You are updating the Active Pressure for this story.
-
-Active Pressure is the current threat, obligation, or force bearing on the player character — what is pushing or threatening them right now at the story level. It replaces the previous value entirely when it changes.
-
-Current Active Pressure:
-${current}
-
-Do not describe how characters feel, think, or what they want. Describe only the external story pressure — the threat, obligation, or force acting on the situation.
-
-Write exactly one short sentence (at most 45 words) naming the external threat or obligation. No dialogue, sensory description, gestures, scene choreography, or predicted next action. If the same pressure still applies, return NONE. Compare the underlying threat, stakes, obligation and deadline, not wording. Routine movement, showering, another drink, a typing indicator, or continuing the same conversation do not justify an update. A leisure plan is not automatically a threat. Use the latest turn for the change; older excerpt events only explain context. If it has resolved with no replacement, say there is no immediate external pressure. Return ONLY the pressure statement or NONE; do not continue the story.`;
 }
 
 function arcUpdatePrompt(component: ComponentEntry): string {
@@ -210,6 +197,10 @@ function isPEComponentOnCooldown(adventure: Adventure, component: ComponentEntry
 
 function activeSemanticRules(adventure: Adventure): SemanticCondition[] {
   return adventure.triggerRules
+    .map(rule => {
+      const actions = rule.actions.filter(action => !isActivePressureTriggerAction(adventure, action));
+      return { ...rule, actions, enabled: rule.enabled && (actions.length > 0 || actions.length === rule.actions.length) };
+    })
     .filter((rule) => rule.enabled)
     .filter((rule) => (rule.evaluationMode ?? "semantic") === "semantic")
     .filter((rule) => Boolean(rule.condition.trim()))
@@ -247,7 +238,7 @@ function plotEssentialsDriftConditions(adventure: Adventure): SemanticCondition[
     .map((component) => ({
       id: `plotEssentialsDrift:${component.id}`,
       label: `Plot Essentials Drift: ${component.title}`,
-      condition: `when the current Plot Essentials block is stale, incomplete, or no longer describes the story's overarching premise and persistent story-wide constraints after recent events. Do NOT fire for minor scene motion, temporary room state, or changes that only belong in Active Pressure, Current Arc, or a Story Card.`,
+      condition: `when the current Plot Essentials block is stale, incomplete, or no longer describes the story's overarching premise and persistent story-wide constraints after recent events. Do NOT fire for minor scene motion, temporary room state, or changes that only belong in Current Arc or a Story Card.`,
       sourceType: "component" as const,
       actionFactory: () => [{ type: "updateComponent" as const, componentId: component.id }],
     }));
@@ -268,21 +259,8 @@ function currentArcConditions(adventure: Adventure): SemanticCondition[] {
     });
 }
 
-function activePressureConditions(adventure: Adventure): SemanticCondition[] {
-  return adventure.components
-    .filter((c) => c.type === "activePressure" && c.active && c.autoUpdate !== false && !isPEComponentOnCooldown(adventure, c))
-    .map((component) => ({
-      id: `plotEssentialsPressure:${component.id}`,
-      label: `Active Pressure: ${component.title}`,
-      condition: `when the active threat, obligation, or force bearing on the player character has meaningfully changed — a new danger has emerged, stakes have shifted, or a pressure has been resolved or replaced by another. Do NOT fire for minor scene details, paraphrases, routine movement, showering, drinking, or continuing a conversation. Compare the current saved pressure against the latest turn only; older events are context, not a new change. A new threat or actual resolution may fire immediately.`,
-      sourceType: "component" as const,
-      actionFactory: () => [{ type: "updateComponentPressure" as const, componentId: component.id }],
-    }));
-}
-
 function buildPlotMemoryConditions(adventure: Adventure): SemanticCondition[] {
   return [
-    ...activePressureConditions(adventure),
     ...plotEssentialsDriftConditions(adventure),
     ...currentArcConditions(adventure),
   ];
@@ -339,7 +317,7 @@ async function evaluateConditionIds(
             {
               storyExcerpt: recentExcerpt(adventure),
               latestTurn: latestMemoryTurn(adventure),
-              currentPlot: adventure.components.filter(c => c.active && ["plotEssentials", "activePressure", "currentArc"].includes(c.type)).map(c => ({ id: c.id, type: c.type, content: c.content, premise: c.arcPremise })),
+              currentPlot: adventure.components.filter(c => c.active && ["plotEssentials", "currentArc"].includes(c.type)).map(c => ({ id: c.id, type: c.type, content: c.content, premise: c.arcPremise })),
               currentCards: adventure.storyCards.filter(c => conditions.some(condition => condition.id === `storyCard:${c.id}`)).map(c => ({ id: c.id, title: c.title, type: c.type, content: storyCardContextContent(c) })),
               currentBrains: adventure.brains.filter(b => conditions.some(condition => condition.id === `brain:${b.id}`)).map(b => ({ id: b.id, name: b.characterName, thoughts: b.thoughts, currentState: b.currentState, relationshipPressure: b.relationshipPressure })),
               conditions: conditions.map(({ id, condition }) => ({ id, condition })),
@@ -677,22 +655,7 @@ ${defaultBrainPrompt(brain, adventure.activeState.turn, brainBatch)}`
       };
     }
 
-    if (triggerAction.type === "updateComponentPressure") {
-      const pressureComp = adventure.components.find((c) => c.type === "activePressure" && (triggerAction.componentId ? c.id === triggerAction.componentId : c.active));
-      const content = await targeted(plotPressurePrompt(adventure));
-      const validation = validationPolicy === "local" ? localComponentValidation(pressureComp, "activePressure", content) : await validateMemoryUpdate(adventure, providerConfig, "activePressure", "Active Pressure", pressureComp?.content ?? "", content, accum, false, false, undefined, memo ? memo.validationCache ??= {} : undefined);
-      if (!validation.changed) return { actions: [], error: independent && !validation.retryable ? undefined : validation.error, rejected: validation.error };
-      const proposal = makeProposal(
-        { proposedType: "plotPressureUpdate", title: "Active Pressure", content, targetId: pressureComp?.id, rationale: "Active Pressure update." },
-        adventure,
-      );
-      const actions: AdventureAction[] = [{ type: "ADD_MEMORY_PROPOSAL", proposal: bindLocalProposal(proposal) }];
-      if (pressureComp) actions.push({ type: "MARK_COMPONENT_UPDATED", componentId: pressureComp.id, turn: adventure.activeState.turn });
-      return {
-        actions,
-        generated: { targetType: "component", targetId: pressureComp?.id, title: "Active Pressure", preview: preview(content) },
-      };
-    }
+    if (triggerAction.type === "updateComponentPressure") return { actions: [] };
 
     if (triggerAction.type === "updateComponentArc") {
       const arcComp = adventure.components.find((c) => c.id === triggerAction.componentId && c.type === "currentArc");
@@ -1192,6 +1155,7 @@ export async function runPlotAIBuilder(
   config: ProviderConfig,
   request: PlotAIBuilderRequest,
 ): Promise<SemanticRunResult> {
+  if (request.target === "activePressure") throw new Error("Active Pressure is retired.");
   const description = request.description.trim();
   const emptyLog: EvaluationLogEntry = {
     id: createId("evaluation"),
@@ -1209,23 +1173,21 @@ export async function runPlotAIBuilder(
     return { actions: [{ type: "LOG_EVALUATION_RESULT", entry: logEntry }], logEntry };
   }
 
-  const componentType = request.target === "activePressure" ? "activePressure" : "plotEssentials";
+  const componentType = "plotEssentials";
   const targetComponent =
     (request.targetComponentId ? adventure.components.find((c) => c.id === request.targetComponentId && c.type === componentType) : undefined) ??
     adventure.components.find((c) => c.type === componentType && c.active) ??
     adventure.components.find((c) => c.type === componentType);
-  const proposedType: MemoryProposal["proposedType"] = request.target === "activePressure" ? "plotPressureUpdate" : "plotEssentialsUpdate";
+  const proposedType: MemoryProposal["proposedType"] = "plotEssentialsUpdate";
   const recent = request.useRecentStory ? recentExcerpt(adventure) : "(not included by user choice)";
   const plotEssentials = adventure.components.filter((c) => c.type === "plotEssentials").map((c) => `[ID: ${c.id}] ${c.title}\n${c.content}`).join("\n\n");
-  const activePressure = adventure.components.filter((c) => c.type === "activePressure").map((c) => `[ID: ${c.id}] ${c.title}\n${c.content}`).join("\n\n");
 
-  const systemPrompt = `You are an AI Plot Builder for an interactive fiction game. Draft one reviewable Memory Suggestion for Plot Essentials or Active Pressure.
+  const systemPrompt = `You are an AI Plot Builder for an interactive fiction game. Draft one reviewable Memory Suggestion for Plot Essentials.
 ${PLOT_ESSENTIALS_BEST_PRACTICES}
 
 Rules:
 - Return exactly one proposal for the requested target: ${proposedType}.
 - Plot Essentials is the compact overarching premise and persistent story-wide constraints. Write 4-7 tight bullets or short labeled lines as a full replacement, not a chronological log.
-- Active Pressure is one sentence naming the current external threat, obligation, deadline, or force pressing on the player character.
 - Do not store relationship trackers, character biographies, locations, secrets, completed events, or voice contracts in Plot Essentials. Those belong in Story Cards or Brains.
 - Remove resolved or outgoing facts from Plot Essentials. Only independently evidenced completed durable events qualify for separate historical Story Cards; removal alone is not evidence.
 - The proposal is pending review. Do not claim it is already active.
@@ -1250,8 +1212,6 @@ Selected target component: ${targetComponent ? `[ID: ${targetComponent.id}] ${ta
 Current Plot Essentials:
 ${plotEssentials || "(none)"}
 
-Current Active Pressure:
-${activePressure || "(none)"}
 
 Recent story:
 ${recent}`;
@@ -1289,7 +1249,7 @@ ${description}`;
       sourceTurnId: String(adventure.activeState.turn),
       sourceText,
       proposedType,
-      title: parsed.proposal.title || (request.target === "activePressure" ? "Active Pressure" : "Plot Essentials"),
+      title: parsed.proposal.title || ("Plot Essentials"),
       content: parsed.proposal.content,
       suggestedTriggers: [],
       confidence: Math.max(0, Math.min(1, parsed.proposal.confidence ?? 0.85)),
@@ -1469,9 +1429,9 @@ function discoverReconcileTargets(adventure: Adventure, request: MemoryReconcile
 
   for (const component of adventure.components) {
     if (!component.active) continue;
-    if (!["plotEssentials", "activePressure", "currentArc"].includes(component.type)) continue;
+    if (!["plotEssentials", "currentArc"].includes(component.type)) continue;
     const matched = matchedReconcileTerms(`${component.title}\n${component.content}`, strongTerms);
-    const alwaysCurrent = component.type === "plotEssentials" || component.type === "activePressure";
+    const alwaysCurrent = component.type === "plotEssentials";
     if (!matched.length && !alwaysCurrent) continue;
     addTarget({
       id: component.id,
@@ -1480,7 +1440,7 @@ function discoverReconcileTargets(adventure: Adventure, request: MemoryReconcile
       subtype: component.type,
       currentContent: component.content,
       matchedTerms: matched.length ? matched : strongTerms.slice(0, 3),
-      score: 100 + matched.length * 15 + (component.type === "activePressure" ? 20 : 0),
+      score: 100 + matched.length * 15,
       deterministicComponentPatch: deterministicComponentPatchFor(component, directive),
     });
   }
@@ -1547,7 +1507,6 @@ function proposedTypeForReconcileTarget(target: ReconcileTarget): MemoryProposal
   if (target.targetType === "storyCard") return "storyCard";
   if (target.targetType === "brain") return "brainUpdate";
   if (target.subtype === "plotEssentials") return "plotEssentialsUpdate";
-  if (target.subtype === "activePressure") return "plotPressureUpdate";
   if (target.subtype === "currentArc") return "currentArcUpdate";
   return undefined;
 }
@@ -1624,7 +1583,6 @@ Rules:
 - If the user provided a directive, it is authoritative for current continuity. If not, infer relevant memory updates from the recent entries.
 - Remove stale active pressure. Preserve true completed events as historical facts.
 - Plot Essentials: full compact replacement, 4-7 tight bullets or short lines, overarching premise and persistent story-wide constraints only.
-- Active Pressure: exactly one sentence naming the current external pressure.
 - Story Cards: append a factual delta to any relevant existing subject, preserving all earlier content and voice. Create a new focused subject when none fits. Legacy modes and autoUpdate do not restrict appends.
 - Brain updates: return JSON with changed fields or thoughts only. Only update an existing listed Brain.
 - If deterministicStoryCardPatch or deterministicComponentPatch is present, write content that matches that state change.
@@ -1699,7 +1657,8 @@ ${recent}`;
     const errors = providerConfigWarnings(adventure);
     let proposalCount = 0;
 
-    for (const update of parsed.updates.slice(0, targets.length)) {
+    const retiredPressureIds = new Set(adventure.components.filter(c => c.type === "activePressure").map(c => c.id));
+    for (const update of parsed.updates.filter(update => !retiredPressureIds.has(update.targetId)).slice(0, targets.length)) {
       const target = targetById.get(update.targetId);
       const proposedType = target ? proposedTypeForReconcileTarget(target) : undefined;
       if (!target || !proposedType || !update.content?.trim()) continue;
@@ -1933,14 +1892,12 @@ export async function runManualPEComponentUpdate(
     errors: [],
   };
 
-  if (!component || (component.type !== "plotEssentials" && component.type !== "activePressure" && component.type !== "currentArc")) {
+  if (!component || (component.type !== "plotEssentials" && component.type !== "currentArc")) {
     const errorLog = { ...emptyLog, errors: [`Component not found or wrong type: ${componentId}`] };
     return { actions: [{ type: "LOG_EVALUATION_RESULT", entry: errorLog }], logEntry: errorLog };
   }
 
-  const triggerAction = component.type === "activePressure"
-    ? { type: "updateComponentPressure" as const, componentId }
-    : component.type === "currentArc" ? { type: "updateComponentArc" as const, componentId }
+  const triggerAction = component.type === "currentArc" ? { type: "updateComponentArc" as const, componentId }
     : { type: "updateComponent" as const, componentId };
 
   const forcePropose = {
@@ -1951,7 +1908,7 @@ export async function runManualPEComponentUpdate(
     forcePropose,
     providerConfig,
     triggerAction,
-    `manual${component.type === "activePressure" ? "Pressure" : "Arc"}:${componentId}`,
+    `manualArc:${componentId}`,
     "local",
   );
 

@@ -39,7 +39,6 @@ const TYPE_LABELS: Record<ComponentType, string> = {
 
 const AUDITABLE_TYPES = new Set<ComponentType>([
   "plotEssentials",
-  "activePressure",
   "currentArc",
   "custom",
   "memory",
@@ -48,7 +47,6 @@ const AUDITABLE_TYPES = new Set<ComponentType>([
 
 const VALID_TYPES = new Set<ComponentType>([
   "plotEssentials",
-  "activePressure",
   "currentArc",
   "custom",
   "memory",
@@ -177,16 +175,7 @@ function deterministicRecommendations(components: ComponentEntry[]): ComponentAu
       ));
     }
 
-    if (component.type === "activePressure" && (lineCount(component.content) > 1 || wordCount(component.content) > 35)) {
-      const compact = compactFirstSentence(component.content, 35);
-      results.push(makeRec(
-        `det-pressure-long-${component.id}`,
-        "edit",
-        component,
-        "Active Pressure should be one compact sentence naming the current external threat, obligation, or force.",
-        compact ? { suggestedContent: compact, editedContent: compact } : {},
-      ));
-    }
+
   }
   return results;
 }
@@ -205,14 +194,13 @@ RECENT STORY:
 ${recentStory || "(none)"}
 
 Return ONLY a JSON array - no markdown, no prose. Each item must be one of:
-- {"action":"edit","componentId":"...","title":"...","rationale":"...","suggestedContent":"...","suggestedType":"plotEssentials"|"activePressure"|"currentArc"|"custom"|"memory"}
+- {"action":"edit","componentId":"...","title":"...","rationale":"...","suggestedContent":"...","suggestedType":"plotEssentials"|"currentArc"|"custom"|"memory"}
 - {"action":"delete","componentId":"...","title":"...","rationale":"..."}
-- {"action":"create","title":"...","rationale":"...","suggestedContent":"...","suggestedType":"plotEssentials"|"activePressure"|"currentArc"|"custom"|"memory"}
+- {"action":"create","title":"...","rationale":"...","suggestedContent":"...","suggestedType":"plotEssentials"|"currentArc"|"custom"|"memory"}
 
 Rules:
 - Plot Essentials is compact current operating truth: active stakes, constraints, obligations, and open tensions. Prefer 4-7 tight lines.
 - Plot Essentials should not hoard completed history. If replacing it removes durable history, the app will preserve outgoing facts as historical Story Card suggestions.
-- Active Pressure is exactly one sentence naming the current external threat, obligation, deadline, pursuit, debt, or force pressing on the player character.
 - Current Story Arc is a past-tense running log of arc developments. Do not duplicate Plot Essentials or write live scene directions there.
 - Custom/memory blocks should hold stable always-on rules or lore only when they truly need to load every turn; otherwise recommend a Story Card in the rationale instead of bloating a component.
 - Do not propose edits to AI Instructions, Narration Rules, or Author's Note; those are not included in this review.

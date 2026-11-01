@@ -932,7 +932,7 @@ describe("adventureReducer", () => {
     expect(state.activeState.memoryProposals.some((p) => p.id === "already-carded")).toBe(false);
   });
 
-  it("records auto-approved Active Pressure in review history", () => {
+  it("rejects Active Pressure even when legacy automatic approval is enabled", () => {
     const base = baseAdventure();
     const pressure = makeComponent({
       id: "comp-pressure",
@@ -960,9 +960,9 @@ describe("adventureReducer", () => {
     });
 
     expect(state.components.find((component) => component.id === "comp-pressure")?.content).toBe(
-      "Caitlyn's task force is sealing the Pumpworks around Seth and Jinx.",
+      "Old pressure.",
     );
-    expect(state.activeState.memoryProposals.find(p => p.id === "pressure-1")?.status).toBe("approved");
+    expect(state.activeState.memoryProposals.some(p => p.id === "pressure-1")).toBe(false);
 
     state = reduce(state, {
       type: "ADD_MEMORY_PROPOSAL",

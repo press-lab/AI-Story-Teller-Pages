@@ -4,7 +4,6 @@ import type { EventMemory, StoryCard } from "../types/adventure";
 const normalize = (text: string) => text.toLocaleLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
 const GENERIC_RECALL_CUES = new Set(["how we met", "first meeting", "first time", "remember when", "our promise", "shared experience"]);
 const words = (text: string) => new Set(normalize(text).split(" ").filter(w => w.length > 3 && !["with", "that", "this", "they", "their", "were", "from"].includes(w)));
-const mentions = (text: string, phrase: string) => Boolean(normalize(phrase)) && (" " + normalize(text) + " ").includes(" " + normalize(phrase) + " ");
 
 /** Evidence overlap alone cannot merge two different events in the same scene. */
 export function sameEventMemory(a: { content: string; eventMemory?: EventMemory }, b: { content: string; eventMemory?: EventMemory }): boolean {
@@ -20,20 +19,45 @@ export function sameEventMemory(a: { content: string; eventMemory?: EventMemory 
 
 /** Deterministic, inspectable recall; no extra model request. Global context budgets still apply. */
 export function selectEventMemories(cards: StoryCard[], text: string): Map<string, string> {
+  // Reuse work within this call only. Later calls always read the latest cards.
+  const normalized = new Map<string, string>();
+  const clean = (value: string): string => {
+    let result = normalized.get(value);
+    if (result === undefined) {
+      result = normalize(value);
+      normalized.set(value, result);
+    }
+    return result;
+  };
+  const normalizedText = " " + clean(text) + " ";
+  const mentions = (phrase: string): boolean => {
+    const value = clean(phrase);
+    return Boolean(value) && normalizedText.includes(" " + value + " ");
+  };
+  const characterByAlias = new Map<string, StoryCard>();
+  for (const card of cards) {
+    if (card.type !== "character") continue;
+    for (const alias of [card.title, ...card.keys]) {
+      const key = clean(alias);
+      // Keep the first match, as the previous cards.find() did.
+      if (!characterByAlias.has(key)) characterByAlias.set(key, card);
+    }
+  }
   const textWords = words(text);
   return new Map(cards.filter(c => isHistoricalLore(c) && c.active && !c.pinned && c.inclusionPolicy !== "manual" && c.inclusionPolicy !== "always")
     .map(card => {
       const participants = card.eventMemory?.participants ?? [];
       const participant = participants.find(name => {
-        if (mentions(text, name)) return true;
-        const identity = cards.find(c => c.type === "character" && [c.title, ...c.keys].some(alias => normalize(alias) === normalize(name)));
-        return identity && [identity.title, ...identity.keys].some(alias => mentions(text, alias));
+        if (mentions(name)) return true;
+        const identity = characterByAlias.get(clean(name));
+        return identity && [identity.title, ...identity.keys].some(alias => mentions(alias));
       });
       const cue = [...(card.eventMemory?.recallCues ?? []), ...card.keys, card.title].find(phrase => {
-        if (participants.some(p => normalize(p) === normalize(phrase))) return false;
-        if (cards.some(identity => identity.type === "character" && [identity.title, ...identity.keys].some(name => normalize(name) === normalize(phrase)))) return false;
-        if (GENERIC_RECALL_CUES.has(normalize(phrase)) && !participant) return false;
-        if (mentions(text, phrase)) return true;
+        const cleanPhrase = clean(phrase);
+        if (participants.some(p => clean(p) === cleanPhrase)) return false;
+        if (characterByAlias.has(cleanPhrase)) return false;
+        if (GENERIC_RECALL_CUES.has(cleanPhrase) && !participant) return false;
+        if (mentions(phrase)) return true;
         const cueWords = words(phrase);
         return Boolean(participant) && cueWords.size >= 2 && [...cueWords].filter(w => textWords.has(w)).length / cueWords.size >= 0.75;
       });

@@ -45,6 +45,9 @@ export function resolveLooseCategory(op: LooseMemoryOperation): Resolution<Loose
 }
 /** Stage 3: exact structural identity first. Only Lore uses the existing topical resolver. */
 export function resolveLooseDestination(a: Adventure, source: Source, op: LooseMemoryOperation, category: LooseCategory): Resolution<LooseDestination> {
+  if (category.category === "component" && category.subtype === "activePressure") {
+    return { value: { category, targetId: null, operation: "replace", suppressed: true, diagnostic: "Active Pressure is retired." } };
+  }
   const subject = normalize(op.subject);
   if (category.category === "brain") {
     const eligible = a.brains.filter(b => b.active && Object.values(source.brains).some(entry => entry.id === b.id));

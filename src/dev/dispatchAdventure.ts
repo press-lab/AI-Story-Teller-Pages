@@ -71,7 +71,7 @@ export function createDispatchAdventure(): Adventure {
   const base = createDefaultAdventure(dispatchAdventureTitle);
 
   const components = [
-    // Keep the base Global Generation Rules; drop the empty auto-seeded Active Pressure
+    // Keep the base Global Generation Rules.
     // (it isn't a deduped singleton) so we ship exactly one, with real content.
     ...base.components.filter((component) => component.type !== "activePressure"),
     makeComponent({
@@ -96,19 +96,7 @@ export function createDispatchAdventure(): Adventure {
       pinned: true,
       protected: true,
     }),
-    makeComponent({
-      id: ids.components.pressure,
-      title: "Active Pressure",
-      type: "activePressure",
-      content:
-        "Blonde Blazer's offer is on the table in front of both teams right now — sign on under SDN supervision and rebuild the standing his failed fight with Shroud cost him, or walk out and prove the tabloids right.",
-      priority: 89,
-      alwaysOn: true,
-      active: true,
-      pinned: false,
-      protected: false,
-      inclusionPolicy: "always",
-    }),
+
     makeComponent({
       id: ids.components.author,
       title: "Author's Note",
@@ -601,7 +589,7 @@ export function createDispatchAdventure(): Adventure {
     metadata: {
       developmentScenario: true,
       scenario: "Dispatch — SDN superhero dispatch",
-      note: "Seth/Titan (Absolute Adaptation), Z-Team + X-Team, a Nix-centered romantic tangle, mission loop + one-sentence Active Pressure + configured Arc Director; character cards carry voice contracts; Breach (Nix's estranged sister) and Sightline on X-Team; all main characters adults.",
+      note: "Seth/Titan (Absolute Adaptation), Z-Team + X-Team, a Nix-centered romantic tangle, mission loop + configured Arc Director; character cards carry voice contracts; Breach (Nix's estranged sister) and Sightline on X-Team; all main characters adults.",
     },
     components,
     storyCards,

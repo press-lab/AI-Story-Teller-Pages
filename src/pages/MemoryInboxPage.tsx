@@ -20,7 +20,6 @@ const proposalTypes: MemoryProposalType[] = [
   "plotEssentialsUpdate",
   "currentArcUpdate",
   "arcProposal",
-  "plotPressureUpdate",
   "plotMomentumUpdate",
   "ignore",
 ];
@@ -64,7 +63,7 @@ export function MemoryInboxPage(props: MemoryInboxPageProps) {
 }
 
 function MemorySuggestionsPage({ adventure, dispatch, onRegenerateProposal, onReconcileMemory, onFindEventMemories, loading = false, initialSearch = "" }: MemoryInboxPageProps & { initialSearch?: string }) {
-  const allProposals = [...adventure.activeState.memoryProposals].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const allProposals = adventure.activeState.memoryProposals.filter(p => p.proposedType !== "plotPressureUpdate").sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const [eventScan, setEventScan] = useState<AbortController>();
   const [eventProgress, setEventProgress] = useState("");
   const [sourceText, setSourceText] = useState("");
@@ -163,7 +162,6 @@ function MemorySuggestionsPage({ adventure, dispatch, onRegenerateProposal, onRe
         <h3>Auto-approval — This adventure</h3>
         <div className="auto-approve-toggles">
           <CheckboxField label="Plot Essentials" checked={autoApprove.plotEssentialsUpdate} onChange={(v) => setAutoApprove({ plotEssentialsUpdate: v })} />
-          <CheckboxField label="Active Pressure" checked={autoApprove.plotPressureUpdate} onChange={(v) => setAutoApprove({ plotPressureUpdate: v })} />
           <CheckboxField label="Current Arc" checked={autoApprove.currentArcUpdate} onChange={(v) => setAutoApprove({ currentArcUpdate: v })} />
           <CheckboxField label="Arc Proposals" checked={autoApprove.arcProposal} onChange={(v) => setAutoApprove({ arcProposal: v })} />
           <CheckboxField label="Character Self" checked={autoApprove.brainUpdate} onChange={(v) => setAutoApprove({ brainUpdate: v })} />
@@ -212,11 +210,11 @@ function MemorySuggestionsPage({ adventure, dispatch, onRegenerateProposal, onRe
         <h3>Memory Suggestions</h3>
         <p className="muted">
           Memory Suggestions holds AI-proposed changes to your story data — new Story Cards, Character Self updates,
-          Plot Essentials rewrites, Active Pressure updates, and Current Arc changes. The AI generates these automatically after turns or when
+          Plot Essentials rewrites and Current Arc changes. The AI generates these automatically after turns or when
           you use <strong>Remember This</strong>. Review each proposal and <strong>Approve</strong> to apply it,
           <strong> Reject</strong> to dismiss it cleanly, or <strong>Ignore</strong> to remove it from view without applying.
           You can edit the content before approving.
-          {" "}<strong>Approved Story Cards, Character Self updates, Plot Essentials, and Active Pressure become active context</strong> — the model reads them when their section is included.
+          {" "}<strong>Approved Story Cards, Character Self updates, and Plot Essentials become active context</strong> — the model reads them when their section is included.
           Be especially careful with Character Self and plot updates: approving emotional escalation or relationship milestones
           unchecked is how characters drift. Edit proposals before approving, or reject ones that pull the story somewhere you don't want.
         </p>

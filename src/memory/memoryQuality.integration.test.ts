@@ -65,7 +65,7 @@ describe("Seattle memory quality", () => {
     expect(provider.mock.calls[0][0].messages[0].content).not.toContain("Permit authority");
   });
 
-  it("routes locally checked manual Plot Essentials and pressure drafts through review", async () => {
+  it("keeps manual Plot Essentials review and refuses retired pressure before a request", async () => {
     const a = seattle();
     const replacement = "Seth has heard Edythe's explanation of vampires but remains unconvinced. He has arrived at the Cullen house to meet her family.";
     provider.mockImplementation(async request => {
@@ -78,16 +78,15 @@ describe("Seattle memory quality", () => {
     const pe = await runManualPEComponentUpdate(a, config, "pe");
     const pressure = await runManualPEComponentUpdate(a, config, "pressure");
     expect(pe.logEntry.errors).toEqual([]);
-    expect(pressure.logEntry.errors).toEqual([]);
+    expect(pressure.logEntry.errors).not.toEqual([]);
     let state = [...pe.actions, ...pressure.actions].reduce(adventureReducer, a);
     for (const p of state.activeState.memoryProposals) if (p.status === "pending") state = adventureReducer(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: p.id });
     expect(state.components.find(c => c.id === "pe")?.content).toBe(replacement);
-    expect(state.components.find(c => c.id === "pressure")?.content).toContain("requires Seth");
+    expect(state.components.find(c => c.id === "pressure")?.content).toBe(a.components.find(c => c.id === "pressure")?.content);
     const reviews = provider.mock.calls.filter(([r]) => r.messages.some(m => m.content.includes("MEMORY UPDATE VALIDATION")));
     expect(reviews).toHaveLength(0);
     const generations = provider.mock.calls.filter(([r]) => r.messages.some(m => m.content.includes("maintaining Plot Essentials") || m.content.includes("updating the Active Pressure")));
-    expect(generations).toHaveLength(2);
-    expect(generations[0][0].messages.filter(m => m.role === "system")).toEqual(generations[1][0].messages.filter(m => m.role === "system"));
+    expect(generations).toHaveLength(1);
   });
 
   it("blocks narrated pressure in the manual tool and leaves existing pressure intact", async () => {
@@ -97,8 +96,8 @@ describe("Seattle memory quality", () => {
     const state = result.actions.reduce(adventureReducer, a);
     expect(state.components[0].content).toBe(a.components[0].content);
     expect(result.actions.some(a => a.type === "MARK_COMPONENT_UPDATED")).toBe(false);
-    expect(result.logEntry.errors.join(" ")).toContain("not dialogue or scene narration");
-    expect(provider).toHaveBeenCalledTimes(1);
+    expect(result.logEntry.errors.join(" ")).toContain("wrong type");
+    expect(provider).not.toHaveBeenCalled();
   });
 
   it("keeps plausible-looking replacements pending for author review without a paid verdict", async () => {
@@ -171,15 +170,15 @@ describe("Seattle memory quality", () => {
 
 
 describe("Seattle pressure and identity regressions", () => {
-  it.each(["same route", "shower", "typing indicator"])("requires author review for %s pressure churn without a paid judge", async detail => {
+  it.each(["same route", "shower", "typing indicator"])("refuses retired %s pressure work without a paid request", async detail => {
     const a = seattle();
     provider.mockResolvedValueOnce({ content: `Watchers remain while Seth continues the ${detail}.`, raw: {} })
       .mockResolvedValueOnce({ content: JSON.stringify({ accepted: true, meaningfulChange: true, reason: "Grounded pressure assessment", evidenceMessageIds: ["arrival"], pressureChange: "none" }), raw: {} });
     const result = await runManualPEComponentUpdate(a, config, "pressure");
     const state = result.actions.reduce(adventureReducer, a);
     expect(state.components.map(c => c.content)).toEqual(a.components.map(c => c.content));
-    expect(state.activeState.memoryProposals).toContainEqual(expect.objectContaining({ status: "pending" }));
-    expect(provider).toHaveBeenCalledTimes(1);
+    expect(state.activeState.memoryProposals).toEqual([]);
+    expect(provider).not.toHaveBeenCalled();
   });
 
   it("cannot recycle an old threat as a latest-turn pressure change", async () => {

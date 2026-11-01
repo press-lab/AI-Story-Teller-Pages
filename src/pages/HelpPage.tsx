@@ -581,7 +581,7 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
           <dt>Romance drama</dt>
           <dd>Relationship pressure stays choice-driven. Living relationship cards and Brains carry evolving state instead of bloating PE.</dd>
           <dt>Survival / horror</dt>
-          <dd>Active Pressure tracks the current external threat. Story Cards hold threat rules, safe places, recurring dangers, and costs.</dd>
+          <dd>Story Cards hold threat rules, safe places, recurring dangers, and costs.</dd>
         </dl>
         <p><strong>Prose mode is separate.</strong> Minimalist is fast and lean; novelistic is richer and slower; cinematic focuses on visible behavior and blocking; dialogue-heavy prioritizes distinct voices and social pressure.</p>
         <p><strong>Player control is separate.</strong> Strict mode never writes your character. Minor-actions mode may bridge tiny implied motions. Cinematic flow may write small player-character beats, but major choices stay yours.</p>
@@ -674,47 +674,19 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
         <p><strong>What belongs:</strong></p>
         <ul>
           <li>The overarching premise: who the story follows and its enduring central conflict.</li>
-          <li>Long-term stakes that remain relevant across scenes and arcs. Put immediate threats and obligations in Active Pressure.</li>
+          <li>Long-term stakes that remain relevant across scenes and arcs.</li>
           <li>Major constraints: power rules, public stakes, faction pressure, or canon limits that remain globally relevant.</li>
         </ul>
         <p><strong>What does NOT belong:</strong></p>
         <ul>
           <li>Current scene position or who is present — keep that in Recent Messages unless it becomes a durable constraint.</li>
           <li>Character emotional states or internal goals.</li>
-          <li>Temporary mission status that changes every few turns — use Current Arc or Active Pressure.</li>
+          <li>Temporary mission status that changes every few turns — use Current Arc.</li>
           <li>Lore that only matters when a specific character or place comes up — use a Story Card instead.</li>
         </ul>
         <p><strong>Format:</strong> 4-7 tight bullets or short labeled lines. PE updates replace the full block. Change PE only when its foundations change. Replaced text stays in component history; removal does not create an event card.</p>
         <p><strong>Good PE entry:</strong> <code>• Seth is an exile whose unstable bond with the ward threatens both his freedom and the sanctuary he seeks.</code></p>
         <p><strong>Bad PE entry:</strong> <code>• Seth and Margo are currently standing near the threshold discussing the ward.</code> (scene state, not a permanent truth)</p>
-      </>
-    ),
-  },
-  {
-    id: "best-practices-active-pressure",
-    title: "Active Pressure — Best Practices",
-    category: "Best Practices",
-    summary: "What Active Pressure tracks and how to write it so the model stays in external-stakes mode.",
-    tags: ["active pressure", "pressure", "threat", "obligation", "best practices"],
-    body: (
-      <>
-        <p>
-          Active Pressure is one sentence describing the external threat, obligation, or force currently bearing on the player character at the story level. It tells the model "this is what is pushing or threatening right now" — and it should replace the previous value entirely when the pressure changes.
-        </p>
-        <p><strong>Active Pressure answers:</strong> <em>What is currently threatening, pressing, or obligating the player character from the outside?</em></p>
-        <p><strong>Good Active Pressure:</strong></p>
-        <ul>
-          <li>"The delegation arrives at dawn. Setu has until then to decide whether to reveal what she knows."</li>
-          <li>"The Beast has scented the group and is circling the ward's outer edge."</li>
-          <li>"Kael has issued a public challenge. Not responding by nightfall reads as surrender."</li>
-        </ul>
-        <p><strong>Bad Active Pressure:</strong></p>
-        <ul>
-          <li>"Setu feels the weight of her choices pressing in." (character emotion, not external pressure)</li>
-          <li>"There is tension between Margo and Seth." (relationship state, not a story-level threat)</li>
-          <li>"Setu is uncertain about what to do next." (internal state, not external force)</li>
-        </ul>
-        <p>Automatic memory can propose an Active Pressure update when the component allows automatic evaluation. The evaluator checks for a meaningful change in an external threat or obligation. The global memory interval, component cooldown, and approval settings apply.</p>
       </>
     ),
   },

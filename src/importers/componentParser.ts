@@ -26,7 +26,6 @@ const componentTypes = new Set<ComponentType>([
   "aiInstructions",
   "plotEssentials",
   "currentArc",
-  "activePressure",
   "authorNote",
   "memory",
   "custom",
@@ -108,10 +107,10 @@ function parseComponent(raw: unknown, sourceIndex: number): ParsedComponent | Sk
   if (!isRecord(raw)) {
     return { sourceIndex, reason: "Component was not an object.", raw };
   }
-  if (raw.type === "immediateMomentum") {
+  if (raw.type === "immediateMomentum" || raw.type === "activePressure") {
     return {
       sourceIndex,
-      reason: "Immediate Momentum is disabled.",
+      reason: raw.type === "activePressure" ? "Active Pressure is retired." : "Immediate Momentum is disabled.",
       raw,
     };
   }

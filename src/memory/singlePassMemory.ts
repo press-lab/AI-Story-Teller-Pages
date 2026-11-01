@@ -127,7 +127,6 @@ storyCard.location: enduring properties of a place, not a one-time event there.
 storyCard.custom: enduring properties of an established non-person subject, not a catch-all for events.
 component.plotEssentials: replacement premise, central conflict and persistent constraints; preserve still-valid foundations (180 words).
 component.currentArc: append a new development within an existing active arc; never change Director phases.
-component.activePressure: replacement immediate unresolved external threat or obligation (one short sentence, 45 words).
 component.immediateMomentum: replacement for an existing eligible immediate-momentum component; review required.
 Components must use the existing title and correct subtype. Never create components or edit narrationRules, aiInstructions, authorNote, memory or custom components.
 
@@ -138,8 +137,6 @@ S1
 S2
 (storyCard.character: Eleanor Vale = Eleanor is a sixth-year Ravenclaw specializing in experimental enchantments.)
 (storyCard.location: Observatory Annex = A sealed chamber lies beneath the western tower.)
-S3
-(component.activePressure: Ministry Deadline = The Ministry expects the research report tomorrow.)
 
 Brain and Story Card subtypes may be omitted when using their defaults. lore: Topic = Information is also valid.
 Private interpretation examples (illustrative, not established canon):

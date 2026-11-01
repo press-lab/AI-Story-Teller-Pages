@@ -916,7 +916,7 @@ describe("one-hop chained Story Cards", () => {
     expect(JSON.stringify(adventure)).toBe(before);
   });
 
-  it.each(["narrationRules", "aiInstructions", "plotEssentials", "activePressure", "currentArc", "authorNote", "custom"] as const)("uses included %s rendered content", type => {
+  it.each(["narrationRules", "aiInstructions", "plotEssentials", "currentArc", "authorNote", "custom"] as const)("uses included %s rendered content", type => {
     const adventure = fixture();
     adventure.components = [makeComponent({ id: "source", type, title: "Plot Essentials", content: "Fenchurch is a magical bird.", alwaysOn: true })];
     const result = build(adventure, "Wait.");

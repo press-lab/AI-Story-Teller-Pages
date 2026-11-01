@@ -31,9 +31,9 @@ it("shows component eligibility defaults and dispatches each component's own coo
     }} />;
   }
   render(<Fixture />);
+  expect(screen.queryByLabelText("Allow automatic Active Pressure updates")).not.toBeInTheDocument();
   const rows = [
     { id: "pe", title: "Plot Essentials", cooldown: 3, enabled: false },
-    { id: "pressure", title: "Active Pressure", cooldown: 0, enabled: true },
     { id: "arc", title: "Current Arc", cooldown: 4, enabled: true },
   ];
   for (const row of rows) {

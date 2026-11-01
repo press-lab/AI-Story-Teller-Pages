@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -10,6 +10,11 @@ import { runAdventureGen } from "../ai/adventureGen";
 import type { NewAdventureSetup } from "../types/adventure";
 import { createDefaultAdventure } from "../state/defaults";
 import { AdventuresPage } from "./AdventuresPage";
+import { paintNarrationLoading } from "../hooks/paintNarrationLoading";
+
+vi.mock("../hooks/paintNarrationLoading", () => ({
+  paintNarrationLoading: vi.fn(async (showLoading: () => void) => { showLoading(); }),
+}));
 
 vi.mock("../ai/adventureGen", () => ({
   runAdventureGen: vi.fn(),
@@ -300,5 +305,41 @@ describe("AdventuresPage new adventure setup", () => {
 
     expect(screen.getByText(/1 turn/)).toBeInTheDocument();
     expect(screen.getByText(/1 story entry/)).toBeInTheDocument();
+  });
+});
+
+describe("Library selection feedback", () => {
+  afterEach(cleanup);
+  const adventures = [{
+    id: "selection-test", title: "Selection test", createdAt: "2026-01-01", updatedAt: "2026-01-01",
+    turnCount: 1, storyEntryCount: 2,
+  }];
+
+  it("shows feedback before loading and blocks repeated selections", async () => {
+    let releasePaint!: () => void;
+    let finishOpen!: () => void;
+    vi.mocked(paintNarrationLoading).mockImplementationOnce(showLoading => {
+      showLoading();
+      return new Promise(resolve => { releasePaint = resolve; });
+    });
+    const onOpen = vi.fn(async (_id: string) => new Promise<void>(resolve => { finishOpen = resolve; }));
+    renderAdventuresPage(undefined, { adventures, onOpen });
+    fireEvent.click(screen.getByRole("button", { name: "Select" }));
+    expect(screen.getByRole("button", { name: "Loading…" })).toBeDisabled();
+    expect(onOpen).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Loading…" }));
+    await act(async () => releasePaint());
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    expect(onOpen).toHaveBeenCalledWith("selection-test");
+    await act(async () => finishOpen());
+    expect(screen.getByRole("button", { name: "Select" })).toBeEnabled();
+  });
+
+  it("shows a load error and releases the selection button", async () => {
+    const onOpen = vi.fn(async (_id: string) => { throw new Error("Local load failed"); });
+    renderAdventuresPage(undefined, { adventures, onOpen });
+    fireEvent.click(screen.getByRole("button", { name: "Select" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Local load failed");
+    expect(screen.getByRole("button", { name: "Select" })).toBeEnabled();
   });
 });

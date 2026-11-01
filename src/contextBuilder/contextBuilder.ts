@@ -25,7 +25,7 @@ const SYSTEM_SHELL = `You are the story engine for AI Story Teller. The context 
 
 CONTEXT SECTIONS (read all, honour their order):
   B. AI Instructions — narrative rules and style for this adventure.
-  C. Plot Essentials — overarching premise, long-term conflict, and persistent story-wide constraints. Active Pressure names the immediate external threat or obligation.
+  C. Plot Essentials — overarching premise, long-term conflict, and persistent story-wide constraints.
   C2. Current Story Arc — active arc log and any gated Arc Director phase instruction.
   E. Components — general world-building context (always-on or pinned entries).
   F. Story Cards — World Info entries injected when their trigger keywords appear in recent text.
@@ -445,9 +445,9 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
     return [next];
   });
 
-  // C. Plot Essentials + Active Pressure
+  // C. Plot Essentials
   const plotEssentialItems = prioritySort(adventure.components).flatMap((component) => {
-    if (component.type !== "plotEssentials" && component.type !== "activePressure") return [];
+    if (component.type !== "plotEssentials") return [];
     if (!component.active) {
       logExcludedOnce(component.id, component.title, "inactive");
       return [];
@@ -804,7 +804,7 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
   const finalRecentMessages = recentMessages.filter((message) => finalRecentMessageIds.has(message.id));
 
   const pendingProposals: MemoryProposal[] = adventure.activeState.memoryProposals.filter(
-    (proposal) => proposal.status === "pending",
+    (proposal) => proposal.status === "pending" && proposal.proposedType !== "plotPressureUpdate",
   );
 
   return {

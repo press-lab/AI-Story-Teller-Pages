@@ -1,3 +1,5 @@
+> Active Pressure is retired. Older references below describe legacy behavior. It is not created, shown, evaluated, updated, approved, or included in context. Existing text remains inactive compatibility data; the six remaining approval categories are unchanged.
+
 ## Current Story Card update contract (October 25, 2026)
 
 Every Character, Location, Lore and Custom card can grow through validated factual appends. Automatic memory appends to the matching subject or creates a new card; it preserves the original body, voice, controls, chronology and provenance. Legacy modes and per-card opt-in do not restrict updates. The Memory Mode selector and single-card auto-update controls have been removed. Global memory cadence, approvals, protected-target review, source snapshots and context budgets remain. See `docs/story-card-architecture.md`; older mode-specific notes below describe the previous implementation.
@@ -53,7 +55,7 @@ Pure function — builds the provider payload each turn. Sections are assembled 
 |---|---|---|---|
 | 0 | `system` | A. System Shell | Fixed system prompt + all active `narrationRules` components |
 | 1 | `aiInstructions` | B. AI Instructions | All active `aiInstructions` components |
-| 2 | `plotEssentials` | C. Plot Essentials | `plotEssentials`, `activePressure` components |
+| 2 | `plotEssentials` | C. Plot Essentials | `plotEssentials` components |
 | 2.5 | `currentArc` | C2. Current Story Arc | `currentArc` components (prefixed with `[Arc Premise: ...]` if set) |
 | 3 | `components` | E. Components | Always-on or pinned non-special-typed components |
 | 4 | `storyCards` | F. Story Cards | Triggered, always, or pinned story cards |
@@ -521,7 +523,7 @@ The clock recognizes following-morning and calendar-month skips, clamps month en
 
 ## Adventure approval
 
-Auto-approval belongs to each adventure. New adventures start with all seven switches OFF: Plot Essentials, Active Pressure, Current Arc, Arc Proposals, Character Self, Story Cards — Lore, and Story Cards — Everything Else. The permanent panel appears at the top of Memory Suggestions, including when its queue is empty. Settings has no approval controls, and global localStorage approval properties are discarded.
+Auto-approval belongs to each adventure. New adventures start with all six switches OFF: Plot Essentials, Current Arc, Arc Proposals, Character Self, Story Cards — Lore, and Story Cards — Everything Else. The permanent panel appears at the top of Memory Suggestions, including when its queue is empty. Settings has no approval controls, and global localStorage approval properties are discarded.
 
 The shared policy reads only `adventure.memoryAutoApprove`. Existing cards use their stored type. Lore uses `loreStoryCard`; character, location, legacy plot, and custom use `otherStoryCard`. Unknown new card types wait for classification. Missing-Brain card fallbacks use the card category. Existing pending proposals are never replayed when a switch changes. Evidence, duplicate, destination, protection, chronology, and companion-proposal checks remain in the reducer pipeline.
 

@@ -156,18 +156,7 @@ End on live beats Seth can answer: a blast to contain, a person to save, a choic
       autoUpdate: true,
       autoUpdateCooldownTurns: 0,
     }),
-    makeComponent({
-      id: ids.components.pressure,
-      title: "Active Pressure",
-      type: "activePressure",
-      content: "The Council chamber is burning around Seth; Jayce and Mel are alive, Viktor is barely alive, Cassandra Kiramman, Irius Bolbok, and Torman Hoskel are dead, Salo is crippled, Shoola survived, and damaged Hextech conduits are answering Seth's wards.",
-      alwaysOn: true,
-      active: true,
-      pinned: false,
-      protected: false,
-      inclusionPolicy: "always",
-      priority: 245,
-    }),
+
     makeComponent({
       id: ids.components.loop,
       title: "Aftermath Pressure Loop",

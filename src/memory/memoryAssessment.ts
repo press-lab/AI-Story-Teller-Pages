@@ -29,7 +29,7 @@ not valid update targets.
 For groups not requested, return empty targets and a reason.
 Do not omit fields.
 Latest exchange establishes changes; earlier exchanges resolve participants, pronouns, short answers (Yes, tomorrow), messages, off-screen disclosures and continuity. A prior name alone is not a new Brain change. Mentioning an absent character never grants knowledge. Respect authored conditions and private attribution. Consecutive meaningful private changes are eligible without a default cooldown or quota.
-Plot Essentials: premise/constraints. Active Pressure: external threat/obligation. Current Arc: established arc progress, never Director phases. Brains: supported private interpretations, distinct for each character. Do not expose private Brain content as public facts or give it to another character.
+Plot Essentials: premise/constraints. Current Arc: established arc progress, never Director phases. Brains: supported private interpretations, distinct for each character. Do not expose private Brain content as public facts or give it to another character.
 Story Cards: enduring profiles; Lore: observable events/shared developments. Coverage marked pending/rejected/ignored prevents duplicate suggestions but is NOT canon or proof of knowledge. Account for established and considered facts. Discovery means ADDITIONAL durable developments beyond qualifying existing-card deltas. Do not skip a whole subject because one fact is covered. Invitation acceptance and a separate research agreement can both qualify. Set needed=false only with a supported reason.
 ${SHARED_STORY_MEMORY_POLICY}`;
 const ASSESSMENT_POLICY_VERSION = 1;
@@ -47,7 +47,7 @@ function assessmentData(a: Adventure, sourceId: string, conditions: AssessmentCo
   const inventory = relevantStoryCardInventory(a, excerpt);
   const currentCards = a.storyCards.filter(c => inventory.some(i => i.id === c.id) || conditions.storyCards.some(i => i.id === `storyCard:${c.id}`))
     .map(c => ({ id: c.id, title: c.title, type: c.type, content: storyCardContextContent(c), protected: c.protected, keys: c.keys, lore: c.lore, memoryMode: c.memoryMode }));
-  const currentPlot = a.components.filter(c => c.active && ["plotEssentials", "activePressure", "currentArc"].includes(c.type))
+  const currentPlot = a.components.filter(c => c.active && ["plotEssentials", "currentArc"].includes(c.type))
     .map(c => ({ id: c.id, type: c.type, content: c.content, premise: c.arcPremise, autoUpdate: c.autoUpdate, protected: c.protected }));
   const currentBrains = a.brains.filter(b => conditions.brains.some(i => i.id === `brain:${b.id}`)).map(b => ({ id: b.id, name: b.characterName,
     thoughts: b.thoughts, currentState: b.currentState, relationshipPressure: b.relationshipPressure, emotionalInterpretation: b.emotionalInterpretation,
@@ -126,7 +126,7 @@ export function memoryDecisionState(adventure: Adventure, sourceId: string): str
   return JSON.stringify({ version: 1, evidence, pendingBrainDeltas: a.activeState.pendingBrainDeltas ?? [],
     canon: memoryCanonMessages(a, excerpt, "Assess memory", true), cards: cards.map(card => meaningful({ ...card, lastAutoUpdateTurn: undefined })),
     brains: a.brains.filter(b => b.active && (a.activeState.pendingBrainDeltas?.some(d => d.brainId === b.id) || matchPatterns(excerpt, [b.characterName, ...b.triggers].filter(Boolean), "phrase").matched)).map(meaningful),
-    plot: a.components.filter(c => c.active && ["plotEssentials", "activePressure", "currentArc"].includes(c.type)).map(meaningful),
+    plot: a.components.filter(c => c.active && ["plotEssentials", "currentArc"].includes(c.type)).map(meaningful),
     coverage: relevantProposalCoverage(a, excerpt, cards.map(c => c.id), evidence.map(m => m.id)),
     controls: { autoApprove: a.memoryAutoApprove, detection: a.memoryDetectionSettings },
   });

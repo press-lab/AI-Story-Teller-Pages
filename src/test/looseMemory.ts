@@ -10,7 +10,7 @@ export const looseResponse = [
   "(storyCard.location: Observatory Annex = The annex contains a sealed underground chamber.)",
   "Source 3:",
   "[storyCard.lore: Draconia Research Meeting = Draconia agreed to meet Seth tomorrow at six. The meeting has not occurred.]",
-  "(component.activePressure: Ministry Deadline = The Ministry expects the research report tomorrow.)",
+  "(component.plotEssentials: Ministry Deadline = The Ministry expects the research report tomorrow.)",
 ].join("\n");
 export const looseNarrations = [
   'Fred and George agreed to produce 96 rune tattoos tomorrow. George studies the production totals and considers the market beyond individual orders.',
@@ -20,7 +20,7 @@ export const looseNarrations = [
 export function looseMemoryFixture(withSources = true) {
   const a = createDefaultAdventure("Synthetic loose memory routing");
   a.memoryDetectionSettings = { ...a.memoryDetectionSettings, pipeline: "singlePass", enabled: true, everyNTurns: 1, generateContent: true };
-  a.memoryAutoApprove.loreStoryCard = true; a.memoryAutoApprove.otherStoryCard = true; a.memoryAutoApprove.brainUpdate = true; a.memoryAutoApprove.plotPressureUpdate = true;
+  a.memoryAutoApprove.loreStoryCard = true; a.memoryAutoApprove.otherStoryCard = true; a.memoryAutoApprove.brainUpdate = true; a.memoryAutoApprove.plotEssentialsUpdate = true;
 
   a.storyCards = [
     makeStoryCard({ id: "business", title: "Weasley Tattoo Business", type: "lore", keys: ["rune tattoos", "tattoo business"], content: "Fred and George run a tattoo business." }),
@@ -35,7 +35,7 @@ export function looseMemoryFixture(withSources = true) {
     linkedStoryCardId: name.toLowerCase(), triggers: [name], thoughts: {},
   }));
   a.components = [
-    makeComponent({ id: "pressure", title: "Ministry Deadline", type: "activePressure", active: true, autoUpdate: true, content: "No deadline has been imposed." }),
+    makeComponent({ id: "pressure", title: "Ministry Deadline", type: "plotEssentials", protected: false, active: true, autoUpdate: true, content: "No deadline has been imposed." }),
     makeComponent({ id: "arc", title: "Research Arc", type: "currentArc", active: true, autoUpdate: true, arcPremise: "Investigate magical research.", content: "The investigation began." }),
   ];
   a.messages = withSources ? looseNarrations.map((content, index): Message => ({ id: "narrator-" + (index + 1), role: "assistant", content,

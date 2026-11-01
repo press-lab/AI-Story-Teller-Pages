@@ -1,4 +1,5 @@
-import { useEffect, useState, type ChangeEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { paintNarrationLoading } from "../hooks/paintNarrationLoading";
 import type {
   Adventure,
   AdventureThumbnailImage,
@@ -78,7 +79,6 @@ const componentTypes: ComponentType[] = [
   "narrationRules",
   "aiInstructions",
   "plotEssentials",
-  "activePressure",
   "authorNote",
   "custom",
 ];
@@ -101,11 +101,10 @@ const uniqueComponentTypes = new Set<ComponentType>([
   "plotEssentials",
   "authorNote",
   "currentArc",
-  "activePressure",
 ]);
 
 const storyShapeOptions: Array<{ value: AdventureStoryShape; label: string; description: string }> = [
-  { value: "balanced", label: "Balanced starter", description: "Small cast, clear premise, active pressure, and a few durable cards." },
+  { value: "balanced", label: "Balanced starter", description: "Small cast, clear premise, and a few durable cards." },
   { value: "sandbox", label: "Sandbox", description: "Reactive world, loose hooks, more factions/locations, less plot locking." },
   { value: "missionLoop", label: "Mission loop", description: "Jobs create fallout, fallout creates team scenes, team scenes create the next job." },
   { value: "mystery", label: "Mystery", description: "Known question in PE, clues/suspects/secrets in Story Cards, no early answer." },
@@ -283,6 +282,27 @@ export function AdventuresPage({
 }: AdventuresPageProps) {
   const [view, setView] = useState<"list" | "create" | "aistImport" | "github" | "premade">("list");
   const [githubTab, setGithubTab] = useState<"saves" | "plays">("saves");
+  const [openingId, setOpeningId] = useState<string | undefined>();
+  const [openError, setOpenError] = useState<string | undefined>();
+  const openingRef = useRef(false);
+
+  async function selectAdventure(id: string) {
+    if (openingRef.current) return;
+    openingRef.current = true;
+    try {
+      await paintNarrationLoading(() => {
+        setOpeningId(id);
+        setOpenError(undefined);
+      });
+      await onOpen(id);
+    } catch (error) {
+      setOpenError(error instanceof Error ? error.message : "Adventure could not be opened.");
+    } finally {
+      openingRef.current = false;
+      setOpeningId(undefined);
+    }
+  }
+
   const [deletingPlayId, setDeletingPlayId] = useState<string | undefined>();
   const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
   function toggleExpand(id: string) { setExpandedIds((prev) => ({ ...prev, [id]: !prev[id] })); }
@@ -1176,7 +1196,8 @@ export function AdventuresPage({
           </button>
         </div>
       </header>
-      <div className="library-grid">
+      {openError && <p role="alert">{openError}</p>}
+      <div className="library-grid" aria-busy={openingId !== undefined}>
         {adventures.length === 0 && <p className="muted">No adventures saved yet.</p>}
         {adventures.map((adventure) => (
           <article key={adventure.id} className="library-card">
@@ -1197,18 +1218,18 @@ export function AdventuresPage({
               {currentAdventure?.id === adventure.id && <p className="status-pill">Open</p>}
             </div>
             <div className="library-card-actions">
-              <button type="button" className="primary-action" onClick={() => onOpen(adventure.id)}>
-                Select
+              <button type="button" className="primary-action" disabled={openingId !== undefined} onClick={() => void selectAdventure(adventure.id)}>
+                {openingId === adventure.id ? "Loading…" : "Select"}
               </button>
               {onOpenEdit && (
-                <button type="button" onClick={() => onOpenEdit(adventure.id)}>
+                <button type="button" disabled={openingId !== undefined} onClick={() => onOpenEdit(adventure.id)}>
                   Edit
                 </button>
               )}
-              <button type="button" onClick={() => onDuplicate(adventure.id)}>
+              <button type="button" disabled={openingId !== undefined} onClick={() => onDuplicate(adventure.id)}>
                 Duplicate
               </button>
-              <button type="button" className="danger" onClick={() => onDelete(adventure.id)}>
+              <button type="button" className="danger" disabled={openingId !== undefined} onClick={() => onDelete(adventure.id)}>
                 Delete
               </button>
             </div>

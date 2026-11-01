@@ -13,13 +13,13 @@ export function expectSixLooseProposals(a: import("../types/adventure").Adventur
       title: "Observatory Annex", sourceTurnId: sourceIds[1] }),
     expect.objectContaining({ proposedType: "storyCard", storyCardType: "lore", cardOperation: "create",
       title: "Draconia Research Meeting", content: "Draconia agreed to meet Seth tomorrow at six. The meeting has not occurred.", sourceTurnId: sourceIds[2] }),
-    expect.objectContaining({ proposedType: "plotPressureUpdate", targetId: "pressure", sourceTurnId: sourceIds[2] }),
+    expect.objectContaining({ proposedType: "plotEssentialsUpdate", targetId: "pressure", sourceTurnId: sourceIds[2] }),
   ]));
   const brain = proposals.find(p => p.proposedType === "brainUpdate")!;
   expect(Object.values(JSON.parse(brain.content).thoughts)).toEqual([expect.stringMatching(/^\d+ \u2192 I believe the business can grow beyond individual customers\.$/)]);
   expect(brain).toMatchObject({ status: a.memoryAutoApprove.brainUpdate ? "approved" : "pending", requiresReview: false });
   for (const p of proposals.filter(p => p.proposedType !== "brainUpdate")) {
-    const review = p.storyCardType === "character" || p.proposedType === "plotPressureUpdate";
+    const review = p.storyCardType === "character" || p.proposedType === "plotEssentialsUpdate";
     const auto = p.proposedType === "storyCard" && a.memoryAutoApprove.loreStoryCard && !review;
     expect(p).toMatchObject({ status: auto ? "approved" : "pending", requiresReview: review });
   }

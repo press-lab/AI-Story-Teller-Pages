@@ -178,7 +178,7 @@ describe("merged Story Card suggestions", () => {
   });
   it("does not automatically route any component operation, while preserving manual edits", async () => {
     const initial = seed();
-    initial.components = [makeComponent({ id: "pressure", title: "Pressure", type: "activePressure", content: "The duke demands tribute." })];
+    initial.components = [makeComponent({ id: "pressure", title: "Pressure", type: "plotEssentials", content: "The duke demands tribute." })];
     const text = "The duke has ended the tribute demand.";
     let state = await play(text, [finding("The obligation ended.", text, { kind: "pressure", target: "Pressure" }), finding("The arc ended.", text, { kind: "arc", target: "Arc" })], initial);
     expect(state.components).toEqual(initial.components);

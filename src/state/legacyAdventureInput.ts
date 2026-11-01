@@ -1,3 +1,4 @@
+import { isActivePressureAction, isActivePressureTriggerAction, retireActivePressureComponent, retireActivePressureProposal } from "./activePressureRetirement";
 import type { Adventure, AdventureAction, MemoryAutoApproveSettings, MemoryProposal, PendingAdventureUpdate, TokenBudgetSettings } from "../types/adventure";
 
 /** Input-only compatibility. Retired values never enter the canonical Adventure model. */
@@ -33,9 +34,9 @@ function isRetiredProposal(input: { proposedType?: unknown }): boolean {
 
 type ApprovalNormalizer = (input: unknown) => MemoryAutoApproveSettings;
 
-function cleanActions(actions: AdventureAction[], retiredProposalIds: Set<string>, normalizeApproval: ApprovalNormalizer): AdventureAction[] {
+function cleanActions(adventure: Adventure, actions: AdventureAction[], retiredProposalIds: Set<string>, normalizeApproval: ApprovalNormalizer): AdventureAction[] {
   return actions.flatMap<AdventureAction>(action => {
-    if (retiredActions.has(action.type)) return [];
+    if (retiredActions.has(action.type) || isActivePressureAction(adventure, action)) return [];
     if ("proposalId" in action && action.proposalId && retiredProposalIds.has(action.proposalId)) return [];
     if (action.type === "ADD_MEMORY_PROPOSAL" && isRetiredProposal(action.proposal)) return [];
     if (action.type === "UPDATE_MEMORY_PROPOSAL" && isRetiredProposal(action.patch)) return [];
@@ -44,15 +45,15 @@ function cleanActions(actions: AdventureAction[], retiredProposalIds: Set<string
     if (action.type === "SET_MEMORY_AUTO_APPROVE") return [{ ...action, settings: normalizeApproval(action.settings) }];
     if (action.type === "SET_SEMANTIC_EVALUATION_SETTINGS") return [{ ...action, settings: omitKeys(action.settings, ["requireApprovalForAutoUpdates"]) }];
     if (action.type === "QUEUE_PENDING_UPDATE") {
-      const update = cleanUpdate(action.update, retiredProposalIds, normalizeApproval);
+      const update = cleanUpdate(adventure, action.update, retiredProposalIds, normalizeApproval);
       return update ? [{ ...action, update }] : [];
     }
     return [action];
   });
 }
 
-function cleanUpdate(update: PendingAdventureUpdate, retiredProposalIds: Set<string>, normalizeApproval: ApprovalNormalizer): PendingAdventureUpdate | undefined {
-  const actions = cleanActions(update.actions ?? [], retiredProposalIds, normalizeApproval);
+function cleanUpdate(adventure: Adventure, update: PendingAdventureUpdate, retiredProposalIds: Set<string>, normalizeApproval: ApprovalNormalizer): PendingAdventureUpdate | undefined {
+  const actions = cleanActions(adventure, update.actions ?? [], retiredProposalIds, normalizeApproval);
   if (!actions.length) return undefined;
   return { ...update, source: retiredSources.has(update.source) ? "manual" : update.source, actions };
 }
@@ -64,20 +65,21 @@ export function stripRetiredAdventureFields(input: LegacyAdventureInput, normali
   const retiredProposalIds = new Set(proposals.filter(isRetiredProposal).map(proposal => proposal.id));
   return {
     ...adventure,
+    ...(adventure.components ? { components: adventure.components.map(retireActivePressureComponent) } : {}),
     ...(adventure.tokenBudgetSettings ? { tokenBudgetSettings: stripRetiredTokenSettings(adventure.tokenBudgetSettings) } : {}),
     ...(adventure.activeState ? {
       activeState: {
         ...omitKeys(adventure.activeState, ["lastSceneStateTurn"]),
-        memoryProposals: proposals.filter(proposal => !isRetiredProposal(proposal)) as MemoryProposal[],
+        memoryProposals: proposals.filter(proposal => !isRetiredProposal(proposal)).map(retireActivePressureProposal) as MemoryProposal[],
         pendingUpdates: (adventure.activeState.pendingUpdates ?? []).flatMap(update => {
-          const clean = cleanUpdate(update, retiredProposalIds, normalizeApproval);
+          const clean = cleanUpdate(adventure, update, retiredProposalIds, normalizeApproval);
           return clean ? [clean] : [];
         }),
       },
     } : {}),
-    triggerRules: (adventure.triggerRules ?? []).map(rule => ({
-      ...rule,
-      actions: rule.actions.filter(action => (action as { type: string }).type !== "updateSummary"),
-    })),
+    triggerRules: (adventure.triggerRules ?? []).map(rule => {
+      const actions = rule.actions.filter(action => (action as { type: string }).type !== "updateSummary" && !isActivePressureTriggerAction(adventure, action));
+      return { ...rule, actions, enabled: rule.actions.some(action => isActivePressureTriggerAction(adventure, action)) && !actions.length ? false : rule.enabled };
+    }),
   };
 }

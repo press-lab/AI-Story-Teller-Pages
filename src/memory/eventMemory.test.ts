@@ -163,3 +163,35 @@ vi.mock("../providers/memoryCompletion", async importOriginal => {
 // These legacy assertions inspect detailed logging. OFF contracts are tested separately.
 const debugLogging = vi.hoisted(() => ({ MEMORY_DEBUG_LOGGING: true }));
 vi.mock("../config/debugLogging", () => debugLogging);
+
+describe("Event recall lookup behavior", () => {
+  it("keeps the first character when normalized aliases overlap", () => {
+    const card = eventCard();
+    card.eventMemory = { ...eventMemory, participants: ["Shared Name"] };
+    const first = makeStoryCard({ type: "character", content: "", title: "Shared Name", keys: ["First Alias"] });
+    const second = makeStoryCard({ type: "character", content: "", title: "Shared Name", keys: ["Second Alias"] });
+    expect(selectEventMemories([first, second, card], "First Alias, how we met").has(card.id)).toBe(true);
+    expect(selectEventMemories([first, second, card], "Second Alias, how we met").has(card.id)).toBe(false);
+  });
+
+  it("keeps punctuation, case, Unicode, and complete-word matching", () => {
+    const card = eventCard();
+    card.eventMemory = { ...eventMemory, participants: ["Édythe"] };
+    const identity = makeStoryCard({ type: "character", content: "", title: "Édythe", keys: [] });
+    expect(selectEventMemories([identity, card], "ÉDYTHE! Remember HOW WE MET?").has(card.id)).toBe(true);
+    expect(selectEventMemories([identity, card], "Édythewood, how we met").has(card.id)).toBe(false);
+  });
+
+  it("does not retain stale aliases or change the input cards", () => {
+    const card = eventCard();
+    card.eventMemory = { ...eventMemory, participants: ["Edythe Cullen"] };
+    const identity = makeStoryCard({ type: "character", content: "", title: "Edythe Cullen", keys: ["Old Alias"] });
+    const cards = [identity, card];
+    const original = JSON.stringify(cards);
+    expect(selectEventMemories(cards, "Old Alias, how we met").has(card.id)).toBe(true);
+    expect(JSON.stringify(cards)).toBe(original);
+    const edited = [{ ...identity, keys: ["New Alias"] }, card];
+    expect(selectEventMemories(edited, "Old Alias, how we met").has(card.id)).toBe(false);
+    expect(selectEventMemories(edited, "New Alias, how we met").has(card.id)).toBe(true);
+  });
+});

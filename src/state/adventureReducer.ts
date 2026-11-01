@@ -1,3 +1,4 @@
+import { isActivePressureAction, isActivePressureProposal } from "./activePressureRetirement";
 import { snapshotFingerprint } from "../utils/snapshotFingerprint";
 import { normalizeMemoryAutoApproveSettings } from "./defaults";
 import { shouldAutoApprove, storyCardApprovalCategory } from "../memory/approvalPolicy";
@@ -684,6 +685,7 @@ function normalizedReplacementContent(content: string): string {
 }
 
 function sanitizeProposal(proposal: MemoryProposal): MemoryProposal | null {
+  if (isActivePressureProposal(proposal)) return null;
   if (!["storyCard", "brainUpdate", "plotEssentialsUpdate", "plotPressureUpdate", "currentArcUpdate", "arcProposal", "plotMomentumUpdate", "ignore"].includes(proposal.proposedType)) return null;
   const rawContent = stripThink(proposal.content ?? "").trim();
   const title = stripThink(proposal.title ?? "").trim();
@@ -1002,39 +1004,6 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal,
       { ...target, content: proposal.content, lastAutoUpdateTurn: state.activeState.turn }, proposalMemoryMeta("replace"))) };
   }
 
-  if (proposal.proposedType === "plotPressureUpdate") {
-    if (!proposal.content.trim()) return {};
-    const componentType = "activePressure";
-    const defaultTitle = "Active Pressure";
-    const defaultPriority = 245;
-    const existing =
-      state.components.find((c) => c.id === proposal.targetId && c.type === componentType) ??
-      state.components.find((c) => c.type === componentType);
-    const turn = state.activeState.turn;
-    if (existing) {
-      return {
-        components: upsertById(
-          state.components,
-          recordComponentMemoryUpdate(existing, { ...existing, content: proposal.content, lastAutoUpdateTurn: turn, ...proposal.componentPatch }, proposalMemoryMeta("replace")),
-        ),
-      };
-    }
-    const component = recordComponentMemoryUpdate(
-      undefined,
-      makeComponent({
-        title: defaultTitle,
-        type: componentType,
-        content: proposal.content,
-        active: true,
-        alwaysOn: false,
-        pinned: false,
-        priority: defaultPriority,
-        ...proposal.componentPatch,
-      }),
-      proposalMemoryMeta("create"),
-    );
-    return { components: upsertById(state.components, { ...component, lastAutoUpdateTurn: turn }) };
-  }
 
   if (proposal.proposedType === "currentArcUpdate") {
     if (!proposal.content.trim()) return {};
@@ -1154,6 +1123,12 @@ function applyCompanionMemoryProposals(
 }
 
 export function adventureReducer(state: Adventure, action: AdventureAction): Adventure {
+  if (isActivePressureAction(state, action)) return state;
+  if (action.type === "QUEUE_PENDING_UPDATE") {
+    const actions = action.update.actions.filter(candidate => !isActivePressureAction(state, candidate));
+    if (!actions.length) return state;
+    if (actions.length !== action.update.actions.length) action = { ...action, update: { ...action.update, actions } };
+  }
   if ((action.type === "APPROVE_MEMORY_PROPOSAL" || action.type === "UPDATE_MEMORY_PROPOSAL"
     || action.type === "REJECT_MEMORY_PROPOSAL" || action.type === "IGNORE_MEMORY_PROPOSAL")
     && state.activeState.memoryProposals.some(p => p.id === action.proposalId && p.archivedMemoryHistoryId)) return state;

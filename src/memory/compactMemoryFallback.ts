@@ -51,7 +51,7 @@ export async function runCompactMemoryFallback(
     && [...(card.lore?.sourceMessageIds ?? []), ...(card.sourceTurnIds ?? [])].some(id => evidenceIds.has(id))).slice(0, 8)) relevantIds.add(card.id);
   const targeted = {
     ...adventure,
-    components: adventure.components.filter(component => ["plotEssentials", "activePressure", "currentArc"].includes(component.type)),
+    components: adventure.components.filter(component => ["plotEssentials", "currentArc"].includes(component.type)),
     storyCards: adventure.storyCards.filter(card => relevantIds.has(card.id)),
     brains: adventure.brains.filter(brain => relevant([brain.characterName, ...brain.triggers])),
   };

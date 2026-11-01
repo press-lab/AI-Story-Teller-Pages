@@ -167,19 +167,19 @@ it("shares an outstanding worker with manual evaluation instead of issuing dupli
 
 it("includes a committed automatic memory update in the next prompt without additional checks", async () => {
   const initial = createDefaultAdventure("Consistency");
-  initial.components = [makeComponent({ id: "pressure", type: "activePressure", title: "Pressure", content: "A dormant threat." })];
+  initial.components = [makeComponent({ id: "pressure", type: "plotEssentials", autoUpdate: true, protected: false, title: "Pressure", content: "A dormant threat." })];
 
-  initial.memoryAutoApprove.plotPressureUpdate = true;
+  initial.memoryAutoApprove.plotEssentialsUpdate = true;
   const validation = deferred(); let sourceIds: string[] = []; let checks = 0;
   provider.mockImplementation(async request => {
     const text = request.messages.map(message => message.content).join("\n");
     if (!request.memoryEvaluation) return response(story);
-    if (isAssessment(request.messages)) return response(mockAssessment(request.messages, checks++ === 0 ? ["plotEssentialsPressure:pressure"] : []));
+    if (isAssessment(request.messages)) return response(mockAssessment(request.messages, checks++ === 0 ? ["plotEssentialsDrift:pressure"] : []));
     if (text.includes("MEMORY UPDATE VALIDATION")) {
       sourceIds = JSON.parse(request.messages.at(-1)!.content).latestTurnMessageIds;
       return validation.promise;
     }
-    if (text.includes("updating the Active Pressure")) return response("The council demands the signed charter.");
+    if (text.includes("maintaining Plot Essentials")) return response("The council demands the signed charter.");
     return response("[]");
   });
   const hook = setup(initial, true); await act(async () => { await hook.result.current.runtime.submitTurn("I listen."); await tickIdle(); });
@@ -198,14 +198,14 @@ it("includes a committed automatic memory update in the next prompt without addi
 
 it("rejects a destination edited while validation is outstanding and retains the user's change", async () => {
   const initial = createDefaultAdventure("Destination edit");
-  initial.components = [makeComponent({ id: "pressure", type: "activePressure", title: "Pressure", content: "A dormant threat." })];
+  initial.components = [makeComponent({ id: "pressure", type: "plotEssentials", autoUpdate: true, protected: false, title: "Pressure", content: "A dormant threat." })];
 
-  initial.memoryAutoApprove.plotPressureUpdate = true;
+  initial.memoryAutoApprove.plotEssentialsUpdate = true;
   const validation = deferred(); let sourceIds: string[] = [];
   provider.mockImplementation(async request => {
     const text = request.messages.map(message => message.content).join("\n");
     if (!request.memoryEvaluation) return response(story);
-    if (isAssessment(request.messages)) return response(mockAssessment(request.messages, ["plotEssentialsPressure:pressure"]));
+    if (isAssessment(request.messages)) return response(mockAssessment(request.messages, ["plotEssentialsDrift:pressure"]));
     if (text.includes("MEMORY UPDATE VALIDATION")) {
       sourceIds = JSON.parse(request.messages.at(-1)!.content).latestTurnMessageIds; return validation.promise;
     }

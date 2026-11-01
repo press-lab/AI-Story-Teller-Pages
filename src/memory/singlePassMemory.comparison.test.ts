@@ -81,7 +81,7 @@ it("compares actual mocked HTTP calls on identical stored sources with a declare
   expect(legacyRecords.length).toBeGreaterThan(1);
 });
 
-it.each(["brain", "card", "plotEssentials", "activePressure", "currentArc"] as const)("uses one actual HTTP attempt for manual %s and none for local validation", async kind => {
+it.each(["brain", "card", "plotEssentials", "activePressure", "currentArc"] as const)("uses one HTTP attempt for supported manual %s, and none for retired pressure", async kind => {
   const a = createDefaultAdventure(); a.semanticEvaluationSettings.memoryEvaluationApi = "chat";
   a.memoryAutoApprove.brainUpdate = true;
   a.messages = [{ id: "source", role: "assistant", content: "Mira finds the sealed harbor gate. The watch orders her to leave before dusk.", createdAt: "2026-10-26" }];
@@ -94,6 +94,12 @@ it.each(["brain", "card", "plotEssentials", "activePressure", "currentArc"] as c
   const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ choices: [{ message: { content: raw } }], usage: { prompt_tokens: 100, completion_tokens: 20 } })));
   const config = { ...defaultModelConfig, apiKey: "offline", baseUrl: "https://example.test/v1", model: "fixture-model", memoryReasoningControl: "omit" as const };
   const result = kind === "brain" ? await runManualBrainUpdate(a, config, "brain") : kind === "card" ? await runManualStoryCardsUpdate(a, config) : await runManualPEComponentUpdate(a, config, "component");
+  if (kind === "activePressure") {
+    expect(fetch).not.toHaveBeenCalled();
+    expect(result.logEntry.errors).not.toEqual([]);
+    expect(result.actions.some(action => action.type === "ADD_MEMORY_PROPOSAL")).toBe(false);
+    return;
+  }
   expect(fetch).toHaveBeenCalledTimes(1); expect(result.logEntry.errors).toEqual([]);
   const next = result.actions.reduce(reduce, a);
   if (kind === "brain") expect(next.brains[0].thoughts.harbor_order).toContain("before dusk");

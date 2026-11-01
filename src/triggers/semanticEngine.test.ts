@@ -363,10 +363,9 @@ describe("AI memory builders", () => {
       (action): action is Extract<typeof result.actions[number], { type: "ADD_MEMORY_PROPOSAL" }> =>
         action.type === "ADD_MEMORY_PROPOSAL",
     );
-    expect(proposals).toHaveLength(3);
+    expect(proposals).toHaveLength(2);
     expect(proposals.map((action) => action.proposal.targetId)).toEqual([
       "component-plot",
-      "component-pressure",
       "card-ambessa",
     ]);
     const ambessaProposal = proposals.find((action) => action.proposal.targetId === "card-ambessa")?.proposal;
@@ -380,7 +379,7 @@ describe("AI memory builders", () => {
       protected: adventure.storyCards[0].protected, inclusionPolicy: adventure.storyCards[0].inclusionPolicy });
     expect(updatedCard ? storyCardContextContent(updatedCard) : "").toContain("defeated");
     expect(reduced.components.find((component) => component.id === "component-pressure")?.content)
-      .toContain("Caitlyn's fury");
+      .toBe(pressure.content);
   });
 
   it("reconciles from recent entries when no directive is provided", async () => {
