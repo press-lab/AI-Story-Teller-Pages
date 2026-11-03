@@ -2,9 +2,10 @@
  * @vitest-environment jsdom
  */
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { AUTHORING_SECTIONS, CHATGPT_AUTHORING_INSTRUCTIONS } from "../ai/authoringPolicy";
 import { HelpPage } from "./HelpPage";
 
 describe("HelpPage documentation UI", () => {
@@ -36,9 +37,8 @@ describe("HelpPage documentation UI", () => {
       "Chronicle",
       "Memory Suggestions",
       "Story Cards",
-      "Character Cards — Voice Contract",
+      "Voice Contracts",
       "Characters",
-      "Current Story Arc",
       "World Blocks",
       "Context Preview",
       "Automations",
@@ -60,6 +60,7 @@ describe("HelpPage documentation UI", () => {
     render(<HelpPage />);
 
     expect(document.querySelector(".docs-page")).toBeInTheDocument();
+    expect(document.querySelector(".docs-page")?.children).toHaveLength(2);
     expect(document.querySelector(".docs-toc")).toBeInTheDocument();
     expect(document.querySelector(".docs-content")).toBeInTheDocument();
   });
@@ -73,4 +74,29 @@ describe("HelpPage documentation UI", () => {
     expect(screen.getAllByText("Next Turn Note")[0]).toBeInTheDocument();
     expect(screen.getByText(/visible, token-counted, and expires after use by default/i)).toBeInTheDocument();
   });
+  it("renders every shared standard and searches its content", async () => {
+    const user = userEvent.setup();
+    render(<HelpPage />);
+    for (const section of AUTHORING_SECTIONS) {
+      const topic = within(document.getElementById(`authoring-${section.id}`)!);
+      expect(topic.getByRole("heading", { name: section.title })).toBeInTheDocument();
+      for (const paragraph of section.text.split("\n")) expect(topic.getByText(paragraph, { exact: true })).toBeInTheDocument();
+    }
+    await user.type(screen.getByLabelText(/search docs/i), "non-durable continuity");
+    expect(screen.getByRole("link", { name: "User-directed continuity anchors" })).toBeInTheDocument();
+  });
+
+  it("copies the complete prompt and reports clipboard success and failure", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
+    render(<HelpPage />);
+    await user.click(screen.getByRole("button", { name: "Copy ChatGPT Instructions" }));
+    expect(writeText).toHaveBeenCalledWith(CHATGPT_AUTHORING_INSTRUCTIONS);
+    expect(screen.getByRole("status")).toHaveTextContent("ChatGPT instructions copied.");
+    writeText.mockRejectedValueOnce(new Error("denied"));
+    await user.click(screen.getByRole("button", { name: "Copy ChatGPT Instructions" }));
+    expect(screen.getByRole("status")).toHaveTextContent("Could not copy instructions");
+    writeText.mockRestore();
+  });
+
 });

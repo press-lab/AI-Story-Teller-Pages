@@ -1,5 +1,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 
+import { AUTHORING_SECTIONS, CHATGPT_AUTHORING_INSTRUCTIONS } from "../ai/authoringPolicy";
+
 interface DocTopic {
   id: string;
   title: string;
@@ -10,6 +12,14 @@ interface DocTopic {
 }
 
 const topics: DocTopic[] = [
+  ...AUTHORING_SECTIONS.map((section): DocTopic => ({
+    id: `authoring-${section.id}`,
+    title: section.title,
+    category: "Authoring Standards",
+    summary: section.text,
+    tags: ["authoring", "create", "edit", section.title.toLowerCase()],
+    body: <>{section.text.split("\n").map((paragraph, index) => <p key={index}>{paragraph}</p>)}</>,
+  })),
   {
     id: "overview",
     title: "Overview",
@@ -49,7 +59,7 @@ npm.cmd run test:live   # optional, uses .env.test.local`}</pre>
         <p>
           New Adventure includes optional setup before play: an opening scene, starter World Blocks, manual
           Story Cards, and Story Cards parsed from uploaded or pasted JSON. Generate with AI drafts the title,
-          opening scene, tight Plot Essentials, one-sentence Active Pressure, optional scenario-specific
+          opening scene, tight Plot Essentials, optional scenario-specific
           AI Instructions or Author's Note, and recurring Story Cards for review. Native DeepSeek generation uses
           structured JSON output with thinking disabled for this schema-driven setup call.
         </p>
@@ -135,7 +145,7 @@ npm.cmd run test:live   # optional, uses .env.test.local`}</pre>
         </p>
         <p>
           Pending proposals are not active context. Approving a proposal routes it to a Story Card, Brain
-          update, Plot Essentials update, Active Pressure update, or Current Arc update through reducer-backed paths.
+          update or Plot Essentials update through reducer-backed paths.
         </p>
       </>
     ),
@@ -164,37 +174,7 @@ npm.cmd run test:live   # optional, uses .env.test.local`}</pre>
       </>
     ),
   },
-  {
-    id: "best-practices-character-cards",
-    title: "Character Cards — Voice Contract",
-    category: "Best Practices",
-    summary: "How to write character story cards that actually control voice, not just describe traits.",
-    tags: ["character cards", "voice", "voice contract", "npc", "story cards", "best practices"],
-    body: (
-      <>
-        <p>
-          A character card that only describes traits — "witty, guarded, dangerous" — tells the model what
-          kind of character to generate. It fills the voice in from its defaults, which produces generic
-          "interesting NPC" behavior. To control how a character actually sounds, the card needs a{" "}
-          <strong>Voice Contract</strong>.
-        </p>
-        <p>
-          Append a Voice Contract section to any character card that matters. The existing descriptive
-          content stays — the Voice Contract goes below it:
-        </p>
-        <pre style={{ background: "var(--surface-2, #1e1e1e)", padding: "0.75rem", borderRadius: "4px", fontSize: "0.85em", overflowX: "auto" }}>{`VOICE CONTRACT
-Rhythm: [sentence length, pacing, speech patterns]
-Default move: [what they do first when speaking or entering a scene]
-Emotional defense: [how they protect vulnerability — deflection, humor, aggression, pivot to task, silence]
-Never sounds like: [specific behaviors the AI must not give this character — be concrete]
-Example lines: "[line in their actual voice]" / "[another line]" / "[a third line]"`}</pre>
-        <p><strong>The example lines carry the most weight.</strong> The model pattern-matches prose style from examples far more reliably than it follows trait descriptions. Three lines in the character's actual voice do more than three paragraphs of personality description.</p>
-        <p><strong>"Never sounds like"</strong> is the second most important field. Negative constraints are strong — "never warm, never offers choices, never says what she's feeling directly" is harder for the model to ignore than "emotionally guarded."</p>
-        <p><strong>What not to put in AI Instructions.</strong> Per-character voice belongs on the character's card, not in AI Instructions. AI Instructions apply to every turn globally — character-specific rules dilute them and create two sources of truth. If Nyx needs to sound a specific way, that goes on Nyx's card.</p>
-        <p><strong>Auto-generated cards</strong> from "Generate with AI" and inline memory tagging automatically use Voice Contract format for character cards. For existing cards, paste the Voice Contract section in below the existing content — don't overwrite it.</p>
-      </>
-    ),
-  },
+
   {
     id: "side-menu-characters",
     title: "Characters",
@@ -215,54 +195,12 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
       </>
     ),
   },
-  {
-    id: "current-story-arc",
-    title: "Current Story Arc",
-    category: "Side Menu",
-    summary: "Authored arc log and deterministic pacing for the active story arc.",
-    tags: ["current arc", "story arc", "arc log", "plot", "auto-update", "graduate"],
-    body: (
-      <>
-        <p>
-          <strong>Current Story Arc</strong> is a World Block component (type: Current Story Arc) that maintains a
-          running log of meaningful events in the active arc. Unlike Plot Essentials — which holds static world
-          constants — Current Story Arc grows as the story unfolds and gets retired when the arc resolves.
-        </p>
-        <p>
-          <strong>Arc Premise:</strong> Seed the component with a one-line premise describing this arc. Its authored pacing and Arc Director remain available.
-        </p>
-        <p>
-          <strong>Arc Log:</strong> Independent evaluation can propose completed arc developments when automatic updates are allowed. Review settings control application. You can also edit the log manually; the Arc Director phase remains deterministic.
-        </p>
-        <h4>Best Practices</h4>
-        <ul>
-          <li>
-            <strong>Keep the premise tight.</strong> "Kira is building toward desertion" describes a concrete conflict for authored pacing.
-          </li>
-          <li>
-            <strong>Review arc progress.</strong> Record relevant developments manually; the separate Arc Director advances its configured pacing deterministically.
-          </li>
-          <li>
-            <strong>Plot Essentials ≠ Current Arc.</strong> PE holds the overarching premise and persistent story-wide constraints. Active Pressure holds immediate external threats and obligations. The arc holds the active conflict's running log and pacing gate.
-          </li>
-          <li>
-            <strong>Graduate when the arc resolves.</strong> When the arc has run its course, click
-            "Complete Arc → Story Card." This creates a permanent Story Card (type: Lore) from the arc log
-            and clears the component for the next arc. The graduated card stays in context when triggered
-            by relevant keywords — keeping the resolved arc as referenced backstory.
-          </li>
-          <li>
-            Automatic memory can propose an update to the Current Arc when the component is active, automatic updates are allowed, the cooldown has expired, and an Arc Premise exists. Approval settings determine when AIST applies the update.
-          </li>
-        </ul>
-      </>
-    ),
-  },
+
   {
     id: "side-menu-world-blocks",
     title: "World Blocks",
     category: "Side Menu",
-    summary: "Manage AI Instructions, Plot Essentials, Current Story Arc, Author's Note, and custom components.",
+    summary: "Manage Narration Rules, AI Instructions, Plot Essentials, Author's Note, and custom components.",
     tags: ["world blocks", "components", "plot essentials", "current arc", "author note", "ai instructions"],
     body: (
       <>
@@ -508,54 +446,19 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
         <ul>
           <li>Durable recurring facts go to Story Cards.</li>
           <li>Character-specific evolving internal state goes to Brains only for existing BrainEntries.</li>
-          <li>Tiny always-on current constraints go to Plot Essentials.</li>
-          <li>Current external pressure goes to Active Pressure; active arc history goes to Current Arc.</li>
+          <li>Plot Essentials holds the enduring premise and scenario-wide constraints.</li>
+          <li>Meaningful historical events belong in Lore, not Character cards.</li>
           <li>Ephemeral scenery, one-off room layouts, movement, and throwaway details are ignored.</li>
         </ul>
         <pre>{`"Margo calls Seth hedge prince" -> storyCard
 "Margo feels jealous but hides it" -> brainUpdate only if Margo Brain exists
 "The couch is against the west wall" -> ignore
 "Magic cannot cross the warded threshold" -> storyCard
-"The Beast is actively hunting Seth tonight" -> plotEssentialsUpdate`}</pre>
+"The Beast attacked the sanctuary" -> Lore`}</pre>
       </>
     ),
   },
-  {
-    id: "authoring-best-practices",
-    title: "Authoring Best Practices",
-    category: "Best Practices",
-    summary: "Where AI Instructions, Plot Essentials, and Story Cards belong, based on the BetterRepository guide.",
-    tags: ["betterrepository", "ai instructions", "plot essentials", "story cards", "triggers", "best practices"],
-    body: (
-      <>
-        <p>
-          These defaults follow the BetterRepository authoring guide: use AI Instructions for behavior, Plot Essentials
-          for the overarching premise, and Story Cards for durable triggered memory. The executable copy of these
-          rules lives in <code>src/ai/authoringBestPractices.ts</code> so generators and docs stay aligned.
-        </p>
-        <dl>
-          <dt>AI Instructions</dt>
-          <dd>
-            Global behavior rules only: genre contract, drift prevention, scene loop, prose style, model behavior, and
-            scenario-specific writing constraints. Do not store character facts, lore facts, current scene state,
-            backstory, or per-character voice here.
-          </dd>
-          <dt>Plot Essentials</dt>
-          <dd>
-            The overarching premise, central long-term conflict, and persistent story-wide constraints. PE rarely changes. Automatic suggestions require review; replaced text stays in component history.
-          </dd>
-          <dt>Story Cards</dt>
-          <dd>
-            Durable triggered records for one subject: character, location, faction, object, relationship, secret, rule,
-            or completed event. All types accept supported factual appends. Preserve dates and distinguish plans,
-            attributed claims, demonstrated results and completed events.
-          </dd>
-        </dl>
-        <p><strong>Trigger rule:</strong> character aliases belong on character identity cards. Event, relationship, and subplot cards should use specific trigger phrases, not broad character names that already belong to other cards.</p>
-        <p><strong>Generator rule:</strong> generated cards should avoid temporary details, be concise and self-contained, repeat the subject in the body, and use tense appropriate to the recorded fact.</p>
-      </>
-    ),
-  },
+
   {
     id: "new-adventure-generator-recipes",
     title: "New Adventure AI Generator - Setup Recipes",
@@ -566,7 +469,7 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
       <>
         <p>
           Generate with AI asks what kind of story you want, then routes the setup into the right surfaces. You choose
-          outcomes; the app decides whether the result belongs in AI Instructions, Plot Essentials, Active Pressure,
+          outcomes; the app decides whether the result belongs in AI Instructions, Plot Essentials,
           Author's Note, Story Cards, or Brains.
         </p>
         <dl>
@@ -577,9 +480,9 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
           <dt>Mystery</dt>
           <dd>The current known question goes in Plot Essentials. Clues, suspects, secrets, and locations go on Story Cards.</dd>
           <dt>Faction politics</dt>
-          <dd>Active Pressure names the current public pressure. Factions, leaders, alliances, leverage, and secrets go on cards.</dd>
+          <dd>Plot Essentials defines the enduring political framework. Use cards for factions, leaders, alliances, and secrets.</dd>
           <dt>Romance drama</dt>
-          <dd>Relationship pressure stays choice-driven. Living relationship cards and Brains carry evolving state instead of bloating PE.</dd>
+          <dd>Relationship pressure stays choice-driven. Character cards hold established relationships; Lore holds their history. Player relationships require user context.</dd>
           <dt>Survival / horror</dt>
           <dd>Story Cards hold threat rules, safe places, recurring dangers, and costs.</dd>
         </dl>
@@ -620,73 +523,6 @@ Example lines: "[line in their actual voice]" / "[another line]" / "[a third lin
         <p>
           Thoughts are captured inline during story generation at zero extra API cost. Each thought should have a descriptive snake_case key. Old thoughts are automatically archived when the brain grows long.
         </p>
-      </>
-    ),
-  },
-  {
-    id: "best-practices-story-cards",
-    title: "Story Cards — Best Practices",
-    category: "Best Practices",
-    summary: "What Story Cards are for, how to write them, and what to exclude.",
-    tags: ["story cards", "memory", "durable facts", "best practices"],
-    body: (
-      <>
-        <p>
-          Story Cards store durable, recurring facts. They enter context only when their trigger keys appear — so they stay dormant and cost no tokens when off-topic.
-        </p>
-        <p><strong>What belongs in a Story Card:</strong></p>
-        <ul>
-          <li>A character's permanent traits, history, relationships, and rules of behavior.</li>
-          <li>A location's sensory details, layout, and significance.</li>
-          <li>A recurring object, secret, promise, or rule the story keeps returning to.</li>
-          <li>Canon facts that must stay consistent regardless of scene.</li>
-        </ul>
-        <p><strong>What does NOT belong:</strong></p>
-        <ul>
-          <li>Current location or scene presence — keep that in Recent Messages unless it becomes durable.</li>
-          <li>Temporary mission status or current assignments.</li>
-          <li>Emotional reactions to specific events — that's a Brain thought.</li>
-          <li>One-off scenery or room details that won't recur.</li>
-        </ul>
-        <p><strong>Format:</strong> Bullet points, one per line, using •. Each bullet is one self-contained fact. Lead with what is always true, then add specific constraints or rules.</p>
-        <p><strong>Story Card types:</strong> Character and Location describe people and places. Lore describes shared developments, relationships, techniques and history, with dates, status and source references. All types accept factual appends. Custom holds explicit reference material. The current story clock is edited in Story Cards.</p>
-        <p><strong>Updates:</strong> All card types can grow. Memory appends supported new facts to a matching card or creates a focused new subject. Existing content and voice remain stored. Global approval settings and protected-card review still apply; legacy modes do not restrict updates.</p>
-        <p><strong>Trigger keys:</strong> Use specific names, places, nicknames, objects, factions, and consequences. Character aliases belong on character identity cards; avoid putting broad character names on event, relationship, or subplot cards.</p>
-        <p><strong>Good card:</strong></p>
-        <pre>{`• Margo uses teasing to deflect when she's afraid.
-• She has a long-running private joke calling Seth "hedge prince."
-• She knows more about the ward than she has admitted.
-• She will not act against Seth directly, but she will redirect him.`}</pre>
-      </>
-    ),
-  },
-  {
-    id: "best-practices-pe",
-    title: "Plot Essentials — Best Practices",
-    category: "Best Practices",
-    summary: "How to use Plot Essentials effectively without cluttering it with scene state.",
-    tags: ["plot essentials", "world blocks", "canon", "best practices"],
-    body: (
-      <>
-        <p>
-          Plot Essentials is an always-on context component for the story's overarching premise, central long-term conflict, and persistent story-wide constraints. It loads every turn and costs tokens every turn — keep it tight.
-        </p>
-        <p><strong>What belongs:</strong></p>
-        <ul>
-          <li>The overarching premise: who the story follows and its enduring central conflict.</li>
-          <li>Long-term stakes that remain relevant across scenes and arcs.</li>
-          <li>Major constraints: power rules, public stakes, faction pressure, or canon limits that remain globally relevant.</li>
-        </ul>
-        <p><strong>What does NOT belong:</strong></p>
-        <ul>
-          <li>Current scene position or who is present — keep that in Recent Messages unless it becomes a durable constraint.</li>
-          <li>Character emotional states or internal goals.</li>
-          <li>Temporary mission status that changes every few turns — use Current Arc.</li>
-          <li>Lore that only matters when a specific character or place comes up — use a Story Card instead.</li>
-        </ul>
-        <p><strong>Format:</strong> 4-7 tight bullets or short labeled lines. PE updates replace the full block. Change PE only when its foundations change. Replaced text stays in component history; removal does not create an event card.</p>
-        <p><strong>Good PE entry:</strong> <code>• Seth is an exile whose unstable bond with the ward threatens both his freedom and the sanctuary he seeks.</code></p>
-        <p><strong>Bad PE entry:</strong> <code>• Seth and Margo are currently standing near the threshold discussing the ward.</code> (scene state, not a permanent truth)</p>
       </>
     ),
   },
@@ -908,7 +744,7 @@ Model:    llama-3.3-70b-versatile`}</pre>
     body: (
       <>
         <p>
-          Every item in context — Story Cards, World Blocks, Brains, Current Arc, Author's Note, Next Turn Note, and Recent Messages — has an estimated token cost.
+          Every item in context — Story Cards, World Blocks, Brains, Author's Note, Next Turn Note, and Recent Messages — has an estimated token cost.
           The total is shown in Context Preview and in the header of the Play page.
         </p>
         <dl>
@@ -1038,6 +874,15 @@ function searchableText(topic: DocTopic): string {
 
 export function HelpPage() {
   const [query, setQuery] = useState("");
+  const [copyStatus, setCopyStatus] = useState("");
+  async function copyInstructions() {
+    try {
+      await navigator.clipboard.writeText(CHATGPT_AUTHORING_INSTRUCTIONS);
+      setCopyStatus("ChatGPT instructions copied.");
+    } catch {
+      setCopyStatus("Could not copy instructions. Check clipboard permission and try again.");
+    }
+  }
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const filteredTopics = useMemo(
     () => topics.filter((topic) => !normalizedQuery || searchableText(topic).includes(normalizedQuery)),
@@ -1052,6 +897,8 @@ export function HelpPage() {
           <p className="eyebrow">Reference</p>
           <h2>AI Story Teller Documentation</h2>
           <p className="muted">Technical reference for context, memory, triggers, persistence, and testing.</p>
+          <button type="button" onClick={() => void copyInstructions()}>Copy ChatGPT Instructions</button>
+          <p role="status" aria-live="polite">{copyStatus}</p>
         </div>
         <label className="docs-search">
           <span>Search docs</span>
@@ -1101,7 +948,7 @@ export function HelpPage() {
                   ))}
                 </div>
               </div>
-              <p className="muted">{topic.summary}</p>
+              <p className="muted">{topic.category === "Authoring Standards" ? "Shared standards for documentation, ChatGPT, and Generate with AI." : topic.summary}</p>
               <div className="docs-body">{topic.body}</div>
             </article>
           ))}

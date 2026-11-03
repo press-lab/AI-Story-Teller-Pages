@@ -1,3 +1,4 @@
+import { AUTHORING_STANDARDS } from "./authoringPolicy";
 import type { StoryCardMemoryMode } from "../types/adventure";
 
 export const betterRepositoryGuideSources = [
@@ -43,13 +44,7 @@ export const PLOT_MEMORY_THRESHOLD = `Plot and relationship memory threshold:
 - Prefer updating the existing subject over a sibling card. If the fact is already captured in canon or a proposal, omit it even when a different title would describe it.
 - A casual offer is not a binding pact. Preserve an explicitly accepted consequential commitment, but never promote a tentative plan into a completed event or obligation.`;
 
-export const ADVENTURE_GENERATION_BEST_PRACTICES = `${AI_INSTRUCTIONS_BEST_PRACTICES}
-
-${PLOT_ESSENTIALS_BEST_PRACTICES}
-
-${STORY_CARD_BEST_PRACTICES}
-
-${TRIGGER_BEST_PRACTICES}`;
+export const ADVENTURE_GENERATION_BEST_PRACTICES = AUTHORING_STANDARDS;
 
 export function storyCardModeGuidance(mode: StoryCardMemoryMode | undefined): string {
   return "All Story Cards accept new supported facts by append. Return only new facts for an existing card, preserving the entire existing body and voice contract. Keep dates, plans, claims and completed outcomes distinct.";

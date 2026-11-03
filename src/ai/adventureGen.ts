@@ -197,7 +197,7 @@ Authoring contract:
 ${ADVENTURE_GENERATION_BEST_PRACTICES}
 
 Component guidelines:
-- Always include one "plotEssentials" component containing the overarching premise, central long-term conflict, and persistent story-wide constraints. Keep the current storyline in Current Arc; do not put transient scene details in Plot Essentials. Use 4-7 tight bullets and keep it under 140 words. Do not turn it into a full backstory or lore encyclopedia.
+- Always include one "plotEssentials" component containing the overarching premise, optional central conflict, and persistent story-wide constraints; do not put transient scene details in Plot Essentials. Use 4-7 tight bullets and keep it under 140 words. Do not turn it into a full backstory or lore encyclopedia.
 - Add "aiInstructions" for scenario-specific generation constraints or drift prevention not covered by narration mechanics. Do not put story facts there. Structure it with named ALL-CAPS sections (SETTING, PLAYER POWER, STORY BEHAVIOR, PROSE, etc.) relevant to the premise. Each section should be 2-5 tight bullet points. Always include a PROSE section with guidance on sentence rhythm, dialogue voice diversity, and sensory vs. expository balance. Include a STORY BEHAVIOR section that specifies what the story should be driven by and what drift patterns to prevent. If the premise involves a powerful or exceptional player character, include a PLAYER POWER section with explicit rules about how NPCs engage without worship or constant nerf attempts. Omit sections that are not relevant to the premise.
 - Add "authorNote" only for concise tone, mood, pacing, or prose influence.
 - Add a "custom" component only for broad world context that is relevant every turn. If it matters only when a character, place, faction, object, or secret appears, use a Story Card instead.
@@ -206,36 +206,21 @@ Component guidelines:
 Story card guidelines:
 - Create cards for recurring named characters, significant recurring locations, factions, and key lore items introduced by the premise or opening scene.
 - Do not create cards for current scene position, temporary mission status, one-off scenery, or throwaway objects. Let recent messages carry immediate danger and the next concrete beat.
-- memoryMode: use "static" for always-true facts, "living" for evolving current relationships/status/searches/arrangements, and "historical" for completed events or past-tense facts.
-- keys array: supply 3-6 short reusable topic phrases covering this card’s subjects and concepts, using ordinary future wording rather than exact scene sentences. Never leave keys empty. Character aliases belong on character identity cards. Do not put broad character names on event, relationship, or subplot cards when those names already have character cards.
+- memoryMode is compatibility metadata, not an update strategy. Use "historical" for historical Lore so existing retrieval can find it. Other cards may use "static". All cards use append-based updates.
 - Aim for 4–12 cards depending on the complexity of the premise. Quality over quantity.
 - Each card's content should be self-contained reference material the AI will use mid-story.
 - Location, faction, and lore cards: 3-6 bullet facts. Present tense unless memoryMode is "historical". What the AI needs to know to write it correctly.
-- Character cards MUST include a VOICE CONTRACT section. This is the single most important part of the card — it tells the AI how the character sounds, not just who they are. Also include a section on HOW THEY ENGAGE THE PLAYER: the specific tactics, tests, or social maneuvers this character uses with the player character specifically — not just their general personality. Use this exact structure:
-
-[brief 1–2 sentence description of who they are and their role]
-
-VOICE CONTRACT
-Rhythm: [sentence length and pacing — e.g. "Short declaratives. Never explains herself." or "Long enthusiastic tangents that land on something surprisingly accurate."]
-Default move: [what they do first when speaking or entering a scene — their instinctive social action]
-Emotional defense: [how they protect vulnerability — deflection, humor, aggression, pivot to task, silence]
-Never sounds like: [specific behaviors the AI must not give this character — be concrete: "warm", "offering choices", "saying I feel..."]
-Example lines: "[a line in their actual voice]" / "[another line]" / "[a third line]"
-
-HOW THEY ENGAGE THE PLAYER
-[2–4 bullet points describing this character's specific tactics, tests, or moves when dealing with the player character. Not generic personality — the active moves they make. E.g. "Recruits by demonstrating she already knows something useful about him before he speaks." or "Tests loyalty through small escalating requests before revealing the real ask."]
-
-The example lines carry the most weight. Write them as the character would actually say them in the story. The HOW THEY ENGAGE section is what separates a card that controls behavior from one that only describes it.`;
+- Follow the shared Character requirements above for physical description, independent behavior, relationships, and the five-field Voice Contract. Give three distinctive example lines in the actual character voice.`;
 
 function setupPreferenceGuidance(preferences: AdventureGenPreferences): string {
   const storyShapeGuidance: Record<AdventureStoryShape, string> = {
     balanced: "Balanced adventure: use a tight premise, a small recurring cast and a few Story Cards. Keep PE compact and broadly useful.",
     sandbox: "Sandbox: prioritize a reactive world, player agency, faction/location cards, and loose hooks. Keep AI Instructions light; do not over-plan the plot in PE.",
-    missionLoop: "Mission loop: create an explicit custom loop component whose phases feed each other. PE should name the current assignment/obligation and recurring constraints; Story Cards should hold the team, handler, enemy factions, and recurring mission assets.",
-    mystery: "Mystery: PE should state the current known question and immediate investigative pressure, not the answer. Put clues, suspects, secrets, and locations in Story Cards. AI Instructions should prevent premature reveals.",
-    factionPolitics: "Faction politics: PE should name the current public pressure and power balance. Use Story Cards for factions, leaders, alliances, leverage, and secrets. AI Instructions should keep consequences social, legal, and material.",
-    romanceDrama: "Romance drama: keep romance pressure choice-driven. Put recurring relationship state on living Story Cards or Brains, not bloated PE. AI Instructions should preserve tension, banter, boundaries, and competing agendas without forcing commitment.",
-    survivalHorror: "Survival or horror: PE should name the current threat, scarcity, and constraints. Story Cards should capture rules of the threat, safe places, recurring dangers, and costs. AI Instructions should preserve dread, uncertainty, and consequences.",
+    missionLoop: "Mission loop: create an explicit custom loop component whose phases feed each other. PE should name the enduring mission framework and recurring constraints; Story Cards should hold the team, handler, enemy factions, and recurring mission assets.",
+    mystery: "Mystery: PE should state the central mystery and enduring investigative constraints, not the answer. Put clues, suspects, secrets, and locations in Story Cards. AI Instructions should prevent premature reveals.",
+    factionPolitics: "Faction politics: PE should name the enduring political framework and scenario-wide power balance. Use Story Cards for factions, leaders, alliances, leverage, and secrets. AI Instructions should keep consequences social, legal, and material.",
+    romanceDrama: "Romance drama: keep romance pressure choice-driven. Use established relationships on Character cards and their history in Lore. Do not invent player relationships. Keep PE compact. AI Instructions should preserve tension, banter, boundaries, and competing agendas without forcing commitment.",
+    survivalHorror: "Survival or horror: PE should name the enduring threat, scarcity, and scenario-wide constraints. Story Cards should capture rules of the threat, safe places, recurring dangers, and costs. AI Instructions should preserve dread, uncertainty, and consequences.",
   };
 
   const proseGuidance: Record<AdventureProseMode, string> = {
@@ -270,7 +255,7 @@ Apply these preferences by routing facts to the correct surfaces:
 - AI Instructions: behavior, player-control contract, prose mode, drift prevention, adult-content policy if opted in.
 - Plot Essentials: 4-7 bullets of overarching premise and persistent story-wide constraints only.
 - Author's Note: brief tone/mood/pacing nudge only.
-- Story Cards/Brains: recurring people, relationships, locations, factions, secrets, rules, and evolving internal state.`;
+- Story Cards: place recurring reference facts according to the shared categories above. This setup does not generate Brains.`;
 }
 
 export async function runAdventureGen(

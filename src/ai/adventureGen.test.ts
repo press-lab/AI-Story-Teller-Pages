@@ -1,3 +1,4 @@
+import { AUTHORING_SECTIONS, AUTHORING_STANDARDS, CHATGPT_AUTHORING_INSTRUCTIONS } from "./authoringPolicy";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
 import type { ProviderConfig } from "../types/adventure";
@@ -43,7 +44,8 @@ describe("runAdventureGen", () => {
           { title: "Bad priority", type: "custom", content: "No.", priority: "high" },
         ],
         storyCards: [
-          { title: "Margo", type: "character", content: "Valid.", keys: ["Margo"] },
+          { title: "Margo", type: "character", memoryMode: "living", content: "Valid.", keys: ["Margo"] },
+          { title: "Treaty", type: "lore", memoryMode: "historical", content: "The treaty was signed.", keys: ["treaty"] },
           { title: "Unknown", type: "faction", content: "Invalid type." },
           { title: "Bad keys", type: "lore", content: "Invalid keys.", keys: "ward" },
         ],
@@ -55,7 +57,8 @@ describe("runAdventureGen", () => {
     const result = await runAdventureGen("A premise", config);
 
     expect(result.components.map((component) => component.title)).toEqual(["Premise"]);
-    expect(result.storyCards.map((card) => card.title)).toEqual(["Margo"]);
+    expect(result.storyCards.map((card) => card.title)).toEqual(["Margo", "Treaty"]);
+    expect(result.storyCards.map(card => card.memoryMode)).toEqual(["living", "historical"]);
   });
 
   it("parses generated setup JSON wrapped in a markdown code fence", async () => {
@@ -118,6 +121,22 @@ describe("runAdventureGen", () => {
     const request = vi.mocked(sendOpenAICompatibleChatCompletion).mock.calls[0][0];
     expect(request.responseFormat).toBe("json_object");
     expect(request.thinking).toBe("disabled");
+    const prompt = request.messages[0].content;
+    expect(prompt).toContain(AUTHORING_STANDARDS);
+    for (const section of AUTHORING_SECTIONS) expect(CHATGPT_AUTHORING_INSTRUCTIONS).toContain(section.text);
+    expect(prompt).not.toMatch(/HOW THEY ENGAGE THE PLAYER|Current Arc|Active Pressure|living.*evolving/);
+    expect(prompt).toContain('Use "historical" for historical Lore');
+    expect(CHATGPT_AUTHORING_INSTRUCTIONS).toContain("exactly two operations: CREATE and EDIT");
+    expect(CHATGPT_AUTHORING_INSTRUCTIONS).toContain("Auditing is part of EDIT");
+    expect(CHATGPT_AUTHORING_INSTRUCTIONS).toContain("supporting evidence");
+    expect(prompt).toContain("Every newly generated Character card must include a useful, recognizable physical description");
+    for (const field of ["Rhythm:", "Default move:", "Emotional defense:", "Never sounds like:", "Example lines:"]) expect(prompt).toContain(field);
+    expect(prompt).toContain("Three representative lines");
+    expect(prompt).toContain("Only the user may authorize a non-durable continuity anchor");
+    expect(prompt).toContain("The AI must not create exceptions itself");
+    expect(prompt).toContain("Not every character needs family details");
+    expect(prompt).toContain("only when the user explicitly supplies or requests it");
+    expect(prompt).toContain("Lore cards preserve events");
     expect(request.messages[0].content).not.toContain('"activePressure"');
     expect(request.messages[0].content).not.toContain('"immediateMomentum"');
     expect(request.messages[0].content).toContain('"authorNote"');
