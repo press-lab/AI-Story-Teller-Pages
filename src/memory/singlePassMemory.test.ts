@@ -10,6 +10,14 @@ import type { SinglePassMemoryFinding } from "../types/adventure";
 import { singlePassFixture, groundedFinding } from "../test/singlePassMemory";
 afterEach(() => vi.restoreAllMocks());
 describe("single-pass extraction request bound", () => {
+  it("keeps local batch output inside the configured local output limit", async () => {
+    const { a, ids } = singlePassFixture(3);
+    const batch = await prepareSinglePassMemoryBatch(a, ids);
+    const send = vi.spyOn(transport, "sendMemoryCompletion").mockResolvedValue({ raw: {}, content: JSON.stringify({ sources: ids.map(sourceId => ({ sourceId, findings: [] })) }) });
+    await runSinglePassMemoryBatch(a, { ...defaultModelConfig, connectionType: "local", maxOutputTokens: 2048 }, batch);
+    expect(send.mock.calls[0][1].maxOutputTokens).toBe(2048);
+    expect(send).toHaveBeenCalledTimes(1);
+  });
   it.each([1, 2, 3])("uses one provider request for %i independently empty sources", async count => {
     const { a, ids } = singlePassFixture(count);
     const batch = await prepareSinglePassMemoryBatch(a, ids);

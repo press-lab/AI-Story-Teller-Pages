@@ -470,7 +470,8 @@ export async function runSinglePassMemoryBatch(a: Adventure, provider: ProviderC
   const config = memoryBatchProvider(provider, batch.checkpoints.map(s => s.sourceId));
   // Bounded extraction output, independent of narration settings. Cancellation guard stays on this exact config.
   config.memoryRequest = { ...config.memoryRequest!, batchId: batch.batchId, attempt: Math.max(1, ...batch.checkpoints.map(c => a.messages.find(m => m.id === c.sourceId)?.memoryEvaluation?.attempts ?? 1)) };
-  config.maxOutputTokens = Math.min(8192, Math.max(provider.maxOutputTokens || 0, 1024 + batch.checkpoints.length * 2048));
+  const extractionLimit = Math.min(8192, Math.max(provider.maxOutputTokens || 0, 1024 + batch.checkpoints.length * 2048));
+  config.maxOutputTokens = provider.connectionType === "local" ? Math.min(provider.maxOutputTokens, extractionLimit) : extractionLimit;
   const response = await sendMemoryCompletion(a, config, buildSinglePassMemoryMessages(batch), "singlePass");
   const result = parseSinglePassMemoryResponse(response.content, batch.checkpoints.map(s => s.sourceId), a, batch.outputAliases, batch);
   return { ...result, usage: response.usage };

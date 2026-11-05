@@ -8,6 +8,10 @@ export type MemoryReasoningControl = "auto" | "omit" | "none" | "thinkingDisable
 export function memoryReasoningFields(config: ProviderConfig, transport: "chat" | "responses" | "messages" = "chat"): Record<string, unknown> {
   const control = config.memoryReasoningControl ?? "auto";
   if (control === "required") throw new Error("memory_reasoning_required: This configuration requires reasoning. Select an evaluator that can disable it.");
+  if (control === "auto" && config.connectionType === "local" && config.localRuntime === "llamaCpp") {
+    if (transport !== "chat") throw new Error("memory_reasoning_control_incompatible: Use Chat Completions for the local llama.cpp profile.");
+    return { chat_template_kwargs: { enable_thinking: false } };
+  }
   if (control === "none" && transport === "messages") throw new Error("memory_reasoning_control_incompatible: This Messages endpoint uses thinking disabled or no reasoning fields, not reasoning effort none.");
   if (control === "none") return transport === "responses" ? { reasoning: { effort: "none" } } : { reasoning_effort: "none" };
   if (control === "omit") return {};

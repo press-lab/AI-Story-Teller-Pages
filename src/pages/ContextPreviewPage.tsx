@@ -147,7 +147,14 @@ interface ContextPreviewPageProps extends AdventurePageProps {
 export function ContextPreviewPage({ adventure, dispatch, contextResult, onBuildContext, providerConfig }: ContextPreviewPageProps) {
   const [preferLivePreview, setPreferLivePreview] = useState(false);
   const [copyStatus, setCopyStatus] = useState("");
-  const result = preferLivePreview ? buildContext(adventure) : (contextResult ?? buildContext(adventure));
+  let contextError: string | undefined;
+  let result: ContextBuildResult;
+  try {
+    result = preferLivePreview ? buildContext(adventure, { providerConfig }) : (contextResult ?? buildContext(adventure, { providerConfig }));
+  } catch (error) {
+    contextError = error instanceof Error ? error.message : "Correct the model context settings.";
+    result = buildContext(adventure);
+  }
   const duplicates = detectDuplicateContent(result.sections);
 
   const [expandedId, setExpandedId] = useState<string | undefined>();
@@ -260,6 +267,7 @@ export function ContextPreviewPage({ adventure, dispatch, contextResult, onBuild
     setDedupProposals((prev) => prev.filter((p) => p.id !== proposalId));
   }
 
+  if (contextError) return <section className="page"><p role="alert">Context preview unavailable: {contextError}</p></section>;
   return (
     <section className="page editor-surface context-preview-page">
       <div className="editor-page-summary">

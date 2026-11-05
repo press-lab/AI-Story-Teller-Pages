@@ -17,7 +17,7 @@ function fixture() {
   a.memoryAutoApprove.loreStoryCard = false; a.memoryAutoApprove.otherStoryCard = false;
   a.memoryDetectionSettings = { enabled: true, evaluator: "dedicated", everyNTurns: 5, generateContent: true };
   a.semanticEvaluationSettings.memoryEvaluationApi = "openaiResponses";
-  a.semanticEvaluationSettings.backgroundProviderConfig = { baseUrl: "https://api.openai.com/v1", model: "gpt-6-sol", memoryReasoningControl: "none" };
+  a.semanticEvaluationSettings.backgroundProviderConfig = { baseUrl: "https://api.openai.com/v1", model: "gpt-6-sol", memoryReasoningControl: "none", apiKey: "test-evaluator" };
   return a;
 }
 function mockUpdates(sourceId: string, updates: unknown[]) {

@@ -1,6 +1,7 @@
 import type { ApiCallPurpose, ApiCallRecord, ProviderConfig, ProviderUsage } from "../types/adventure";
 import { generationMetadata } from "./generationMetadata";
 import { createId, nowIso } from "../utils/id";
+import { providerTimeoutMs } from "./providerConfig";
 
 /** Optional provider metrics. Missing values remain unknown. */
 export function optionalProviderUsage(raw: unknown): Pick<ProviderUsage, "reasoningTokens" | "reportedCostUsd"> {
@@ -19,7 +20,7 @@ export class ProviderRequestTimeoutError extends Error {
   constructor() { super("provider_request_timed_out"); }
 }
 
-async function readResponse(url: string, init: RequestInit) {
+export async function readProviderResponse(url: string, init: RequestInit, timeoutMs = PROVIDER_REQUEST_TIMEOUT_MS) {
   const controller = new AbortController();
   const abort = () => controller.abort(init.signal?.reason);
   if (init.signal?.aborted) abort();
@@ -28,7 +29,7 @@ async function readResponse(url: string, init: RequestInit) {
   const aborted = new Promise<never>((_resolve, reject) => { rejectAborted = reject; });
   const onAbort = () => rejectAborted(controller.signal.reason);
   controller.signal.addEventListener("abort", onAbort, { once: true });
-  const timer = globalThis.setTimeout(() => controller.abort(new ProviderRequestTimeoutError()), PROVIDER_REQUEST_TIMEOUT_MS);
+  const timer = globalThis.setTimeout(() => controller.abort(new ProviderRequestTimeoutError()), timeoutMs);
   try {
     if (controller.signal.aborted) throw controller.signal.reason;
     return await Promise.race([
@@ -67,7 +68,10 @@ export async function fetchWithAccounting(url: string, init: RequestInit, config
     purpose, model: config.model, startedAt: nowIso(), status: "started" };
   publish(record);
   try {
-    const { response, text } = await readResponse(url, init);
+    const { response, text } = await readProviderResponse(url, {
+      ...init,
+      ...(config.connectionType === "local" ? { redirect: "error", credentials: "omit" } as const : {}),
+    }, providerTimeoutMs(config));
     let usage: ProviderUsage | undefined;
     let partialUsage: ApiCallRecord["partialUsage"];
     let finishReason: string | undefined;

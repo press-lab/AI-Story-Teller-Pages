@@ -549,6 +549,12 @@ export interface MemoryRequestAttribution {
   attempt: number;
 }
 export interface ProviderConfig {
+  connectionType?: "online" | "local";
+  authMode?: "none" | "apiKey";
+  /** Local runtime profile. Custom endpoints omit llama.cpp-specific fields. */
+  localRuntime?: "llamaCpp" | "compatible";
+  contextWindowTokens?: number;
+  requestTimeoutMs?: number;
   /** Runtime only; never credentials or prompt text. */
   memoryRequest?: MemoryRequestAttribution;
   memoryReasoningControl?: import("../providers/memoryReasoning").MemoryReasoningControl;
@@ -599,6 +605,12 @@ export interface ProviderUsage {
 }
 
 export interface BackgroundProviderConfig {
+  connectionType?: ProviderConfig["connectionType"];
+  authMode?: ProviderConfig["authMode"];
+  localRuntime?: ProviderConfig["localRuntime"];
+  contextWindowTokens?: number;
+  requestTimeoutMs?: number;
+  maxOutputTokens?: number;
   memoryReasoningControl?: import("../providers/memoryReasoning").MemoryReasoningControl;
   baseUrl: string;
   apiKey?: string;

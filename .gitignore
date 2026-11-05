@@ -10,3 +10,5 @@ codex-artifacts/memory-semantic/
 codex-artifacts/lore-quality-tests.log
 
 .memory-eval.local/
+.local-model/
+scripts/local-model.local.json

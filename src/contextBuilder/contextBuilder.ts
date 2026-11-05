@@ -19,6 +19,8 @@ import type {
 import { storyCardContextContent } from "../memory/storyCardPolicy";
 import { dedupeThoughtRecord } from "../memory/thoughtDedupe";
 import { approximateTokenCount } from "../tokenizer/approximateTokenCount";
+import { localPromptBudget } from "../providers/providerConfig";
+import type { ProviderConfig } from "../types/adventure";
 import { matchPatterns } from "../triggers/matching";
 
 const SYSTEM_SHELL = `You are the story engine for AI Story Teller. The context below is assembled for you each turn.
@@ -49,6 +51,7 @@ OUT-OF-CHARACTER BOUNDARY:
 Honour every section within these boundaries. For in-character input, continue the scene in prose. Keep the player able to act.`;
 
 interface BuildOptions {
+  providerConfig?: ProviderConfig;
   currentInput?: string;
   latestModelOutput?: string;
   skipThoughtCapture?: boolean;
@@ -655,7 +658,9 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
     section("recentMessages", "K. Recent Messages", 11, recentMessageItems),
   ]);
 
-  const budget = budgetSettings.maxContextTokens;
+  const budget = options.providerConfig?.connectionType === "local"
+    ? Math.min(budgetSettings.maxContextTokens, localPromptBudget(options.providerConfig))
+    : budgetSettings.maxContextTokens;
 
   const isDroppable = (sectionId: ContextSectionKind, entry: ContextItem): boolean => {
     if (entry.protected || entry.id === "system-shell") return false;

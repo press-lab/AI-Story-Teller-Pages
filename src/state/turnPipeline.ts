@@ -206,6 +206,7 @@ export async function runTurnPipeline({
   }
 
   const preProviderContext = buildContext(next, {
+    providerConfig,
     skipThoughtCapture: mode === "comms",
     currentInput: currentInputForContext ?? (recordUserInput ? text : undefined),
     latestModelOutput: latestAssistantOutput(next),
@@ -231,7 +232,7 @@ export async function runTurnPipeline({
   return {
     adventure: next,
     preProviderContext,
-    postTurnContext: buildContext(next, { latestModelOutput: applied.responseContent }),
+    postTurnContext: buildContext(next, { providerConfig, latestModelOutput: applied.responseContent }),
     providerPayload,
     responseContent: applied.responseContent,
     continuityCorrected: applied.continuityCorrected,

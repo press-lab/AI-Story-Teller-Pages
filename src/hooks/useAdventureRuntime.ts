@@ -668,8 +668,10 @@ export function useAdventureRuntime(
 
   const buildPreview = useCallback(() => {
     if (!adventure) return;
-    setContextResult(buildContext({ ...adventure, memoryDetectionSettings: globalMemorySettings }, { latestModelOutput: latestAssistantOutput(adventure) }));
-  }, [adventure, globalMemorySettings, setContextResult]);
+    try {
+      setContextResult(buildContext({ ...adventure, memoryDetectionSettings: globalMemorySettings }, { providerConfig: mergeProviderConfig(adventure, providerSettings), latestModelOutput: latestAssistantOutput(adventure) }));
+    } catch (error) { setError(error instanceof Error ? error.message : "Correct the model context settings."); }
+  }, [adventure, providerSettings, globalMemorySettings, setContextResult]);
 
   // When an arc reaches aftermath, draft next-arc directions once so the player can pick
   // where the story goes next without architecting it. Gated by arcContinuationOptions
@@ -858,7 +860,7 @@ export function useAdventureRuntime(
       next = adventureReducer(next, { type: "REMOVE_LAST_ASSISTANT_MESSAGE" });
       const historyBaseline = next;
       const lastUser = [...next.messages].reverse().find((m) => m.role === "user")?.content ?? "Continue.";
-      const context = buildContext(next, { currentInput: lastUser, latestModelOutput: latestAssistantOutput(next) });
+      const context = buildContext(next, { providerConfig: mergeProviderConfig(next, providerSettings), currentInput: lastUser, latestModelOutput: latestAssistantOutput(next) });
       setContextResult(context);
 
       const regenConfig = applyResponseLengthHint(
@@ -884,7 +886,7 @@ export function useAdventureRuntime(
       next = applied.adventure;
       next = mergeQueuedUpdates(next, historyBaseline);
       next = publishHistorySnapshot(next);
-      setContextResult(buildContext(next, { latestModelOutput: applied.responseContent }));
+      setContextResult(buildContext(next, { providerConfig: mergeProviderConfig(next, providerSettings), latestModelOutput: applied.responseContent }));
       await saveAdventure(next);
       setSaveStatus("saved");
       isNarratingRef.current = false;

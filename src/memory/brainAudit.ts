@@ -1,5 +1,6 @@
 import type { Adventure, BrainEntry, Message, ProviderConfig } from "../types/adventure";
 import { sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
+import { resolveBackgroundProviderConfig } from "../providers/backgroundProvider";
 import { dedupeBrainThoughts } from "./thoughtDedupe";
 import { lastNTurns } from "./storyCardAudit";
 
@@ -42,17 +43,7 @@ const BROAD_ALIAS_WORDS = new Set([
 ]);
 
 function resolvedProviderConfig(adventure: Adventure, providerConfig: ProviderConfig): ProviderConfig {
-  const bg = adventure.semanticEvaluationSettings.backgroundProviderConfig;
-  if (bg?.baseUrl) {
-    return {
-      ...providerConfig,
-      baseUrl: bg.baseUrl,
-      apiKey: bg.apiKey ?? providerConfig.apiKey,
-      model: bg.model || providerConfig.model,
-      promptCaching: bg.baseUrl === providerConfig.baseUrl ? providerConfig.promptCaching : undefined,
-    };
-  }
-  return { ...providerConfig, model: adventure.semanticEvaluationSettings.evaluationModel || providerConfig.model };
+  return resolveBackgroundProviderConfig(adventure, providerConfig);
 }
 
 function formatMessages(messages: Message[]): string {

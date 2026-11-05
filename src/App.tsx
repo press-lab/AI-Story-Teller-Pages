@@ -174,9 +174,11 @@ export default function App() {
     if (providerPresets.length === 0) return;
     let changed = false;
     const hydrated = providerPresets.map((preset) => {
-      if (preset.promptCaching !== undefined) return preset;
+      if (preset.promptCaching !== undefined && preset.connectionType !== undefined && preset.authMode !== undefined) return preset;
       changed = true;
-      return { ...preset, promptCaching: defaultModelConfig.promptCaching };
+      return { ...preset, connectionType: preset.connectionType ?? "online" as const,
+        authMode: preset.authMode ?? (preset.connectionType === "local" ? "none" : "apiKey") as "none" | "apiKey",
+        promptCaching: preset.promptCaching ?? defaultModelConfig.promptCaching };
     });
     if (changed) setProviderPresets(hydrated);
   }, [providerPresets, setProviderPresets]);

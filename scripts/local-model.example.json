@@ -1,0 +1,12 @@
+{
+  "serverExecutable": "auto",
+  "requiredVersion": "e56f006ed",
+  "modelPath": "D:\\Models\\llama-cache\\Qwen-Turbo-Q4_K_M.gguf",
+  "modelAlias": "aist-qwen",
+  "host": "127.0.0.1",
+  "port": 8080,
+  "contextTokens": 8192,
+  "gpuLayers": 0,
+  "allowedOrigin": "https://press-lab.github.io",
+  "apiKeyFile": ""
+}

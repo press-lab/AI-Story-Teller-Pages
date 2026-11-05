@@ -1,4 +1,5 @@
 import { generationMetadata } from "./generationMetadata";
+import { assertLocalRequestFits, providerAuthHeaders, validateProviderConfig } from "./providerConfig";
 import { memoryReasoningFields, assertMemoryReasoningDisabled } from "./memoryReasoning";
 import { optionalProviderUsage, fetchWithAccounting, ProviderRequestTimeoutError } from "./apiCallAccounting";
 import { waitForProviderThrottle, type ProviderResponse, type SendChatCompletionOptions } from "./openAICompatible";
@@ -47,7 +48,9 @@ export class MemoryResponseError extends Error {
 /** One HTTP attempt; no tools, persisted conversations, narration settings or automatic retries. */
 export async function sendOpenAIMemoryResponse(options: SendChatCompletionOptions & { schema?: Record<string, unknown> }): Promise<ProviderResponse> {
   const { config, messages, signal } = options;
-  if (!config.apiKey?.trim()) throw new MemoryResponseError("provider_api_key_missing");
+  validateProviderConfig(config);
+  assertLocalRequestFits(config, messages);
+  if (config.connectionType === "local") throw new MemoryResponseError("local_responses_unsupported: Select the compatible Chat API for local memory evaluation.");
   let endpoint: URL;
   try {
     const base = config.baseUrl.replace(/\/+$/, "").replace(/\/chat\/completions$/, "");
@@ -61,7 +64,7 @@ export async function sendOpenAIMemoryResponse(options: SendChatCompletionOption
   try {
     response = await fetchWithAccounting(endpoint.toString(), {
       method: "POST", signal,
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.apiKey}` },
+      headers: { "Content-Type": "application/json", ...providerAuthHeaders(config) },
       body: JSON.stringify({ model: config.model, input: messages, store: false,
         ...reasoningFields, max_output_tokens: config.maxOutputTokens,
         text: { format: { type: "json_schema", name: "memory_evaluation", strict: true, schema: options.schema ?? MEMORY_RESPONSE_SCHEMA } },

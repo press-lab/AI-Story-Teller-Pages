@@ -84,7 +84,7 @@ it("preserves per-entry identity through settings changes, JSON and IndexedDB", 
 
 it("records the background provider when continuity correction supplies the final text", async () => {
   const adventure = createDefaultAdventure();
-  adventure.semanticEvaluationSettings.backgroundProviderConfig = { baseUrl: "https://review.example.test/v1", model: "review-model" };
+  adventure.semanticEvaluationSettings.backgroundProviderConfig = { baseUrl: "https://review.example.test/v1", model: "review-model", apiKey: "review-key" };
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ model: "review-version", choices: [{ message: { content: "The gate opens." } }] }))));
   const result = await runTurnPipeline({ adventure, text: "I listen.", providerConfig: { ...defaultModelConfig, apiKey: "key" },
     sendChatCompletion: async () => ({ content: "You promised to open the gate.", generation: { model: "narrator-model" } }) });

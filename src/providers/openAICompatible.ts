@@ -1,4 +1,5 @@
 import { generationMetadata } from "./generationMetadata";
+import { assertLocalRequestFits, providerAuthHeaders, validateProviderConfig } from "./providerConfig";
 import { memoryReasoningFields, assertMemoryReasoningDisabled } from "./memoryReasoning";
 import { optionalProviderUsage, fetchWithAccounting, ProviderRequestTimeoutError } from "./apiCallAccounting";
 import type { ApiCallPurpose, ChatMessage, GenerationMetadata, ProviderConfig, ProviderRequestThrottle, ProviderUsage } from "../types/adventure";
@@ -180,6 +181,8 @@ function openAIReasoningFields(
   thinking: SendChatCompletionOptions["thinking"],
 ): Record<string, unknown> {
   if (config.memoryReasoningControl) return memoryReasoningFields(config);
+  if (config.connectionType === "local") return config.localRuntime === "llamaCpp"
+    ? { chat_template_kwargs: { enable_thinking: false } } : {};
   if (isGlmReasoningModel(config) && isOpenRouterProvider(config)) {
     return { reasoning: { effort: thinking === "enabled" ? "medium" : "low" } };
   }
@@ -210,7 +213,7 @@ async function sendOpenAIRequest(
   purpose: ApiCallPurpose = "otherBackground",
   allowRetry = true,
 ): Promise<ProviderResponse> {
-  if (config.memoryReasoningControl || !isGlmReasoningModel(config) || isNativeDeepSeekProvider(config) || !allowRetry) {
+  if (config.connectionType === "local" || config.memoryReasoningControl || !isGlmReasoningModel(config) || isNativeDeepSeekProvider(config) || !allowRetry) {
     const result = await sendOpenAIRequestOnce(endpoint, messages, config, 0, signal, responseFormat, thinking, purpose);
     if (result.content == null) throw new Error(`Provider returned no content. Body: ${result.rawText.slice(0, 300)}`);
     return { content: result.content, raw: result.raw, finishReason: result.finishReason, usage: result.usage };
@@ -254,7 +257,7 @@ async function sendOpenAIRequestOnce(
       signal,
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${config.apiKey}`,
+        ...providerAuthHeaders(config),
       },
       body: JSON.stringify({
         model: config.model,
@@ -274,7 +277,10 @@ async function sendOpenAIRequestOnce(
   } catch (err) {
     if (err instanceof ProviderRequestTimeoutError) throw err;
     const msg = err instanceof Error ? err.message : String(err);
-    throw new Error(`Network error (${endpoint}): ${msg}. If using a local server, check CORS headers and that the server is reachable.`);
+    if (signal?.aborted) throw signal.reason ?? err;
+    throw new Error(config.connectionType === "local"
+      ? "Local server could not be reached. Start the inference server, check its port and allowed AIST origin, and allow local network access in your browser. No online fallback was used."
+      : `Network error (${endpoint}): ${msg}. If using a local server, check CORS headers and that the server is reachable.`);
   }
 
   const rawText = await response.text().catch(() => "");
@@ -348,7 +354,7 @@ async function sendAnthropicRequest(
       signal,
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${config.apiKey}`,
+        ...providerAuthHeaders(config),
         "anthropic-version": "2023-06-01",
         ...(config.promptCaching ? { "anthropic-beta": "prompt-caching-2024-07-31" } : {}),
       },
@@ -413,8 +419,10 @@ export async function sendOpenAICompatibleChatCompletion({
   memoryEvaluation = false,
   shouldSend,
 }: SendChatCompletionOptions): Promise<ProviderResponse> {
-  if (!config.apiKey?.trim()) {
-    throw new Error("Missing API key. Add one in Settings before generating.");
+  validateProviderConfig(config);
+  assertLocalRequestFits(config, messages);
+  if (config.connectionType === "local" && isAnthropicFormat(config.baseUrl)) {
+    throw new Error("Local presets require a Chat Completions Base URL, not an Anthropic endpoint.");
   }
 
   if (!memoryEvaluation && config.memoryReasoningControl) {
@@ -435,6 +443,7 @@ export async function sendOpenAICompatibleChatCompletion({
   const result = isAnthropicFormat(config.baseUrl)
     ? await sendAnthropicRequest(endpoint, messages, config, signal, thinking, purpose)
     : await sendOpenAIRequest(endpoint, messages, config, signal, responseFormat, thinking, purpose, retry);
+  if (config.connectionType === "local" && !result.content.trim()) throw new Error("Local server returned an empty completion. Check model loading, output limits and the chat template.");
   if (memoryEvaluation && !memoryUsesLowReasoning) assertMemoryReasoningDisabled(result.raw);
   return { ...result, generation: generationMetadata(endpoint, config, result.raw) };
 }

@@ -127,7 +127,7 @@ export async function runCompactMemoryFallback(
     empty.request = { model: backgroundConfig.model, transport: "failed" };
     // Reserve the same memory allowance per source; narration settings are untouched.
     response = await (useResponses ? sendOpenAIMemoryResponse : sendOpenAICompatibleChatCompletion)({
-      config: { ...backgroundConfig, maxOutputTokens: Math.min(backgroundConfig.maxOutputTokens, MEMORY_OUTPUT_RESERVE) * sources.length }, messages,
+      config: { ...backgroundConfig, maxOutputTokens: Math.min(backgroundConfig.maxOutputTokens, MEMORY_OUTPUT_RESERVE) * (backgroundConfig.connectionType === "local" ? 1 : sources.length) }, messages,
       responseFormat: "json_object",
       purpose: options.storyCardsOnly ? "otherBackground" : "memoryRecovery",
       retry: false,

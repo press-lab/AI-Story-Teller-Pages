@@ -481,7 +481,14 @@ export function persistedBackgroundProviderConfig(
   const baseUrl = config.baseUrl?.trim() ?? "";
   const model = config.model?.trim() ?? "";
   if (!baseUrl && !model && !config.memoryReasoningControl) return undefined;
-  return { baseUrl, model, ...(config.memoryReasoningControl ? { memoryReasoningControl: config.memoryReasoningControl } : {}) };
+  return { baseUrl, model, ...(config.memoryReasoningControl ? { memoryReasoningControl: config.memoryReasoningControl } : {}),
+    ...(config.connectionType ? { connectionType: config.connectionType } : {}),
+    ...(config.authMode ? { authMode: config.authMode } : {}),
+    ...(config.localRuntime ? { localRuntime: config.localRuntime } : {}),
+    ...(config.contextWindowTokens !== undefined ? { contextWindowTokens: config.contextWindowTokens } : {}),
+    ...(config.requestTimeoutMs !== undefined ? { requestTimeoutMs: config.requestTimeoutMs } : {}),
+    ...(config.maxOutputTokens !== undefined ? { maxOutputTokens: config.maxOutputTokens } : {}),
+  };
 }
 
 export function persistedSemanticEvaluationSettings(

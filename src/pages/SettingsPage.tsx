@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { LocalModelSettings } from "./LocalModelSettings";
+import { localProviderDefaults } from "../providers/providerConfig";
 import type {
   Adventure,
   AdventureAction,
@@ -86,6 +88,7 @@ export function SettingsPage({
 }: SettingsPageProps) {
   const advanced = uiPreferences.showAdvancedSettings;
   const [expandedPresetId, setExpandedPresetId] = useState<string | null>(null);
+  const [addingModel, setAddingModel] = useState(false);
 
   const activePreset = providerPresets.find((p) => p.id === activePresetId) ?? providerPresets[0];
 
@@ -118,12 +121,17 @@ export function SettingsPage({
     updatePreset(id, { requestThrottle: { ...current, ...patch } });
   }
 
-  function addPreset() {
+  function addPreset(connectionType: "online" | "local") {
     const base = activePreset ?? providerPresets[0];
     const newId = `preset-${Date.now()}`;
-    const newPreset: ProviderPreset = { ...(base ?? { name: "", baseUrl: "", model: "", apiKey: "", temperature: 0.7, maxOutputTokens: 2048, topP: 0.95, presencePenalty: 0.8, frequencyPenalty: 0 }), id: newId, label: "New Model", apiKey: "" };
+    const newPreset: ProviderPreset = { ...(base ?? { name: "", baseUrl: "", model: "", apiKey: "", temperature: 0.7, maxOutputTokens: 2048, topP: 0.95, presencePenalty: 0.8, frequencyPenalty: 0 }),
+      ...(connectionType === "local" ? localProviderDefaults : { connectionType: "online" as const, authMode: "apiKey" as const, localRuntime: undefined, contextWindowTokens: undefined, requestTimeoutMs: undefined, memoryReasoningControl: undefined }),
+      id: newId, label: connectionType === "local" ? "Local Qwen" : "New Model", apiKey: "",
+      ...(connectionType === "online" && base?.connectionType === "local" ? { name: "", baseUrl: "", model: "" } : {}),
+    };
     onProviderPresetsChange([...providerPresets, newPreset]);
     setExpandedPresetId(newId);
+    setAddingModel(false);
   }
 
   function deletePreset(id: string) {
@@ -240,8 +248,12 @@ export function SettingsPage({
         <article className="panel settings-card settings-models-panel">
           <div className="preset-list-header">
             <h3 style={{ margin: 0 }}>Models</h3>
-            <button type="button" onClick={addPreset}>+ Add Model</button>
+            <button type="button" onClick={() => setAddingModel(!addingModel)}>+ Add Model</button>
           </div>
+          {addingModel && <div className="button-row" aria-label="New model connection type">
+            <button type="button" onClick={() => addPreset("online")}>Online</button>
+            <button type="button" onClick={() => addPreset("local")}>Local (this device)</button>
+          </div>}
           {providerPresets.map((preset) => {
             const isActive = preset.id === activePresetId;
             const isExpanded = expandedPresetId === preset.id;
@@ -270,6 +282,7 @@ export function SettingsPage({
                 </div>
                 {isExpanded && (
                   <div className="preset-item-form">
+                    <p>Connection: <strong>{preset.connectionType === "local" ? "Local (this device)" : "Online"}</strong></p>
                     <div className="grid two">
                       <Field label="Label">
                         <input value={preset.label} onChange={(e) => updatePreset(preset.id, { label: e.target.value })} />
@@ -284,14 +297,18 @@ export function SettingsPage({
                     <Field label="Model">
                       <input value={preset.model} onChange={(e) => updatePreset(preset.id, { model: e.target.value })} />
                     </Field>
-                    <Field label="API Key">
+                    {preset.connectionType === "local" && <Field label="Authentication"><select value={preset.authMode ?? "none"} onChange={event => updatePreset(preset.id, { authMode: event.target.value as "none" | "apiKey" })}>
+                      <option value="none">None (loopback server)</option><option value="apiKey">API key</option>
+                    </select></Field>}
+                    {(preset.connectionType !== "local" || preset.authMode === "apiKey") && <Field label="API Key">
                       <input
                         type="password"
                         value={preset.apiKey}
                         onChange={(e) => updatePresetApiKey(preset.id, e.target.value)}
                         placeholder="Stored only in localStorage"
                       />
-                    </Field>
+                    </Field>}
+                    {preset.connectionType === "local" && <LocalModelSettings preset={preset} onChange={patch => updatePreset(preset.id, patch)} />}
                     <div className="grid two">
                       <Field label="Temperature">
                         <NumberInput value={preset.temperature} onChange={(temperature) => updatePreset(preset.id, { temperature })} />
@@ -373,6 +390,23 @@ export function SettingsPage({
             );
           })}
           <p className="muted" style={{ marginTop: "0.5rem" }}>API keys are not written to adventure JSON or IndexedDB saves.</p>
+          <p className="muted">Narration: {activePreset?.connectionType === "local" ? "Local" : "Online"} · {activePreset?.baseUrl || "not configured"} · {activePreset?.model || "no model"}.</p>
+          <p className="muted">Background tasks: {activeSettings.semanticEvaluationSettings.backgroundProviderConfig?.baseUrl?.trim()
+            ? `Separate endpoint · ${activeSettings.semanticEvaluationSettings.backgroundProviderConfig.baseUrl} · ${activeSettings.semanticEvaluationSettings.backgroundProviderConfig.model || activeSettings.semanticEvaluationSettings.evaluationModel || activePreset?.model || "no model"}`
+            : `Active connection · ${activeSettings.semanticEvaluationSettings.backgroundProviderConfig?.model || activeSettings.semanticEvaluationSettings.evaluationModel || activePreset?.model || "no model"}`}.
+            {activeSettings.semanticEvaluationSettings.memoryEvaluationApi === "openaiResponses" ? " Memory uses Responses; local presets require the compatible Chat API." : " Memory uses the compatible Chat API."}</p>
+          <Field label="Set background connection from a model preset"><select value="" onChange={event => {
+            if (event.target.value === "active") updateSemanticSettings({ backgroundProviderConfig: undefined, evaluationModel: "", memoryEvaluationApi: "chat" });
+            else {
+              const selected = providerPresets.find(p => p.id === event.target.value);
+              if (selected) updateSemanticSettings({ backgroundProviderConfig: { baseUrl: selected.baseUrl, model: selected.model, apiKey: selected.apiKey,
+                connectionType: selected.connectionType ?? "online", authMode: selected.authMode, localRuntime: selected.localRuntime,
+                contextWindowTokens: selected.contextWindowTokens, requestTimeoutMs: selected.requestTimeoutMs, maxOutputTokens: selected.maxOutputTokens, memoryReasoningControl: selected.memoryReasoningControl },
+                memoryEvaluationApi: selected.connectionType === "local" ? "chat" : activeSettings.semanticEvaluationSettings.memoryEvaluationApi });
+            }
+          }}><option value="">Choose… (copies settings; later preset edits are separate)</option><option value="active">Use active connection and model</option>
+            {providerPresets.map(p => <option key={p.id} value={p.id}>{p.label} ({p.connectionType ?? "online"})</option>)}
+          </select></Field>
         </article>
 
         <article className="panel settings-card settings-section-full">

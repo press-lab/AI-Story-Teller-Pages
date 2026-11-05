@@ -1,5 +1,6 @@
 import { ProviderRequestTimeoutError } from "./apiCallAccounting";
 import type { Adventure, ProviderConfig } from "../types/adventure";
+import { isLoopbackUrl, sameProviderEndpoint, validateProviderConfig } from "./providerConfig";
 
 export function isUsableProviderBaseUrl(value: string | undefined): boolean {
   const trimmed = value?.trim();
@@ -25,14 +26,24 @@ export function resolveBackgroundProviderConfig(
   providerConfig: ProviderConfig,
 ): ProviderConfig {
   const bg = adventure.semanticEvaluationSettings.backgroundProviderConfig;
+  const issue = backgroundProviderConfigIssue(adventure);
+  if (issue) throw new Error(issue);
   if (bg?.baseUrl?.trim() && isUsableProviderBaseUrl(bg.baseUrl)) {
     const baseUrl = bg.baseUrl.trim();
+    const sameEndpoint = sameProviderEndpoint(baseUrl, providerConfig.baseUrl);
+    const connectionType = bg.connectionType ?? (sameEndpoint ? providerConfig.connectionType : isLoopbackUrl(baseUrl) ? "local" : "online");
     const model = bg.model?.trim() || providerConfig.model;
     return {
       ...providerConfig,
       memoryReasoningControl: bg.memoryReasoningControl ?? (baseUrl === providerConfig.baseUrl.trim() && model === providerConfig.model ? providerConfig.memoryReasoningControl : undefined),
       baseUrl,
-      apiKey: bg.apiKey?.trim() ? bg.apiKey : providerConfig.apiKey,
+      connectionType,
+      authMode: bg.authMode ?? (sameEndpoint ? providerConfig.authMode : connectionType === "local" ? "none" : "apiKey"),
+      localRuntime: bg.localRuntime ?? (sameEndpoint ? providerConfig.localRuntime : "compatible"),
+      contextWindowTokens: bg.contextWindowTokens ?? (sameEndpoint ? providerConfig.contextWindowTokens : undefined),
+      requestTimeoutMs: bg.requestTimeoutMs ?? (sameEndpoint ? providerConfig.requestTimeoutMs : undefined),
+      maxOutputTokens: bg.maxOutputTokens ?? providerConfig.maxOutputTokens,
+      apiKey: bg.apiKey?.trim() ? bg.apiKey : sameEndpoint ? providerConfig.apiKey : undefined,
       model,
       promptCaching: baseUrl === providerConfig.baseUrl ? providerConfig.promptCaching : undefined,
     };
@@ -49,6 +60,11 @@ export function resolveBackgroundProviderConfig(
 export function resolveMemoryEvaluationProviderConfig(adventure: Adventure, active: ProviderConfig): ProviderConfig {
   if (backgroundProviderConfigIssue(adventure)) throw new MemoryEvaluationError("configuration", "memory_background_base_url_invalid", backgroundProviderConfigIssue(adventure)!);
   const config = resolveBackgroundProviderConfig(adventure, active);
+  if (config.connectionType === "local") {
+    try { validateProviderConfig(config); }
+    catch (error) { throw new MemoryEvaluationError("configuration", "memory_local_configuration_invalid", error instanceof Error ? error.message : "Correct the local provider settings."); }
+    if (adventure.semanticEvaluationSettings.memoryEvaluationApi === "openaiResponses") throw new MemoryEvaluationError("configuration", "memory_local_responses_unsupported", "Select the compatible Chat API for local memory evaluation.");
+  }
   if (!isUsableProviderBaseUrl(config.baseUrl)) throw new MemoryEvaluationError("configuration", "memory_provider_base_url_invalid", "Memory Suggestions are paused. Correct the active provider Base URL to an absolute HTTP(S) URL; no memory request was sent.");
   if (!config.model?.trim()) throw new MemoryEvaluationError("configuration", "memory_provider_model_missing",
     "Memory Suggestions are paused. Set a background evaluator Model or an active provider Model; no memory request was sent.");
@@ -69,6 +85,7 @@ export function safeMemoryFailure(error: unknown, received = false): MemoryEvalu
     "The memory request timed out. Completed work is saved. The provider may have billed this attempt; retry only when ready.", "provider_request_timed_out");
   // Read only allowlisted classifications, never arbitrary provider text, URLs or bodies.
   const message = error instanceof Error ? error.message : "";
+  if (message.startsWith("memory_reasoning_not_disabled:")) return new MemoryEvaluationError("invalid_model_output", "memory_reasoning_not_disabled", "The evaluator returned reasoning despite its configured off control. No memory result was applied.");
   const chat = /^memory_provider_http_(\d{3})_(reasoning_control|response_format|unknown_parameter):/.exec(message);
   const http = /^provider_request_failed_http_(\d{3})$/.exec(message);
   const responseCode = /^(provider_request_failed_network|provider_api_key_missing|responses_provider_configuration_invalid|provider_invalid_json|provider_response_schema_invalid|provider_response_incomplete|provider_refused|provider_empty_response|provider_request_failed_http_400_unsupported_parameter)$/.exec(message)?.[1];
