@@ -203,16 +203,19 @@ function MemoryCostSummary({ adventure }: { adventure: Adventure }) {
     <p>{summary.unknownUsage} requests with unknown usage · {summary.unpriced} requests with unpriced usage. {summary.priced ? `Estimated USD cost for ${summary.priced} priced requests: $${summary.estimatedCost.toFixed(6)}.` : "Estimated cost unavailable: no applicable verified provider/model tariff and complete cache usage."} Missing cache usage is unknown.</p>
     <p>Reasoning tokens: {summary.reasoning ?? "Unknown"}. Visible-output tokens: {summary.visibleOutput ?? "Unknown"}.</p>
     <p>Provider-reported USD cost: {summary.reportedCost === undefined ? "Unknown" : `$${summary.reportedCost.toFixed(6)}`}. Reported cost coverage: {summary.reportedCostKnown}/{summary.requests} requests.</p>
-    <table><thead><tr>{["Purpose", "Model", "Provider host", "Status", "Prompt tokens", "Cached input tokens", "Completion tokens", "Reasoning tokens", "Visible-output tokens", "Reported USD cost", "Estimated USD cost"].map(h => <th key={h}>{h}</th>)}</tr></thead><tbody>
+    <table><thead><tr>{["Purpose", "Model", "Provider host", "Status", "Prompt tokens", "Cached input tokens", "Completion tokens", "Reasoning tokens", "Visible-output tokens", "Reported USD cost", "Estimated USD cost", "HTTP seconds", "Local prompt seconds", "Local generation seconds"].map(h => <th key={h}>{h}</th>)}</tr></thead><tbody>
       {(adventure.activeState.apiCalls ?? []).map(call => {
         const u = call.usage;
         const metrics = u ?? call.partialUsage;
         const completion = u?.completionTokens ?? call.partialUsage?.outputTokens;
         const estimate = summarizeMemoryCosts([call], adventure.verifiedApiTariffs ?? []);
         return <tr key={call.id}><td>{call.purpose}{call.memoryRequest?.stage ? ` (${call.memoryRequest.stage})` : ""}</td><td>{call.responseModel ?? call.model}</td><td>{call.provider ?? "Unknown"}</td><td>{call.status}</td>
-          <td>{u?.promptTokens ?? call.partialUsage?.inputTokens ?? "Unknown"}</td><td>{metrics?.cacheReadTokens ?? "Unknown"}</td><td>{u?.completionTokens ?? call.partialUsage?.outputTokens ?? "Unknown"}</td>
+          <td>{u?.promptTokens ?? call.partialUsage?.inputTokens ?? "Unknown"}</td><td>{metrics?.cacheReadTokens ?? call.localTimings?.cachedTokens ?? "Unknown"}</td><td>{u?.completionTokens ?? call.partialUsage?.outputTokens ?? "Unknown"}</td>
           <td>{metrics?.reasoningTokens ?? "Unknown"}</td><td>{metrics?.reasoningTokens !== undefined && completion !== undefined && completion >= metrics.reasoningTokens ? completion - metrics.reasoningTokens : "Unknown"}</td>
-          <td>{metrics?.reportedCostUsd === undefined ? "Unknown" : `$${metrics.reportedCostUsd.toFixed(6)}`}</td><td>{estimate.priced ? `$${estimate.estimatedCost.toFixed(6)}` : "Unknown"}</td></tr>;
+          <td>{metrics?.reportedCostUsd === undefined ? "Unknown" : `$${metrics.reportedCostUsd.toFixed(6)}`}</td><td>{estimate.priced ? `$${estimate.estimatedCost.toFixed(6)}` : "Unknown"}</td>
+          <td>{call.elapsedMs === undefined ? "Unknown" : (call.elapsedMs / 1000).toFixed(2)}</td>
+          <td>{call.localTimings?.promptMs === undefined ? "Unknown" : (call.localTimings.promptMs / 1000).toFixed(2)}</td>
+          <td>{call.localTimings?.generationMs === undefined ? "Unknown" : (call.localTimings.generationMs / 1000).toFixed(2)}</td></tr>;
       })}
     </tbody></table>
     <p>Each batch HTTP request appears once. Continuity checks recorded before stage attribution was added remain in their historical category.</p>

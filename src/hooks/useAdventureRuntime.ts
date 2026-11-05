@@ -1,4 +1,5 @@
 import { applyResponseLengthHint } from "../providers/narrationConfig";
+import { compareLocalContexts } from "../providers/localCacheDiagnostics";
 export { applyResponseLengthHint } from "../providers/narrationConfig";
 import { paintNarrationLoading } from "./paintNarrationLoading";
 import { prepareSinglePassMemoryBatch, runSinglePassMemoryBatch } from "../memory/singlePassMemory";
@@ -199,6 +200,19 @@ export function useAdventureRuntime(
   const wasHiddenRef = useRef(false);
   const pendingRetryRef = useRef(false);
   const continueTurnRef = useRef<(() => Promise<void>) | undefined>(undefined);
+  const previousLocalContext = useRef<{ key: string; context: ContextBuildResult; comparison: ContextBuildResult["localCacheComparison"] } | undefined>(undefined);
+
+  function narrationContext(snapshot: Adventure, context: ContextBuildResult, remember = false): ContextBuildResult {
+    if (providerSettings.connectionType !== "local") return context;
+    const key = JSON.stringify([snapshot.id, providerSettings.baseUrl, providerSettings.model, providerSettings.localRuntime]);
+    const previous = previousLocalContext.current?.key === key ? previousLocalContext.current : undefined;
+    if (remember) {
+      const comparison = compareLocalContexts(previous?.context, context);
+      previousLocalContext.current = { key, context, comparison };
+      return { ...context, localCacheComparison: comparison };
+    }
+    return { ...context, localCacheComparison: previous?.comparison };
+  }
 
   useEffect(() => { adventureRef.current = adventure; }, [adventure]);
   useEffect(() => {
@@ -660,7 +674,7 @@ export function useAdventureRuntime(
   const buildPreview = useCallback(() => {
     if (!adventure) return;
     try {
-      setContextResult(buildContext({ ...adventure, memoryDetectionSettings: globalMemorySettings }, { providerConfig: mergeProviderConfig(adventure, providerSettings), latestModelOutput: latestAssistantOutput(adventure) }));
+      setContextResult(narrationContext(adventure, buildContext({ ...adventure, memoryDetectionSettings: globalMemorySettings }, { providerConfig: mergeProviderConfig(adventure, providerSettings), latestModelOutput: latestAssistantOutput(adventure) })));
     } catch (error) { setError(error instanceof Error ? error.message : "Correct the model context settings."); }
   }, [adventure, providerSettings, globalMemorySettings, setContextResult]);
 
@@ -718,7 +732,7 @@ export function useAdventureRuntime(
         sendChatCompletion: async (messages, snapshot, context) => {
           snapshotWithUserMsg = snapshot;
           publishHistorySnapshot(snapshot);
-          setContextResult(context);
+          setContextResult(narrationContext(snapshot, context, true));
           const storyConfig = applyResponseLengthHint(
             mergeProviderConfig(snapshot, providerSettings),
             snapshot.activeState.responseLengthHint,
@@ -738,7 +752,7 @@ export function useAdventureRuntime(
 
       let next = mergeQueuedUpdates(result.adventure, base);
       next = publishHistorySnapshot(next);
-      setContextResult(result.postTurnContext);
+      setContextResult(narrationContext(next, result.postTurnContext));
       await saveAdventure(next);
       setSaveStatus("saved");
       isNarratingRef.current = false;
@@ -797,7 +811,7 @@ export function useAdventureRuntime(
         providerConfig: mergeProviderConfig(base, providerSettings),
         sendChatCompletion: async (messages, snapshot, context) => {
           publishHistorySnapshot(snapshot);
-          setContextResult(context);
+          setContextResult(narrationContext(snapshot, context, true));
           const continueConfig = applyResponseLengthHint(
             mergeProviderConfig(snapshot, providerSettings),
             snapshot.activeState.responseLengthHint,
@@ -814,7 +828,7 @@ export function useAdventureRuntime(
       let next = result.adventure;
       next = mergeQueuedUpdates(next, base);
       next = publishHistorySnapshot(next);
-      setContextResult(result.postTurnContext);
+      setContextResult(narrationContext(next, result.postTurnContext));
       await saveAdventure(next);
       setSaveStatus("saved");
       isNarratingRef.current = false;
@@ -852,7 +866,7 @@ export function useAdventureRuntime(
       const historyBaseline = next;
       const lastUser = [...next.messages].reverse().find((m) => m.role === "user")?.content ?? "Continue.";
       const context = buildContext(next, { providerConfig: mergeProviderConfig(next, providerSettings), currentInput: lastUser, latestModelOutput: latestAssistantOutput(next) });
-      setContextResult(context);
+      setContextResult(narrationContext(next, context, true));
 
       const regenConfig = applyResponseLengthHint(
         mergeProviderConfig(next, providerSettings),
@@ -877,7 +891,7 @@ export function useAdventureRuntime(
       next = applied.adventure;
       next = mergeQueuedUpdates(next, historyBaseline);
       next = publishHistorySnapshot(next);
-      setContextResult(buildContext(next, { providerConfig: mergeProviderConfig(next, providerSettings), latestModelOutput: applied.responseContent }));
+      setContextResult(narrationContext(next, buildContext(next, { providerConfig: mergeProviderConfig(next, providerSettings), latestModelOutput: applied.responseContent })));
       await saveAdventure(next);
       setSaveStatus("saved");
       isNarratingRef.current = false;

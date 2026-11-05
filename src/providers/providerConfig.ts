@@ -8,6 +8,7 @@ export const localProviderDefaults = {
   name: "Local llama.cpp", baseUrl: "http://127.0.0.1:8080/v1", model: "aist-qwen",
   apiKey: "", contextWindowTokens: LOCAL_CONTEXT_WINDOW_TOKENS, requestTimeoutMs: 600_000,
   maxOutputTokens: 2048,
+  localPromptCaching: true,
   promptCaching: false, openRouterProviderSort: undefined,
   memoryReasoningControl: "auto",
 } as const;

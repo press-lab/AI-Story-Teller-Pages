@@ -4,6 +4,8 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "test:local-server": "node --test scripts/local-inference-events.test.mjs",
+    "bench:local-cache": "node scripts/benchmark-local-cache.mjs",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",

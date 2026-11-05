@@ -280,6 +280,9 @@ export function ContextPreviewPage({ adventure, dispatch, contextResult, onBuild
           <span>{allItems.length} items</span>
           {duplicates.length > 0 && <span>{duplicates.length} duplicates</span>}
         </div>
+        {result.localCacheComparison && <p className="muted">Local input comparison: {result.localCacheComparison.previousRequest
+          ? `first changed section: ${result.localCacheComparison.firstChangedSection ?? "none"}; common serialized prefix: ${result.localCacheComparison.commonPrefixCharacters} characters.`
+          : "First narration request in this session."} Server-reported cached tokens are listed with each HTTP attempt.</p>}
       </div>
 
       <div className="editor-command-bar context-preview-toolbar">
@@ -349,6 +352,10 @@ export function ContextPreviewPage({ adventure, dispatch, contextResult, onBuild
         <details><summary>Recent HTTP attempts (up to 500)</summary>
           <ul>{(adventure.activeState.apiCalls ?? []).map(call => <li key={call.id}>
             {call.startedAt} · {call.purpose} · {call.provider ?? "provider not recorded"} · {call.model} · {call.status} · {call.usage ? `${call.usage.promptTokens} prompt / ${call.usage.completionTokens} completion tokens` : "usage unknown"}
+            {call.elapsedMs !== undefined && <span> · elapsed {(call.elapsedMs / 1000).toFixed(2)}s</span>}
+            {call.localTimings && <span> · local prompt {call.localTimings.promptMs === undefined ? "unknown" : `${(call.localTimings.promptMs / 1000).toFixed(2)}s`}
+              · generation {call.localTimings.generationMs === undefined ? "unknown" : `${(call.localTimings.generationMs / 1000).toFixed(2)}s`}
+              · cached {call.localTimings.cachedTokens ?? "unknown"} · processed {call.localTimings.processedPromptTokens ?? "unknown"} tokens</span>}
             <span> {call.responseModel && ` · response model: ${call.responseModel}`} · output limit: {call.outputTokenLimit ?? "unknown"} · finish: {call.finishReason ?? "unknown"}
               · memory instruction: {call.memoryInstructionPresent === undefined ? "not recorded" : call.memoryInstructionPresent ? "sent" : "absent"}
               {call.memoryEnvelope && ` · envelope: ${call.memoryEnvelope}`}</span>

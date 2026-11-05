@@ -69,9 +69,11 @@ Existing presets keep their saved capacity. After increasing the server to 32768
 
 ## Server logging and timings
 
-The launcher prints the log location, context capacity and GPU-layer count before starting inference. Timestamped trace logging (level 4) and native performance timings are enabled by default. Model-loading details appear during startup. During requests, llama.cpp reports prompt-processing progress and elapsed time, periodic generation token counts/speed, and final prompt evaluation, generation and total request times. Native timestamps show elapsed time since server startup. These are measured processing stages, not an inferred measure of internal thinking.
+The launcher uses Node.js 20 or newer to format native server events and sample slot counters. It prints wall-clock timestamps in `timeZone` (default `America/Phoenix`). `LOADING MODEL` includes elapsed startup time until `READY`. Each assigned inference task gets `NEW REQUEST` with its native task/slot ID, then approximately five-second `PROCESSING` or `GENERATING` updates even while native output is quiet. Available processed/cached/generated token counters are included. Missing counters are omitted.
 
-Each run also writes a separate native log to `.local-model/logs/llama-server-<timestamp>-<process>.log`. This directory is ignored by Git. `logDirectory` can be an absolute path or a path relative to the application repository. `logVerbosity` defaults to `4` when missing from an older configuration; `3` shows normal information, `4` adds loading/trace detail, and `5` enables debug detail (which can include request text). Logs are plain text with colors disabled, so they remain readable in a terminal and file.
+`COMPLETE` is emitted only after native completion timings are observed. It includes observed elapsed time and reported prompt/generation/runtime timings. Elapsed server time starts when the task is assigned to a slot; AIST's HTTP elapsed time also includes client/network/queue overhead. Explicit native cancellation/errors produce `CANCELLED`/`FAILED`. A slot released without completion evidence is `INTERRUPTED`; the logger does not guess whether a disconnect, cancellation, or another interruption caused it. Inference completion does not imply AIST's story or memory validation succeeded.
+
+Formatted events are printed to the terminal and saved to `.local-model/logs/llama-server-<timestamp>-<process>.events.log`. Full native diagnostics remain in the corresponding `.log` file. Both are ignored by Git. `logDirectory` accepts an absolute path or a path relative to the application repository. `logVerbosity` must be 3–5 so task events remain observable; default 4 adds trace/cache detail. Debug level 5 can include request text in the raw log. The formatted event log stores counters/status only, not prompts or generated text.
 
 To follow the newest log in a second terminal:
 
@@ -82,6 +84,33 @@ To follow the newest log in a second terminal:
 Ctrl+C stops the viewer without stopping inference. After restarting the server, run the viewer again to follow the new log file.
 
 Restart the local server to apply logging changes. AIST does not need a frontend update for these launcher settings. The launcher still binds only to `127.0.0.1` and keeps the configured reasoning mode off.
+
+## Local prompt caching
+
+For the llama.cpp runtime profile, **Local prompt caching** sends `cache_prompt` explicitly (default on). This field is not sent to online providers or unspecified compatible servers. AIST still sends the complete current prompt; the runtime reuses only compatible cached state. Prompt content, section order, chronological message order, memory validators and approvals are unchanged.
+
+Server configuration supports:
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `promptCaching` | `true` | Server default; a request can explicitly override it |
+| `cacheRamMiB` | `8192` | Bounded saved-state RAM cache; 0 disables that pool, not all active-slot state |
+| `contextCheckpoints` | `32` | Maximum checkpoints per slot |
+| `checkpointMinTokens` | `1024` | Minimum spacing between checkpoints |
+| `timeZone` | `America/Phoenix` | Wall-clock timestamps in the formatted log |
+
+The initial measured profile keeps one inference slot and an 8 GiB saved-state cache. Saved states allow narration to resume after background work when a compatible snapshot remains available. This cache is in memory and does not survive restarting the server. Do not enable KV shifting or rearrange context sections for this model without separate compatibility/quality testing.
+
+Context Preview shows the first changed section and a common serialized-input prefix compared with the previous narration attempt in this session. This character comparison is a diagnostic, not a measured token-cache hit. Actual reported cached/processed tokens and prompt/generation/HTTP elapsed times appear with HTTP attempts. Missing metrics remain unknown. The comparison is transient and is not added to model prompts or adventure data.
+
+To reproduce the synthetic measurements on an idle local server:
+
+```powershell
+npm.cmd run bench:local-cache
+npm.cmd run test:local-server
+```
+
+The benchmark sends small synthetic inference requests (no adventure data) covering repeat, append, sliding history, card/arc/clock edits, and narration after a background request. It prints only timing/token measurements and never changes the server configuration. Use `AIST_LOCAL_API_KEY` only if your local server requires authentication. See [measured results](local-cache-benchmark.md). A clock or other early-prefix change can still force full processing. Faster input processing does not imply faster generation of each output token.
 
 ## Context and memory
 

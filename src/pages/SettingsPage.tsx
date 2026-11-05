@@ -335,6 +335,7 @@ export function SettingsPage({
                     </p>
                     {advanced && (
                       <>
+                        {preset.connectionType !== "local" && <>
                         <CheckboxField
                           label="Enable prompt caching / sticky sessions"
                           checked={preset.promptCaching ?? false}
@@ -359,6 +360,7 @@ export function SettingsPage({
                           OpenRouter's default already weighs lower price with uptime. Lowest price disables that
                           load balancing; use latency or throughput if the model is feeling slow.
                         </p>
+                        </>}
                         <h4>API Throttle</h4>
                         <CheckboxField
                           label="Enable API request throttle"
@@ -400,7 +402,7 @@ export function SettingsPage({
             else {
               const selected = providerPresets.find(p => p.id === event.target.value);
               if (selected) updateSemanticSettings({ backgroundProviderConfig: { baseUrl: selected.baseUrl, model: selected.model, apiKey: selected.apiKey,
-                connectionType: selected.connectionType ?? "online", authMode: selected.authMode, localRuntime: selected.localRuntime,
+                connectionType: selected.connectionType ?? "online", authMode: selected.authMode, localRuntime: selected.localRuntime, localPromptCaching: selected.localPromptCaching,
                 contextWindowTokens: selected.contextWindowTokens, requestTimeoutMs: selected.requestTimeoutMs, maxOutputTokens: selected.maxOutputTokens, memoryReasoningControl: selected.memoryReasoningControl },
                 memoryEvaluationApi: selected.connectionType === "local" ? "chat" : activeSettings.semanticEvaluationSettings.memoryEvaluationApi });
             }

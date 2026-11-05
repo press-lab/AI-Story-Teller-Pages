@@ -58,6 +58,7 @@ function publish(record: ApiCallRecord) {
 /** One record per actual HTTP attempt, including retries, HTTP errors and network failures.
  * No prompts, credentials, response bodies, or estimated usage are stored here. */
 export async function fetchWithAccounting(url: string, init: RequestInit, config: ProviderConfig, purpose: ApiCallPurpose) {
+  const started = performance.now();
   let body: Record<string, unknown> = {};
   try { body = JSON.parse(typeof init.body === "string" ? init.body : "{}"); } catch { /* No private request data is logged. */ }
   const requestMessages = (body.messages ?? body.input) as Array<{ content?: unknown }> | undefined;
@@ -77,8 +78,16 @@ export async function fetchWithAccounting(url: string, init: RequestInit, config
     let finishReason: string | undefined;
     let responseModel: string | undefined;
     let memoryEnvelope: ApiCallRecord["memoryEnvelope"];
+    let localTimings: ApiCallRecord["localTimings"];
     try {
       const responseBody = JSON.parse(text);
+      if (config.connectionType === "local" && config.localRuntime === "llamaCpp" && responseBody.timings) {
+        const t = responseBody.timings;
+        const metric = (value: unknown): number | undefined => typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
+        const count = (value: unknown): number | undefined => Number.isInteger(value) ? metric(value) : undefined;
+        const measured = { promptMs: metric(t.prompt_ms), generationMs: metric(t.predicted_ms), cachedTokens: count(t.cache_n), processedPromptTokens: count(t.prompt_n) };
+        if (Object.values(measured).some(value => value !== undefined)) localTimings = measured;
+      }
       const finish = responseBody.choices?.[0]?.finish_reason ?? responseBody.stop_reason ?? responseBody.status;
       finishReason = typeof finish === "string" ? finish.slice(0, 64) : undefined;
       responseModel = typeof responseBody.model === "string" ? responseBody.model.slice(0, 120) : undefined;
@@ -101,10 +110,10 @@ export async function fetchWithAccounting(url: string, init: RequestInit, config
         cacheCreationTokens: raw.cache_creation_input_tokens ?? raw.prompt_tokens_details?.cache_write_tokens,
       };
     } catch { /* Missing usage stays unknown; it is never estimated as zero consumption. */ }
-    publish({ ...record, partialUsage, httpStatus: response.status, status: response.ok ? "succeeded" : "failed", usage, finishReason, responseModel, memoryEnvelope });
+    publish({ ...record, elapsedMs: performance.now() - started, localTimings, partialUsage, httpStatus: response.status, status: response.ok ? "succeeded" : "failed", usage, finishReason, responseModel, memoryEnvelope });
     return { ok: response.ok, status: response.status, text: async () => text };
   } catch (error) {
-    publish({ ...record, status: "failed" });
+    publish({ ...record, elapsedMs: performance.now() - started, status: "failed" });
     throw error;
   }
 }

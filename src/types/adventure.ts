@@ -553,6 +553,7 @@ export interface ProviderConfig {
   authMode?: "none" | "apiKey";
   /** Local runtime profile. Custom endpoints omit llama.cpp-specific fields. */
   localRuntime?: "llamaCpp" | "compatible";
+  localPromptCaching?: boolean;
   contextWindowTokens?: number;
   requestTimeoutMs?: number;
   /** Runtime only; never credentials or prompt text. */
@@ -605,6 +606,7 @@ export interface ProviderUsage {
 }
 
 export interface BackgroundProviderConfig {
+  localPromptCaching?: boolean;
   connectionType?: ProviderConfig["connectionType"];
   authMode?: ProviderConfig["authMode"];
   localRuntime?: ProviderConfig["localRuntime"];
@@ -864,6 +866,8 @@ export interface StoryEditHistoryEntry {
 
 export type ApiCallPurpose = "narration" | "correction" | "continuityCheck" | "memoryEvaluation" | "memoryRecovery" | "otherBackground";
 export interface ApiCallRecord extends GenerationMetadata {
+  elapsedMs?: number;
+  localTimings?: { promptMs?: number; generationMs?: number; cachedTokens?: number; processedPromptTokens?: number };
   partialUsage?: Pick<ProviderUsage, "reasoningTokens" | "reportedCostUsd" | "cacheReadTokens"> & { inputTokens?: number; outputTokens?: number };
   httpStatus?: number;
   memoryRequest?: MemoryRequestAttribution;
@@ -1092,6 +1096,7 @@ export interface ChatMessage {
 }
 
 export interface ContextBuildResult {
+  localCacheComparison?: { firstChangedSection?: ContextSectionKind; commonPrefixCharacters: number; previousRequest: boolean };
   messages: ChatMessage[];
   sections: ContextSection[];
   totalEstimatedTokens: number;

@@ -10,5 +10,10 @@
   "allowedOrigin": "https://press-lab.github.io",
   "apiKeyFile": "",
   "logVerbosity": 4,
-  "logDirectory": ".local-model/logs"
+  "logDirectory": ".local-model/logs",
+  "promptCaching": true,
+  "cacheRamMiB": 8192,
+  "contextCheckpoints": 32,
+  "checkpointMinTokens": 1024,
+  "timeZone": "America/Phoenix"
 }

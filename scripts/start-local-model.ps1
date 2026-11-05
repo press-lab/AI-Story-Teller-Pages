@@ -10,7 +10,7 @@ if (-not [IO.Path]::IsPathRooted($logDirectory)) { $logDirectory = Join-Path (Sp
 $logDirectory = [IO.Path]::GetFullPath($logDirectory)
 if ($Watch) {
     if ($ValidateOnly) { throw 'Choose either -Watch or -ValidateOnly.' }
-    $latestLog = Get-ChildItem -LiteralPath $logDirectory -Filter 'llama-server-*.log' -File -ErrorAction SilentlyContinue |
+    $latestLog = Get-ChildItem -LiteralPath $logDirectory -Filter 'llama-server-*.events.log' -File -ErrorAction SilentlyContinue |
         Sort-Object Name -Descending | Select-Object -First 1
     if (-not $latestLog) { throw 'No server logs found. Start the inference server first.' }
     Write-Output "Watching $($latestLog.FullName). Ctrl+C stops this viewer, not the inference server."
@@ -45,8 +45,23 @@ if ($serverPath -eq 'auto') {
 if (-not (Test-Path -LiteralPath $serverPath -PathType Leaf)) { throw 'serverExecutable was not found.' }
 if (-not $config.requiredVersion) { throw 'Set requiredVersion to the tested llama.cpp build commit.' }
 $logVerbosity = if ($null -eq $config.logVerbosity) { 4 } else { $config.logVerbosity }
-if ($logVerbosity -lt 0 -or $logVerbosity -gt 5 -or $logVerbosity -ne [int]$logVerbosity) { throw 'logVerbosity must be an integer from 0 to 5 (4 = trace, 5 = debug).' }
+if ($logVerbosity -lt 3 -or $logVerbosity -gt 5 -or $logVerbosity -ne [int]$logVerbosity) { throw 'Live progress requires logVerbosity from 3 to 5 (4 = trace, 5 = debug).' }
 $logFile = Join-Path $logDirectory ("llama-server-{0}-{1}.log" -f (Get-Date -Format 'yyyyMMdd-HHmmss-fff'), $PID)
+$eventLog = $logFile -replace '\.log$', '.events.log'
+$cachePrompt = if ($null -eq $config.promptCaching) { $true } else { $config.promptCaching }
+if ($cachePrompt -isnot [bool]) { throw 'promptCaching must be true or false.' }
+$cacheRam = if ($null -eq $config.cacheRamMiB) { 8192 } else { $config.cacheRamMiB }
+$checkpoints = if ($null -eq $config.contextCheckpoints) { 32 } else { $config.contextCheckpoints }
+$checkpointStep = if ($null -eq $config.checkpointMinTokens) { 1024 } else { $config.checkpointMinTokens }
+foreach ($setting in @(@{Name='cacheRamMiB';Value=$cacheRam;Max=32768}, @{Name='contextCheckpoints';Value=$checkpoints;Max=64}, @{Name='checkpointMinTokens';Value=$checkpointStep;Max=32768})) {
+    if (($setting.Value -isnot [int] -and $setting.Value -isnot [long]) -or $setting.Value -lt 0 -or $setting.Value -gt $setting.Max) { throw "$($setting.Name) must be an integer from 0 to $($setting.Max)." }
+}
+$nodeCommand = Get-Command node.exe -ErrorAction SilentlyContinue
+if (-not $nodeCommand) { throw 'Node.js 20 or newer is required for live inference progress. Install Node.js or add it to PATH.' }
+$nodePath = $nodeCommand.Source
+$nodeMajor = & $nodePath -p 'process.versions.node.split(".")[0]'
+if ($LASTEXITCODE -ne 0 -or [int]$nodeMajor -lt 20) { throw 'Node.js 20 or newer is required for live inference progress.' }
+$timeZone = if ($config.timeZone) { [string]$config.timeZone } else { 'America/Phoenix' }
 $versionText = (& $serverPath --version 2>&1 | Out-String)
 if ($LASTEXITCODE -ne 0 -or -not $versionText.Contains([string]$config.requiredVersion)) { throw 'llama-server version does not match requiredVersion. Use the pinned build or validate a replacement before updating the configuration.' }
 $serverArgs = @('--model', $config.modelPath, '--alias', $config.modelAlias,
@@ -55,6 +70,8 @@ $serverArgs = @('--model', $config.modelPath, '--alias', $config.modelAlias,
     '--cors-origins', $config.allowedOrigin, '--no-cors-credentials', '--reasoning', 'off', '--jinja', '--no-agent',
     '--log-verbosity', [string]$logVerbosity, '--log-prefix', '--log-timestamps', '--log-colors', 'off',
     '--log-file', $logFile, '--perf')
+$serverArgs += @($(if ($cachePrompt) { '--cache-prompt' } else { '--no-cache-prompt' }), '--cache-ram', [string]$cacheRam,
+    '--ctx-checkpoints', [string]$checkpoints, '--checkpoint-min-step', [string]$checkpointStep, '--cache-idle-slots')
 if ($config.apiKeyFile) {
     if (-not (Test-Path -LiteralPath $config.apiKeyFile -PathType Leaf)) { throw 'apiKeyFile was not found.' }
     $serverArgs += @('--api-key-file', $config.apiKeyFile)
@@ -66,6 +83,8 @@ Write-Output "Allowed browser origin: $($config.allowedOrigin)"
 Write-Output "Context: $($config.contextTokens) tokens; GPU layers: $($config.gpuLayers)"
 Write-Output "Logging: verbosity $logVerbosity; timestamps and performance timings enabled"
 Write-Output "Log file: $logFile"
+Write-Output "Live events: $eventLog (timestamps in $timeZone; updates every 5 seconds)"
+Write-Output "Cache default: $cachePrompt; saved-state RAM limit: $cacheRam MiB; checkpoints: $checkpoints; minimum spacing: $checkpointStep tokens"
 if ($ValidateOnly) { return }
 $portProbe = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, [int]$config.port)
 $portProbe.Server.ExclusiveAddressUse = $true
@@ -80,7 +99,7 @@ $serverStopwatch = [Diagnostics.Stopwatch]::StartNew()
 $savedEnvironment = @(Get-ChildItem Env: | Where-Object { $_.Name -like 'LLAMA_*' })
 try {
     foreach ($entry in $savedEnvironment) { Remove-Item -LiteralPath "Env:$($entry.Name)" }
-    & $serverPath @serverArgs
+    & $nodePath (Join-Path $PSScriptRoot 'local-inference-runner.mjs') $serverPath (ConvertTo-Json -InputObject @($serverArgs) -Compress) $eventLog $timeZone
     if ($LASTEXITCODE -ne 0) { throw "Local server exited with code $LASTEXITCODE." }
 } finally {
     $serverStopwatch.Stop()

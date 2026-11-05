@@ -40,6 +40,7 @@ export function resolveBackgroundProviderConfig(
       connectionType,
       authMode: bg.authMode ?? (sameEndpoint ? providerConfig.authMode : connectionType === "local" ? "none" : "apiKey"),
       localRuntime: bg.localRuntime ?? (sameEndpoint ? providerConfig.localRuntime : "compatible"),
+      localPromptCaching: bg.localPromptCaching ?? (sameEndpoint ? providerConfig.localPromptCaching : undefined),
       contextWindowTokens: bg.contextWindowTokens ?? (sameEndpoint ? providerConfig.contextWindowTokens : undefined),
       requestTimeoutMs: bg.requestTimeoutMs ?? (sameEndpoint ? providerConfig.requestTimeoutMs : undefined),
       maxOutputTokens: bg.maxOutputTokens ?? providerConfig.maxOutputTokens,

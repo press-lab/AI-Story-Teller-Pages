@@ -9,6 +9,8 @@ import { sendOpenAIMemoryResponse } from "./openAIMemoryResponses";
 import { buildContext } from "../contextBuilder/contextBuilder";
 import { fetchWithAccounting, ProviderRequestTimeoutError } from "./apiCallAccounting";
 import { adventureReducer } from "../state/adventureReducer";
+import { subscribeApiCalls } from "./apiCallAccounting";
+import type { ApiCallRecord } from "../types/adventure";
 
 const local = { ...defaultModelConfig, ...localProviderDefaults, maxOutputTokens: 256 };
 const messages = [{ role: "user" as const, content: "Hello." }];
@@ -35,6 +37,7 @@ it("sends no credentials or cloud routing fields, disables thinking and prevents
   expect(init.headers).not.toHaveProperty("Authorization");
   const body = JSON.parse(init.body);
   expect(body.chat_template_kwargs).toEqual({ enable_thinking: false });
+  expect(body.cache_prompt).toBe(true);
   expect(body).not.toHaveProperty("thinking"); expect(body).not.toHaveProperty("provider"); expect(body).not.toHaveProperty("session_id");
   expect(result.usage?.totalTokens).toBe(13);
 });
@@ -49,6 +52,32 @@ it("does not send runtime-specific fields to another compatible local server", a
   const fetch = vi.fn().mockResolvedValue(response()); vi.stubGlobal("fetch", fetch);
   await sendOpenAICompatibleChatCompletion({ config: { ...local, localRuntime: "compatible" }, messages, thinking: "disabled" });
   expect(JSON.parse(fetch.mock.calls[0][1].body)).not.toHaveProperty("chat_template_kwargs");
+  expect(JSON.parse(fetch.mock.calls[0][1].body)).not.toHaveProperty("cache_prompt");
+});
+it("supports disabling local caching without sending that option to online providers", async () => {
+  const fetch = vi.fn().mockImplementation(async () => response()); vi.stubGlobal("fetch", fetch);
+  await sendOpenAICompatibleChatCompletion({ config: { ...local, localPromptCaching: false }, messages });
+  expect(JSON.parse(fetch.mock.calls[0][1].body).cache_prompt).toBe(false);
+  await sendOpenAICompatibleChatCompletion({ config: { ...local, connectionType: "online", apiKey: "cloud", authMode: "apiKey", baseUrl: "https://example.test/v1" }, messages });
+  expect(JSON.parse(fetch.mock.calls[1][1].body)).not.toHaveProperty("cache_prompt");
+});
+it("records validated local cache/timing counters and leaves missing metrics unknown", async () => {
+  const records: ApiCallRecord[] = []; const stop = subscribeApiCalls(record => records.push(record));
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ choices: [{ message: { content: "Ready." } }], timings: { prompt_ms: 120, predicted_ms: 80, cache_n: 250, prompt_n: 40 } }))));
+  try {
+    await sendOpenAICompatibleChatCompletion({ config: local, messages });
+    expect(records.at(-1)?.localTimings).toEqual({ promptMs: 120, generationMs: 80, cachedTokens: 250, processedPromptTokens: 40 });
+    expect(records.at(-1)?.elapsedMs).toBeGreaterThanOrEqual(0);
+    expect(records.at(-1)?.usage).toBeUndefined();
+  } finally { stop(); }
+});
+it("does not treat malformed local measurements as zero or valid cache hits", async () => {
+  const records: ApiCallRecord[] = []; const stop = subscribeApiCalls(record => records.push(record));
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ choices: [{ message: { content: "Ready." } }], timings: { prompt_ms: "12", predicted_ms: -1, cache_n: 0.5, prompt_n: null } }))));
+  try {
+    await sendOpenAICompatibleChatCompletion({ config: local, messages });
+    expect(records.at(-1)?.localTimings).toBeUndefined();
+  } finally { stop(); }
 });
 it("discovers model IDs without inference, duplicates, credentials or redirects", async () => {
   const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: [{ id: "aist-qwen" }, { id: "aist-qwen" }, { id: 9 }] })));

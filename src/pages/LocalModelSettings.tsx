@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ProviderPreset } from "./pageTypes";
 import { LOCAL_CONTEXT_WINDOW_TOKENS } from "../providers/providerConfig";
-import { Field, NumberInput } from "./shared";
+import { CheckboxField, Field, NumberInput } from "./shared";
 import { discoverLocalModels } from "../providers/localProvider";
 import { sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
 
@@ -53,6 +53,10 @@ export function LocalModelSettings({ preset, onChange }: { preset: ProviderPrese
         <option value="compatible">Other OpenAI-compatible server (no runtime-specific fields)</option>
       </select>
     </Field>
+    {preset.localRuntime === "llamaCpp" && <>
+      <CheckboxField label="Local prompt caching" checked={preset.localPromptCaching ?? true} onChange={localPromptCaching => onChange({ localPromptCaching })} />
+      <p className="muted">Reuses an identical prompt prefix when the server has a compatible cached state. Sliding history and earlier context edits can reduce reuse. RAM limits and checkpoints are configured in the server launcher.</p>
+    </>}
     <div className="grid two">
       <Field label="Server context capacity (tokens)"><NumberInput min={1024} value={preset.contextWindowTokens ?? LOCAL_CONTEXT_WINDOW_TOKENS} onChange={contextWindowTokens => onChange({ contextWindowTokens })} /></Field>
       <Field label="Request timeout (seconds)"><NumberInput min={1} max={3600} value={(preset.requestTimeoutMs ?? 600_000) / 1000} onChange={seconds => onChange({ requestTimeoutMs: seconds * 1000 })} /></Field>

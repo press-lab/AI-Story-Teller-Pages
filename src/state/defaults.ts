@@ -485,6 +485,7 @@ export function persistedBackgroundProviderConfig(
     ...(config.connectionType ? { connectionType: config.connectionType } : {}),
     ...(config.authMode ? { authMode: config.authMode } : {}),
     ...(config.localRuntime ? { localRuntime: config.localRuntime } : {}),
+    ...(config.localPromptCaching !== undefined ? { localPromptCaching: config.localPromptCaching } : {}),
     ...(config.contextWindowTokens !== undefined ? { contextWindowTokens: config.contextWindowTokens } : {}),
     ...(config.requestTimeoutMs !== undefined ? { requestTimeoutMs: config.requestTimeoutMs } : {}),
     ...(config.maxOutputTokens !== undefined ? { maxOutputTokens: config.maxOutputTokens } : {}),

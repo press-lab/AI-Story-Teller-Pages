@@ -262,6 +262,7 @@ async function sendOpenAIRequestOnce(
       body: JSON.stringify({
         model: config.model,
         messages: outMessages,
+        ...(config.connectionType === "local" && config.localRuntime === "llamaCpp" ? { cache_prompt: config.localPromptCaching ?? true } : {}),
         temperature: config.temperature,
         max_tokens: config.maxOutputTokens + reasoningReserveTokens,
         ...(config.topP !== undefined ? { top_p: config.topP } : {}),
