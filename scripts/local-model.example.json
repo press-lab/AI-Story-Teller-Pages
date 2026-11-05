@@ -5,7 +5,7 @@
   "modelAlias": "aist-qwen",
   "host": "127.0.0.1",
   "port": 8080,
-  "contextTokens": 8192,
+  "contextTokens": 32768,
   "gpuLayers": 0,
   "allowedOrigin": "https://press-lab.github.io",
   "apiKeyFile": ""

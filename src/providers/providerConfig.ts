@@ -2,10 +2,11 @@ import type { ChatMessage, ProviderConfig } from "../types/adventure";
 import { approximateTokenCount } from "../tokenizer/approximateTokenCount";
 
 export const LOCAL_CONTEXT_MARGIN = 512;
+export const LOCAL_CONTEXT_WINDOW_TOKENS = 32768;
 export const localProviderDefaults = {
   connectionType: "local", localRuntime: "llamaCpp", authMode: "none",
   name: "Local llama.cpp", baseUrl: "http://127.0.0.1:8080/v1", model: "aist-qwen",
-  apiKey: "", contextWindowTokens: 8192, requestTimeoutMs: 600_000,
+  apiKey: "", contextWindowTokens: LOCAL_CONTEXT_WINDOW_TOKENS, requestTimeoutMs: 600_000,
   promptCaching: false, openRouterProviderSort: undefined,
   memoryReasoningControl: "auto",
 } as const;
@@ -56,7 +57,7 @@ export function providerAuthHeaders(config: ProviderConfig): Record<string, stri
 
 /** The existing adventure budget counts prompt tokens, excluding generated output. */
 export function localPromptBudget(config: ProviderConfig): number {
-  const capacity = config.contextWindowTokens ?? 8192;
+  const capacity = config.contextWindowTokens ?? LOCAL_CONTEXT_WINDOW_TOKENS;
   if (!Number.isInteger(capacity) || capacity < 1024 || !Number.isInteger(config.maxOutputTokens) || config.maxOutputTokens < 1) {
     throw new Error("Set a valid local context capacity (at least 1024 tokens) and positive output limit.");
   }

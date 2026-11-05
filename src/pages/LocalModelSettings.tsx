@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { ProviderPreset } from "./pageTypes";
+import { LOCAL_CONTEXT_WINDOW_TOKENS } from "../providers/providerConfig";
 import { Field, NumberInput } from "./shared";
 import { discoverLocalModels } from "../providers/localProvider";
 import { sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
@@ -53,7 +54,7 @@ export function LocalModelSettings({ preset, onChange }: { preset: ProviderPrese
       </select>
     </Field>
     <div className="grid two">
-      <Field label="Server context capacity (tokens)"><NumberInput min={1024} value={preset.contextWindowTokens ?? 8192} onChange={contextWindowTokens => onChange({ contextWindowTokens })} /></Field>
+      <Field label="Server context capacity (tokens)"><NumberInput min={1024} value={preset.contextWindowTokens ?? LOCAL_CONTEXT_WINDOW_TOKENS} onChange={contextWindowTokens => onChange({ contextWindowTokens })} /></Field>
       <Field label="Request timeout (seconds)"><NumberInput min={1} max={3600} value={(preset.requestTimeoutMs ?? 600_000) / 1000} onChange={seconds => onChange({ requestTimeoutMs: seconds * 1000 })} /></Field>
     </div>
     <p className="muted">Context capacity must match the server. AIST reserves the output limit plus a 512-token margin. Local endpoints are restricted to this device: 127.0.0.1, localhost, or [::1]. No online fallback is used.</p>

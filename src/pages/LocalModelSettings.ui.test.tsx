@@ -65,5 +65,5 @@ it("persists background local capabilities but excludes both provider keys", () 
   const persisted = sanitizeAdventureForPersistence(a);
   expect(JSON.stringify(persisted)).not.toContain("local-secret");
   expect(JSON.stringify(persisted)).not.toContain("background-secret");
-  expect(persisted.semanticEvaluationSettings.backgroundProviderConfig).toMatchObject({ connectionType: "local", localRuntime: "llamaCpp", contextWindowTokens: 8192 });
+  expect(persisted.semanticEvaluationSettings.backgroundProviderConfig).toMatchObject({ connectionType: "local", localRuntime: "llamaCpp", contextWindowTokens: 32768 });
 });

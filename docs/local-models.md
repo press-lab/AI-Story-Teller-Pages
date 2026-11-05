@@ -31,7 +31,7 @@ Set these fields:
 | `modelAlias` | Stable API model ID, initially `aist-qwen` |
 | `host` | Must remain `127.0.0.1` |
 | `port` | Initially `8080`; change if occupied |
-| `contextTokens` | Initially `8192`; must match the AIST preset |
+| `contextTokens` | Initially `32768`; must match the AIST preset |
 | `gpuLayers` | Initially `0` for CPU inference; tune after checking available VRAM |
 | `allowedOrigin` | Exact HTTPS origin, initially `https://press-lab.github.io`, without a repository path or trailing slash |
 | `apiKeyFile` | Optional private file containing a local server key; leave empty for no authentication |
@@ -55,7 +55,7 @@ The CPU baseline favors a predictable initial setup. A large model can be slow. 
 
 1. Open the deployed GitHub Pages application on the same PC.
 2. Open Settings, select **Add Model**, then **Local (this device)**.
-3. Set Base URL to `http://127.0.0.1:8080/v1`, Model to `aist-qwen`, and context capacity to `8192` (or your server's values).
+3. Set Base URL to `http://127.0.0.1:8080/v1`, Model to `aist-qwen`, and context capacity to `32768` (or your server's values).
 4. Select the llama.cpp/Qwen runtime profile. This sends `chat_template_kwargs.enable_thinking=false`. The launcher also starts with reasoning disabled. The model's template must honor these controls.
 5. Use no authentication unless you configured `apiKeyFile`. If configured, select API key and enter that key. Never reuse a cloud provider key.
 6. Select **Test Connection / Refresh Models**. Permit local network access if the browser asks. Select a discovered model or retain manual entry.
@@ -64,6 +64,8 @@ The CPU baseline favors a predictable initial setup. A large model can be slow. 
 9. Check the narration and background routing shown below the model list. To run all background tasks on the active local connection, choose **Use active connection and model**. Existing overrides are preserved until you change them.
 
 Selecting or adding a model makes no test request automatically. Tests are cancellable and their status resets when the configuration changes. Settings and keys are stored in this browser's localStorage. API keys are excluded from adventure exports and IndexedDB. Model paths stay in the launcher configuration.
+
+Existing presets keep their saved capacity. After increasing the server to 32768 tokens, update the saved Local preset's context capacity to 32768 too. With a 2048-token output limit, 30208 tokens remain for the prompt after the safety margin. To use that space, set the adventure's Context Budget → Max Context Tokens to 30208; a smaller authored budget still takes precedence.
 
 ## Context and memory
 

@@ -96,8 +96,9 @@ it("caps context building without changing saved budgets and refuses oversized p
   a = adventureReducer(a, { type: "ADD_MESSAGE", role: "assistant", content: "Old story. ".repeat(4000) });
   a = adventureReducer(a, { type: "ADD_MESSAGE", role: "user", content: "Continue." });
   const budget = a.tokenBudgetSettings.maxContextTokens;
-  const context = buildContext(a, { providerConfig: local });
-  expect(context.totalEstimatedTokens).toBeLessThanOrEqual(localPromptBudget(local));
+  const smallerWindow = { ...local, contextWindowTokens: 8192 };
+  const context = buildContext(a, { providerConfig: smallerWindow });
+  expect(context.totalEstimatedTokens).toBeLessThanOrEqual(localPromptBudget(smallerWindow));
   expect(a.tokenBudgetSettings.maxContextTokens).toBe(budget);
   const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
   await expect(sendOpenAICompatibleChatCompletion({ config: local, messages: [{ role: "system", content: "Protected. ".repeat(20_000) }] })).rejects.toThrow("exceeds the configured context");
