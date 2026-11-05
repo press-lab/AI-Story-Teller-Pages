@@ -12,4 +12,3 @@ export function applyResponseLengthHint<T extends ProviderConfig>(config: T, hin
     : lengthBoundedCap;
   return { ...config, maxOutputTokens: Math.min(configuredCap, lengthBoundedCap) };
 }
-

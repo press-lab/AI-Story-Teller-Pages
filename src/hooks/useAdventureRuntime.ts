@@ -71,7 +71,6 @@ function mergeProviderConfig(adventure: Adventure, settings: RuntimeProviderSett
   return { ...adventure.modelConfig, ...settings, apiKey: settings.apiKey, sessionId };
 }
 
-
 function hiddenOutputReserveTokens(context: ContextBuildResult): number {
   return context.sections.some(s => s.items.some(i => i.id === ONE_PASS_MEMORY_ID)) ? MEMORY_OUTPUT_RESERVE : 0;
 }
