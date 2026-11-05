@@ -5,7 +5,7 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AUTHORING_SECTIONS, CHATGPT_AUTHORING_INSTRUCTIONS } from "../ai/authoringPolicy";
+import { AUTHORING_SECTIONS, AUTHORING_WORKFLOW_SECTIONS, CHATGPT_AUTHORING_INSTRUCTIONS } from "../ai/authoringPolicy";
 import { HelpPage } from "./HelpPage";
 
 describe("HelpPage documentation UI", () => {
@@ -82,8 +82,16 @@ describe("HelpPage documentation UI", () => {
       expect(topic.getByRole("heading", { name: section.title })).toBeInTheDocument();
       for (const paragraph of section.text.split("\n")) expect(topic.getByText(paragraph, { exact: true })).toBeInTheDocument();
     }
+    for (const section of AUTHORING_WORKFLOW_SECTIONS) {
+      const topic = within(document.getElementById(`authoring-${section.id}`)!);
+      expect(topic.getByRole("heading", { name: section.title })).toBeInTheDocument();
+      for (const paragraph of section.text.split("\n")) expect(topic.getByText(paragraph, { exact: true, selector: ".docs-body p" })).toBeInTheDocument();
+    }
     await user.type(screen.getByLabelText(/search docs/i), "non-durable continuity");
     expect(screen.getByRole("link", { name: "User-directed continuity anchors" })).toBeInTheDocument();
+    await user.clear(screen.getByLabelText(/search docs/i));
+    await user.type(screen.getByLabelText(/search docs/i), "order of authority");
+    expect(screen.getByRole("link", { name: "Order of authority" })).toBeInTheDocument();
   });
 
   it("copies the complete prompt and reports clipboard success and failure", async () => {

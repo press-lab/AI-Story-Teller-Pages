@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from "react";
 
-import { AUTHORING_SECTIONS, CHATGPT_AUTHORING_INSTRUCTIONS } from "../ai/authoringPolicy";
+import { AUTHORING_SECTIONS, AUTHORING_WORKFLOW_SECTIONS, CHATGPT_AUTHORING_INSTRUCTIONS } from "../ai/authoringPolicy";
 
 interface DocTopic {
   id: string;
@@ -18,6 +18,14 @@ const topics: DocTopic[] = [
     category: "Authoring Standards",
     summary: section.text,
     tags: ["authoring", "create", "edit", section.title.toLowerCase()],
+    body: <>{section.text.split("\n").map((paragraph, index) => <p key={index}>{paragraph}</p>)}</>,
+  })),
+  ...AUTHORING_WORKFLOW_SECTIONS.map((section): DocTopic => ({
+    id: `authoring-${section.id}`,
+    title: section.title,
+    category: "Authoring Workflow",
+    summary: section.text,
+    tags: ["authoring", "workflow", "edit", "continuation", section.title.toLowerCase()],
     body: <>{section.text.split("\n").map((paragraph, index) => <p key={index}>{paragraph}</p>)}</>,
   })),
   {

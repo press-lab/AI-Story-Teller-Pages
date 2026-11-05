@@ -1,4 +1,4 @@
-import { AUTHORING_SECTIONS, AUTHORING_STANDARDS, CHATGPT_AUTHORING_INSTRUCTIONS } from "./authoringPolicy";
+import { AUTHORING_SECTIONS, AUTHORING_WORKFLOW_SECTIONS, AUTHORING_STANDARDS, CHATGPT_AUTHORING_INSTRUCTIONS } from "./authoringPolicy";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
 import type { ProviderConfig } from "../types/adventure";
@@ -129,6 +129,9 @@ describe("runAdventureGen", () => {
     expect(CHATGPT_AUTHORING_INSTRUCTIONS).toContain("exactly two operations: CREATE and EDIT");
     expect(CHATGPT_AUTHORING_INSTRUCTIONS).toContain("Auditing is part of EDIT");
     expect(CHATGPT_AUTHORING_INSTRUCTIONS).toContain("supporting evidence");
+    for (const section of AUTHORING_WORKFLOW_SECTIONS) expect(CHATGPT_AUTHORING_INSTRUCTIONS).toContain(section.text);
+    for (const section of AUTHORING_WORKFLOW_SECTIONS) expect(prompt).not.toContain(section.text);
+    expect(CHATGPT_AUTHORING_INSTRUCTIONS).toContain("is an EDIT of the source followed by a CREATE");
     expect(prompt).toContain("Every newly generated Character card must include a useful, recognizable physical description");
     for (const field of ["Rhythm:", "Default move:", "Emotional defense:", "Never sounds like:", "Example lines:"]) expect(prompt).toContain(field);
     expect(prompt).toContain("Three representative lines");
