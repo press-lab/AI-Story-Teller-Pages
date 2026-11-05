@@ -6,6 +6,7 @@
   "scripts": {
     "test:local-server": "node --test scripts/local-inference-events.test.mjs",
     "bench:local-cache": "node scripts/benchmark-local-cache.mjs",
+    "bench:local-throughput": "node scripts/benchmark-local-throughput.mjs",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",

@@ -32,7 +32,8 @@ Set these fields:
 | `host` | Must remain `127.0.0.1` |
 | `port` | Initially `8080`; change if occupied |
 | `contextTokens` | Initially `32768`; must match the AIST preset |
-| `gpuLayers` | Initially `0` for CPU inference; tune after checking available VRAM |
+| `gpuLayers` | Initially `auto`; use available GPU memory automatically, or set a non-negative layer count (`0` = CPU) |
+| `gpuMemoryMarginMiB` | Initially `1024`; reserve this GPU memory margin during fitting (256 to 8192 MiB) |
 | `allowedOrigin` | Exact HTTPS origin, initially `https://press-lab.github.io`, without a repository path or trailing slash |
 | `apiKeyFile` | Optional private file containing a local server key; leave empty for no authentication |
 
@@ -49,7 +50,7 @@ Keep the terminal running. Ctrl+C stops the server. Changing the weights path or
 
 The `.cmd` entry point finds PowerShell 7 on PATH, in its normal installation directory, or in the existing Codex runtime. The legacy `powershell.exe` has script execution disabled on the development PC. No execution-policy or firewall changes are needed. You can also run `pwsh -NoProfile -File scripts/start-local-model.ps1` directly from a PowerShell 7 installation.
 
-The CPU baseline favors a predictable initial setup. A large model can be slow. GPU offload and larger context windows consume additional memory; tune them separately. Disk file size is not a RAM/VRAM estimate.
+Automatic GPU fitting uses the installed backend and available VRAM while keeping the configured context capacity as the fitting minimum. Numeric layer counts remain supported, including 0 for CPU inference. A large model can require a CPU/GPU split. Disk file size is not a complete RAM/VRAM estimate. See [GPU performance measurements](local-gpu-performance.md).
 
 ## Configure AIST
 

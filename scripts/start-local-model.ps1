@@ -21,7 +21,9 @@ if ($config.host -ne '127.0.0.1') { throw 'Only host 127.0.0.1 is allowed. This 
 if ($config.port -isnot [long] -and $config.port -isnot [int]) { throw 'port must be an integer.' }
 if ($config.port -lt 1024 -or $config.port -gt 65535) { throw 'port must be between 1024 and 65535.' }
 if ($config.contextTokens -lt 1024 -or $config.contextTokens -ne [int]$config.contextTokens) { throw 'contextTokens must be an integer of at least 1024.' }
-if ($config.gpuLayers -lt 0 -or $config.gpuLayers -ne [int]$config.gpuLayers) { throw 'gpuLayers must be a non-negative integer.' }
+if ($config.gpuLayers -ne 'auto' -and (($config.gpuLayers -isnot [int] -and $config.gpuLayers -isnot [long]) -or $config.gpuLayers -lt 0)) { throw 'gpuLayers must be auto or a non-negative integer (0 = CPU).' }
+$gpuMargin = if ($null -eq $config.gpuMemoryMarginMiB) { 1024 } else { $config.gpuMemoryMarginMiB }
+if (($gpuMargin -isnot [int] -and $gpuMargin -isnot [long]) -or $gpuMargin -lt 256 -or $gpuMargin -gt 8192) { throw 'gpuMemoryMarginMiB must be an integer from 256 to 8192.' }
 if ($config.modelAlias -notmatch '^[a-zA-Z0-9_.-]+$') { throw 'Use letters, digits, dots, hyphens or underscores for modelAlias.' }
 $origin = $null
 if (-not [Uri]::TryCreate($config.allowedOrigin, [UriKind]::Absolute, [ref]$origin) -or
@@ -67,6 +69,7 @@ if ($LASTEXITCODE -ne 0 -or -not $versionText.Contains([string]$config.requiredV
 $serverArgs = @('--model', $config.modelPath, '--alias', $config.modelAlias,
     '--host', '127.0.0.1', '--port', [string]$config.port,
     '--ctx-size', [string]$config.contextTokens, '--parallel', '1', '--n-gpu-layers', [string]$config.gpuLayers,
+    '--fit', 'on', '--fit-target', [string]$gpuMargin, '--fit-ctx', [string]$config.contextTokens,
     '--cors-origins', $config.allowedOrigin, '--no-cors-credentials', '--reasoning', 'off', '--jinja', '--no-agent',
     '--log-verbosity', [string]$logVerbosity, '--log-prefix', '--log-timestamps', '--log-colors', 'off',
     '--log-file', $logFile, '--perf')
@@ -81,6 +84,7 @@ Write-Output "Model: $($config.modelPath)"
 Write-Output "Configured address: http://127.0.0.1:$($config.port)/v1 (this PC only; wait for the server's listening message)"
 Write-Output "Allowed browser origin: $($config.allowedOrigin)"
 Write-Output "Context: $($config.contextTokens) tokens; GPU layers: $($config.gpuLayers)"
+Write-Output "GPU memory margin: $gpuMargin MiB; automatic fitting keeps the configured context capacity"
 Write-Output "Logging: verbosity $logVerbosity; timestamps and performance timings enabled"
 Write-Output "Log file: $logFile"
 Write-Output "Live events: $eventLog (timestamps in $timeZone; updates every 5 seconds)"
