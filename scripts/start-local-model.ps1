@@ -1,9 +1,22 @@
 param(
     [string]$ConfigPath = (Join-Path $PSScriptRoot 'local-model.local.json'),
-    [switch]$ValidateOnly
+    [switch]$ValidateOnly,
+    [switch]$Watch
 )
 $ErrorActionPreference = 'Stop'
 $config = Get-Content -LiteralPath $ConfigPath -Raw | ConvertFrom-Json
+$logDirectory = if ($config.logDirectory) { [string]$config.logDirectory } else { '.local-model/logs' }
+if (-not [IO.Path]::IsPathRooted($logDirectory)) { $logDirectory = Join-Path (Split-Path $PSScriptRoot -Parent) $logDirectory }
+$logDirectory = [IO.Path]::GetFullPath($logDirectory)
+if ($Watch) {
+    if ($ValidateOnly) { throw 'Choose either -Watch or -ValidateOnly.' }
+    $latestLog = Get-ChildItem -LiteralPath $logDirectory -Filter 'llama-server-*.log' -File -ErrorAction SilentlyContinue |
+        Sort-Object Name -Descending | Select-Object -First 1
+    if (-not $latestLog) { throw 'No server logs found. Start the inference server first.' }
+    Write-Output "Watching $($latestLog.FullName). Ctrl+C stops this viewer, not the inference server."
+    Get-Content -LiteralPath $latestLog.FullName -Tail 40 -Wait
+    return
+}
 if ($config.host -ne '127.0.0.1') { throw 'Only host 127.0.0.1 is allowed. This launcher does not expose the server to other devices.' }
 if ($config.port -isnot [long] -and $config.port -isnot [int]) { throw 'port must be an integer.' }
 if ($config.port -lt 1024 -or $config.port -gt 65535) { throw 'port must be between 1024 and 65535.' }
@@ -31,21 +44,38 @@ if ($serverPath -eq 'auto') {
 }
 if (-not (Test-Path -LiteralPath $serverPath -PathType Leaf)) { throw 'serverExecutable was not found.' }
 if (-not $config.requiredVersion) { throw 'Set requiredVersion to the tested llama.cpp build commit.' }
+$logVerbosity = if ($null -eq $config.logVerbosity) { 4 } else { $config.logVerbosity }
+if ($logVerbosity -lt 0 -or $logVerbosity -gt 5 -or $logVerbosity -ne [int]$logVerbosity) { throw 'logVerbosity must be an integer from 0 to 5 (4 = trace, 5 = debug).' }
+$logFile = Join-Path $logDirectory ("llama-server-{0}-{1}.log" -f (Get-Date -Format 'yyyyMMdd-HHmmss-fff'), $PID)
 $versionText = (& $serverPath --version 2>&1 | Out-String)
 if ($LASTEXITCODE -ne 0 -or -not $versionText.Contains([string]$config.requiredVersion)) { throw 'llama-server version does not match requiredVersion. Use the pinned build or validate a replacement before updating the configuration.' }
 $serverArgs = @('--model', $config.modelPath, '--alias', $config.modelAlias,
     '--host', '127.0.0.1', '--port', [string]$config.port,
     '--ctx-size', [string]$config.contextTokens, '--parallel', '1', '--n-gpu-layers', [string]$config.gpuLayers,
-    '--cors-origins', $config.allowedOrigin, '--no-cors-credentials', '--reasoning', 'off', '--jinja', '--no-agent')
+    '--cors-origins', $config.allowedOrigin, '--no-cors-credentials', '--reasoning', 'off', '--jinja', '--no-agent',
+    '--log-verbosity', [string]$logVerbosity, '--log-prefix', '--log-timestamps', '--log-colors', 'off',
+    '--log-file', $logFile, '--perf')
 if ($config.apiKeyFile) {
     if (-not (Test-Path -LiteralPath $config.apiKeyFile -PathType Leaf)) { throw 'apiKeyFile was not found.' }
     $serverArgs += @('--api-key-file', $config.apiKeyFile)
 }
 Write-Output "Verified runtime: $($versionText.Trim())"
 Write-Output "Model: $($config.modelPath)"
-Write-Output "Listening address: http://127.0.0.1:$($config.port)/v1 (this PC only)"
+Write-Output "Configured address: http://127.0.0.1:$($config.port)/v1 (this PC only; wait for the server's listening message)"
 Write-Output "Allowed browser origin: $($config.allowedOrigin)"
+Write-Output "Context: $($config.contextTokens) tokens; GPU layers: $($config.gpuLayers)"
+Write-Output "Logging: verbosity $logVerbosity; timestamps and performance timings enabled"
+Write-Output "Log file: $logFile"
 if ($ValidateOnly) { return }
+$portProbe = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, [int]$config.port)
+$portProbe.Server.ExclusiveAddressUse = $true
+try { $portProbe.Start() }
+catch { throw "127.0.0.1:$($config.port) is already in use. Stop the existing inference server before starting another copy." }
+finally { $portProbe.Stop() }
+New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null
+Write-Output "Startup begins: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss zzz')"
+Write-Output 'Watch for model loading details, then the listening message. Requests print prompt processing progress, generation speed and total timings.'
+$serverStopwatch = [Diagnostics.Stopwatch]::StartNew()
 # Prevent inherited llama.cpp environment options from enabling unrelated services or tools.
 $savedEnvironment = @(Get-ChildItem Env: | Where-Object { $_.Name -like 'LLAMA_*' })
 try {
@@ -53,5 +83,7 @@ try {
     & $serverPath @serverArgs
     if ($LASTEXITCODE -ne 0) { throw "Local server exited with code $LASTEXITCODE." }
 } finally {
+    $serverStopwatch.Stop()
+    Write-Output ("Server session ended after {0:N1} seconds. Log saved to {1}" -f $serverStopwatch.Elapsed.TotalSeconds, $logFile)
     foreach ($entry in $savedEnvironment) { Set-Item -LiteralPath "Env:$($entry.Name)" -Value $entry.Value }
 }

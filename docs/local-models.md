@@ -45,7 +45,7 @@ Validate without starting, then run:
 .\scripts\start-local-model.cmd
 ```
 
-Keep the terminal running. Ctrl+C stops the server. Changing the weights path or runtime configuration requires restarting it. Do not start another instance on the same port. The launcher does not stop existing inference processes.
+Keep the terminal running. Ctrl+C stops the server. Changing the weights path or runtime configuration requires restarting it. The launcher checks whether the loopback port is occupied and refuses to start another copy on that port. It does not stop existing inference processes.
 
 The `.cmd` entry point finds PowerShell 7 on PATH, in its normal installation directory, or in the existing Codex runtime. The legacy `powershell.exe` has script execution disabled on the development PC. No execution-policy or firewall changes are needed. You can also run `pwsh -NoProfile -File scripts/start-local-model.ps1` directly from a PowerShell 7 installation.
 
@@ -66,6 +66,22 @@ The CPU baseline favors a predictable initial setup. A large model can be slow. 
 Selecting or adding a model makes no test request automatically. Tests are cancellable and their status resets when the configuration changes. Settings and keys are stored in this browser's localStorage. API keys are excluded from adventure exports and IndexedDB. Model paths stay in the launcher configuration.
 
 Existing presets keep their saved capacity. After increasing the server to 32768 tokens, update the saved Local preset's context capacity to 32768 too. With a 2048-token output limit, 30208 tokens remain for the prompt after the safety margin. To use that space, set the adventure's Context Budget → Max Context Tokens to 30208; a smaller authored budget still takes precedence.
+
+## Server logging and timings
+
+The launcher prints the log location, context capacity and GPU-layer count before starting inference. Timestamped trace logging (level 4) and native performance timings are enabled by default. Model-loading details appear during startup. During requests, llama.cpp reports prompt-processing progress and elapsed time, periodic generation token counts/speed, and final prompt evaluation, generation and total request times. Native timestamps show elapsed time since server startup. These are measured processing stages, not an inferred measure of internal thinking.
+
+Each run also writes a separate native log to `.local-model/logs/llama-server-<timestamp>-<process>.log`. This directory is ignored by Git. `logDirectory` can be an absolute path or a path relative to the application repository. `logVerbosity` defaults to `4` when missing from an older configuration; `3` shows normal information, `4` adds loading/trace detail, and `5` enables debug detail (which can include request text). Logs are plain text with colors disabled, so they remain readable in a terminal and file.
+
+To follow the newest log in a second terminal:
+
+```powershell
+.\scripts\start-local-model.cmd -Watch
+```
+
+Ctrl+C stops the viewer without stopping inference. After restarting the server, run the viewer again to follow the new log file.
+
+Restart the local server to apply logging changes. AIST does not need a frontend update for these launcher settings. The launcher still binds only to `127.0.0.1` and keeps the configured reasoning mode off.
 
 ## Context and memory
 

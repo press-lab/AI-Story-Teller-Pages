@@ -8,5 +8,7 @@
   "contextTokens": 32768,
   "gpuLayers": 0,
   "allowedOrigin": "https://press-lab.github.io",
-  "apiKeyFile": ""
+  "apiKeyFile": "",
+  "logVerbosity": 4,
+  "logDirectory": ".local-model/logs"
 }
