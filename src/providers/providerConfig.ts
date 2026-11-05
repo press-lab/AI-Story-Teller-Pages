@@ -7,6 +7,7 @@ export const localProviderDefaults = {
   connectionType: "local", localRuntime: "llamaCpp", authMode: "none",
   name: "Local llama.cpp", baseUrl: "http://127.0.0.1:8080/v1", model: "aist-qwen",
   apiKey: "", contextWindowTokens: LOCAL_CONTEXT_WINDOW_TOKENS, requestTimeoutMs: 600_000,
+  maxOutputTokens: 2048,
   promptCaching: false, openRouterProviderSort: undefined,
   memoryReasoningControl: "auto",
 } as const;
@@ -62,7 +63,7 @@ export function localPromptBudget(config: ProviderConfig): number {
     throw new Error("Set a valid local context capacity (at least 1024 tokens) and positive output limit.");
   }
   const available = capacity - config.maxOutputTokens - LOCAL_CONTEXT_MARGIN;
-  if (available < 256) throw new Error("Local context capacity must leave at least 256 prompt tokens after output and the 512-token safety margin.");
+  if (available < 256) throw new Error(`Local context capacity ${capacity} minus output limit ${config.maxOutputTokens} and the 512-token safety margin leaves ${available} prompt tokens; at least 256 are required. Check the active preset or separate background provider's context and output settings.`);
   return available;
 }
 

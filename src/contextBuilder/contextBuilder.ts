@@ -20,6 +20,8 @@ import { storyCardContextContent } from "../memory/storyCardPolicy";
 import { dedupeThoughtRecord } from "../memory/thoughtDedupe";
 import { approximateTokenCount } from "../tokenizer/approximateTokenCount";
 import { localPromptBudget } from "../providers/providerConfig";
+import { applyResponseLengthHint } from "../providers/narrationConfig";
+import { MEMORY_OUTPUT_RESERVE, ONE_PASS_MEMORY_ID } from "../memory/onePassMemory";
 import type { ProviderConfig } from "../types/adventure";
 import { matchPatterns } from "../triggers/matching";
 
@@ -658,8 +660,12 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
     section("recentMessages", "K. Recent Messages", 11, recentMessageItems),
   ]);
 
-  const budget = options.providerConfig?.connectionType === "local"
-    ? Math.min(budgetSettings.maxContextTokens, localPromptBudget(options.providerConfig))
+  const narrationConfig = options.providerConfig?.connectionType === "local"
+    ? applyResponseLengthHint(options.providerConfig, adventure.activeState.responseLengthHint,
+      sections.some(s => s.items.some(i => i.id === ONE_PASS_MEMORY_ID)) ? MEMORY_OUTPUT_RESERVE : 0)
+    : options.providerConfig;
+  const budget = narrationConfig?.connectionType === "local"
+    ? Math.min(budgetSettings.maxContextTokens, localPromptBudget(narrationConfig))
     : budgetSettings.maxContextTokens;
 
   const isDroppable = (sectionId: ContextSectionKind, entry: ContextItem): boolean => {

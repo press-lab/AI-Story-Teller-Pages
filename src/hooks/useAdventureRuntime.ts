@@ -1,3 +1,5 @@
+import { applyResponseLengthHint } from "../providers/narrationConfig";
+export { applyResponseLengthHint } from "../providers/narrationConfig";
 import { paintNarrationLoading } from "./paintNarrationLoading";
 import { prepareSinglePassMemoryBatch, runSinglePassMemoryBatch } from "../memory/singlePassMemory";
 import { validateSinglePassSource } from "../memory/singlePassMemoryValidation";
@@ -69,16 +71,6 @@ function mergeProviderConfig(adventure: Adventure, settings: RuntimeProviderSett
   return { ...adventure.modelConfig, ...settings, apiKey: settings.apiKey, sessionId };
 }
 
-export function applyResponseLengthHint(config: RuntimeProviderSettings, hint: number, hiddenReserveTokens = 0): RuntimeProviderSettings {
-  const wordTarget = Number.isFinite(hint) ? Math.max(50, Math.min(500, Math.round(hint))) : 250;
-  const visibleTokenCap = Math.ceil(wordTarget * 1.5) + 80;
-  const hiddenReserve = Math.max(0, Math.min(MEMORY_OUTPUT_RESERVE, Math.ceil(hiddenReserveTokens)));
-  const lengthBoundedCap = visibleTokenCap + hiddenReserve;
-  const configuredCap = Number.isFinite(config.maxOutputTokens) && config.maxOutputTokens > 0
-    ? config.maxOutputTokens
-    : lengthBoundedCap;
-  return { ...config, maxOutputTokens: Math.min(configuredCap, lengthBoundedCap) };
-}
 
 function hiddenOutputReserveTokens(context: ContextBuildResult): number {
   return context.sections.some(s => s.items.some(i => i.id === ONE_PASS_MEMORY_ID)) ? MEMORY_OUTPUT_RESERVE : 0;

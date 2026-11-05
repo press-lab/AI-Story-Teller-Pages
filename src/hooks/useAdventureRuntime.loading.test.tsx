@@ -9,6 +9,7 @@ import { sendOpenAICompatibleChatCompletion } from "../providers/openAICompatibl
 import { PlayPage } from "../pages/PlayPage";
 import { useAdventureRuntime } from "./useAdventureRuntime";
 import type { Adventure } from "../types/adventure";
+import type { RuntimeProviderSettings } from "../pages/pageTypes";
 
 vi.mock("../db/adventureDb", () => ({ saveAdventure: vi.fn(async () => undefined) }));
 vi.mock("../providers/openAICompatible", () => ({ sendOpenAICompatibleChatCompletion: vi.fn() }));
@@ -37,7 +38,7 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
-function Harness() {
+function Harness({ provider = { ...defaultModelConfig, apiKey: "test" } }: { provider?: RuntimeProviderSettings } = {}) {
   const [adventure, setAdventure] = useState<Adventure | undefined>(() => {
     const initial = createDefaultAdventure("Loading feedback");
     initial.memoryDetectionSettings.enabled = false;
@@ -47,7 +48,7 @@ function Harness() {
     ];
     return initial;
   });
-  const runtime = useAdventureRuntime(adventure, setAdventure, { ...defaultModelConfig, apiKey: "test" },
+  const runtime = useAdventureRuntime(adventure, setAdventure, provider,
     () => {}, () => {}, () => {}, async () => {}, adventure!.memoryDetectionSettings);
   return <><button onClick={() => setAdventure(createDefaultAdventure("Other adventure"))}>Switch adventure</button><PlayPage adventure={adventure!} dispatch={() => {}} loading={runtime.loading} error={runtime.error}
     saveStatus="saved" onSubmitTurn={runtime.submitTurn} onContinue={runtime.continueTurn}
@@ -62,6 +63,25 @@ async function frame() {
     callbacks.forEach(callback => callback(performance.now()));
   });
 }
+
+it.each(["Action", "Continue", "Retry"])("local %s budgets with the actual story output cap before sending", async kind => {
+  let finish!: (response: { content: string; raw: object }) => void;
+  vi.mocked(sendOpenAICompatibleChatCompletion).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+  render(<Harness provider={{ ...defaultModelConfig, connectionType: "local", localRuntime: "llamaCpp", authMode: "none",
+    apiKey: "", baseUrl: "http://127.0.0.1:8080/v1", model: "aist-qwen", contextWindowTokens: 32768, maxOutputTokens: 32768 }} />);
+  if (kind === "Action") {
+    fireEvent.change(screen.getByPlaceholderText("What does your character do?"), { target: { value: "I inspect the courtyard." } });
+    fireEvent.click(screen.getByTitle("Send"));
+  } else fireEvent.click(screen.getByRole("button", { name: kind }));
+  await frame(); await frame();
+  expect(sendOpenAICompatibleChatCompletion).toHaveBeenCalledTimes(1);
+  const sent = vi.mocked(sendOpenAICompatibleChatCompletion).mock.calls[0][0].config;
+  expect(sent.maxOutputTokens).toBeLessThanOrEqual(830);
+  expect(sent.contextWindowTokens).toBe(32768);
+  await act(async () => finish({ raw: {}, content: "A breeze stirs the leaves beside the courtyard wall. A distant bell rings twice, and a guard steps into view, watching the gate with a thoughtful expression." }));
+  expect(screen.queryByText(/Local context capacity/)).toBeNull();
+  expect(screen.queryByLabelText("Generating…")).toBeNull();
+});
 
 it.each(["Action", "Continue", "Retry"])("%s commits the dots before preparation, context, and provider work", async kind => {
   let finish!: (response: { content: string; raw: object }) => void;

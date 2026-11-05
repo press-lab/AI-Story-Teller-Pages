@@ -9,7 +9,7 @@ import { defaultGlobalAdventureSettings, defaultUiPreferences, type ProviderPres
 import { defaultModelConfig, sanitizeAdventureForPersistence, createDefaultAdventure } from "../state/defaults";
 import { localProviderDefaults } from "../providers/providerConfig";
 
-const online: ProviderPreset = { ...defaultModelConfig, id: "online", label: "My online model", apiKey: "cloud-key" };
+const online: ProviderPreset = { ...defaultModelConfig, id: "online", label: "My online model", apiKey: "cloud-key", maxOutputTokens: 32768 };
 const local: ProviderPreset = { ...online, ...localProviderDefaults, id: "local", label: "Local Qwen" };
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
@@ -27,7 +27,7 @@ it("adds a local preset without changing online credentials or making requests, 
   fireEvent.click(screen.getByRole("button", { name: "Local (this device)" }));
   const created = changed.mock.calls.at(-1)![0] as ProviderPreset[];
   expect(created[0]).toEqual(online);
-  expect(created[1]).toMatchObject({ connectionType: "local", authMode: "none", model: "aist-qwen", apiKey: "", baseUrl: "http://127.0.0.1:8080/v1" });
+  expect(created[1]).toMatchObject({ connectionType: "local", authMode: "none", model: "aist-qwen", apiKey: "", baseUrl: "http://127.0.0.1:8080/v1", maxOutputTokens: 2048 });
   expect(screen.queryByLabelText("API Key")).not.toBeInTheDocument();
   fireEvent.change(screen.getByLabelText("Server context capacity (tokens)"), { target: { value: "16384" } });
   expect(changed.mock.calls.at(-1)![0][1].contextWindowTokens).toBe(16384);

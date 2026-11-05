@@ -69,7 +69,9 @@ Existing presets keep their saved capacity. After increasing the server to 32768
 
 ## Context and memory
 
-The adventure's prompt budget is capped by the local context capacity minus the configured output limit and a 512-token margin. Context assembly keeps the existing section order and protected content rules. A final request check refuses oversized prompts; it does not silently delete protected content. Counts are estimates, and a server can still report an exact-token overflow.
+For narration and Context Preview, the prompt budget is capped by the local context capacity minus the actual story output limit and a 512-token margin. The actual output limit uses the existing story-length cap, bounded by the preset maximum, with a hidden-envelope reserve when applicable. A large saved output maximum therefore does not reserve the entire window for a short story turn. Background tasks validate their own output limits. New Local presets start with a 2048-token output maximum rather than inheriting an online preset's value.
+
+Context assembly keeps the existing section order and protected content rules. A final request check refuses oversized prompts; it does not silently delete protected content. Counts are estimates, and a server can still report an exact-token overflow. Configuration errors show the actual capacity, output limit, and remaining prompt space.
 
 Background overrides never inherit a key from a different endpoint. A copied background preset is a snapshot: later preset edits do not automatically update it. Existing background settings remain available under Advanced settings.
 
