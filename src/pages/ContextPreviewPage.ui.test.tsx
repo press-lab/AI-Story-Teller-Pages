@@ -47,6 +47,24 @@ describe("ContextPreviewPage condense", () => {
     cleanup();
   });
 
+  it("copies the displayed context payload and reports clipboard failures", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
+    const adventure = createDefaultAdventure("Copy Test");
+    const displayed = buildContext(adventure);
+    displayed.messages = [{ role: "system", content: "Full displayed context\nwith another line." }];
+    render(<ContextPreviewPage adventure={adventure} dispatch={vi.fn()} contextResult={displayed} onBuildContext={vi.fn()} />);
+
+    await user.click(screen.getByRole("button", { name: "Copy context" }));
+    expect(writeText).toHaveBeenCalledWith(JSON.stringify(displayed.messages, null, 2));
+    expect(screen.getByRole("status")).toHaveTextContent("Context copied.");
+
+    writeText.mockRejectedValueOnce(new Error("Permission denied"));
+    await user.click(screen.getByRole("button", { name: "Copy context" }));
+    expect(screen.getByRole("status")).toHaveTextContent("Could not copy context.");
+    writeText.mockRestore();
+  });
+
   it("updates compact Story Card context immediately after accepting a condensed draft", async () => {
     const user = userEvent.setup();
     const card = makeStoryCard({

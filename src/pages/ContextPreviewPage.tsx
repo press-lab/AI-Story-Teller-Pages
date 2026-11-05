@@ -146,6 +146,7 @@ interface ContextPreviewPageProps extends AdventurePageProps {
 
 export function ContextPreviewPage({ adventure, dispatch, contextResult, onBuildContext, providerConfig }: ContextPreviewPageProps) {
   const [preferLivePreview, setPreferLivePreview] = useState(false);
+  const [copyStatus, setCopyStatus] = useState("");
   const result = preferLivePreview ? buildContext(adventure) : (contextResult ?? buildContext(adventure));
   const duplicates = detectDuplicateContent(result.sections);
 
@@ -274,6 +275,17 @@ export function ContextPreviewPage({ adventure, dispatch, contextResult, onBuild
       </div>
 
       <div className="editor-command-bar context-preview-toolbar">
+        <button type="button" onClick={async () => {
+          try {
+            await navigator.clipboard.writeText(JSON.stringify(result.messages, null, 2));
+            setCopyStatus("Context copied.");
+          } catch {
+            setCopyStatus("Could not copy context. Check clipboard permission and try again.");
+          }
+        }}>
+          Copy context
+        </button>
+        <span role="status">{copyStatus}</span>
         <button
           type="button"
           onClick={() => {
