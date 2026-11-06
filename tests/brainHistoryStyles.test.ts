@@ -10,10 +10,13 @@ const cssBlock = (selector: string) => {
 };
 
 describe("brain thought history styles", () => {
-  it("keeps clickable memory rows wrapped and compact", () => {
+  it("keeps clickable memory rows wrapped and readable in the page flow", () => {
     const listStyles = cssBlock(".brain-history-list");
     expect(listStyles).toContain("display: flex");
     expect(listStyles).toContain("flex-direction: column");
+    // No inner scroll box: it trapped touch scrolling on mobile.
+    expect(listStyles).toContain("max-height: none");
+    expect(listStyles).toContain("overflow: visible");
 
     const entryStyles = cssBlock(".brain-history-entry");
     expect(entryStyles).toContain("flex: 0 0 auto");
@@ -26,8 +29,9 @@ describe("brain thought history styles", () => {
 
     const textStyles = cssBlock(".brain-history-text");
     expect(textStyles).toContain("display: block");
-    expect(textStyles).toContain("overflow: hidden");
-    expect(textStyles).toContain("max-height: calc(1.45em * 2)");
+    // Full thought text is shown; it used to be clipped mid-line at two lines.
+    expect(textStyles).toContain("overflow: visible");
+    expect(textStyles).toContain("max-height: none");
     expect(textStyles).toContain("white-space: normal");
   });
 });

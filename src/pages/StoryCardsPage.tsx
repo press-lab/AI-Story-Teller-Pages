@@ -7,7 +7,7 @@ import { storyCardContextContent } from "../memory/storyCardPolicy";
 import { makeStoryCard } from "../state/defaults";
 import { approximateTokenCount } from "../tokenizer/approximateTokenCount";
 import type { AdventurePageProps } from "./pageTypes";
-import { CheckboxField, Field, Highlight, MemoryUpdateHistory, NumberInput, TokenCountBadge, UpdatedAtBadge, commaList, contentSnippet, formatCompactTimestamp, fromCommaList } from "./shared";
+import { AutoGrowTextarea, CheckboxField, Field, Highlight, MemoryUpdateHistory, NumberInput, TokenCountBadge, UpdatedAtBadge, commaList, contentSnippet, formatCompactTimestamp, fromCommaList } from "./shared";
 
 const TYPE_ORDER: StoryCardType[] = [...PRIMARY_STORY_CARD_TYPES];
 const matchTypes: TriggerMatchType[] = ["keyword", "phrase", "regex"];
@@ -61,8 +61,8 @@ function CardSummary({ card, query }: { card: StoryCard; query: string }) {
         {!card.active && <span className="badge badge-inactive">Inactive</span>}
         {card.pinned && <span className="badge badge-pinned">Pinned</span>}
         {card.protected && <span className="badge badge-protected">Protected</span>}
-        {card.priority > 0 && <span className="badge badge-priority">p{card.priority}</span>}
-        {card.keys.length > 0 && <span className="badge badge-priority">{card.keys.length} triggers</span>}
+        {card.priority > 0 && <span className="badge badge-priority" title={`Priority ${card.priority} (higher = loaded first)`}>p{card.priority}</span>}
+        {card.keys.length > 0 && <span className="badge badge-priority">{card.keys.length} trigger{card.keys.length === 1 ? "" : "s"}</span>}
         {archivedCount > 0 && <span className="badge badge-priority">{archivedCount} archived</span>}
         <TokenCountBadge count={tokenEstimate} title="Estimated tokens in live card content" />
         <UpdatedAtBadge value={card.updatedAt} />
@@ -686,23 +686,8 @@ export function StoryCardsPage({
                 </summary>
 
                 <div className="editor-card item-inspector story-card-inspector">
-                  <div className="panel-heading item-inspector-heading">
-                    <div>
-                      <p className="eyebrow">
-                        {card.active ? "active" : "inactive"} · {TYPE_LABELS[card.type]}
-                      </p>
-                      <h3>{card.title || "Untitled Card"}</h3>
-                      <div className="item-tag-row" aria-label="Story card triggers">
-                        {card.keys.length === 0 && <span className="item-tag muted">Title trigger only</span>}
-                        {card.keys.map((key) => (
-                          <span key={key} className="item-tag">{key}</span>
-                        ))}
-                      </div>
-                    </div>
-                    <button type="button" className="danger" onClick={() => dispatch({ type: "DELETE_STORY_CARD", storyCardId: card.id })}>
-                      Delete
-                    </button>
-                  </div>
+                  {/* The summary row above already shows title, type and triggers; no repeated heading here. */}
+                  {!card.active && <p className="eyebrow">Inactive — not sent to the storyteller</p>}
                   <div className="grid three story-card-primary-fields">
                     <Field label="Title">
                       <input
@@ -758,7 +743,7 @@ export function StoryCardsPage({
                     </div>
                   <LoreChronologyEditor card={card} dispatch={dispatch} messages={adventure.messages} />
                   <Field label="Content">
-                    <textarea
+                    <AutoGrowTextarea
                       rows={6}
                       value={card.content}
                       onChange={(event) => dispatch({ type: "UPDATE_STORY_CARD", storyCardId: card.id, patch: { content: event.target.value } })}
@@ -891,11 +876,21 @@ export function StoryCardsPage({
                     <button type="button" onClick={() => dispatch({ type: "REORDER_STORY_CARD", storyCardId: card.id, direction: "down" })}>
                       Move Down
                     </button>
-                    <button type="button" className="danger" onClick={() => dispatch({ type: "DELETE_STORY_CARD", storyCardId: card.id })}>
-                      Delete
-                    </button>
                   </div>
                   </details>
+                  <div className="item-danger-row">
+                    <button
+                      type="button"
+                      className="danger"
+                      onClick={() => {
+                        if (window.confirm(`Delete Story Card “${card.title || "Untitled Card"}”?`)) {
+                          dispatch({ type: "DELETE_STORY_CARD", storyCardId: card.id });
+                        }
+                      }}
+                    >
+                      Delete card
+                    </button>
+                  </div>
                 </div>
               </details>
             ))}

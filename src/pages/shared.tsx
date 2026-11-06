@@ -1,4 +1,4 @@
-import type { ChangeEvent } from "react";
+import { useLayoutEffect, useRef, type ChangeEvent, type TextareaHTMLAttributes } from "react";
 import type { MemoryUpdateHistoryEntry, MemoryUpdateSnapshot } from "../types/adventure";
 
 export function Field({
@@ -60,6 +60,37 @@ export function NumberInput({
       onChange={(event) => onChange(Number(event.target.value))}
     />
   );
+}
+
+/**
+ * Textarea that grows to fit its text so long card/brain content is read by
+ * scrolling the page, not a small inner box (which traps touch scrolling on
+ * mobile). `rows` is the minimum height.
+ */
+export function AutoGrowTextarea({ value, rows = 4, className, ...props }: TextareaHTMLAttributes<HTMLTextAreaElement> & { value: string }) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    const resize = () => {
+      // Hidden (collapsed <details>) textareas report 0; skip until visible.
+      if (element.offsetParent === null) return;
+      element.style.height = "auto";
+      element.style.height = `${element.scrollHeight + 2}px`;
+    };
+    resize();
+    if (typeof ResizeObserver === "undefined") return;
+    // Re-fit when width changes (rotation, panel resize) or when it becomes visible.
+    let lastWidth = element.clientWidth;
+    const observer = new ResizeObserver(() => {
+      if (element.clientWidth === lastWidth && element.style.height) return;
+      lastWidth = element.clientWidth;
+      resize();
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [value]);
+  return <textarea {...props} ref={ref} rows={rows} value={value} className={["auto-grow-textarea", className].filter(Boolean).join(" ")} />;
 }
 
 export function JsonTextarea<T>({

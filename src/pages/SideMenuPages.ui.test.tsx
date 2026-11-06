@@ -427,16 +427,18 @@ describe("side menu page smoke coverage", () => {
     await user.clear(currentText);
     await user.type(currentText, "4 -> Edited current thought.");
     await user.click(screen.getByRole("button", { name: "Save thought" }));
-    expect(screen.getAllByText("4 -> Edited current thought.")).toHaveLength(2);
-    expect(screen.queryByText("4 -> I am watching the ward for cracks.")).not.toBeInTheDocument();
+    // The stored "4 -> " prefix is shown as a "Turn 4" label beside the text.
+    expect(screen.getAllByText("Edited current thought.")).toHaveLength(2);
+    expect(screen.getAllByText("Turn 4").length).toBeGreaterThan(0);
+    expect(screen.queryByText("I am watching the ward for cracks.")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Edit archived thought turn_1" }));
     const archivedText = screen.getByLabelText("Thought text (turn_1)");
     await user.clear(archivedText);
     await user.type(archivedText, "1 -> Edited archived thought.");
     await user.click(screen.getByRole("button", { name: "Save thought" }));
-    expect(screen.getByText("1 -> Edited archived thought.")).toBeInTheDocument();
-    expect(screen.queryByText("1 -> The first read was too simple.")).not.toBeInTheDocument();
+    expect(screen.getByText("Edited archived thought.")).toBeInTheDocument();
+    expect(screen.queryByText("The first read was too simple.")).not.toBeInTheDocument();
   });
 
   it("shows update timestamps on editor item summaries", () => {

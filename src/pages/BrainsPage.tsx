@@ -4,7 +4,7 @@ import { dedupeThoughtRecord } from "../memory/thoughtDedupe";
 import { makeBrain } from "../state/defaults";
 import { approximateTokenCount } from "../tokenizer/approximateTokenCount";
 import type { AdventurePageProps } from "./pageTypes";
-import { CheckboxField, Field, Highlight, NumberInput, TokenCountBadge, UpdatedAtBadge, commaList, fromCommaList } from "./shared";
+import { AutoGrowTextarea, CheckboxField, Field, Highlight, NumberInput, TokenCountBadge, UpdatedAtBadge, commaList, fromCommaList } from "./shared";
 import { useEffect, useState } from "react";
 import { orderedBrains } from "../state/brainOrder";
 import { suggestionSourceValid } from "../memory/storyCardSuggestions";
@@ -66,6 +66,22 @@ function brainThoughtEntries(thoughts: Record<string, string>): Array<[string, s
     .reverse()
     .filter(([, value]) => value.trim())
     .sort((a, b) => thoughtTurnValue(b[0], b[1]) - thoughtTurnValue(a[0], a[1]));
+}
+
+/**
+ * Thoughts are stored as "30 → text" (or legacy "turn0 → text"). Show the turn
+ * as a small label instead of a raw prefix. Display only; stored text is unchanged.
+ */
+function ThoughtText({ value, query = "" }: { value: string; query?: string }) {
+  const match = value.match(/^\s*(?:turn\s*)?(\d+)\s*(?:→|->)\s*([\s\S]*)$/i);
+  if (!match) return <Highlight text={value} query={query} />;
+  return (
+    <>
+      <span className="thought-turn">Turn {match[1]}</span>
+      <span className="visually-hidden"> → </span>
+      <Highlight text={match[2]} query={query} />
+    </>
+  );
 }
 
 function previewThoughts(content: string): Record<string, string> {
@@ -165,7 +181,7 @@ function BrainThoughtHistory({
                 </span>
               </div>
               <Field label={`Thought text (${entry.key})`}>
-                <textarea
+                <AutoGrowTextarea
                   rows={4}
                   value={draft}
                   onChange={(event) => setDraft(event.target.value)}
@@ -222,7 +238,7 @@ function BrainThoughtHistory({
                 {entry.state}
               </span>
             </span>
-            <span className="brain-history-text">{entry.value}</span>
+            <span className="brain-history-text"><ThoughtText value={entry.value} /></span>
           </article>
         );
       })}
@@ -246,7 +262,7 @@ function BrainSummary({ adventure, brain, query }: { adventure: Adventure; brain
         {brain.pinned && <span className="badge badge-pinned">Pinned</span>}
         {brain.protected && <span className="badge badge-protected">Protected</span>}
         {brain.priority > 0 && <span className="badge badge-priority">p{brain.priority}</span>}
-        {thoughtCount > 0 && <span className="badge badge-priority">{thoughtCount} thoughts</span>}
+        {thoughtCount > 0 && <span className="badge badge-priority">{thoughtCount} thought{thoughtCount === 1 ? "" : "s"}</span>}
         {archivedCount > 0 && <span className="badge badge-priority">{archivedCount} archived</span>}
         <TokenCountBadge count={tokenEstimate} title="Estimated tokens in live brain thoughts" />
         <UpdatedAtBadge value={brain.updatedAt} />
@@ -257,7 +273,7 @@ function BrainSummary({ adventure, brain, query }: { adventure: Adventure; brain
         </span>
       )}
       {latestThought.text && <span className="search-snippet brain-summary-thought" title={latestThought.text}>
-        {latestThought.pending && "Pending approval: "}<Highlight text={latestThought.text} query={query} />
+        {latestThought.pending && "Pending approval: "}<ThoughtText value={latestThought.text} query={query} />
       </span>}
     </span>
   );
@@ -473,23 +489,12 @@ export function BrainsPage({ adventure, dispatch, loading, onUpdateBrainNow, onA
             </summary>
             <div className="editor-card brain-inspector">
               <p className="muted">The evaluator can group several meaningful developments before it generates a Brain update. The global memory interval and this Brain’s cooldown both affect eligibility.</p>
+            {/* The summary row above already shows name, status and aliases; no repeated heading here. */}
             <div className="panel-heading brain-inspector-heading">
-              <div>
-                <p className="eyebrow">{brain.active ? "active" : "inactive"}{brain.pinned ? " · pinned" : ""}</p>
-                <h3>{brain.characterName || "Unnamed"}</h3>
-                <div className="brain-tag-row" aria-label="Character aliases">
-                  {brain.triggers.length === 0 && <span className="brain-tag muted">No aliases</span>}
-                  {brain.triggers.map((trigger) => (
-                    <span key={trigger} className="brain-tag">{trigger}</span>
-                  ))}
-                </div>
-              </div>
+              {!brain.active && <p className="eyebrow">Inactive — not sent to the storyteller</p>}
               <div className="row">
                 <button type="button" disabled={loading} onClick={() => onUpdateBrainNow(brain.id)}>
                   Update Now
-                </button>
-                <button type="button" className="danger" onClick={() => dispatch({ type: "DELETE_BRAIN", brainId: brain.id })}>
-                  Delete
                 </button>
               </div>
             </div>
@@ -540,7 +545,7 @@ export function BrainsPage({ adventure, dispatch, loading, onUpdateBrainNow, onA
               <details className="brain-inline-details">
                 <summary>Edit current thoughts</summary>
                 <Field label="Thoughts (key: turnN -> first-person observation, one per line)">
-                  <textarea
+                  <AutoGrowTextarea
                     rows={4}
                     value={formatThoughts(brain.thoughts)}
                     onChange={(event) => dispatch({ type: "UPDATE_BRAIN", brainId: brain.id, patch: { thoughts: parseThoughts(event.target.value) } })}
@@ -574,7 +579,7 @@ export function BrainsPage({ adventure, dispatch, loading, onUpdateBrainNow, onA
             </div>
             </details>
             <Field label="Notes (manual freetext — not injected into context)">
-              <textarea
+              <AutoGrowTextarea
                 rows={3}
                 value={brain.notes}
                 placeholder="Personal notes about this character — for your reference only."
@@ -673,6 +678,19 @@ export function BrainsPage({ adventure, dispatch, loading, onUpdateBrainNow, onA
               </div>
             </details>
 
+            <div className="item-danger-row">
+              <button
+                type="button"
+                className="danger"
+                onClick={() => {
+                  if (window.confirm(`Delete character “${brain.characterName || "Unnamed"}”?`)) {
+                    dispatch({ type: "DELETE_BRAIN", brainId: brain.id });
+                  }
+                }}
+              >
+                Delete character
+              </button>
+            </div>
             </div>
           </details>
         ))}
