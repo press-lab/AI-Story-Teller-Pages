@@ -83,19 +83,19 @@ describe("Story Card skill policy", () => {
   ])("never establishes a completed fact or identity change from %s", async text => {
     const state = await play(text, [finding(text)], seed(true));
     expect(proposals(state).length).toBeGreaterThan(0);
-    expect(proposals(state).every(p => p.status === "pending" && p.storyCardReview?.candidateOnly)).toBe(true);
+    expect(proposals(state).every(p => p.status === "approved" && p.storyCardReview?.candidateOnly)).toBe(true);
     expect(proposals(state).some(p => p.storyCardType === "character")).toBe(false);
-    expect(state.storyCards).toHaveLength(3);
+    expect(state.storyCards).toHaveLength(4);
   });
   it("retains an imagined proposal as an unconfirmed model interpretation", async () => {
     const text = "Seth imagined proposing to Draconia.";
     const state = await play(text, [finding(text)], seed(true));
-    expect(proposals(state)[0]).toMatchObject({ status: "pending", requiresReview: true, storyCardReview: { candidateOnly: true } });
+    expect(proposals(state)[0]).toMatchObject({ status: "approved", requiresReview: false, storyCardReview: { candidateOnly: true } });
   });
   it("retains a short but exact meaningful reply as a review candidate", async () => {
     const text = 'Draconia answers Seth: "Yes."';
     const state = await play(text, [{ ...finding("Draconia accepted Seth's proposal.", "Engagement"), evidence: "Yes." }], seed(true));
-    expect(proposals(state)).toContainEqual(expect.objectContaining({ title: "Engagement", sourceText: "Yes.", status: "pending", requiresReview: true }));
+    expect(proposals(state)).toContainEqual(expect.objectContaining({ title: "Engagement", sourceText: "Yes.", status: "approved", requiresReview: false }));
   });
   it("keeps model-only findings pending with the default approval preference", async () => {
     expect(createDefaultAdventure().memoryAutoApprove.loreStoryCard).toBe(false);

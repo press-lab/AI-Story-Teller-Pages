@@ -161,12 +161,12 @@ export function makeStoryCardSuggestion(adventure: Adventure, sourceId: string, 
   const choices = storyCardTargets(adventure, { ...finding, participants, type });
   const target = choices.length === 1 ? adventure.storyCards.find(card => card.id === choices[0]) : undefined;
   const now = nowIso();
-  // Entity nominations always await review; model interpretations retain their uncertainty policy.
+  // Preserve uncertainty as information; approval follows the adventure settings.
   const uncertain = finding.origin === "deterministic" || finding.evidenceReviewed ? false : uncertainty.test(finding.evidence);
   const candidateOnly = Boolean(finding.candidateOnly || uncertain || finding.origin === "deterministic");
   const eventKind = finding.eventKind ?? findingKind(finding.content + " " + finding.evidence);
   const continuing = ["politicalPlan", "promise", "agreement", "decision", "engagement"].includes(eventKind ?? "") || /\b(history|relationship|conflict|alliance|agreement|pact)\b/i.test(finding.title);
-  const review = candidateOnly || choices.length > 1 || Boolean(target?.protected);
+  const review = choices.length > 1 || Boolean(target?.protected);
   const content = uncertain && !/^Candidate|^Plan \(/.test(finding.content) ? `Candidate interpretation (unconfirmed): ${finding.content}` : finding.content;
   const closedTitle = !choices.length && adventure.storyCards.some(card => isHistoricalLore(card) && normalizeMemoryText(card.title) === normalizeMemoryText(finding.title));
   const identityTitle = type === "lore" && !target && adventure.storyCards.some(c => (c.type === "character" || c.type === "location") && normalizeMemoryText(c.title) === normalizeMemoryText(finding.title));
@@ -247,7 +247,7 @@ export function mergeStoryCardSuggestions(existing: MemoryProposal, incoming: Me
         ...(review.additionalSources ?? []),
       ] : []).filter((source, index, all) => all.findIndex(other => other.id === source.id && other.content === source.content) === index),
       origin: existing.storyCardReview?.origin === incoming.storyCardReview?.origin ? chosen.storyCardReview.origin : "both" } : undefined,
-    requiresReview: Boolean(existing.requiresReview || incoming.requiresReview || candidateOnly),
+    requiresReview: Boolean(existing.requiresReview || incoming.requiresReview),
     rationale: [...new Set([existing.rationale, incoming.rationale])].join(" ") };
 }
 
@@ -261,6 +261,6 @@ export function storyCardScanFingerprint(adventure: Adventure, source: Message):
 
 export function storyCardMustBeReviewed(adventure: Adventure, proposal: MemoryProposal): boolean {
   const target = adventure.storyCards.find(card => card.id === proposal.targetId);
-  return Boolean(proposal.requiresReview || proposal.storyCardReview?.candidateOnly || (!proposal.targetId && (proposal.storyCardReview?.targetCandidates.length ?? 0) > 1)
+  return Boolean(proposal.requiresReview || (!proposal.targetId && (proposal.storyCardReview?.targetCandidates.length ?? 0) > 1)
     || target?.protected);
 }

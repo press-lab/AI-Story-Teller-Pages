@@ -169,7 +169,7 @@ describe("one-pass memory quality boundary", () => {
     const actions = onePassMemoryActions(adventure, buildContext(adventure), updates, scene, "scene-id");
     const candidates = actions.filter(action => action.type === "ADD_MEMORY_PROPOSAL");
     expect(candidates).toHaveLength(2);
-    expect(candidates.every(action => action.proposal.storyCardType === "character" && action.proposal.requiresReview && action.proposal.storyCardReview?.candidateOnly)).toBe(true);
+    expect(candidates.every(action => action.proposal.storyCardType === "character" && !action.proposal.requiresReview && action.proposal.storyCardReview?.candidateOnly)).toBe(true);
     expect(actions.reduce(adventureReducer, adventure).storyCards).toEqual(adventure.storyCards);
   });
 

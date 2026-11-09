@@ -25,7 +25,7 @@ function expectFinding(r: Awaited<ReturnType<typeof routed>>, kind: string, subt
   if (kind === "storyCard") expect(f.storyCardType).toBe(subtype);
   if (kind === "brain") expect(Object.keys(f.brainPatch!)).toEqual([subtype]);
   expect(r.checked.proposals).toHaveLength(1);
-  expect(r.checked.proposals[0].proposal).toMatchObject({ proposedType: proposalType, requiresReview: candidateOnly || Boolean(r.a.storyCards.find(c => c.id === id)?.protected) || Boolean(r.a.brains.find(b => b.id === id)?.protected), status: "pending" });
+  expect(r.checked.proposals[0].proposal).toMatchObject({ proposedType: proposalType, requiresReview: (kind !== "storyCard" && candidateOnly) || (kind === "storyCard" && (subtype === "character" || (!id && (f.destinationCandidates?.length ?? 0) > 0))) || Boolean(r.a.storyCards.find(c => c.id === id)?.protected) || Boolean(r.a.brains.find(b => b.id === id)?.protected), status: "pending" });
   expect(r.checked.proposals[0].proposal.targetId ?? null).toBe(id);
 }
 describe("Brain routing", () => {
@@ -125,7 +125,10 @@ describe("Story Card routing", () => {
     expect(r.result.findings[0].identityChange).toBeUndefined();
     const claimed = reduce(r.a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: r.batch.checkpoints });
     const saved = reduce(claimed, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: r.batch.batchId, sources: [{ result: r.result, checkpoint: r.batch.checkpoints[0].checkpoint }] });
-    expect(saved.activeState.memoryProposals).toHaveLength(1); expect(saved.storyCards).toEqual(r.a.storyCards);
+    expect(saved.activeState.memoryProposals).toHaveLength(1);
+    expect(saved.activeState.memoryProposals[0].status).toBe("approved");
+    expect(saved.storyCards.slice(0, r.a.storyCards.length)).toEqual(r.a.storyCards);
+    expect(saved.storyCards.at(-1)?.content).toBe("George agreed to reconvene Thursday.");
   });
   it("builds the explicit enduring Character correction locally", async () => {
     const r = await routed("(storyCard.character.update: George Weasley = George permanently lost his fire magic. || The experiment established this lasting loss.)",
