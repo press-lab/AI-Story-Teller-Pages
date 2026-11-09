@@ -94,7 +94,7 @@ it("keeps separate Hermione developments and an attempted kiss distinct without 
   a = reduce(a, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId, sources: [{ checkpoint: batch.checkpoints[0].checkpoint, result: { sourceId: ids[0], findings, rejected: [] } }] });
   expect(a.activeState.memoryProposals).toHaveLength(2);
   expect(a.activeState.memoryProposals.find(p => p.title === "Hermione's research dinner agreement")?.status).toBe("approved");
-  expect(a.activeState.memoryProposals.find(p => p.title === "Hermione's withdrawn kiss attempt")?.status).toBe("pending");
+  expect(a.activeState.memoryProposals.find(p => p.title === "Hermione's withdrawn kiss attempt")?.status).toBe("approved");
   expect(a.activeState.memoryProposals.some(p => /romantic date|completed kiss/.test(p.content))).toBe(false);
 });
 it("keeps explicitly uncertain absent NPC knowledge and past-event pressure under review", async () => {
@@ -174,7 +174,7 @@ it.each([
   const r = f.parse("storyCard", "NEW", content);
   expect(validateSinglePassFinding(f.a, f.ids[0], f.batch.checkpoints[0].checkpoint, r.findings[0])).toBeUndefined();
   const state = f.commit(r);
-  expect(state.activeState.memoryProposals[0]).toMatchObject({ content, storyCardType: "lore", requiresReview: true, status: "pending" });
+  expect(state.activeState.memoryProposals[0]).toMatchObject({ content, storyCardType: "lore", requiresReview: false, status: "approved" });
 });
 it("command-derived private interpretation stays in an existing Brain", async () => {
   const f = await commandValidationFixture("Casey privately interpreted the offer as trust.");
@@ -198,8 +198,9 @@ it("commands route a research agreement away from Character profiles to review-r
   expect(invalid.rejected).toEqual([]);
   expect(invalid.findings[0]).toMatchObject({ kind: "storyCard", targetId: null, operation: "create", storyCardType: "lore", candidateOnly: true });
   const recovered = f.commit(invalid);
-  expect(recovered.storyCards).toEqual(f.a.storyCards);
-  expect(recovered.activeState.memoryProposals[0]).toMatchObject({ status: "pending", requiresReview: true, storyCardType: "lore" });
+  expect(recovered.storyCards.slice(0, f.a.storyCards.length)).toEqual(f.a.storyCards);
+  expect(recovered.storyCards).toHaveLength(f.a.storyCards.length + 1);
+  expect(recovered.activeState.memoryProposals[0]).toMatchObject({ status: "approved", requiresReview: false, storyCardType: "lore" });
   const r = f.parse("storyCard", "NEW", "Casey and Avery agreed to share research results.");
   const v = validateSinglePassSource(f.a, r, f.batch.checkpoints[0].checkpoint);
   expect(v.proposals[0].proposal.storyCardType).toBe("lore");
@@ -304,7 +305,7 @@ it.each([true, false])("recovers supported Character events with topical Lore pr
   const v = validateSinglePassSource(f.a, r, batch.checkpoints[0].checkpoint);
   expect(v.rejected).toEqual([]);
   const p = v.proposals[0].proposal;
-  expect(p).toMatchObject({ requiresReview: true, status: "pending", cardOperation: "create" });
+  expect(p).toMatchObject({ requiresReview: hasLore, status: "pending", cardOperation: "create" });
   expect(p.targetId).toBeUndefined();
   expect(p.storyCardReview!.targetCandidates.includes(lore.id)).toBe(hasLore);
 });
@@ -473,7 +474,7 @@ it.each(["protected", "candidate", "recovery"])("separates factual uncertainty f
     result.findings[0] = normalizeSinglePassFinding(incomplete, ids[0], a)!;
   }
   const p = validateSinglePassSource(a, result, batch.checkpoints[0].checkpoint).proposals[0].proposal;
-  expect(p).toMatchObject({ requiresReview: true, storyCardReview: { candidateOnly: ["candidate", "recovery"].includes(condition) } });
+  expect(p).toMatchObject({ requiresReview: condition === "protected", storyCardReview: { candidateOnly: ["candidate", "recovery"].includes(condition) } });
 });
 
 it("retains advisory choices without overriding an authoritative exact APPEND", async () => {

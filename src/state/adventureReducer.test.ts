@@ -2021,8 +2021,8 @@ it.each(["create", "append", "disabled", "protected", "ambiguous", "date", "reco
     return;
   }
   const p = a.activeState.memoryProposals[0];
-  const eligible = ["create", "append"].includes(mode);
-  expect(p).toMatchObject({ status: eligible ? "approved" : "pending", requiresReview: !["create", "append", "disabled"].includes(mode), content: fact });
+  const eligible = ["create", "append", "recovered"].includes(mode);
+  expect(p).toMatchObject({ status: eligible ? "approved" : "pending", requiresReview: !["create", "append", "disabled", "recovered"].includes(mode), content: fact });
   expect(p.evaluationSource?.messages).toContainEqual({ id: "narrator-1", content: sourceContent });
   expect(p.storyCardReview?.sourceMessageId).toBe("narrator-1");
   if (!eligible) expect(a.storyCards).toEqual(before);
@@ -2112,7 +2112,7 @@ for (const path of ["insert", "merge", "scan", "final"] as const) {
     if (mode === "candidate") p.storyCardReview = { ...p.storyCardReview!, candidateOnly: true };
     if (mode === "placement") p.placementValidation = undefined;
     const before = structuredClone(a.storyCards);
-    expect(storyCardAutoApprovalBlockers(a, p).length === 0).toBe(mode === "eligible");
+    expect(storyCardAutoApprovalBlockers(a, p).length === 0).toBe(["eligible", "candidate"].includes(mode));
     if (path === "insert") a = adventureReducer(a, { type: "ADD_MEMORY_PROPOSAL", proposal: p });
     else {
       a.activeState.memoryProposals = [p];
@@ -2120,8 +2120,8 @@ for (const path of ["insert", "merge", "scan", "final"] as const) {
       if (path === "scan") a = adventureReducer(a, { type: "SCAN_STORY_CARD_EXCHANGE", sourceMessageId: "approval-source", manual: true });
       if (path === "final") a = adventureReducer(a, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: p.id, automatic: true });
     }
-    expect(a.activeState.memoryProposals.find(entry => entry.id === p.id)?.status).toBe(mode === "eligible" && path !== "merge" ? "approved" : "pending");
-    if (mode !== "eligible") expect(a.storyCards).toEqual(before);
+    expect(a.activeState.memoryProposals.find(entry => entry.id === p.id)?.status).toBe(["eligible", "candidate"].includes(mode) && path !== "merge" ? "approved" : "pending");
+    if (!["eligible", "candidate"].includes(mode)) expect(a.storyCards).toEqual(before);
     if (mode === "uncertain") expect(a.activeState.memoryProposals[0].requiresReview).toBe(true);
   });
 }

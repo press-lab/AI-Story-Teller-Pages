@@ -345,7 +345,8 @@ describe("interpersonal discovery reliability paths", () => {
     expect(result.state.storyCards.find(card => card.id === "hermione")).toEqual(a.storyCards[0]);
     const proposal = result.state.activeState.memoryProposals.find(item => item.storyCardType === "lore")!;
     expect(proposal).toMatchObject({ memoryMode: "historical", lore: { status: scene.eventStatus }, storyCardReview: { candidateOnly: scene.candidateOnly } });
-    if (scene.candidateOnly) expect(proposal).toMatchObject({ status: "pending", requiresReview: true });
+    if (scene.candidateOnly) expect(proposal).toMatchObject(scene.name === "explicit attempted kiss"
+      ? { status: "approved", requiresReview: false } : { status: "pending", requiresReview: true });
     expect(proposal.storyCardReview?.evidenceQuotes).toEqual(a.messages.map(message => ({ messageId: message.id, quote: message.content })));
     if (scene.name.includes("attempt") || scene.name.includes("ambiguous")) expect(proposal.content).not.toMatch(/shared.*kiss|completed kiss|confirmed kiss attempt/i);
     if (scene.name.includes("dinner")) expect(proposal.content).not.toContain("romantic date");

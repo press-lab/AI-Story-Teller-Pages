@@ -3,6 +3,7 @@ import { getApprovalCategory, shouldAutoApprove, storyCardApprovalCategory } fro
 import { adventureReducer as reduce } from "../state/adventureReducer";
 import { approvalAdventure, approvalCategories, approvalProposal, existingApprovalCard, memoryData } from "../test/memoryApproval";
 import { reviewedProposal } from "../test/memoryPlacement";
+import { makeStoryCardSuggestion, mergeStoryCardSuggestions } from "./storyCardSuggestions";
 import type { StoryCardType } from "../types/adventure";
 
 describe("six adventure approval categories", () => {
@@ -52,5 +53,28 @@ describe("six adventure approval categories", () => {
     const next = reduce(pending, { type: "SET_MEMORY_AUTO_APPROVE", settings: { ...a.memoryAutoApprove, brainUpdate: true } });
     expect(next.activeState.memoryProposals).toEqual(pending.activeState.memoryProposals);
     expect(memoryData(next)).toEqual(memoryData(pending));
+  });
+});
+
+
+describe("uncertain Story Card approval", () => {
+  it.each([false, true])("honors auto-approval=%s without changing confidence or uncertainty", enabled => {
+    const a = approvalAdventure();
+    a.memoryAutoApprove.loreStoryCard = enabled;
+    const content = "The silver observatory was sealed after the northern tower collapsed.";
+    a.messages = [{ id: "source", role: "assistant", content, createdAt: a.createdAt }];
+    const draft = makeStoryCardSuggestion(a, "source", content, {
+      title: "The Silver Observatory", content, evidence: content, reason: "Uncertain finding.",
+      type: "lore", candidateOnly: true, evidenceReviewed: true, origin: "model",
+    });
+    expect(draft).toMatchObject({ confidence: 0.45, requiresReview: false, storyCardReview: { candidateOnly: true } });
+    const merged = mergeStoryCardSuggestions(draft, draft);
+    expect(merged.requiresReview).toBe(false);
+    const proposal = reviewedProposal(a, merged);
+    const next = reduce(a, { type: "ADD_MEMORY_PROPOSAL", proposal });
+    expect(next.activeState.memoryProposals.find(p => p.id === proposal.id)).toMatchObject({
+      status: enabled ? "approved" : "pending", confidence: 0.45, storyCardReview: { candidateOnly: true },
+    });
+    expect(next.storyCards).toHaveLength(enabled ? 1 : 0);
   });
 });

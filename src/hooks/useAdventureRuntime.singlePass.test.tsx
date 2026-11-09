@@ -143,9 +143,11 @@ it("explicitly retries the three October 27 sources in one HTTP request and pres
   await act(async () => { await hook.result.current.runtime.evaluateMemorySources(ids); await settle(); });
   await waitFor(() => expect(hook.result.current.adventure!.messages.filter(m => ids.includes(m.id)).every(m => m.memoryEvaluation?.status === "complete")).toBe(true));
   const saved = hook.result.current.adventure!;
-  expect(saved.storyCards).toEqual(a.storyCards);
+  expect(saved.storyCards.find(card => card.id === "twins")).toEqual(a.storyCards.find(card => card.id === "twins"));
+  expect(saved.storyCards[0].content).toContain(fixture.cases[0].originalModelFindings[0].content);
   expect(saved.activeState.memoryProposals.filter(p => ids.includes(p.sourceTurnId!))).toHaveLength(3);
-  expect(saved.activeState.memoryProposals.every(p => p.status === "pending" && p.requiresReview)).toBe(true);
+  expect(saved.activeState.memoryProposals.find(p => p.sourceTurnId === ids[0])).toMatchObject({ status: "approved", requiresReview: false });
+  expect(saved.activeState.memoryProposals.filter(p => p.sourceTurnId !== ids[0]).every(p => p.status === "pending" && p.requiresReview)).toBe(true);
   expect(saved.activeState.memoryProposals.find(p => p.sourceTurnId === ids[2])!.content).toBe(fixture.cases[2].originalModelFindings[0].content);
   expect(saved.messages.filter(m => ids.includes(m.id)).every(m => m.memoryEvaluation?.singlePass?.dispositions.some(d => d.index === 0))).toBe(true);
   expect(fetch).toHaveBeenCalledTimes(1);

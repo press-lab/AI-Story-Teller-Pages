@@ -10,7 +10,6 @@ export function storyCardAutoApprovalBlockers(adventure: Adventure, proposal: Me
   if (!shouldAutoApprove(adventure, proposal)) blockers.push("Story Card auto-approval is disabled.");
   if (storyCardMustBeReviewed(adventure, proposal)) {
     if (proposal.requiresReview) blockers.push("This proposal was previously marked for manual review." + (proposal.rationale ? " " + proposal.rationale : ""));
-    if (proposal.storyCardReview?.candidateOnly) blockers.push("This suggestion is uncertain and requires review.");
     if (adventure.storyCards.some(card => card.id === proposal.targetId && card.protected)) blockers.push("The existing Story Card is protected.");
     if (!proposal.targetId && (proposal.storyCardReview?.targetCandidates.length ?? 0) > 1) blockers.push("This proposal requires an explicit destination.");
   }

@@ -67,8 +67,9 @@ export function toSinglePassProposal(a: Adventure, sourceId: string, checkpoint:
   const meaningReason = f.kind === "storyCard" ? storyCardMeaningReviewReason(f, checkpoint.evidence
     .filter(e => ids.includes(e.id) && a.messages.some(m => m.id === e.id && m.role === "assistant"))) : undefined;
   const reviewReasons = [
+    f.kind !== "storyCard" && f.candidateOnly ? "Uncertain finding or recovered metadata: " + f.reason : undefined,
+    f.kind === "storyCard" && (f.content?.trim().split(/\s+/).length ?? 0) > 70 ? "Story Card exceeds 70 words; manual review required." : undefined,
     protectedTarget ? "Protected Story Card or memory destination." : undefined,
-    f.candidateOnly ? "Uncertain finding or recovered metadata: " + f.reason : undefined,
     f.kind === "storyCard" && f.storyCardType === "character" ? "Character profile changes require author review." : undefined,
     meaningReason,
   ].filter((reason): reason is string => Boolean(reason));
