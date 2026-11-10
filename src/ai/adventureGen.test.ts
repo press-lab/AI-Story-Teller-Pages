@@ -1,4 +1,4 @@
-import { AUTHORING_SECTIONS, AUTHORING_WORKFLOW_SECTIONS, AUTHORING_STANDARDS, CHATGPT_AUTHORING_INSTRUCTIONS } from "./authoringPolicy";
+import { PLOT_ESSENTIALS_FOUNDATIONS_RULE, AUTHORING_SECTIONS, AUTHORING_WORKFLOW_SECTIONS, AUTHORING_STANDARDS, CHATGPT_AUTHORING_INSTRUCTIONS } from "./authoringPolicy";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
 import type { ProviderConfig } from "../types/adventure";
@@ -144,6 +144,38 @@ describe("runAdventureGen", () => {
     expect(request.messages[0].content).not.toContain('"immediateMomentum"');
     expect(request.messages[0].content).toContain('"authorNote"');
     expect(request.messages[0].content).toContain("Do not create cards for current scene position");
+  });
+
+  it.each(["strict", "minorActions", "cinematicFlow"] as const)("aligns authoring standards without overriding %s control", async (playerControl) => {
+    vi.mocked(sendOpenAICompatibleChatCompletion).mockResolvedValue({
+      raw: {}, content: JSON.stringify({ components: [], storyCards: [] }),
+    });
+    await runAdventureGen("A relaxed magical university sandbox", config, { playerControl, storyShape: "sandbox" });
+    const request = vi.mocked(sendOpenAICompatibleChatCompletion).mock.calls[0][0];
+    const prompt = request.messages[0].content;
+    for (const text of [prompt, CHATGPT_AUTHORING_INSTRUCTIONS]) {
+      expect(text).toContain(PLOT_ESSENTIALS_FOUNDATIONS_RULE);
+      expect(text).toContain("Historical dates are valid");
+      expect(text).toContain("Every newly generated adventure must establish a coherent, recognizable narrative tone");
+      expect(text).toContain("(1) explicit user direction; (2) identifiable source material");
+      expect(text).toContain("(3) the premise's subject");
+      expect(text).toContain("(4) a reasonable creative default");
+      expect(text).toContain("HIDDEN RULE — NARRATOR ONLY");
+      expect(text).toContain("Use this optional technique only when the premise supports");
+      expect(text).toContain("Narrator knowledge does not become player-character or NPC knowledge");
+      expect(text).toContain("not arbitrary turn counts");
+      expect(text).toContain("not a universal prohibition against conflict");
+      expect(text).toContain("Do not impose Strict on every adventure");
+      expect(text).toContain("A restrictive system may instead make failure, resources, and uncertainty central");
+    }
+    expect(prompt).toContain('Always include "aiInstructions" to establish the inferred narrative tone');
+    expect(prompt).toContain("Always include a PROSE section");
+    expect(prompt).toContain("Do NOT include narrationRules");
+    expect(request.messages[1].content).toContain({
+      strict: "never write the player character's dialogue",
+      minorActions: "bridge tiny implied motions",
+      cinematicFlow: "minor player-character beats",
+    }[playerControl]);
   });
 
   it("passes setup preferences into the generation prompt", async () => {

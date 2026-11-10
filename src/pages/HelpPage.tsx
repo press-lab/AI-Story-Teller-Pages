@@ -20,6 +20,20 @@ const topics: DocTopic[] = [
     tags: ["authoring", "create", "edit", section.title.toLowerCase()],
     body: <>{section.text.split("\n").map((paragraph, index) => <p key={index}>{paragraph}</p>)}</>,
   })),
+  {
+    id: "brakebills-authoring-example",
+    title: "Brakebills: recurring cast and hidden runework",
+    category: "Best Practices",
+    summary: "Optional narrator-only discovery and ordinary ensemble life.",
+    tags: ["hidden rule", "narrator only", "cast", "tone", "Brakebills"],
+    body: <>
+      <p>The Brakebills cottage ensemble shows recurring-cast presence: residents share meals, study, banter, and make plans on their own. Schedules and obligations explain absences. Everyone need not speak in every scene. Ordinary life is full gameplay.</p>
+      <p>A Magicians-inspired premise can suggest irreverent adult humor, interpersonal drama, academic magic, occasional danger, and complicated relationships. Gothic horror suggests dread, uncertainty, atmosphere, and consequences. A lighthearted magical school may suggest curiosity, humor, friendship, and discovery. These are examples, not fixed templates; follow user direction and alternate-universe changes.</p>
+      <p><strong>HIDDEN RULE — NARRATOR ONLY is optional.</strong> In the supplied Brakebills reference, rune use gradually changes Seth's relationship to magic; runes on his body accelerate it. The narrator knows this mechanism. Seth does not.</p>
+      <p>Seth draws two runes on his palm with an ordinary pen. He feels subtle sensations, some of which remain after the ink is removed. Historical Lore records the experience and who knows it. Later, casual browsing in a small-town bookstore yields an obscure nineteenth-century account of protective inscriptions worn on the body. Its author dismisses the claim as superstition. This is another clue, not an explanation.</p>
+      <p>The narrator knows the truth. The world reveals evidence. The player discovers the answer. Keep narrator, player-character, and NPC knowledge separate. Discovery follows actions and evidence, not turn counts. NPC theories may be wrong; the player may ignore clues.</p>
+    </>,
+  },
   ...AUTHORING_WORKFLOW_SECTIONS.map((section): DocTopic => ({
     id: `authoring-${section.id}`,
     title: section.title,
@@ -567,6 +581,7 @@ npm.cmd run test:live   # optional, uses .env.test.local`}</pre>
           <li><strong>CONTINUITY</strong> — locks out outside canon. If you're using a fandom setting, the model must not import biography, relationships, or events that aren't in the active context.</li>
           <li><strong>PROSE</strong> — varied sentence rhythm, sensory detail over exposition. Scenes should feel like they're happening, not being described.</li>
         </ul>
+        <p>Use the shared Authoring Standards for agency, cast presence, ordinary life, and causal conflict. Strict, Minor Actions, and Cinematic Flow remain authoritative. Scenario-specific pacing and optional capability handling belong in AI Instructions.</p>
         <p><strong>When to customize Narration Rules.</strong> The defaults work for most adventures. Customize when your adventure has a fundamentally different agency model — e.g., "DO NOT SPEAK OR TAKE ACTIONS FOR [player name]" for a strict interactive fiction setup, or second-person present tense lock when the default is flexible.</p>
         <p><strong>What not to add to Narration Rules.</strong> Scenario-specific constraints (bending rules, faction politics, setting-specific tone) belong in AI Instructions, not Narration Rules. Narration Rules are structural mechanics; AI Instructions carry premise-specific contracts.</p>
         <p><strong>Existing adventures.</strong> Untouched stock Global Generation Rules are upgraded automatically when an adventure loads. If you edited that component yourself, your version is preserved.</p>
@@ -582,7 +597,7 @@ npm.cmd run test:live   # optional, uses .env.test.local`}</pre>
     body: (
       <>
         <p>
-          AI Instructions are optional always-on context sent every turn after Narration Rules. Use them for scenario-specific contracts: setting rules, power-level handling, story behavior drift prevention, and prose style guidance that is particular to this adventure. If your Narration Rules already cover stable behavior, agency, and tone, you can leave AI Instructions absent.
+          AI Instructions are optional always-on context sent every turn after Narration Rules. Use them for scenario-specific contracts: setting rules, power-level handling, story behavior drift prevention, and prose style guidance that is particular to this adventure. Existing adventures can omit AI Instructions when no scenario-specific guidance is needed. Newly generated adventures use them to establish enduring tone. See Infer and establish narrative tone in Authoring Standards.
         </p>
         <p><strong>Structure AI Instructions with named ALL-CAPS sections.</strong> Each section should be 2–5 tight bullet points. Common sections for a well-built adventure:</p>
         <ul>

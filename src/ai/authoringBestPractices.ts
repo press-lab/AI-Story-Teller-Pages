@@ -1,4 +1,4 @@
-import { AUTHORING_STANDARDS } from "./authoringPolicy";
+import { AUTHORING_STANDARDS, PLOT_ESSENTIALS_FOUNDATIONS_RULE } from "./authoringPolicy";
 import type { StoryCardMemoryMode } from "../types/adventure";
 
 export const betterRepositoryGuideSources = [
@@ -8,14 +8,16 @@ export const betterRepositoryGuideSources = [
 ];
 
 export const AI_INSTRUCTIONS_BEST_PRACTICES = `AI Instructions best practices:
-- Use AI Instructions for global behavior, genre, drift prevention, scene loop, and prose rules.
-- Do not store character facts, location facts, relationship facts, current mission state, or backstory here.
+- Use AI Instructions for enduring scenario tone, genre, drift prevention, an optional scene loop, and scenario-specific prose rules. Keep general narrator behavior in Narration Rules.
+- Keep character and location profiles, relationship facts, current mission state, and backstory in their proper surfaces. An optional hidden narrator-only mechanism belongs here; its observed events belong in Lore.
 - Keep them scenario-specific and non-redundant with Narration Rules.
 - Prefer named sections with a few concrete bullets over one large lore paragraph.
 - Per-character voice belongs on that character's Story Card, not in AI Instructions.`;
 
 export const PLOT_ESSENTIALS_BEST_PRACTICES = `Plot Essentials best practices:
-- Plot Essentials hold the overarching premise, central long-term conflict, and persistent story-wide constraints. The ongoing storyline and pacing belong in Current Arc. Immediate scene details do not belong in Plot Essentials.
+- Plot Essentials hold the overarching premise, optional central long-term conflict, and persistent story-wide constraints. The ongoing storyline and pacing belong in Current Arc. Immediate scene details do not belong in Plot Essentials.
+- ${PLOT_ESSENTIALS_FOUNDATIONS_RULE}
+- Historical dates may establish durable background; active gameplay dates do not belong here.
 - They are always-on context, so keep them short and non-redundant.
 - Change this block only when those foundations materially change. Preserve still-valid foundations; do not append a chronological log.
 - Replaced text remains in component history. Removing a fact is not evidence for a historical event card.

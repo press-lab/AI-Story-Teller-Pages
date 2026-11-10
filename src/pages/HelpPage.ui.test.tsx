@@ -13,6 +13,16 @@ describe("HelpPage documentation UI", () => {
     cleanup();
   });
 
+  it("explains optional Brakebills discovery without sharing narrator knowledge", () => {
+    render(<HelpPage />);
+    const example = within(document.getElementById("brakebills-authoring-example")!);
+    expect(example.getByText(/HIDDEN RULE — NARRATOR ONLY is optional/)).toBeInTheDocument();
+    expect(example.getByText(/The narrator knows this mechanism. Seth does not/)).toBeInTheDocument();
+    expect(example.getByText(/Historical Lore records the experience and who knows it/)).toBeInTheDocument();
+    expect(example.getByText(/Its author dismisses the claim as superstition/)).toBeInTheDocument();
+    expect(example.getByText(/Everyone need not speak in every scene/)).toBeInTheDocument();
+  });
+
   it("shows technical documentation topics and filters them with search", async () => {
     const user = userEvent.setup();
     render(<HelpPage />);

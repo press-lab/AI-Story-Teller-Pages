@@ -6,7 +6,26 @@ thousands of turns, and how the app's features map onto it. Written from a
 post-mortem of the adventures that worked (a 3,000-action supers/dispatch run,
 a long-running Avatar game, a supers-academy game) and the ones that went flat.
 
-The short version:
+This is an optional recipe for arc-driven play, not a universal standard.
+A relaxed sandbox can sustain study, meals, romance, work, and exploration without
+escalation. Conflict follows player intent, scenario expectations, and credible
+circumstances. Independent antagonists do not require immediate encounters,
+fixed escalation schedules, or artificial urgency. The shared
+[authoring standards](../src/ai/authoringPolicy.ts) apply across story shapes.
+
+Every new adventure establishes tone from user direction, source material, premise,
+or a coherent default, in that order. AI Instructions hold enduring tone; Author's
+Note can reinforce immediate mood. Optional HIDDEN RULE — NARRATOR ONLY mechanisms
+belong in AI Instructions. Narration reveals evidence rather than the answer;
+player characters and NPCs know only what they witness, learn, or reasonably infer.
+
+Plot Essentials holds enduring foundations only. NEVER use NOW, CURRENTLY, or
+CURRENT SITUATION for the present moment, active story dates, character positions,
+or temporary state. Historical dates may establish durable background. Put the
+starting moment in the Opening Scene; the story clock and gameplay history handle
+ongoing time and continuity.
+
+The short version for arc-driven play:
 
 > **Good adventure = a backdrop you like + a socially volatile cast +
 > a repeatable scene loop + an arc that climbs out of that loop and is
@@ -30,17 +49,13 @@ The short version:
    plot you administer; an arc that grows *out of* the loop and eventually
    comes to a head.
 
-Active Pressure is the small live version of that pressure: exactly one sentence
-about the external force pressing on the player character right now. It is not a
-plot summary and not the next action; durable facts live in Plot Essentials,
-climbing conflict lives in Current Story Arc, and one-turn steering lives in
-Next Output Bias.
+Active Pressure is retired. Use Current Arc for ongoing storyline progress, recent messages for immediate events, and Next Output Bias for one-turn steering. Plot Essentials contains enduring foundations.
 
 Power fantasy is **not** a separate pillar and it is **not** subordinate to
 social friction. If your taste is being OP and having NPCs largely accept it,
 that's valid — the power is a clean flex, and the reaction-fuel comes from the
 cast and the arc, not from the power causing accidents. Dial social friction up
-or down to taste. The four pillars stand regardless.
+or down to taste. Use these pillars when they fit the requested story shape.
 
 ---
 
@@ -153,7 +168,7 @@ confrontation, the model did exactly what it was told — kept simmering — and
 player had to seize the wheel and direct the climax by hand. That's the moment
 the magic died.
 
-### Two rules that fix it
+### Two techniques for an authored costly climax
 
 1. **OP in the loop, costly in the climax.** Day-to-day you're the strongest and
    the cast accepts it — clean flex, that's the texture. The arc climax doesn't
@@ -162,8 +177,8 @@ the magic died.
    world and the cast, never by your competence.**
 2. **The antagonist forces the timing, not a clock and not the player.** The
    climax is when the big bad finally *acts on the world* instead of lurking —
-   makes a move you can't walk away from. A villain who only appears when you go
-   looking will never climax. "Have this character take an aggressive action
+   makes a move you can't walk away from. This is an optional authored confrontation, not a rule requiring every
+   antagonist to confront the player. "Have this character take an aggressive action
    now" is something the model does well; "sense that the arc should peak now"
    is not.
 

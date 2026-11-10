@@ -5,7 +5,7 @@ the *how*; for the *why* behind every choice, read
 [`adventure-design.md`](./adventure-design.md). The worked example throughout is
 the dev scenario **Heir of the Dragon Throne**
 ([`src/dev/developmentAdventure.ts`](../src/dev/developmentAdventure.ts)) — copy
-its shape.
+its shape when you want an arc-driven adventure. The arc recipe below is optional, not a requirement for sandboxes. See [shared authoring standards](../src/ai/authoringPolicy.ts) and the in-app Authoring Standards for agency, tone, cast presence, and optional narrator-only hidden rules.
 
 > **Model first.** Author and play these on **DeepSeek V3.2 (`deepseek-chat`)**
 > or better. The whole design assumes a model that honours long rule blocks and
@@ -21,12 +21,12 @@ A scenario is six things working together:
 
 | Piece | Component / object | Job |
 |---|---|---|
-| **Current truth + premise** | Plot Essentials | What is happening now + always-on constraints |
+| **Enduring premise** | Plot Essentials | Durable scenario foundations and persistent constraints |
 | **The cast** | Story Cards (`character`) **+ Voice Contracts** | Who's fun in a room |
 | **Interior life** | Brains | Hidden agendas that simmer and persist |
 | **The engine** | a custom "missions" component | The repeatable loop that prints scenes |
 | **The spine** | Current Story Arc + **Arc Director** | The conflict that climbs and breaks |
-| **The hook** | Opening Scene + one-sentence Active Pressure + Author's Note | Where it starts, what is pressing now, how it sounds |
+| **The hook** | Opening Scene + Author's Note | Where it starts, what is pressing now, how it sounds |
 
 Build them in that order.
 
@@ -36,7 +36,7 @@ Build them in that order.
 
 The New Adventure generator asks for outcome choices before it drafts the setup.
 Pick the result you want; the app routes the details into AI Instructions, Plot
-Essentials, Active Pressure, Author's Note, Story Cards, and Brains.
+Essentials, Author's Note, Custom components, and Story Cards. It does not generate Narration Rules or Brains.
 
 | Want | Choose | What it changes |
 |---|---|---|
@@ -71,15 +71,17 @@ Story Cards or Brains, not in PE.
 ## Step 1 — The spine (backdrop, fantasy, premise)
 
 Pick a **backdrop you actually want to live in** and a **power fantasy you
-enjoy**. Decide the one-line premise *and* the slow-burn arc it builds toward.
+enjoy**. Decide the one-line premise and, if wanted, a slow-burn arc.
 
 *Heir of the Dragon Throne:* post-war Avatar world (backdrop), an overpowered
 dragon-fire crown prince (fantasy), and a premise where the antagonist is
 **personal and convergent** — the conspiracy is run by the love interest's
 father. Write this into **Plot Essentials** (always-on, protected) as the
-current operating truth: what is happening now, open tensions, obligations, and
-major constraints that must shape every scene. Keep it tight; this is what the
-model writes *toward*.
+enduring premise and persistent scenario-wide constraints. NEVER include NOW,
+CURRENTLY, CURRENT SITUATION, active story dates, current positions, or temporary
+state. Put the starting moment in the Opening Scene. The story clock and gameplay
+history handle ongoing time and continuity. Historical dates may establish durable
+background. Put ongoing developments in Current Arc or appropriate memory surfaces.
 
 Two rules from experience:
 - **Let the player be OP.** State it in AI Instructions: *"NPCs respect, fear,
@@ -165,30 +167,12 @@ for the voice contract).
 
 ---
 
-## Step 3.5 — Active Pressure: one sentence of now
+## Immediate scene information
 
-Active Pressure is not a second plot summary. It is the single external force
-pressing on the player character right now: the deadline, pursuit, debt, failing
-system, public challenge, or visible consequence that keeps the next response
-from floating.
-
-Write it as exactly one sentence. If you need more than that, the durable part
-belongs in Plot Essentials, the climbing part belongs in Current Story Arc, and
-the live next beat belongs in Recent Messages or Next Output Bias.
-
-Good:
-
-```
-The Fire Lord's messenger has arrived with news of another New Ozai Society strike, forcing Setu to leave training and answer the crisis now.
-```
-
-Bad:
-
-```
-Setu feels torn between duty, Nyxa, and the burden of being the Dragon's Heir.
-```
-
-That second one is emotion and theme. It can be true, but it is not pressure.
+Active Pressure is retired. Use the Opening Scene for the starting moment,
+Recent Messages for unfolding scenes, and Next Output Bias for one-turn steering.
+Keep durable foundations in Plot Essentials and ongoing storyline progress in
+Current Arc when used.
 
 ---
 
@@ -294,10 +278,8 @@ Set the **response length** to a target (slider on the Play page) — V3.2 write
 ## Quick checklist
 
 - [ ] Backdrop you like + OP fantasy stated in AI Instructions.
-- [ ] Plot Essentials: tight current operating truth, antagonist
-      personal/convergent, no chronological log.
-- [ ] Active Pressure: exactly one sentence naming the external force pressing
-      right now.
+- [ ] Plot Essentials: enduring foundations only; no NOW or current-state anchor.
+      A personal antagonist is optional, as is a central conflict.
 - [ ] One `character` card per recurring figure; **Voice Contract on every NPC**,
       none on the PC; canon voices accurate; formal + nickname noted; memory
       mode and triggers chosen deliberately.
@@ -309,3 +291,53 @@ Set the **response length** to a target (slider on the Play page) — V3.2 write
 - [ ] Opening scene = backdrop + power + relationship + hook.
 - [ ] Author's Note for tone; response length set as a target.
 - [ ] Running on DeepSeek V3.2 or better.
+
+## Tone, cast, and optional discoveries
+
+The player controls meaningful actions, dialogue, thoughts, feelings, decisions,
+and consent. Respect Strict, Minor Actions, and Cinematic Flow. Do not decide
+consequential actions for the player. Honor authorized transitions, apply OOC
+corrections naturally, preserve competence and knowledge boundaries, and avoid
+unsolicited menus, announced decision points, manufactured misunderstandings,
+apology preambles, and unnecessary meta-commentary.
+
+NPCs have independent interests, relationships, routines, and obligations. They
+can start conversations and plans. The Brakebills cottage ensemble illustrates
+recurring residents sharing meals, study, and ordinary social life. Presence and
+absences follow schedules and circumstances; every NPC need not join every scene.
+
+Infer tone from explicit direction first, then identifiable source material,
+then premise and language, then a coherent default. Honor alternate-universe
+changes. Magicians-inspired Brakebills suggests irreverent adult humor, academic
+magic, interpersonal drama, occasional danger, and complicated relationships.
+Gothic horror suggests dread and consequences; a lighthearted magical school may
+favor curiosity, humor, friendships, and discovery. These are examples, not templates.
+AI Instructions establish enduring tone; Author's Note reinforces immediate mood.
+Keep general narrator behavior in Narration Rules.
+
+Optional capability handling can let player-described powers work within
+established capabilities and world rules. Restrictive systems may instead use
+failure, resources, and uncertainty. Neither permits arbitrary loss of earned
+abilities to create difficulty.
+
+**HIDDEN RULE — NARRATOR ONLY** is optional. Define the truth in AI Instructions.
+Narration shows effects and incomplete evidence without explaining the mechanism.
+Player characters and NPCs do not automatically know it. NPC theories may be
+wrong, and the player may investigate, ignore, or misunderstand clues. Discovery
+follows actions, experiments, and plausible events rather than turn counts.
+
+In the Brakebills reference example, rune use changes Seth's relationship to magic;
+inscriptions on his body accelerate it. Seth does not know this. He draws two
+runes on his palm with an ordinary pen, feels subtle sensations, and notices
+sensation after removing the ink. Historical Lore preserves the experience and
+who knows it. The supplied authoring reference then describes casual browsing in
+a small-town bookstore: an obscure nineteenth-century account mentions protective
+inscriptions worn on the body, but dismisses them as superstition. This is evidence,
+not an explanation. The narrator knows the truth. The world reveals evidence.
+The player discovers the answer. Do not add a secret transformation or mystery
+where the premise does not support one.
+
+Quiet scenes need no external plot justification. Antagonists can act elsewhere;
+relevant investigation, interference, or attention can bring them into play.
+Frequent conflict also fits when requested. Follow scenario expectations, player
+intent, and credible circumstances without mandatory encounters or artificial urgency.
