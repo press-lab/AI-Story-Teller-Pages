@@ -27,6 +27,20 @@ describe("written authoring guidance", () => {
     }
   });
 
+  it("keeps creator decisions in the copied prompt without changing generator policy", () => {
+    expect(CHATGPT_AUTHORING_INSTRUCTIONS).toContain("AI Story Teller (AIST) — Scenario Authoring Instructions");
+    for (const rule of [
+      "Do not proceed with a new scenario until the creator answers this question",
+      "A mystery premise alone does not authorize inventing its underlying answer.",
+      "An explicit request to proceed without further questions authorizes reasonable defaults",
+      "A central villain, mystery, or anticipated future event is not, by itself, a gameplay loop.",
+      "For a narrowly scoped EDIT, do not require unrelated scenario-design decisions.",
+      "confirm the creator’s intentions before establishing a replacement structure.",
+    ]) expect(CHATGPT_AUTHORING_INSTRUCTIONS).toContain(rule);
+    expect(CHATGPT_AUTHORING_INSTRUCTIONS).not.toContain("Do not offer unsolicited choice menus");
+    expect(AUTHORING_STANDARDS).not.toContain("IMPORTANT — CREATOR DECISIONS BEFORE AUTHORING");
+  });
+
   it("includes trigger-only audit guidance in the copied EDIT workflow", () => {
     const cleanup = AUTHORING_WORKFLOW_SECTIONS.find(section => section.id === "lore-cleanup")!;
     expect(CHATGPT_AUTHORING_INSTRUCTIONS).toContain(cleanup.text);

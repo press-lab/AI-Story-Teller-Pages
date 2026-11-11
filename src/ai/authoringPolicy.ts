@@ -1,3 +1,5 @@
+import chatgptAuthoringInstructions from "./chatgptAuthoringInstructions.txt?raw";
+
 /** Shared authoring text only. Runtime memory policy is separate. */
 export const PLOT_ESSENTIALS_FOUNDATIONS_RULE = "NEVER include a NOW section, current-scene framing, active story date, current character positions, or temporary story state in Plot Essentials. Do not use headings such as NOW, CURRENTLY, or CURRENT SITUATION to describe the present moment. Plot Essentials contains enduring scenario foundations only. Put the starting moment in the Opening Scene. The application's story clock and gameplay history handle ongoing time and continuity.";
 
@@ -82,21 +84,4 @@ Retcons: change established events only when the player instructs it. Rewrite th
 
 export const AUTHORING_WORKFLOW = AUTHORING_WORKFLOW_SECTIONS.map(section => `${section.title}\n${section.text}`).join("\n\n");
 
-export const CHATGPT_AUTHORING_INSTRUCTIONS = `You help author AI Story Teller (AIST) adventures. This prompt is self-contained. Use Simplified Technical English. Components provide narration rules and scenario foundations. Story Cards provide conditional reference material. Follow the shared standards below.
-
-${AUTHORING_STANDARDS}
-
-There are exactly two operations: CREATE and EDIT. Accept an explicit operation or infer it from a clear natural-language request. Proceed without unnecessary clarification. A continuation (a new adventure built from an existing one) is an EDIT of the source followed by a CREATE of the new material. Apply both, and use the Continuation workflow below.
-
-CREATE
-Create a new adventure or new material from the user's premise. Possible outputs are Components, Character, Location, Lore, and Custom Story Cards, and an opening scene when requested. Create fictional details consistent with supplied canon and constraints. Apply all shared standards, including physical descriptions and Voice Contracts. Do not invent player relationships, continuity anchors, or unnecessary history.
-
-EDIT
-Read supplied adventure information and evaluate it against the shared standards. Auditing is part of EDIT, not a separate operation. An audit begins with evaluation and proposed changes.
-Identify misclassification, events in Character cards, missing physical descriptions or Voice Contracts, ambiguous relationships, incorrect or duplicate Lore, contradictions, poor triggers, unclear chronology, obsolete or redundant content, and unauthorized non-durable Character facts.
-Preserve correct content, existing continuity, user-directed anchors, unrelated material, source Chronicle entries, identifiers, and metadata. Distinguish established facts from assumptions. Do not invent missing story history or unsupported characterization. Edit only material that needs correction or that the user requests; do not rewrite every card automatically.
-For each proposed correction give: affected component or Story Card, existing problem, supporting evidence, correct destination, proposed change, and any required user decision.
-Do not apply proposed changes without user approval unless the user has already explicitly authorized the requested edits. When the user requests a finished corrected artifact, provide the complete corrected artifact in the requested format. Otherwise present proposed changes for review.
-
-AUTHORING WORKFLOW
-${AUTHORING_WORKFLOW}`;
+export const CHATGPT_AUTHORING_INSTRUCTIONS = chatgptAuthoringInstructions.replace(/\r\n/g, "\n").trim();

@@ -153,13 +153,12 @@ describe("runAdventureGen", () => {
     expect(request.thinking).toBe("disabled");
     const prompt = request.messages[0].content;
     expect(prompt).toContain(AUTHORING_STANDARDS);
-    for (const section of AUTHORING_SECTIONS) expect(CHATGPT_AUTHORING_INSTRUCTIONS).toContain(section.text);
     expect(prompt).not.toMatch(/HOW THEY ENGAGE THE PLAYER|Current Arc|Active Pressure|living.*evolving/);
     expect(prompt).toContain('Use "historical" for historical Lore');
     expect(CHATGPT_AUTHORING_INSTRUCTIONS).toContain("exactly two operations: CREATE and EDIT");
     expect(CHATGPT_AUTHORING_INSTRUCTIONS).toContain("Auditing is part of EDIT");
     expect(CHATGPT_AUTHORING_INSTRUCTIONS).toContain("supporting evidence");
-    for (const section of AUTHORING_WORKFLOW_SECTIONS) expect(CHATGPT_AUTHORING_INSTRUCTIONS).toContain(section.text);
+    for (const section of AUTHORING_WORKFLOW_SECTIONS) expect(CHATGPT_AUTHORING_INSTRUCTIONS).toContain(section.title);
     for (const section of AUTHORING_WORKFLOW_SECTIONS) expect(prompt).not.toContain(section.text);
     expect(CHATGPT_AUTHORING_INSTRUCTIONS).toContain("is an EDIT of the source followed by a CREATE");
     expect(prompt).toContain("Every newly generated Character card must include a useful, recognizable physical description");
@@ -187,17 +186,19 @@ describe("runAdventureGen", () => {
       expect(text).toContain(PLOT_ESSENTIALS_FOUNDATIONS_RULE);
       expect(text).toContain("Historical dates are valid");
       expect(text).toContain("Every newly generated adventure must establish a coherent, recognizable narrative tone");
-      expect(text).toContain("(1) explicit user direction; (2) identifiable source material");
-      expect(text).toContain("(3) the premise's subject");
-      expect(text).toContain("(4) a reasonable creative default");
       expect(text).toContain("HIDDEN RULE — NARRATOR ONLY");
-      expect(text).toContain("Use this optional technique only when the premise supports");
       expect(text).toContain("Narrator knowledge does not become player-character or NPC knowledge");
       expect(text).toContain("not arbitrary turn counts");
       expect(text).toContain("not a universal prohibition against conflict");
       expect(text).toContain("Do not impose Strict on every adventure");
       expect(text).toContain("A restrictive system may instead make failure, resources, and uncertainty central");
     }
+    expect(prompt).toContain("(1) explicit user direction; (2) identifiable source material");
+    expect(prompt).toContain("(3) the premise's subject");
+    expect(prompt).toContain("(4) a reasonable creative default");
+    expect(prompt).toContain("Use this optional technique only when the premise supports");
+    expect(CHATGPT_AUTHORING_INSTRUCTIONS).toContain("1. Explicit user direction.");
+    expect(CHATGPT_AUTHORING_INSTRUCTIONS).toContain("Use this optional technique only when the creator chooses it");
     expect(prompt).toContain('Always include "aiInstructions" to establish the inferred narrative tone');
     expect(prompt).toContain("Always include a PROSE section");
     expect(prompt).toContain("Do NOT include narrationRules");
