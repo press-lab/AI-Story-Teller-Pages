@@ -157,29 +157,21 @@ function isForced(adventure: Adventure, sourceType: ContextItem["sourceType"], i
 }
 
 function selectedRecentMessages(adventure: Adventure, seedMessage?: Message): Message[] {
-  const tokenCap = adventure.tokenBudgetSettings.sectionBudgets.recentMessages;
   const countCap = adventure.tokenBudgetSettings.maxRecentMessages;
   const messages = adventure.messages;
   const result: Message[] = [];
-  let tokens = 0;
-  // Walk newest-first; token cap is the primary constraint, count cap is a safety ceiling
+  // Select newest-first up to the count ceiling; the overall budget trims older entries.
   for (let i = messages.length - 1; i >= 0; i--) {
     if (result.length >= countCap) break;
     const original = messages[i];
     const msg = original.inputMode === "comms"
       ? { ...original, content: "[Out of Character " + (original.role === "assistant" ? "reply" : "author input") + "]\n" + original.content }
       : original;
-    const cost = approximateTokenCount(msg.content);
-    if (tokenCap && tokens + cost > tokenCap) break;
-    tokens += cost;
     result.push(msg);
   }
   // Append seed (opening scene) as oldest entry if it fits
   if (seedMessage && result.length < countCap) {
-    const cost = approximateTokenCount(seedMessage.content);
-    if (!tokenCap || tokens + cost <= tokenCap) {
-      result.push(seedMessage);
-    }
+    result.push(seedMessage);
   }
   return result; // newest-first; seed is last (oldest)
 }
@@ -694,7 +686,7 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
     const recentSection = sections.find((entry) => entry.id === "recentMessages");
     if (!recentSection) return false;
     const dropped = [...recentSection.items].reverse().find((entry) => isDroppable("recentMessages", entry));
-    return dropped ? dropItem("recentMessages", dropped, "Dropped oldest recent message according to userLocked/hybrid priority behavior.") : false;
+    return dropped ? dropItem("recentMessages", dropped, "Older entry did not fit in the remaining context budget.") : false;
   };
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -753,6 +745,7 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
   };
 
   while (totalTokens(sections) > budget) {
+    if (dropOldestRecent()) continue;
     const changed =
       budgetSettings.memoryPriorityMode === "systemSuggested"
         ? applySystemSuggestedBudget()

@@ -172,6 +172,7 @@ export function PlayPage({
   const droppedMessages = budgetDropped.filter((i) => i.sourceType === "message").length;
   const droppedCards = budgetDropped.filter((i) => i.sourceType === "storyCard").length;
   const totalDropped = budgetDropped.length;
+  const droppedOtherContext = totalDropped - droppedMessages;
   const trimTooltip = [
     droppedMessages > 0 && `${droppedMessages} story turn${droppedMessages !== 1 ? "s" : ""} dropped`,
     droppedCards > 0 && `${droppedCards} story card${droppedCards !== 1 ? "s" : ""} dropped`,
@@ -432,11 +433,11 @@ export function PlayPage({
                     trailing={message.role === "assistant" && message.id === lastAssistant?.id && totalDropped > 0 && (
                       <button
                         type="button"
-                        className="context-drop-warning"
+                        className={droppedOtherContext > 0 ? "context-drop-warning" : "context-history-notice"}
                         title={trimTooltip || "Context was trimmed to fit token budget"}
                         onClick={(e) => { e.stopPropagation(); onBuildContext(); onOpenContext(); }}
                       >
-                        ⚠️
+                        {droppedOtherContext > 0 ? "⚠️" : "■"}
                       </button>
                     )}
                   />
@@ -670,9 +671,10 @@ export function PlayPage({
           <div className="token-strip">
             <span>{contextResult?.totalEstimatedTokens ?? 0} tokens</span>
             {totalDropped > 0 && (
-              <span className="trim-warning" title={trimTooltip || "Context trimmed to fit token budget"}>
-                ⚠ {totalDropped} dropped
-              </span>
+              <>
+                {droppedMessages > 0 && <span className="context-history-notice" title={trimTooltip}>■ {droppedMessages} older entries omitted</span>}
+                {droppedOtherContext > 0 && <span className="trim-warning" title="Non-message context was excluded by the token budget">⚠ {droppedOtherContext} context items dropped</span>}
+              </>
             )}
           </div>
           {uiPreferences && onUiPreferencesChange && (

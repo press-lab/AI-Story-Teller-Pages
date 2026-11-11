@@ -5695,3 +5695,5 @@ summary {
 }
 
 .manual-approval:not(:disabled) { opacity: 1; cursor: pointer; }
+
+.context-history-notice { color: var(--muted, #999); background: none; border: 0; font: inherit; }
