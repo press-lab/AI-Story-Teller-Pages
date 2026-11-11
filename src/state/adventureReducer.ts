@@ -17,7 +17,7 @@ import { backgroundProviderConfigIssue } from "../providers/backgroundProvider";
 import { memoryRecoveryInterval, MEMORY_RECOVERY_MAX_FAILURES } from "../memory/memoryRecoveryBatch";
 import { MEMORY_EVALUATION_GROUPS, memoryTargetMatches } from "../memory/memoryCycleState";
 import { memoryEvidenceWindow } from "../memory/memoryEvidenceWindow";
-import { scanStoryCardExchange, equivalentStoryCardSuggestions, mergeStoryCardSuggestions, suggestionSourceValid, storyCardScanFingerprint, storyCardMustBeReviewed } from "../memory/storyCardSuggestions";
+import { scanStoryCardExchange, equivalentStoryCardSuggestions, mergeStoryCardSuggestions, suggestionSourceValid, storyCardScanFingerprint, storyCardMustBeReviewed, uniqueStoryCardTitle } from "../memory/storyCardSuggestions";
 import { mergeLoreMetadata, migrateStoryCard, primaryStoryCardType, isHistoricalLore, proposalLore } from "../memory/storyCardArchitecture";
 import { readStoryTime, formatStoryTime, reconcileStoryClock, transitionKey, initialStoryClock } from "../memory/storyTime";
 import { sameEventMemory } from "../memory/eventMemory";
@@ -1862,8 +1862,6 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
         candidate: { kind: action.proposal.storyCardType ?? action.proposal.proposedType, title: action.proposal.title, content: action.proposal.content.slice(0, 4000), evidence: (action.proposal.sourceText ?? "").slice(0, 4000), rationale: (action.proposal.rationale ?? "").slice(0, 600) },
       } });
       if (!clean) return suppressed("Proposal sanitization rejected the candidate.");
-      if (loreCreateTitleConflict(state, { ...clean, storyCardType: action.proposal.storyCardType ?? clean.storyCardType }))
-        return suppressed("Lore CREATE title already exists as a Story Card or active CREATE suggestion.");
       // Other automatic processing conflicts remain available for explicit manual review.
       delete clean.approvalFeedback;
       if (validateLoreChronology(state, clean).status === "conflict") clean.requiresReview = true;
@@ -1885,20 +1883,16 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
       if (Boolean(clean.eventMemory) && !clean.targetId && [...state.storyCards.filter(isHistoricalLore), ...state.activeState.memoryProposals.filter(p => Boolean(p.eventMemory))].some(c => sameEventMemory(c, clean))) return suppressed("Duplicate historical event already recorded.");
       if (proposalCoverage(state, clean)) return suppressed("Factual delta already recorded or considered.");
 
+      if (clean.proposedType === "storyCard" && !clean.targetId) {
+        clean.title = uniqueStoryCardTitle(state, clean.title, clean.storyCardType ?? "lore");
+        if (clean.placementValidation) clean.placementValidation = { ...clean.placementValidation, fingerprint: placementFingerprint(clean) };
+      }
+
       const loreQuality = clean.proposedType === "storyCard" && clean.storyCardType === "lore" && !clean.storyCardPatch
         ? loreNovelty(state, clean) : undefined;
       if (loreQuality && loreQuality.status !== "new") {
         clean.requiresReview = true;
         clean.rationale += " " + loreQuality.reason;
-      }
-      if (clean.proposedType === "storyCard" && !clean.targetId) {
-        const collisions = state.storyCards.filter(c => c.type === (clean.storyCardType ?? "lore") && loreTitleKey(c.title) === loreTitleKey(clean.title));
-        if (collisions.length) {
-          clean.requiresReview = true;
-          clean.rationale += " An equivalent title exists; choose a destination explicitly before approval.";
-          if (clean.storyCardReview) clean.storyCardReview = { ...clean.storyCardReview, candidateOnly: true,
-            targetCandidates: [...new Set([...clean.storyCardReview.targetCandidates, ...collisions.map(c => c.id)])] };
-        }
       }
       // Dedup: drop a proposal that duplicates one already pending, one the user already
       // dismissed (rejected/ignored), or a NEW story card whose title already exists as a card.

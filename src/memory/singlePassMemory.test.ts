@@ -413,7 +413,7 @@ it("describes local validation and saved approval rules without changing the qua
   const batch = await prepareSinglePassMemoryBatch(a, ids);
   const policy = buildSinglePassMemoryMessages(batch)[0].content;
   expect(policy).toContain("All extracted findings undergo local validation. Valid findings follow the user's configured auto-approval rules.");
-  expect(policy).toContain("Protected, uncertain, recovered, and explicitly review-required findings remain subject to manual approval. Never invent certainty to bypass review.");
+  expect(policy).toContain("Story Card protection, length, tentative wording, and supported Character profile changes do not independently require manual approval. Preserve explicit prior review decisions and evidence, placement, and chronology safeguards. Never invent certainty to bypass review.");
   expect(policy).not.toContain("All extracted candidates await the user's review.");
   expect(policy).toContain("Private interpretation examples");
 });

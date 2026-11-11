@@ -3,6 +3,8 @@ import { groundedFinding } from "../test/singlePassMemory";
 import { storyCardMeaningReviewReason } from "./storyCardMeaningReview";
 
 it.each([
+  ["The headmaster allegedly stole the relic.", "The headmaster might have stolen the relic.", false],
+  ["The relic is possibly cursed.", "The relic might be cursed.", false],
   ["He attempted to kiss her but withdrew before contact.", "They kissed.", true],
   ["They agreed to attend a meeting tomorrow.", "They attended the meeting.", true],
   ["George was absent and did not learn the agreement.", "George secretly knew about the agreement.", true],

@@ -166,7 +166,6 @@ export function makeStoryCardSuggestion(adventure: Adventure, sourceId: string, 
   const candidateOnly = Boolean(finding.candidateOnly || uncertain || finding.origin === "deterministic");
   const eventKind = finding.eventKind ?? findingKind(finding.content + " " + finding.evidence);
   const continuing = ["politicalPlan", "promise", "agreement", "decision", "engagement"].includes(eventKind ?? "") || /\b(history|relationship|conflict|alliance|agreement|pact)\b/i.test(finding.title);
-  const review = choices.length > 1 || Boolean(target?.protected);
   const content = uncertain && !/^Candidate|^Plan \(/.test(finding.content) ? `Candidate interpretation (unconfirmed): ${finding.content}` : finding.content;
   const closedTitle = !choices.length && adventure.storyCards.some(card => isHistoricalLore(card) && normalizeMemoryText(card.title) === normalizeMemoryText(finding.title));
   const identityTitle = type === "lore" && !target && adventure.storyCards.some(c => (c.type === "character" || c.type === "location") && normalizeMemoryText(c.title) === normalizeMemoryText(finding.title));
@@ -175,7 +174,7 @@ export function makeStoryCardSuggestion(adventure: Adventure, sourceId: string, 
   return {
     id: createId("proposal"), proposedType: "storyCard", cardOperation: target ? "append" : "create", storyCardType: target?.type ?? type, title: target?.title ?? suggestedTitle,
     content, sourceTurnId: sourceId, sourceText: finding.evidence, rationale: finding.reason,
-    suggestedTriggers: generatedStoryCardTriggers(adventure, finding.title, finding.content, finding.triggers, target?.id, memoryMode, type), requiresReview: review || closedTitle, status: "pending", confidence: candidateOnly ? 0.45 : 0.8,
+    suggestedTriggers: generatedStoryCardTriggers(adventure, finding.title, finding.content, finding.triggers, target?.id, memoryMode, type), requiresReview: false, status: "pending", confidence: candidateOnly ? 0.45 : 0.8,
     targetId: target?.id, appendContent: target ? true : undefined, memoryMode,
     lore: type === "lore" ? { status: uncertain ? "unresolved" : target?.lore?.status ?? (continuing ? "ongoing" : "completed"), sourceMessageIds: [sourceId, ...(player ? [player.id] : [])], ...(time ? { occurredAt: target?.lore?.occurredAt ?? time, lastChangedAt: time } : {}) } : undefined,
     storyCardReview: { origin: finding.origin ?? "model", candidateOnly, eventKind, participants, operation: target ? "update" : "create",
@@ -259,8 +258,19 @@ export function storyCardScanFingerprint(adventure: Adventure, source: Message):
   return (hash >>> 0).toString(16) + ":" + text.length;
 }
 
-export function storyCardMustBeReviewed(adventure: Adventure, proposal: MemoryProposal): boolean {
-  const target = adventure.storyCards.find(card => card.id === proposal.targetId);
-  return Boolean(proposal.requiresReview || (!proposal.targetId && (proposal.storyCardReview?.targetCandidates.length ?? 0) > 1)
-    || target?.protected);
+/** Existing review decisions remain explicit; card protection governs context retention. */
+export function storyCardMustBeReviewed(_adventure: Adventure, proposal: MemoryProposal): boolean {
+  return Boolean(proposal.requiresReview);
+}
+
+/** CREATE keeps its destination and receives a stable unused title instead of a review task. */
+export function uniqueStoryCardTitle(adventure: Adventure, title: string, type: MemoryProposal["storyCardType"]): string {
+  const occupied = new Set([
+    ...adventure.storyCards.map(c => loreTitleKey(c.title)),
+    ...adventure.activeState.memoryProposals.filter(p => p.proposedType === "storyCard" && !p.targetId
+      && (p.storyCardType ?? "lore") === type && ["pending", "approved"].includes(p.status)).map(p => loreTitleKey(p.title)),
+  ]);
+  let result = title;
+  for (let suffix = 2; occupied.has(loreTitleKey(result)); suffix++) result = `${title} (${suffix})`;
+  return result;
 }

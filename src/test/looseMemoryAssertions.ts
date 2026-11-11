@@ -19,7 +19,7 @@ export function expectSixLooseProposals(a: import("../types/adventure").Adventur
   expect(Object.values(JSON.parse(brain.content).thoughts)).toEqual([expect.stringMatching(/^\d+ \u2192 I believe the business can grow beyond individual customers\.$/)]);
   expect(brain).toMatchObject({ status: a.memoryAutoApprove.brainUpdate ? "approved" : "pending", requiresReview: false });
   for (const p of proposals.filter(p => p.proposedType !== "brainUpdate")) {
-    const review = p.storyCardType === "character" || p.proposedType === "plotEssentialsUpdate";
+    const review = p.proposedType === "plotEssentialsUpdate";
     const auto = p.proposedType === "storyCard" && a.memoryAutoApprove.loreStoryCard && !review;
     expect(p).toMatchObject({ status: auto ? "approved" : "pending", requiresReview: review });
   }

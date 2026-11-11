@@ -25,7 +25,7 @@ function expectFinding(r: Awaited<ReturnType<typeof routed>>, kind: string, subt
   if (kind === "storyCard") expect(f.storyCardType).toBe(subtype);
   if (kind === "brain") expect(Object.keys(f.brainPatch!)).toEqual([subtype]);
   expect(r.checked.proposals).toHaveLength(1);
-  expect(r.checked.proposals[0].proposal).toMatchObject({ proposedType: proposalType, requiresReview: (kind !== "storyCard" && candidateOnly) || (kind === "storyCard" && (subtype === "character" || (!id && (f.destinationCandidates?.length ?? 0) > 0))) || Boolean(r.a.storyCards.find(c => c.id === id)?.protected) || Boolean(r.a.brains.find(b => b.id === id)?.protected), status: "pending" });
+  expect(r.checked.proposals[0].proposal).toMatchObject({ proposedType: proposalType, requiresReview: (kind !== "storyCard" && candidateOnly) || Boolean(r.a.brains.find(b => b.id === id)?.protected), status: "pending" });
   expect(r.checked.proposals[0].proposal.targetId ?? null).toBe(id);
 }
 describe("Brain routing", () => {
@@ -207,15 +207,16 @@ it("resolves neither missing sources nor unsupported subtypes", async () => {
   expect(result.sources.map(s => s.findings.length)).toEqual([2, 2, 2]);
 });
 
-it("suppresses ambiguous exact-title Lore CREATE through the reducer", async () => {
+it("automatically names ambiguous exact-title Lore CREATE without modifying existing cards", async () => {
   const r = await routed("(lore: Weasley Tattoo Business = The twins agreed to ship 96 tattoos.)", a => {
     a.storyCards.push({ ...a.storyCards[0], id: "second-business" });
   });
   expect(r.result.findings[0]).toMatchObject({ targetId: null, storyCardType: "lore", operation: "create", destinationCandidates: ["business", "second-business"] });
   let saved = reduce(r.a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: r.batch.checkpoints });
   saved = reduce(saved, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: r.batch.batchId, sources: [{ result: r.result, checkpoint: r.batch.checkpoints[0].checkpoint }] });
-  expect(saved.activeState.memoryProposals).toHaveLength(0);
-  expect(saved.storyCards).toEqual(r.a.storyCards);
+  expect(saved.activeState.memoryProposals[0]).toMatchObject({ title: "Weasley Tattoo Business (2)", status: "approved", requiresReview: false });
+  expect(saved.storyCards.slice(0, r.a.storyCards.length)).toEqual(r.a.storyCards);
+  expect(saved.storyCards.at(-1)?.content).toBe("The twins agreed to ship 96 tattoos.");
 });
 it("does not bypass stale source revisions, historical evidence, destination or control edits", async () => {
   const { a } = looseMemoryFixture();
@@ -306,7 +307,7 @@ it("never places Quidditch facts in public relationship Lore; exact topics appen
   expectFinding(exact, "storyCard", "lore", topic.id, "append", "storyCard");
   const ambiguous = await routed(text, a => a.storyCards.push(topic, { ...topic, id: "other-topic" }));
   expectFinding(ambiguous, "storyCard", "lore", null, "create", "storyCard");
-  expect(ambiguous.checked.proposals[0].proposal.requiresReview).toBe(true);
+  expect(ambiguous.checked.proposals[0].proposal.requiresReview).toBe(false);
 });
 it("appends different facts about the same explicitly named relationship topic", async () => {
   const text = "(lore: Seth and Draconia's Public Exposure = Draconia publicly committed to supporting Seth's independent designs.)";

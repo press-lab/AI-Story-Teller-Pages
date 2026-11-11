@@ -22,7 +22,7 @@ it("rejects missing Brain destinations instead of creating biography", async () 
   const f = { ...groundedFinding(), kind: "brain" as const, targetId: "missing", brainPatch: { notes: "I understand the agreement." } };
   expect(validateSinglePassFinding(a, partnershipSourceId, batch.checkpoints.at(-1)!.checkpoint, f)).toContain("Brain");
 });
-it("retains protected and uncertain findings for review through existing reducers", async () => {
+it("automatically appends supported findings to protected Story Cards", async () => {
   let { a, ids } = singlePassFixture();
   a.memoryAutoApprove.loreStoryCard = true; a.memoryAutoApprove.otherStoryCard = true;
   const card = makeStoryCard({ type: "lore", title: "Workshop collaboration", content: "The workshop exists.", protected: true }); a.storyCards.push(card);
@@ -30,8 +30,8 @@ it("retains protected and uncertain findings for review through existing reducer
   a = reduce(a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
   const f = { ...groundedFinding(), targetId: card.id, operation: "append" as const };
   a = reduce(a, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId, sources: [{ checkpoint: batch.checkpoints.at(-1)!.checkpoint, result: { sourceId: partnershipSourceId, findings: [f], rejected: [] } }] });
-  expect(a.storyCards.find(c => c.id === card.id)!.content).toBe(card.content);
-  expect(a.activeState.memoryProposals[0]).toMatchObject({ status: "pending", requiresReview: true });
+  expect(a.storyCards.find(c => c.id === card.id)!.content).toContain(f.content);
+  expect(a.activeState.memoryProposals[0]).toMatchObject({ status: "approved", requiresReview: false });
 });
 it.each(["source", "destination"])("rejects stale %s edits at commit", async edit => {
   let { a, ids } = singlePassFixture(); const batch = await prepareSinglePassMemoryBatch(a, ids);
@@ -62,7 +62,7 @@ it.each([
   expect(a.activeState.memoryProposals[0]).toMatchObject({ status: "pending", requiresReview: true, content });
   expect(a.storyCards.some(c => c.type === "lore")).toBe(false);
 });
-it("validates an evidenced permanent Character ability but keeps profile changes reviewable", async () => {
+it("auto-approves an evidenced permanent Character ability", async () => {
   let { a, ids } = singlePassFixture(1); a.memoryAutoApprove.loreStoryCard = true; a.memoryAutoApprove.otherStoryCard = true;
   const target = a.storyCards[0];
   const content = "Casey permanently gained the ability to see magical wards.";
@@ -74,7 +74,7 @@ it("validates an evidenced permanent Character ability but keeps profile changes
   expect(validateSinglePassFinding(a, ids[0], batch.checkpoints[0].checkpoint, f)).toBeUndefined();
   a = reduce(a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
   a = reduce(a, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId, sources: [{ checkpoint: batch.checkpoints[0].checkpoint, result: { sourceId: ids[0], findings: [f], rejected: [] } }] });
-  expect(a.activeState.memoryProposals[0]).toMatchObject({ targetId: target.id, requiresReview: true });
+  expect(a.activeState.memoryProposals[0]).toMatchObject({ targetId: target.id, requiresReview: false, status: "approved" });
   a = reduce(a, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: a.activeState.memoryProposals[0].id });
   expect(a.storyCards.find(c => c.id === target.id)!.content).toContain(content);
   expect(a.storyCards.find(c => c.id === target.id)!.content).toContain(target.content);
@@ -205,7 +205,7 @@ it("commands route a research agreement away from Character profiles to review-r
   const v = validateSinglePassSource(f.a, r, f.batch.checkpoints[0].checkpoint);
   expect(v.proposals[0].proposal.storyCardType).toBe("lore");
 });
-it("commands construct the evidenced enduring profile exception and force review", async () => {
+it("commands auto-approve the evidenced enduring profile exception", async () => {
   const content = "Casey permanently gained the ability to see magical wards.";
   const f = await commandValidationFixture(content);
   const [alias, target] = Object.entries(f.manifest.cards).find(([, v]) => v.id === f.a.storyCards[0].id)!;
@@ -213,7 +213,7 @@ it("commands construct the evidenced enduring profile exception and force review
   expect(r.findings[0].identityChange).toEqual({ targetId: target.id, kind: "transformation", fact: content,
     reason: "An explicit permanent capability changes the enduring profile.", evidenceQuotes: [{ messageId: f.ids[0], quote: content }] });
   expect(validateSinglePassFinding(f.a, f.ids[0], f.batch.checkpoints[0].checkpoint, r.findings[0])).toBeUndefined();
-  expect(f.commit(r).activeState.memoryProposals[0]).toMatchObject({ requiresReview: true, status: "pending", targetId: target.id });
+  expect(f.commit(r).activeState.memoryProposals[0]).toMatchObject({ requiresReview: false, status: "approved", targetId: target.id });
 });
 it("command-derived duplicate facts are suppressed by existing validation", async () => {
   const content = "Casey Vale and Avery agreed to share research results.";
@@ -233,8 +233,8 @@ it("command-derived protected Story Card appends stay in the Inbox", async () =>
   const result = parseSinglePassMemoryCommands(`MEM S1 storyCard ${alias}\nE ${e} | Casey Vale and Avery agreed to share research results.\nTEXT\nCasey and Avery agreed to share research results.\nEND\nDONE S1`, batch.outputAliases, f.a).sources[0];
   let state = reduce(f.a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
   state = reduce(state, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId, sources: [{ result, checkpoint: batch.checkpoints[0].checkpoint }] });
-  expect(state.activeState.memoryProposals[0]).toMatchObject({ status: "pending", requiresReview: true });
-  expect(state.storyCards.find(c => c.id === "protected-lore")!.content).toBe("Research is underway.");
+  expect(state.activeState.memoryProposals[0]).toMatchObject({ status: "approved", requiresReview: false });
+  expect(state.storyCards.find(c => c.id === "protected-lore")!.content).toContain("Casey and Avery agreed to share research results.");
 });
 it.each(["source", "destination"])("command-derived findings fail stale %s checkpoint checks", async edit => {
   const f = await commandValidationFixture("Casey Vale and Avery agreed to share research results.");
@@ -263,26 +263,17 @@ it("command-derived resolved history does not auto-apply as Active Pressure", as
   expect(state.activeState.memoryProposals.every(p => p.status === "pending")).toBe(true);
 });
 
-it.each([69, 70, 71, 98, 120, 121])("preserves all %i words and enforces review limits", async count => {
+it.each([69, 70, 71, 98, 120, 121])("preserves all %i words without a length review gate", async count => {
   const content = Array.from({ length: count }, (_, i) => "fact" + i).join(" ");
   const f = await commandValidationFixture(content);
   const raw = { ...groundedFinding(), content, evidenceQuotes: [{ messageId: f.ids[0], quote: content }] };
   const diagnostics: string[] = [];
   const normalized = normalizeSinglePassFinding(raw, f.ids[0], f.a, diagnostics)!;
   expect(normalized.content).toBe(content);
-  const error = validateSinglePassFinding(f.a, f.ids[0], f.batch.checkpoints[0].checkpoint, normalized);
-  if (count > 120) expect(error).toContain("120 words");
-  else {
-    expect(error).toBeUndefined();
-    expect(normalized.candidateOnly).toBe(count > 70);
-    if (count > 70) {
-      expect(diagnostics).toContain("Story Card exceeds 70 words; manual review required.");
-      expect(validateSinglePassFinding(f.a, f.ids[0], f.batch.checkpoints[0].checkpoint, { ...normalized, candidateOnly: false })).toContain("manual review");
-      const state = f.commit({ sourceId: f.ids[0], findings: [normalized], rejected: [] });
-      expect(state.activeState.memoryProposals[0]).toMatchObject({ content, status: "pending", requiresReview: true });
-      expect(state.storyCards).toEqual(f.a.storyCards);
-    }
-  }
+  expect(validateSinglePassFinding(f.a, f.ids[0], f.batch.checkpoints[0].checkpoint, normalized)).toBeUndefined();
+  expect(diagnostics).not.toContain("Story Card exceeds 70 words; manual review required.");
+  expect(f.commit({ sourceId: f.ids[0], findings: [normalized], rejected: [] }).activeState.memoryProposals[0])
+    .toMatchObject({ content, status: "approved", requiresReview: false });
 });
 it("rejects stale source content after alias resolution", async () => {
   const f = await commandValidationFixture("The workshop opened.");
@@ -305,7 +296,7 @@ it.each([true, false])("recovers supported Character events with topical Lore pr
   const v = validateSinglePassSource(f.a, r, batch.checkpoints[0].checkpoint);
   expect(v.rejected).toEqual([]);
   const p = v.proposals[0].proposal;
-  expect(p).toMatchObject({ requiresReview: hasLore, status: "pending", cardOperation: "create" });
+  expect(p).toMatchObject({ requiresReview: false, status: "pending", cardOperation: "create" });
   expect(p.targetId).toBeUndefined();
   expect(p.storyCardReview!.targetCandidates.includes(lore.id)).toBe(hasLore);
 });
@@ -448,7 +439,7 @@ it.each([
   ["He failed to kiss her.", "They kissed.", true],
   ["A rumor suggests the headmaster stole the relic.", "The headmaster stole the relic.", true],
   ["Draco was absent and nobody told him about the agreement.", "Draco secretly knew about the agreement.", true],
-  ["Perhaps the relic is cursed.", "The relic might be cursed.", true],
+  ["Perhaps the relic is cursed.", "The relic might be cursed.", false],
 ])("classifies actual loose findings using concrete source risk: %s", async (evidence, content, requiresReview) => {
   const { a, ids } = looseMemoryFixture(); a.storyCards = []; a.messages[0].content = evidence;
   const batch = await prepareSinglePassMemoryBatch(a, [ids[0]]);
@@ -474,7 +465,7 @@ it.each(["protected", "candidate", "recovery"])("separates factual uncertainty f
     result.findings[0] = normalizeSinglePassFinding(incomplete, ids[0], a)!;
   }
   const p = validateSinglePassSource(a, result, batch.checkpoints[0].checkpoint).proposals[0].proposal;
-  expect(p).toMatchObject({ requiresReview: condition === "protected", storyCardReview: { candidateOnly: ["candidate", "recovery"].includes(condition) } });
+  expect(p).toMatchObject({ requiresReview: false, storyCardReview: { candidateOnly: ["candidate", "recovery"].includes(condition) } });
 });
 
 it("retains advisory choices without overriding an authoritative exact APPEND", async () => {

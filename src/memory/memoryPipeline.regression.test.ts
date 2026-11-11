@@ -133,7 +133,7 @@ it.each([0, 1, 2])("retains October 27 fixture case %i with one extraction reque
   const validated = validateSinglePassSource(a, result.sources[0], batch.checkpoints[0].checkpoint);
   expect(validated.rejected).toEqual([]);
   expect(validated.proposals).toHaveLength(1);
-  expect(validated.proposals[0]).toMatchObject({ index: 0, findingIndex: 0, proposal: { content, status: "pending", requiresReview: index !== 0 } });
+  expect(validated.proposals[0]).toMatchObject({ index: 0, findingIndex: 0, proposal: { content, status: "pending", requiresReview: false } });
   const proposal = validated.proposals[0].proposal;
   if (index === 1) {
     expect(result.sources[0].findings[0].targetId).toBeNull();
@@ -145,10 +145,11 @@ it.each([0, 1, 2])("retains October 27 fixture case %i with one extraction reque
   a = adventureReducer(a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
   const commit = { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH" as const, batchId: batch.batchId, sources: [{ result: result.sources[0], checkpoint: batch.checkpoints[0].checkpoint }] };
   a = adventureReducer(a, commit);
-  if (index === 0) {
-    expect(a.storyCards.find(card => card.id === fixture.existingLoreTarget.id)?.content).toContain(content);
-    expect(a.activeState.memoryProposals[0].status).toBe("approved");
-  } else expect(a.storyCards).toEqual(cards);
+  expect(a.activeState.memoryProposals[0].status).toBe("approved");
+  if (index === 1) {
+    expect(a.storyCards.slice(0, cards.length)).toEqual(cards);
+    expect(a.storyCards.at(-1)?.content).toBe(content);
+  } else expect(a.storyCards.find(card => card.id === fixture.existingLoreTarget.id)?.content).toContain(content);
   expect(a.messages[1].memoryEvaluation?.singlePass?.status).toBe("complete");
   expect(adventureReducer(a, commit)).toBe(a);
   if (index !== 1) expect(validateSinglePassSource(a, result.sources[0], batch.checkpoints[0].checkpoint).suppressed).toEqual([0]);

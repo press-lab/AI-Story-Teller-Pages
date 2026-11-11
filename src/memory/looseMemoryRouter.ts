@@ -83,7 +83,7 @@ export function resolveLooseDestination(a: Adventure, source: Source, op: LooseM
     }
     // No enduring justification is invented for an existing biography.
     const lore = resolveLooseDestination(a, source, op, { category: "storyCard", subtype: "lore" });
-    if (lore.value) lore.value.diagnostic = "Existing Character protected: ordinary development recovered as review-required Lore without an enduring profile justification.";
+    if (lore.value) lore.value.diagnostic = "Existing Character protected: ordinary development recovered as focused Lore without an enduring profile justification.";
     return lore;
   }
   if (category.subtype === "character" && op.explicitUpdate) return { error: "Character correction requires an existing unique Character identity." };
@@ -92,7 +92,7 @@ export function resolveLooseDestination(a: Adventure, source: Source, op: LooseM
     const candidates = [...new Set([...matches.map(c => c.id), ...storyCardTargets(a, { title: op.subject, content: op.content, type: "lore" })])]
       .filter(id => cards.some(c => c.id === id));
     return { value: { category, targetId, operation: targetId ? "append" : "create", candidates,
-      ...(!targetId && candidates.length ? { diagnostic: "No unique strong Lore topic match; candidate choices retained for manual review." } : {}) } };
+      ...(!targetId && candidates.length ? { diagnostic: "No unique strong Lore topic match; create focused Lore with a nonconflicting title." } : {}) } };
   }
   const candidates = matches.map(c => c.id);
   if (candidates.length > 1) return { error: "Ambiguous " + category.subtype + " destination; no duplicate created." };
@@ -113,7 +113,7 @@ export function buildLooseFinding(a: Adventure, source: Source, op: LooseMemoryO
   const base: SinglePassMemoryFinding = { kind, targetId: destination.targetId, title: op.subject, candidateOnly: kind === "storyCard"
     ? op.category === "unclassified" || destination.category.subtype === "character" || Boolean(destination.diagnostic)
     : kind !== "brain",
-    reason: destination.diagnostic ?? (op.category === "unclassified" ? "Unclassified assignment recovered as review-required Lore." : "Extracted factual candidate; narrator provenance attached locally."),
+    reason: destination.diagnostic ?? (op.category === "unclassified" ? "Unclassified assignment recovered as focused Lore." : "Extracted factual candidate; narrator provenance attached locally."),
     evidenceQuotes, operation: destination.operation };
   if (kind === "storyCard" && destination.category.subtype === "lore" && !destination.targetId
     && a.storyCards.some(c => c.type !== "lore" && normalize(c.title) === normalize(op.subject))) {

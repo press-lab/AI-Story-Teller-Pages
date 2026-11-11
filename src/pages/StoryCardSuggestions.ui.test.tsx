@@ -304,10 +304,10 @@ it("keeps the Story Cards toggle bound and persisted, with auto-approved history
     return <><MemoryInboxPage adventure={adventure} dispatch={dispatch} /><output data-testid="approval-state">{JSON.stringify(adventure)}</output></>;
   }
   const page = render(<ApprovalSettings initial={a} />); const user = userEvent.setup();
-  expect(screen.getByLabelText("Memory suggestion counts")).toHaveTextContent("1 pending");
-  const history = screen.getByText("History (1)").closest("details")!;
+  expect(screen.getByLabelText("Memory suggestion counts")).toHaveTextContent("0 pending");
+  const history = screen.getByText("History (2)").closest("details")!;
   expect(history).toHaveTextContent("Archive access"); expect(history).toHaveTextContent("approved");
-  expect(screen.getAllByText(/Character profile changes require author review/).length).toBeGreaterThan(0);
+  expect(screen.queryByText(/Character profile changes require author review/)).toBeNull();
   const toggle = screen.getByRole("checkbox", { name: "Story Cards — Lore" });
   expect(toggle).toBeChecked();
   await user.click(toggle); expect(toggle).not.toBeChecked();
@@ -318,9 +318,7 @@ it("keeps the Story Cards toggle bound and persisted, with auto-approved history
   page.unmount(); render(<ApprovalSettings initial={loaded} />);
   expect(screen.getByRole("checkbox", { name: "Story Cards — Lore" })).not.toBeChecked();
   await user.click(screen.getByRole("checkbox", { name: "Story Cards — Lore" }));
-  expect(JSON.parse(screen.getByTestId("approval-state").textContent!).activeState.memoryProposals.find((p: { title: string }) => p.title === "Eleanor Vale").status).toBe("pending");
-  const pending = screen.getByRole("region", { name: /CREATE character: Eleanor Vale suggestions/i });
-  await user.click(within(pending).getByRole("button", { name: "Approve" }));
+  expect(JSON.parse(screen.getByTestId("approval-state").textContent!).activeState.memoryProposals.find((p: { title: string }) => p.title === "Eleanor Vale").status).toBe("approved");
   expect(JSON.parse(screen.getByTestId("approval-state").textContent!).storyCards.some((c: { title: string }) => c.title === "Eleanor Vale")).toBe(true);
 });
 

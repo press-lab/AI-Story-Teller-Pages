@@ -148,7 +148,7 @@ Good, ONLY if supported: (brain.thoughts: George = Her warning addresses the ris
 A justified existing Character correction:
 (storyCard.character.update: Eleanor Vale = Eleanor permanently lost her fire magic. || The experiment established this lasting loss.)
 
-Keep ordinary card deltas within 70 words (120 maximum for manual review). Record only supported new facts, preserving claims, chronology, uncertainty and private knowledge boundaries. Plans remain plans; proposed agreements are not accepted agreements; future meetings have not occurred; attempts are not completed outcomes. Collaboration is not romance. Do not invent private reactions, permanent traits or facts to fill an empty source. Source attachment proves provenance, not semantic correctness. All extracted findings undergo local validation. Valid findings follow the user's configured auto-approval rules. Protected, uncertain, recovered, and explicitly review-required findings remain subject to manual approval. Never invent certainty to bypass review.`;
+Keep ordinary card deltas concise; length alone does not require manual review. Record only supported new facts, preserving claims, chronology, uncertainty and private knowledge boundaries. Plans remain plans; proposed agreements are not accepted agreements; future meetings have not occurred; attempts are not completed outcomes. Collaboration is not romance. Do not invent private reactions, permanent traits or facts to fill an empty source. Source attachment proves provenance, not semantic correctness. All extracted findings undergo local validation. Valid findings follow the user's configured auto-approval rules. Story Card protection, length, tentative wording, and supported Character profile changes do not independently require manual approval. Preserve explicit prior review decisions and evidence, placement, and chronology safeguards. Never invent certainty to bypass review.`;
 export function buildSinglePassMemoryMessages(batch: PreparedSinglePassMemoryBatch): ChatMessage[] {
   return [{ role: "system", content: POLICY }, { role: "user", content: JSON.stringify({ ...batch.payload, outputAliases: batch.outputAliases }) }];
 }
@@ -175,10 +175,6 @@ export function normalizeSinglePassFinding(v: unknown, sourceId: string, adventu
   missing("reason", `Extracted from narrator source ${sourceId}.`);
   missing("candidateOnly", true);
   if (f.kind === "storyCard") {
-    if (words.length > 70 && words.length <= 120) {
-      f.candidateOnly = true;
-      diagnostics.push("Story Card exceeds 70 words; manual review required.");
-    }
     const card = adventure?.storyCards.find(c => c.id === f.targetId);
     missing("operation", f.targetId === null ? "create" : "append");
     missing("storyCardType", card?.type ?? (f.targetId === null ? "lore" : undefined));
@@ -380,7 +376,7 @@ export function parseSinglePassMemoryCommands(text: string, aliases: PreparedSin
     }
     const diagnostics: string[] = [];
     if (c.evidenceRecovered || recoverCharacterEvent) base.candidateOnly = true;
-    if (recoverCharacterEvent) diagnostics.push("Character event routed to review-required Lore proposal; no PROFILE justification.");
+    if (recoverCharacterEvent) diagnostics.push("Character event routed to focused Lore proposal; no PROFILE justification.");
     const finding = normalizeSinglePassFinding(base, manifest.sourceId, adventure, diagnostics);
     result.diagnostics!.push(...diagnostics.map(reason => ({ index: c.index, reason })));
     if (!finding) reject(c, singlePassFindingSchemaError(base) ?? "Invalid finding metadata.");

@@ -31,9 +31,6 @@ export function validateSinglePassFinding(a: Adventure, sourceId: string, checkp
   const shapeError = memoryUpdateShapeError(f.kind === "immediateMomentum" ? "currentArc" : f.kind, f.content ?? "");
   if (shapeError) return shapeError;
   if (f.kind === "storyCard") {
-    const words = f.content!.trim().split(/\s+/).length;
-    if (words > 120) return "Story Card delta exceeds 120 words.";
-    if (words > 70 && f.candidateOnly !== true) return "Story Card delta exceeds 70 words; manual review required.";
     if (f.identityChange && f.storyCardType !== "character") return "Character profile corrections require Character placement and author review.";
     const target = a.storyCards.find(c => c.id === f.targetId);
     if (f.targetId && (!target || target.type !== f.storyCardType || f.operation !== "append")) return "Invalid destination type or append operation.";
@@ -68,9 +65,7 @@ export function toSinglePassProposal(a: Adventure, sourceId: string, checkpoint:
     .filter(e => ids.includes(e.id) && a.messages.some(m => m.id === e.id && m.role === "assistant"))) : undefined;
   const reviewReasons = [
     f.kind !== "storyCard" && f.candidateOnly ? "Uncertain finding or recovered metadata: " + f.reason : undefined,
-    f.kind === "storyCard" && (f.content?.trim().split(/\s+/).length ?? 0) > 70 ? "Story Card exceeds 70 words; manual review required." : undefined,
-    protectedTarget ? "Protected Story Card or memory destination." : undefined,
-    f.kind === "storyCard" && f.storyCardType === "character" ? "Character profile changes require author review." : undefined,
+    protectedTarget && f.kind !== "storyCard" ? "Protected memory destination." : undefined,
     meaningReason,
   ].filter((reason): reason is string => Boolean(reason));
   // Preserve the existing conservative component policy; Brain approval is independent.
@@ -83,8 +78,6 @@ export function toSinglePassProposal(a: Adventure, sourceId: string, checkpoint:
       candidateOnly: f.candidateOnly, evidenceReviewed: true, origin: "model" });
     // Routing chooses placement. The helper supplies chronology and established trigger generation.
     const choices = f.destinationCandidates ?? storyCardTargets(a, { title: f.title, content: f.content!, participants: f.participants, targetId: f.targetId ?? undefined, type: f.storyCardType }).filter(id => a.storyCards.some(c => c.id === id && c.type === f.storyCardType));
-    if (!f.targetId && choices.length) reviewReasons.push("Ambiguous destination; select an existing Story Card or confirm creation.");
-    if (!f.targetId && a.storyCards.some(c => c.type === f.storyCardType && loreTitleKey(c.title) === loreTitleKey(f.title))) reviewReasons.push("Existing Story Card title conflict.");
     p = { ...p, content: f.content!, title: f.title, targetId: f.targetId ?? undefined, storyCardType: f.storyCardType, memoryMode: f.memoryMode,
       cardOperation: f.operation === "append" ? "append" : "create", appendContent: f.operation === "append" ? true : undefined, requiresReview: review || reviewReasons.length > 0,
       lore: f.storyCardType === "lore" ? { ...p.lore, status: f.eventStatus!, sourceMessageIds: ids } : undefined };

@@ -39,14 +39,13 @@ export function storyCardMeaningReviewReason(finding: SinglePassMemoryFinding, e
   const proposed = finding.content ?? "";
   if (["location", "custom"].includes(finding.storyCardType ?? "") && /\b(?:permanently|enduring (?:profile|trait)|personality|voice contract)\b/i.test(proposed)
     && finding.participants?.length) return "Character profile changes require Character placement and author review.";
-  if (tentative.test(proposed)) return "Uncertain event interpretation: the proposed conclusion is tentative.";
   const source = evidence.flatMap(e => e.content.split(/(?<=[.!?])\s+|\n+/)).filter(Boolean);
   const clauses = proposed.split(/(?<=[.!?])\s+|;\s*|\s+(?:and|but)\s+/i).filter(Boolean);
   for (const clause of clauses) {
     const matching = source.filter(s => related(clause, s));
     const direct = matching.some(s => !tentative.test(s) && normalize(s).includes(normalize(clause)));
     if (privateClaim.test(clause) && !direct) return "Uncertain event interpretation: private knowledge or interpretation lacks supporting narrator disclosure.";
-    if (matching.some(s => tentative.test(s)) && !direct) return "Unsupported certainty: source evidence frames this claim as rumor, possibility, or speculation.";
+    if (!tentative.test(clause) && matching.some(s => tentative.test(s)) && !direct) return "Unsupported certainty: source evidence frames this claim as rumor, possibility, or speculation.";
     if (!retainedModality.test(clause)) {
       const planned = matching.flatMap(plannedActions).filter(action => hasAction(clause, action));
       if (planned.some(action => !matching.some(s => hasAction(s, action) && !incomplete.test(s) && !tentative.test(s)))) {

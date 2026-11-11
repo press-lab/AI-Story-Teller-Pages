@@ -95,3 +95,17 @@ inspectable no-op without adding another card revision. Partial overlap preserve
 the reviewed draft pending edit/revalidation instead of silently changing claims.
 Second placement review remains mandatory for corrected content or destinations;
 completed reviews are reusable only with matching evidence, content and controls.
+
+## Story Card automatic approval
+
+Adventure category switches govern automatic approval. Word count, protected-card status,
+supported Character profile changes, tentative wording, and advisory destination candidates
+do not independently require manual approval. Ambiguous topic matches create focused Lore
+rather than guessing an existing destination. CREATE title collisions are corrected locally
+with an unused numbered suffix, after duplicate-fact checks and before application; existing
+cards and their authored titles remain unchanged.
+
+Private-knowledge disclosure, unsupported certainty/completion, Character information in the
+wrong card type, source/placement validity, factual overlap, and chronology checks remain.
+Previously saved explicit review flags remain in force. Brain and component approval rules
+are unchanged. Protected Story Cards still retain their context protection.
