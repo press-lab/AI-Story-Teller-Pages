@@ -5855,3 +5855,5 @@ textarea.auto-grow-textarea {
     right: 10px;
   }
 }
+
+.context-history-notice { color: var(--muted, #999); background: none; border: 0; font: inherit; }

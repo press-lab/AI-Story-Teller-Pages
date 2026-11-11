@@ -477,9 +477,10 @@ export function SettingsPage({
                 />
               </div>
               <div>
+                <p className="muted">Recent entries fill the remaining Max Context Tokens budget, up to Max Recent Messages. The newest entry stays protected. Local model capacity can impose a lower limit.</p>
                 <Field label="Section Budgets JSON">
                   <JsonTextarea
-                    value={activeSettings.tokenBudgetSettings.sectionBudgets}
+                    value={Object.fromEntries(Object.entries(activeSettings.tokenBudgetSettings.sectionBudgets).filter(([key]) => key !== "recentMessages"))}
                     onValidChange={(sectionBudgets) => updateBudget({ sectionBudgets })}
                   />
                 </Field>

@@ -425,7 +425,7 @@ describe("buildContext", () => {
       },
       { currentInput: "signal" },
     );
-    expect(systemSuggested.excludedItems[0]).toMatchObject({ id: "low-system-suggested", reason: "budget_exceeded" });
+    expect(systemSuggested.excludedItems[0]).toMatchObject({ id: "old", reason: "budget_exceeded" });
 
     const hybrid = buildContext(
       {
@@ -438,7 +438,7 @@ describe("buildContext", () => {
       },
       { currentInput: "signal" },
     );
-    expect(hybrid.excludedItems[0]).toMatchObject({ id: "low-system-suggested", reason: "budget_exceeded" });
+    expect(hybrid.excludedItems[0]).toMatchObject({ id: "old", reason: "budget_exceeded" });
   });
 
   it("uses user priority changes for ordering and keeps preview payload matched by priority mode", () => {
@@ -1071,3 +1071,11 @@ describe("one-hop chained Story Cards", () => {
     expect(cards(build(adventure)).map(c => c.id)).toEqual(["fenchurch"]);
   });
 });
+
+ it("uses the overall budget rather than the legacy recent-message token cap", () => {
+   const adventure = adventureForContext();
+   adventure.tokenBudgetSettings.sectionBudgets = { recentMessages: 1 };
+   const result = buildContext(adventure, { currentInput: "lantern" });
+   expect(result.sections.find(s => s.id === "recentMessages")?.items.map(i => i.id)).toEqual(expect.arrayContaining(["old-msg", "new-msg"]));
+   expect(result.totalEstimatedTokens).toBeLessThanOrEqual(adventure.tokenBudgetSettings.maxContextTokens);
+ });
