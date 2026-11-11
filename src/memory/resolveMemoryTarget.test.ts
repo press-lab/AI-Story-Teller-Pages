@@ -173,6 +173,24 @@ describe("generated Story Card topic triggers", () => {
     const state = { ...adventure, storyCards: [...adventure.storyCards, makeStoryCard({ title: "Runic arrays", content: "A general reference.", type: "lore", keys: ["ward design"] })] };
     expect(generatedStoryCardTriggers(state, "Runic arrays", content, ["Runic arrays", "ward design"], undefined, "historical", "lore")).toEqual(["Runic arrays", "ward design"]);
   });
+  it("keeps named event phrases from new Lore alongside the existing topic phrases", () => {
+    const title = "Founder's Circle dinner";
+    const body = "Seth had his first date with Draconia. It was his first dinner at Founder's Circle.";
+    const keys = generatedStoryCardTriggers(adventure, title, body, undefined, undefined, "historical", "lore");
+
+    expect(keys.slice(0, 2)).toEqual(["first date with Draconia", "first dinner at Founder's Circle"]);
+    expect(keys).toContain("Circle dinner");
+    expect(keys).not.toContain("Draconia");
+    expect(keys.length).toBeLessThanOrEqual(6);
+  });
+
+  it("preserves a named possessive only when the event phrase is present", () => {
+    const keys = generatedStoryCardTriggers(adventure, "Ward design",
+      "Draconia's first class covered passive runic arrays.", undefined, undefined, "historical", "lore");
+    expect(keys).toContain("Draconia's first class");
+    expect(keys).not.toContain("our first class");
+  });
+
   it("retains character identity aliases and supplies the name when generation omitted keys", () => {
     expect(generatedStoryCardTriggers(adventure, "Mira Vale", "A scout.", [], undefined, "static", "character")).toEqual(["Mira Vale"]);
     expect(generatedStoryCardTriggers(adventure, "Mira Vale", "A scout.", ["Mira", "Mira"], undefined, "static", "character")).toEqual(["Mira Vale", "Mira"]);

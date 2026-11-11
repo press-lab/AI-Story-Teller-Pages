@@ -117,7 +117,10 @@ const PHRASE_BREAKS = new Set(("a an to of for on at by in as or but than then w
   + "first new current ongoing completed historical history status event events development developments candidate interpretation unconfirmed "
   + "one two three four five six seven eight nine ten twenty thirty percent").split(/\s+/));
 
-/** No extra model call: recover short, reusable topic phrases only from the card's own text. */
+// Keep the name attached to the event and preserve the wording from the source.
+const NAMED_EVENT_RECALL = /(?<![\p{L}\p{N}])(?:(?:[Ff]irst|[Ss]econd|[Tt]hird|[Ff]inal) [\p{L}-]+ (?:with|at|in) \p{Lu}[\p{L}'’-]*(?: \p{Lu}[\p{L}'’-]*){0,2}|\p{Lu}[\p{L}-]+['’]s (?:first|second|third|final) [\p{L}-]+)(?![\p{L}\p{N}])/gu;
+
+/** No extra model call. Recover named event and topic phrases from the card's own text. */
 export function generatedStoryCardTriggers(
   adventure: TriggerContext, title: string, content: string, triggers?: string[], targetId?: string,
   memoryMode?: StoryCardMemoryMode, type?: StoryCard["type"],
@@ -125,7 +128,12 @@ export function generatedStoryCardTriggers(
   const supplied = sanitizeStoryCardTriggers(adventure, title, triggers, targetId, memoryMode, content);
   if (type === "character") return sanitizeStoryCardTriggers(adventure, title, [title, ...supplied], targetId, "static", content);
   if (supplied.length) return supplied;
-  let text = `${title}\n${content.split(/VOICE CONTRACT/i)[0]}`.replace(/['’]s\b/gu, "");
+  const cardText = `${title}\n${content.split(/VOICE CONTRACT/i)[0]}`;
+  const namedEvents = type === "lore"
+    ? sanitizeStoryCardTriggers(adventure, title, Array.from(cardText.matchAll(NAMED_EVENT_RECALL), match => match[0]),
+      targetId, memoryMode, content).slice(0, 2)
+    : [];
+  let text = cardText.replace(/['’]s\b/gu, "");
   // Names alone recall identity cards. Keep the topic of Lore rather than a participant's name.
   for (const card of adventure.storyCards.filter(card => card.type === "character" && card.id !== targetId)) {
     for (const name of [card.title, ...card.keys.filter(key => /^\p{Lu}/u.test(key))]) {
@@ -144,7 +152,7 @@ export function generatedStoryCardTriggers(
   if (chunk.length) chunks.push(chunk);
   // Bigrams match ordinary future mentions more readily than an exact scene sentence.
   const phrases = chunks.flatMap(words => words.slice(0, -1).map((word, index) => `${word} ${words[index + 1]}`));
-  const candidates = [...phrases, ...chunks.filter(words => words.length === 1).flat()];
+  const candidates = [...namedEvents, ...phrases, ...chunks.filter(words => words.length === 1).flat()];
   return sanitizeStoryCardTriggers(adventure, title, candidates, targetId, memoryMode, content);
 }
 
@@ -169,7 +177,9 @@ export function resolveMemoryTarget(adventure: Adventure, draft: MemoryTargetDra
   const memoryMode = target ? (targetMode ?? inferredMode) : inferredMode;
   const appendContent = target ? true : undefined;
   const title = target?.title ?? draft.title;
-  const suggestedTriggers = generatedStoryCardTriggers(adventure, title, draft.content, draft.suggestedTriggers, target?.id, memoryMode);
+  const storyCardType = target?.type ?? draft.storyCardType;
+  const suggestedTriggers = generatedStoryCardTriggers(adventure, title, draft.content, draft.suggestedTriggers,
+    target?.id, memoryMode, storyCardType === "lore" ? storyCardType : undefined);
   const rationale = [
     draft.rationale,
     target && !draft.targetId ? `Append to existing Story Card "${target.title}".` : undefined,
@@ -177,7 +187,7 @@ export function resolveMemoryTarget(adventure: Adventure, draft: MemoryTargetDra
 
   return {
     proposedType: "storyCard",
-    storyCardType: target?.type ?? draft.storyCardType,
+    storyCardType,
     title,
     content: draft.content,
     suggestedTriggers,
