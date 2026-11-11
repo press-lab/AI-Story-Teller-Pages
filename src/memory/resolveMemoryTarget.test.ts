@@ -181,7 +181,15 @@ describe("generated Story Card topic triggers", () => {
     expect(keys.slice(0, 2)).toEqual(["first date with Draconia", "first dinner at Founder's Circle"]);
     expect(keys).toContain("Circle dinner");
     expect(keys).not.toContain("Draconia");
-    expect(keys.length).toBeLessThanOrEqual(6);
+    expect(keys.length).toBeLessThanOrEqual(8);
+  });
+
+  it("preserves eight valid supplied keys and drops the ninth", () => {
+    const supplied = ["our first date", "Founders Circle dinner", "Thanksgiving bonfire",
+      "acceptable-plus verdict", "first date with Draconia", "obsidian exercise",
+      "ward design", "runic arrays", "aperture gating"];
+    expect(generatedStoryCardTriggers(adventure, "Dinner", content, supplied, undefined, "historical", "lore"))
+      .toEqual(supplied.slice(0, 8));
   });
 
   it("preserves a named possessive only when the event phrase is present", () => {

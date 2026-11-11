@@ -102,7 +102,7 @@ export function sanitizeStoryCardTriggers(
       && !(norm.includes(" ") && normalize(content).includes(norm))) continue;
     seen.add(norm);
     result.push(clean);
-    if (result.length >= 6) break;
+    if (result.length >= 8) break;
   }
   return result;
 }
