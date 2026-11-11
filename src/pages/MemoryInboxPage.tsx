@@ -315,6 +315,14 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
   const isPending = proposal.status === "pending";
   const targetCard = proposal.proposedType === "storyCard" ? adventure.storyCards.find(card => card.id === proposal.targetId) : undefined;
   const autoApprovalBlockers = isPending && proposal.proposedType === "storyCard" ? storyCardAutoApprovalBlockers(adventure, proposal) : [];
+  const savedReviewReason = proposal.requiresReview
+    ? proposal.rationale.split("Review required:").slice(1).join("Review required:").trim()
+      || proposal.rationale.trim() || "Previously marked for manual review."
+    : undefined;
+  const reviewReasons = isPending ? [...new Set([
+    ...(savedReviewReason ? [savedReviewReason] : []),
+    ...autoApprovalBlockers.filter(reason => !reason.startsWith("This proposal was previously marked for manual review.")),
+  ])] : [];
   const sourceValid = suggestionSourceValid(adventure, proposal);
   const placementError = placementValidationError(adventure, proposal);
   const destinationLabel = proposalDestinationLabel(adventure, proposal);
@@ -335,6 +343,9 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
       <summary className="proposal-card-summary">
         <span className="proposal-card-title">
           <strong>{proposal.title || "Untitled suggestion"}</strong>
+          {reviewReasons.length > 0 && <span className="proposal-review-reasons" aria-label="Review required reasons">
+            Review required: {reviewReasons.join(" · ")}
+          </span>}
           <span className="muted">
             {destinationLabel}
           </span>

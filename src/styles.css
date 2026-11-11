@@ -710,6 +710,14 @@ pre {
   min-width: 0;
 }
 
+/* Review blockers stay readable even when the suggestion is collapsed. */
+.proposal-review-reasons {
+  font-size: 0.875rem;
+  font-weight: 600;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .proposal-card-title strong,
 .proposal-card-summary .search-snippet {
   overflow: hidden;

@@ -345,3 +345,41 @@ it.each([false, true])("keeps approval controls exclusively in this adventure's 
   await saveAdventure(a);
   expect((await getAdventure(a.id))?.memoryAutoApprove).toEqual(a.memoryAutoApprove);
 });
+
+it.each([
+  "Unsupported completion: source evidence plans or attempts the action without establishing its completion.",
+  "Uncertain event interpretation: private knowledge or interpretation lacks supporting narrator disclosure.",
+])("shows the exact review blocker in the collapsed suggestion label: %s", reason => {
+  const a = createDefaultAdventure();
+  a.memoryAutoApprove.loreStoryCard = true;
+  a.messages = [{ id: "review-source", role: "assistant", content: "The Queen granted the request.", createdAt: "2026-11-11" }];
+  const proposal = reviewedProposal(a, makeStoryCardSuggestion(a, "review-source", a.messages[0].content, {
+    title: "Harvestfall Courier", content: "The Queen granted the request.", evidence: a.messages[0].content, reason: "Extracted factual candidate.", type: "lore",
+  }));
+  proposal.requiresReview = true;
+  proposal.rationale = "Extracted factual candidate; narrator provenance attached locally. Review required: " + reason;
+  a.activeState.memoryProposals = [proposal];
+  const before = structuredClone(a);
+  render(<MemoryInboxPage adventure={a} dispatch={vi.fn()} />);
+  const label = screen.getByLabelText("Review required reasons");
+  expect(label).toHaveTextContent("Review required: " + reason);
+  expect(label).not.toHaveTextContent("Extracted factual candidate");
+  const summary = label.closest("summary")!;
+  expect(summary).toHaveClass("proposal-card-summary");
+  summary.parentElement!.removeAttribute("open");
+  expect(within(summary).getByLabelText("Review required reasons")).toBeVisible();
+  expect(a).toEqual(before);
+});
+
+it("shows saved review reasons alongside current automatic approval blockers", () => {
+  const a = createDefaultAdventure();
+  a.messages = [{ id: "review-source", role: "assistant", content: "A courier arrived.", createdAt: "2026-11-11" }];
+  const proposal = reviewedProposal(a, makeStoryCardSuggestion(a, "review-source", a.messages[0].content, {
+    title: "Courier", content: a.messages[0].content, evidence: a.messages[0].content, reason: "Author review requested.", type: "lore",
+  }));
+  proposal.requiresReview = true;
+  a.activeState.memoryProposals = [proposal];
+  render(<MemoryInboxPage adventure={a} dispatch={vi.fn()} />);
+  expect(screen.getByLabelText("Review required reasons")).toHaveTextContent("Author review requested.");
+  expect(screen.getByLabelText("Review required reasons")).toHaveTextContent("Story Card auto-approval is disabled.");
+});
