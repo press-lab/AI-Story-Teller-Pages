@@ -1932,16 +1932,12 @@ describe("Lore chronology approval boundary", () => {
       if (append) expect(state.storyCards[0].content).toContain("They signed the initial research agreement.");
     }
   });
-  it("blocks automatic and unconfirmed manual approval, retaining the draft and destination", () => {
-    let state = chronologyFixture(true, true);
-    const original = state.storyCards[0];
-    const proposal = state.activeState.memoryProposals[0];
-    expect(proposal).toMatchObject({ status: "pending", requiresReview: true, targetId: original.id });
-    for (const automatic of [true]) {
-      state = adventureReducer(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id, automatic });
-      expect(state.activeState.memoryProposals[0]).toMatchObject({ status: "pending", content: proposal.content, sourceText: proposal.sourceText });
-      expect(state.storyCards[0]).toBe(original);
-    }
+  it("auto-approves conflicting dates without rewriting saved chronology", () => {
+    const state = chronologyFixture(true, true);
+    expect(state.activeState.memoryProposals[0]).toMatchObject({ status: "approved", requiresReview: false, targetId: "chronology-target" });
+    expect(state.storyCards[0].content).toContain("They received exclusive archive access.");
+    expect(state.storyCards[0].lore?.occurredAt?.date).toBe("2001-09-03");
+    expect(state.storyCards[0].lore?.lastChangedAt?.date).toBe("2001-09-05");
   });
   it("approves a correction agreeing with source evidence without another confirmation", () => {
     let state = chronologyFixture();
@@ -1953,6 +1949,7 @@ describe("Lore chronology approval boundary", () => {
   it("preserves uncertain approval, duplicate suppression, and Brain auto-approval", () => {
     let state = chronologyFixture();
     state.activeState.memoryProposals = [];
+    state.storyCards = [];
     const relative = { text: "three days before the coronation", precision: "relative" as const };
     state.messages[0].storyTime = relative;
     const p = reviewedProposal(state, chronologyProposal({ id: "uncertain-chronology", proposedType: "storyCard", storyCardType: "lore", title: "Archive access", sourceTurnId: "chronology-source",
@@ -2022,8 +2019,8 @@ it.each(["create", "append", "disabled", "protected", "ambiguous", "date", "reco
     return;
   }
   const p = a.activeState.memoryProposals[0];
-  const eligible = ["create", "append", "recovered", "protected"].includes(mode);
-  expect(p).toMatchObject({ status: eligible ? "approved" : "pending", requiresReview: !["create", "append", "disabled", "recovered", "protected"].includes(mode), content: fact });
+  const eligible = ["create", "append", "recovered", "protected", "date"].includes(mode);
+  expect(p).toMatchObject({ status: eligible ? "approved" : "pending", requiresReview: !["create", "append", "disabled", "recovered", "protected", "date"].includes(mode), content: fact });
   expect(p.evaluationSource?.messages).toContainEqual({ id: "narrator-1", content: sourceContent });
   expect(p.storyCardReview?.sourceMessageId).toBe("narrator-1");
   if (!eligible) expect(a.storyCards).toEqual(before);
@@ -2113,7 +2110,7 @@ for (const path of ["insert", "merge", "scan", "final"] as const) {
     if (mode === "candidate") p.storyCardReview = { ...p.storyCardReview!, candidateOnly: true };
     if (mode === "placement") p.placementValidation = undefined;
     const before = structuredClone(a.storyCards);
-    expect(storyCardAutoApprovalBlockers(a, p).length === 0).toBe(["eligible", "candidate", "protected", "ambiguous"].includes(mode));
+    expect(storyCardAutoApprovalBlockers(a, p).length === 0).toBe(["eligible", "candidate", "protected", "ambiguous", "date"].includes(mode));
     if (path === "insert") a = adventureReducer(a, { type: "ADD_MEMORY_PROPOSAL", proposal: p });
     else {
       a.activeState.memoryProposals = [p];
@@ -2121,8 +2118,8 @@ for (const path of ["insert", "merge", "scan", "final"] as const) {
       if (path === "scan") a = adventureReducer(a, { type: "SCAN_STORY_CARD_EXCHANGE", sourceMessageId: "approval-source", manual: true });
       if (path === "final") a = adventureReducer(a, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: p.id, automatic: true });
     }
-    expect(a.activeState.memoryProposals.find(entry => entry.id === p.id)?.status).toBe(["eligible", "candidate", "protected", "ambiguous"].includes(mode) ? "approved" : "pending");
-    if (!["eligible", "candidate", "protected", "ambiguous"].includes(mode)) expect(a.storyCards).toEqual(before);
+    expect(a.activeState.memoryProposals.find(entry => entry.id === p.id)?.status).toBe(["eligible", "candidate", "protected", "ambiguous", "date"].includes(mode) ? "approved" : "pending");
+    if (!["eligible", "candidate", "protected", "ambiguous", "date"].includes(mode)) expect(a.storyCards).toEqual(before);
     if (mode === "uncertain") expect(a.activeState.memoryProposals[0].requiresReview).toBe(true);
   });
 }

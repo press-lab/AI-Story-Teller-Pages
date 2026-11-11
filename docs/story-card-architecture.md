@@ -106,6 +106,6 @@ with an unused numbered suffix, after duplicate-fact checks and before applicati
 cards and their authored titles remain unchanged.
 
 Private-knowledge disclosure, unsupported certainty/completion, Character information in the
-wrong card type, source/placement validity, factual overlap, and chronology checks remain.
+wrong card type, source/placement validity and factual overlap checks remain. Date conflicts are informational and do not force manual approval; date metadata is preserved.
 Previously saved explicit review flags remain in force. Brain and component approval rules
 are unchanged. Protected Story Cards still retain their context protection.

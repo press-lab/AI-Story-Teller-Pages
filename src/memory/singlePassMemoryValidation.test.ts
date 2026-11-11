@@ -497,3 +497,21 @@ it.each([false, true])("scopes semantic risk to referenced full narrator message
   const after = reduce(a, { type: "ADD_MEMORY_PROPOSAL", proposal: result.proposals[0].proposal });
   expect(after.activeState.memoryProposals[0].status).toBe(withdrawn ? "pending" : "approved");
 });
+
+it.each([false, true])("auto-approves Harvestfall dates without changing their metadata (append=%s)", async append => {
+  let { a, ids } = singlePassFixture(1);
+  a.memoryAutoApprove.loreStoryCard = true;
+  const time = { text: "Imperial Year 417, 1 Harvestfall", date: "0417-09-01", precision: "day" as const };
+  a.storyClock = { current: time, anchor: time, origin: "established" };
+  a.messages.find(m => m.id === ids[0])!.storyTime = time;
+  const card = makeStoryCard({ id: "harvestfall", type: "lore", title: "Harvestfall Courier", content: "A courier arrived.", lore: { status: "ongoing", sourceMessageIds: [], occurredAt: time } });
+  if (append) a.storyCards.push(card);
+  const batch = await prepareSinglePassMemoryBatch(a, ids);
+  const finding = { ...groundedFinding(), title: "Harvestfall Courier", targetId: append ? card.id : null, operation: append ? "append" as const : "create" as const };
+  a = reduce(a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
+  a = reduce(a, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId,
+    sources: [{ checkpoint: batch.checkpoints[0].checkpoint, result: { sourceId: ids[0], findings: [finding], rejected: [] } }] });
+  expect(a.activeState.memoryProposals[0]).toMatchObject({ status: "approved", requiresReview: false, lore: { occurredAt: time, lastChangedAt: time } });
+  expect(a.storyCards.find(c => c.title === "Harvestfall Courier")?.lore).toMatchObject({ occurredAt: time, lastChangedAt: time });
+  expect(a.storyClock?.current).toEqual(time);
+});

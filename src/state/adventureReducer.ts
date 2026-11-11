@@ -4,7 +4,7 @@ import { normalizeMemoryAutoApproveSettings } from "./defaults";
 import { shouldAutoApprove, storyCardApprovalCategory } from "../memory/approvalPolicy";
 import { ENABLE_HISTORY_COMPRESSION } from "../config/memoryHistoryCompression";
 import { storyCardAutoApprovalBlockers } from "../memory/storyCardAutoApproval";
-import { validateLoreChronology, isLoreProposal } from "../memory/validateLoreChronology";
+import { isLoreProposal } from "../memory/validateLoreChronology";
 import { MEMORY_DEBUG_LOGGING } from "../config/debugLogging";
 import { compactCompletedEvaluationWithoutDebug, pruneDebugHistory, compactHistoricalEvaluation, compactHistoricalProposal, eligibleHistory } from "../memory/memoryHistory";
 import { singlePassReferenceState } from "../memory/singlePassMemory";
@@ -1117,7 +1117,6 @@ function applyCompanionMemoryProposals(
   for (const proposal of proposals) {
     const clean = sanitizeProposal(routedProposal(workingState, proposal));
     if (!clean) continue;
-    if (validateLoreChronology(workingState, clean).status === "conflict") clean.requiresReview = true;
     const autoApprove = shouldAutoApprove(workingState, clean);
     if (clean.proposedType === "storyCard" ? storyCardAutoApprovalBlockers(workingState, clean).length > 0
       : !autoApprove || clean.requiresReview || placementValidationError(workingState, clean)) {
@@ -1864,7 +1863,6 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
       if (!clean) return suppressed("Proposal sanitization rejected the candidate.");
       // Other automatic processing conflicts remain available for explicit manual review.
       delete clean.approvalFeedback;
-      if (validateLoreChronology(state, clean).status === "conflict") clean.requiresReview = true;
       const comparableProposals = state.activeState.memoryProposals.filter(proposal => !proposal.storyCardReview || suggestionSourceValid(state, proposal)
         || (!state.messages.some(message => message.id === proposal.storyCardReview!.sourceMessageId)
           && proposal.storyCardReview.sourceMessageId === clean.storyCardReview?.sourceMessageId && proposal.storyCardReview.sourceContent === clean.storyCardReview.sourceContent));
@@ -2030,12 +2028,6 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
       if (!action.automatic && proposal.proposedType === "storyCard" && proposal.targetId
         && !state.storyCards.some(card => card.id === proposal.targetId)) return fail("destination card is missing. Select CREATE or an existing Story Card.");
       if (action.automatic && proposal.proposedType === "storyCard" && storyCardAutoApprovalBlockers(state, proposal).length) return state;
-      const chronology = validateLoreChronology(state, proposal);
-      if (action.automatic && chronology.status === "conflict") {
-        return touchAdventure(state, { activeState: { ...state.activeState,
-          memoryProposals: state.activeState.memoryProposals.map(p => p.id === proposal.id
-            ? { ...proposal, status: "pending", requiresReview: true } : p) } });
-      }
       if ((action.automatic || Boolean(proposal.targetId)) && proposalCoverage(state, proposal, false)) {
         const next = touchAdventure(state, { activeState: { ...state.activeState,
           memoryProposals: state.activeState.memoryProposals.map(p => p.id === proposal.id ? { ...updateMemoryProposal(proposal, { status: "approved" }), approvalFeedback: "Approved — no new memory content." } : p) } });
