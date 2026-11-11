@@ -98,7 +98,7 @@ describe("primary Story Card architecture", () => {
     const state = { ...createDefaultAdventure(), storyCards: [identity, lore], storyClock: { current: { text: "February 1, 2019", precision: "day" as const, date: "2019-02-01" } } };
     const result = buildContext(state, { currentInput: "Draco recalls our first kiss." });
     const text = result.messages.map(m => m.content).join("\n");
-    expect(text).toContain("Current story time: February 1, 2019");
+    expect(text).toContain("Current story time: February 1, 2019 (Friday)");
     expect(text).toContain("January 12, 2019");
     expect(text).toContain("Private knowledge: Seth, Draconia");
     expect(text).toContain("other characters do not automatically know");

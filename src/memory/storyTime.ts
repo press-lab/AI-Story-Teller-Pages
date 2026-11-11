@@ -141,3 +141,13 @@ export function reconcileStoryClock(clock: StoryClock | undefined, messages: Mes
 export function formatStoryTime(time?: StoryTime): string {
   return time?.text ? `${time.text}${time.precision === "day" || time.precision === "time" ? "" : ` (${time.precision})`}` : "unknown";
 }
+
+const weekdayFormatter = new Intl.DateTimeFormat("en-US", { weekday: "long", timeZone: "UTC" });
+
+export function formatStoryTimeWithWeekday(time?: StoryTime): string {
+  const label = formatStoryTime(time);
+  if (!time?.date || !["day", "time"].includes(time.precision)
+    || readStoryTime("Date: " + time.date).time?.date !== time.date) return label;
+  const weekday = weekdayFormatter.format(new Date(time.date + "T00:00:00Z"));
+  return new RegExp(`\\b${weekday}\\b`, "i").test(label) ? label : `${label} (${weekday})`;
+}
