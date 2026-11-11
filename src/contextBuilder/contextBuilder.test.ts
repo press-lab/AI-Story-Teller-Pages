@@ -902,6 +902,21 @@ describe("one-hop chained Story Cards", () => {
   const build = (adventure: Adventure, currentInput = "Draconia picks up Fenchurch.") => buildContext(adventure, { currentInput });
   const cards = (result: ReturnType<typeof build>) => result.sections.find(s => s.id === "storyCards")!.items;
 
+  it("gives supplemental cards space before older entries while protecting the newest", () => {
+    const adventure = fixture();
+    adventure.messages = [
+      { id: "older", role: "assistant", content: "Earlier scene. ".repeat(200), createdAt: adventure.createdAt },
+      { id: "newest", role: "user", content: "Hello.", createdAt: adventure.createdAt },
+    ];
+    const baseline = build({ ...adventure, storyCards: [adventure.storyCards[0]] });
+    adventure.tokenBudgetSettings.maxContextTokens = baseline.totalEstimatedTokens;
+    const result = build(adventure);
+    expect(cards(result).some(card => card.id === "horcrux")).toBe(true);
+    expect(result.excludedItems).toContainEqual(expect.objectContaining({ id: "older", sourceType: "message", reason: "budget_exceeded" }));
+    expect(result.sections.find(s => s.id === "recentMessages")?.items.map(i => i.id)).toContain("newest");
+    expect(result.totalEstimatedTokens).toBeLessThanOrEqual(adventure.tokenBudgetSettings.maxContextTokens);
+  });
+
   it("loads one hop, preserves direct decisions and arc signals, and never mutates saved data", () => {
     const adventure = fixture();
     const before = JSON.stringify(adventure);

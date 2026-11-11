@@ -755,8 +755,8 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
     if (!changed) break;
   }
 
-  // Freeze sources after baseline trimming. Supplemental cards never displace them
-  // and never become sources during this build.
+  // Freeze sources after baseline trimming. Supplemental cards cannot displace baseline memory
+  // or become sources during this build. Older history yields to supplemental cards.
   const baselineItems = sections.flatMap(entry => entry.items);
   const chainedCandidates = resolveChainedStoryCardTriggers(
     adventure,
@@ -772,15 +772,19 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
     const excerpt = loreExcerpt(card, storyCardContextContent(card), candidate.sourceContent);
     const next = item(card.id, "storyCard", card.title, (historical ? "Historical reference; use only when relevant, do not force a callback.\n" : "") + excerpt.content, card.priority, card.protected, card.pinned, card.active, card.inclusionPolicy, "user");
     const detail = `One-hop ${candidate.sourceType === "storyCard" ? "Story Card" : "Component"} trigger: ${candidate.sourceTitle} → ${card.title}; matched ‘${candidate.matchedTriggerPhrase}’.`;
-    const proposed = recalculate(sections.map(entry => entry.id === "storyCards"
+    const propose = () => recalculate(sections.map(entry => entry.id === "storyCards"
       ? { ...entry, items: prioritySort([...entry.items, next]) }
       : entry));
     resolvedChainedIds.add(card.id);
-    if (totalTokens(sections) >= budget || totalTokens(proposed) > budget) {
+    const removableHistoryTokens = sections.find(entry => entry.id === "recentMessages")?.items
+      .filter(entry => isDroppable("recentMessages", entry))
+      .reduce((sum, entry) => sum + entry.tokenEstimate, 0) ?? 0;
+    if (totalTokens(propose()) - removableHistoryTokens > budget) {
       pushExcluded("storyCard", card.id, card.title, "budget_exceeded", `${detail} Matched but could not fit in the remaining context budget.`);
       continue;
     }
-    sections = proposed;
+    while (totalTokens(propose()) > budget && dropOldestRecent()) { /* Keep the newest entry protected. */ }
+    sections = propose();
     decisions.push(decision(next, "included", "chained_trigger", detail));
     if (excerpt.truncated) decisions.push(decision(next, "truncated", "budget_exceeded", "Lore excerpt bounded by card token budget; full history remains in Content."));
   }
