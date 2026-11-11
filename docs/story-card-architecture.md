@@ -42,7 +42,11 @@ Global section/context budgets and drop priorities still apply.
 
 Historical Lore reuses Event Memory's participant/alias references, recall cues,
 three-result recall limit, trigger policies and source evidence. A bare participant
-name is not a historical recall cue. Manual/always/pinned inclusion remains under
+name is not a historical recall cue. Broad occasion recall (such as
+`Thanksgiving 2018`) and specific event recall (such as `Thanksgiving bonfire`)
+are authoring strategies. Both use the same existing `keys` array. Each card is
+independently retrievable. These strategies introduce no new trigger types,
+schema, or retrieval mechanism. Manual/always/pinned inclusion remains under
 user control. Private knowledge labels explicitly prevent automatic sharing with
 other characters; the existing narration instruction also prohibits granting
 absent characters unreceived knowledge. These are model-facing constraints, not a

@@ -1,6 +1,7 @@
 import { PLOT_ESSENTIALS_FOUNDATIONS_RULE, AUTHORING_SECTIONS, AUTHORING_WORKFLOW_SECTIONS, AUTHORING_STANDARDS, CHATGPT_AUTHORING_INSTRUCTIONS } from "./authoringPolicy";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
+import { matchPatterns } from "../triggers/matching";
 import type { ProviderConfig } from "../types/adventure";
 import { runAdventureGen } from "./adventureGen";
 
@@ -29,6 +30,35 @@ describe("runAdventureGen", () => {
     const result = await runAdventureGen("Research", config);
     expect(result.storyCards[0].keys).toContain("Mira Vale");
     expect(result.storyCards[1].keys.map(key => key.toLowerCase())).toEqual(expect.arrayContaining(["ward research", "aperture gating", "ward design", "runic arrays"]));
+  });
+
+  it("preserves natural occasion and event recall in one generated keys array", async () => {
+    const card = {
+      title: "Thanksgiving 2018",
+      type: "lore",
+      memoryMode: "historical",
+      keys: ["Thanksgiving 2018", "our first date", "first date with Kori", "Founder's Circle date"],
+      content: "During the 2018 Thanksgiving gathering, Seth and Kori had their first date at Founder's Circle.",
+      pinned: false,
+      priority: 0,
+    };
+    vi.mocked(sendOpenAICompatibleChatCompletion).mockResolvedValue({
+      raw: {},
+      content: JSON.stringify({ storyCards: [card] }),
+    });
+
+    const result = await runAdventureGen(card.content, config);
+
+    expect(result.storyCards).toEqual([card]);
+    const { keys } = result.storyCards[0];
+    expect(matchPatterns("Remember Thanksgiving 2018?", keys, "phrase").pattern).toBe("Thanksgiving 2018");
+    expect(matchPatterns("Remember our first date?", keys, "phrase").pattern).toBe("our first date");
+    expect(matchPatterns("When did Kori and I first go out?", keys, "phrase").matched).toBe(false);
+    const prompt = vi.mocked(sendOpenAICompatibleChatCompletion).mock.calls[0][0].messages[0].content;
+    expect(prompt).toContain("Write triggers as natural ways someone might remember what happened.");
+    expect(prompt).toContain('Put natural occasion and specific event phrases together in "keys"');
+    expect(prompt).toContain("Create occasion Lore only when the premise establishes or authorizes relevant history");
+    expect(prompt).toContain("Avoid artificial keyword permutations.");
   });
 
   it("drops generated records with unsupported types or malformed fields", async () => {

@@ -32,14 +32,13 @@ export const STORY_CARD_BEST_PRACTICES = `Story Card best practices:
 - Use tense appropriate to the fact: plans remain plans and completed events remain history.
 - Newly created Character cards should carry a VOICE CONTRACT with rhythm, default move, emotional defense, never-sounds-like, and example lines.
 - Every card evolves by append. Preserve original content and voice; return only new facts. Record later corrections with dates instead of deleting history.
-- Historical cards are for evidenced, completed durable events. Removing or correcting a Plot Essentials fact does not establish a historical event.`;
+- Historical Lore records evidenced events and their consequences. Include an established occasion when it helps place the event. Summarize related events only when useful and avoid repeating their full records. Removing or correcting a Plot Essentials fact does not establish a historical event.`;
 
 export const TRIGGER_BEST_PRACTICES = `Trigger best practices:
-- Triggers decide whether a card enters context, so false matches are harmful.
-- Character aliases belong on the character identity card.
-- Event, relationship, location, and subplot cards should not use broad character names as triggers if those names already belong to character cards.
-- Supply 3-6 short, reusable topic phrases covering the card content: its subjects, activities and concepts. Prefer ordinary phrases such as "runic research", "ward design", "government reform", or "British exiles" over exact scene wording or an elaborate full title. Never return empty triggers. Related cards can share relevant topic phrases.
-- Avoid generic triggers such as "the team", "the agency", "current", "relationship", "status", "mission", or "event".`;
+- Choose natural phrases a character or narrator might use, such as "our first date", "first date with Kori", or "ward design". Avoid word permutations and generic filler.
+- Use the same keys array for occasion and specific event phrases. Use "Thanksgiving" for a relevant occasion summary and "Thanksgiving bonfire" for the specific event.
+- Use bare names and aliases primarily on Character cards and bare place names primarily on Location cards. For Lore, use the name with a distinguishing event.
+- Aim for 3-6 useful keys for new cards, with a maximum of eight. Keep valid existing keys and check likely phrases for missed or unrelated matches.`;
 
 export const PLOT_MEMORY_THRESHOLD = `Plot and relationship memory threshold:
 - Create a new Lore card only for a lasting change in an obligation, alliance, relationship, secret, or consequential unresolved situation. Routine hospitality, casual invitations, flirting, repeated affection, and ordinary conversation do not by themselves qualify.

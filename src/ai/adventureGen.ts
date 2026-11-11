@@ -208,7 +208,8 @@ Story card guidelines:
 - Do not create cards for current scene position, temporary mission status, one-off scenery, or throwaway objects. Let recent messages carry immediate danger and the next concrete beat.
 - memoryMode is compatibility metadata, not an update strategy. Use "historical" for historical Lore so existing retrieval can find it. Other cards may use "static". All cards use append-based updates.
 - Aim for 4–12 cards depending on the complexity of the premise. Quality over quantity.
-- Each card's content should be self-contained reference material the AI will use mid-story.
+- Keep each card self-contained. Create occasion Lore only when the premise establishes or authorizes relevant history and a shared summary helps. Name the established occasion on related event cards and avoid repeating full event descriptions. Do not invent history to fill the card list.
+- Apply the shared trigger rules above. Put natural occasion and specific event phrases together in "keys" when both fit the card. Avoid artificial keyword permutations.
 - Location, faction, and lore cards: 3-6 bullet facts. Present tense unless memoryMode is "historical". What the AI needs to know to write it correctly.
 - Follow the shared Character requirements above for physical description, independent behavior, relationships, and the five-field Voice Contract. Give three distinctive example lines in the actual character voice.`;
 

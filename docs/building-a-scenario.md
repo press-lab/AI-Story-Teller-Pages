@@ -129,9 +129,22 @@ Rules learned the hard way:
 - **Pick the memory mode.** `static` = always-true present-tense facts,
   `living` = current evolving subject whose updates merge/archive, and
   `historical` = completed event or retired Plot Essentials fact in past tense.
-- **Keep triggers narrow.** Character aliases belong on the character's identity
-  card. Event, relationship, or subplot cards should use specific consequences,
-  objects, locations, factions, or case names instead of broad character names.
+- **Write triggers people would say.** Write Lore as a factual record. In the
+  single comma-delimited trigger field, use phrases such as `our first date`,
+  `first date with Kori`, or `Founder's Circle date`. Avoid artificial phrases
+  such as `Kori Seth first date`. Use character names and aliases primarily on
+  Character cards and place names primarily on Location cards.
+- **Choose a scope that fits the card.** A concise occasion card can use
+  `Thanksgiving` or `Thanksgiving 2018`. A specific event card can use
+  `Thanksgiving bonfire` or `Kori meets Seth's parents`. Use the same field for
+  both styles. Add an occasion card only when a shared summary is useful.
+  Repeating `Thanksgiving` across every event card can load unrelated details.
+- **Check actual matches.** Aim for 3–6 useful keys on new cards, up to eight.
+  Try likely lines such as “Remember our first date?” and “What happened at the
+  Thanksgiving bonfire?” Check which cards match and which activate by mistake.
+  A line such as “When did Kori meet my parents?” may need narrator context if it
+  does not match the stored keys. Prefer stable references such as
+  `Thanksgiving 2018` over changing references such as `Thanksgiving last year`.
 
 The **"Draft a Story Card with AI"** builder and the in-play detector now emit
 voice contracts for character cards automatically — so cards you mint mid-game
