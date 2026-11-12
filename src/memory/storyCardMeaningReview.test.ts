@@ -7,7 +7,7 @@ it.each([
   ["The relic is possibly cursed.", "The relic might be cursed.", false],
   ["He attempted to kiss her but withdrew before contact.", "They kissed.", true],
   ["They agreed to attend a meeting tomorrow.", "They attended the meeting.", true],
-  ["George was absent and did not learn the agreement.", "George secretly knew about the agreement.", true],
+  ["George was absent and did not learn the agreement.", "George secretly knew about the agreement.", false],
   ["It was rumored that the headmaster stole the relic.", "The headmaster stole the relic.", true],
   ["Draconia learned the tattoos fade after several days.", "Draconia learned the tattoos are temporary.", false],
   ["Fred and George agreed to produce rune tattoos tomorrow.", "Fred and George agreed to produce rune tattoos tomorrow.", false],

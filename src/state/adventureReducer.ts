@@ -1,3 +1,5 @@
+import { routeDatedLoreProposal, loreEventDateKey, sameLoreEventDate } from "../memory/datedLoreRouting";
+import { bindPlacement } from "../memory/storyCardPlacement";
 import { isActivePressureAction, isActivePressureProposal } from "./activePressureRetirement";
 import { snapshotFingerprint } from "../utils/snapshotFingerprint";
 import { normalizeMemoryAutoApproveSettings } from "./defaults";
@@ -737,12 +739,14 @@ function loreCreateTitleConflict(state: Adventure, proposal: MemoryProposal): bo
   if (proposal.proposedType !== "storyCard" || proposal.storyCardType !== "lore"
     || proposal.targetId || proposal.cardOperation === "append" || proposal.appendContent) return false;
   const title = loreTitleKey(proposal.title);
-  return state.storyCards.some(card => loreTitleKey(card.title) === title)
+  return state.storyCards.some(card => loreTitleKey(card.title) === title
+    && (!loreEventDateKey(proposal) || card.type !== "lore" || sameLoreEventDate(card, proposal)))
     || state.activeState.memoryProposals.some(other => other.id !== proposal.id
       && (other.status === "pending" || other.status === "approved")
       && other.proposedType === "storyCard" && !other.targetId
       && other.cardOperation !== "append" && !other.appendContent
-      && loreTitleKey(other.title) === title);
+      && loreTitleKey(other.title) === title
+      && (!loreEventDateKey(proposal) || sameLoreEventDate(other, proposal)));
 }
 
 function routedProposal(state: Adventure, proposal: MemoryProposal): MemoryProposal {
@@ -1854,13 +1858,19 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
         },
       });
     case "ADD_MEMORY_PROPOSAL": {
-      const clean = sanitizeProposal(routedProposal(state, action.proposal));
+      let clean = sanitizeProposal(routedProposal(state, action.proposal));
       const suppressed = (reason: string, proposalId?: string) => !MEMORY_DEBUG_LOGGING ? state : adventureReducer(state, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: {
         id: createId("decision"), sourceId: action.proposal.sourceTurnId ?? "unknown", createdAt: nowIso(),
         stage: "reducer", outcome: "candidate_suppressed", reason, proposalId,
         candidate: { kind: action.proposal.storyCardType ?? action.proposal.proposedType, title: action.proposal.title, content: action.proposal.content.slice(0, 4000), evidence: (action.proposal.sourceText ?? "").slice(0, 4000), rationale: (action.proposal.rationale ?? "").slice(0, 600) },
       } });
       if (!clean) return suppressed("Proposal sanitization rejected the candidate.");
+      if (clean.proposedType === "storyCard" && clean.evaluationSource && clean.placementValidation && !placementValidationError(state, clean)) {
+        clean = routeDatedLoreProposal(state, clean);
+        const validation = clean.placementValidation!;
+        clean = bindPlacement(state, clean, { ...validation, kind: clean.targetId ? "append" : "create" }, validation.sources.map(s => s.id));
+        clean.evaluationSource = { ...clean.evaluationSource!, target: clean.placementValidation?.target };
+      }
       // Other automatic processing conflicts remain available for explicit manual review.
       delete clean.approvalFeedback;
       const comparableProposals = state.activeState.memoryProposals.filter(proposal => !proposal.storyCardReview || suggestionSourceValid(state, proposal)
@@ -1881,7 +1891,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
       if (Boolean(clean.eventMemory) && !clean.targetId && [...state.storyCards.filter(isHistoricalLore), ...state.activeState.memoryProposals.filter(p => Boolean(p.eventMemory))].some(c => sameEventMemory(c, clean))) return suppressed("Duplicate historical event already recorded.");
       if (proposalCoverage(state, clean)) return suppressed("Factual delta already recorded or considered.");
 
-      if (clean.proposedType === "storyCard" && !clean.targetId) {
+      if (clean.proposedType === "storyCard" && !clean.targetId && !(clean.storyCardType === "lore" && loreEventDateKey(clean))) {
         clean.title = uniqueStoryCardTitle(state, clean.title, clean.storyCardType ?? "lore");
         if (clean.placementValidation) clean.placementValidation = { ...clean.placementValidation, fingerprint: placementFingerprint(clean) };
       }
@@ -2021,8 +2031,14 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
       }
       if ((draft.proposedType === "currentArcUpdate" || draft.proposedType === "arcProposal")
         && !state.components.some(c => c.type === "currentArc")) return fail("Current Arc destination is missing. Create a Current Arc component first.");
-      const proposal = sanitizeProposal(draft);
+      let proposal = sanitizeProposal(draft);
       if (!proposal) return action.automatic ? state : fail("invalid structured memory content or unsupported memory type.");
+      if (action.automatic && proposal.evaluationSource && proposal.placementValidation && !placementValidationError(state, proposal)) {
+        proposal = routeDatedLoreProposal(state, proposal);
+        const validation = proposal.placementValidation!;
+        proposal = bindPlacement(state, proposal, { ...validation, kind: proposal.targetId ? "append" : "create" }, validation.sources.map(s => s.id));
+        proposal.evaluationSource = { ...proposal.evaluationSource!, target: proposal.placementValidation?.target };
+      }
       if (loreCreateTitleConflict(state, proposal))
         return fail("an equivalent Story Card title or active CREATE suggestion already exists. Select an existing card or edit the title.");
       if (!action.automatic && proposal.proposedType === "storyCard" && proposal.targetId
@@ -2036,7 +2052,8 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
           reason: "Approval retained as a no-op: the latest destination already contains the complete reviewed factual delta." } });
       }
       if (action.automatic && proposal.proposedType === "storyCard" && !proposal.targetId) {
-        const collisions = state.storyCards.filter(c => c.type === (proposal.storyCardType ?? "lore") && loreTitleKey(c.title) === loreTitleKey(proposal.title));
+        const collisions = state.storyCards.filter(c => c.type === (proposal.storyCardType ?? "lore") && loreTitleKey(c.title) === loreTitleKey(proposal.title)
+          && (!(proposal.storyCardType === "lore" && loreEventDateKey(proposal)) || sameLoreEventDate(c, proposal)));
         if (collisions.length) {
           const next = touchAdventure(state, { activeState: { ...state.activeState, memoryProposals: state.activeState.memoryProposals.map(p => p.id === proposal.id
             ? { ...proposal, requiresReview: true, placementValidation: undefined,

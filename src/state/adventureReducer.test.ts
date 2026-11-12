@@ -2003,7 +2003,7 @@ it.each(["create", "append", "disabled", "protected", "ambiguous", "date", "reco
   a.storyCards = [];
   const prior = "The library was founded in 1700.";
   if (["append", "protected", "ambiguous"].includes(mode)) a.storyCards.push(makeStoryCard({ id: "archive", type: "lore", title: "Archive access", content: prior,
-    protected: mode === "protected", lore: { status: "ongoing", sourceMessageIds: ["old-source"], occurredAt: { text: "2001-09-01", date: "2001-09-01", precision: "day" } } }));
+    protected: mode === "protected", lore: { status: "ongoing", sourceMessageIds: ["old-source"], occurredAt: { text: "2001-09-02", date: "2001-09-02", precision: "day" } } }));
   if (mode === "ambiguous") a.storyCards.push({ ...a.storyCards[0], id: "other-archive" });
   a.memoryAutoApprove.loreStoryCard = mode !== "disabled"; a.memoryAutoApprove.otherStoryCard = mode !== "disabled";
 
@@ -2013,9 +2013,10 @@ it.each(["create", "append", "disabled", "protected", "ambiguous", "date", "reco
     title: "Archive access", content: fact, evidenceQuotes: [{ messageId: "narrator-1", quote: fact }] }] }] });
   a = await commitLooseCard(a, response);
   if (mode === "ambiguous") {
-    expect(a.activeState.memoryProposals[0]).toMatchObject({ title: "Archive access (2)", status: "approved", requiresReview: false });
-    expect(a.storyCards.slice(0, before.length)).toEqual(before);
-    expect(a.storyCards.at(-1)?.content).toContain(fact);
+    expect(a.activeState.memoryProposals[0]).toMatchObject({ title: "Archive access", status: "approved", requiresReview: false, cardOperation: "append" });
+    expect(a.storyCards).toHaveLength(before.length);
+    expect(a.storyCards[0].content).toContain(fact);
+    expect(a.storyCards[1]).toEqual(before[1]);
     return;
   }
   const p = a.activeState.memoryProposals[0];
@@ -2030,7 +2031,7 @@ it.each(["create", "append", "disabled", "protected", "ambiguous", "date", "reco
     expect(a.storyCards[0].lore?.sourceMessageIds).toContain("narrator-1");
     if (mode === "append") {
       expect(a.storyCards[0].content).toContain(prior);
-      expect(a.storyCards[0].lore?.occurredAt?.date).toBe("2001-09-01");
+      expect(a.storyCards[0].lore?.occurredAt?.date).toBe("2001-09-02");
       expect(a.storyCards[0].lore?.lastChangedAt?.date).toBeUndefined();
     }
   }
@@ -2207,11 +2208,11 @@ it.each([false, true])("corrects sequential batch Lore CREATE titles while retai
   const result = parseSinglePassMemoryResponse(JSON.stringify({ sources: [{ sourceId: ids[0], findings: [first, second, third] }] }), ids, a).sources[0];
   a = adventureReducer(a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
   a = adventureReducer(a, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId, sources: [{ result, checkpoint: batch.checkpoints[0].checkpoint }] });
-  expect(a.activeState.memoryProposals.map(p => p.title).sort()).toEqual(["Separate Workshop", "WEASLEY Formal---Accessories! (2)", "Weasley Formal Accessories"]);
-  expect(a.activeState.memoryProposals.map(p => p.status)).toEqual([automatic ? "approved" : "pending", "pending", automatic ? "approved" : "pending"]);
+  expect(a.activeState.memoryProposals.map(p => p.title).sort()).toEqual(automatic ? ["Separate Workshop", "Weasley Formal Accessories", "Weasley Formal Accessories"] : ["Separate Workshop", "WEASLEY Formal---Accessories!", "Weasley Formal Accessories"]);
+  expect(a.activeState.memoryProposals.map(p => p.status)).toEqual([automatic ? "approved" : "pending", automatic ? "approved" : "pending", automatic ? "approved" : "pending"]);
   // The second finding retains its independent batch review flag after title correction.
-  expect(a.activeState.memoryProposals.find(p => p.title.endsWith("(2)"))?.requiresReview).toBe(true);
-  expect(a.messages.find(m => m.id === ids[0])?.memoryEvaluation?.singlePass?.dispositions.map(d => d.status)).toEqual([automatic ? "accepted" : "review", "review", automatic ? "accepted" : "review"]);
+  expect(a.activeState.memoryProposals.find(p => p.content === second.content)?.requiresReview).toBe(!automatic);
+  expect(a.messages.find(m => m.id === ids[0])?.memoryEvaluation?.singlePass?.dispositions.map(d => d.status)).toEqual([automatic ? "accepted" : "review", automatic ? "accepted" : "review", automatic ? "accepted" : "review"]);
 });
 
 

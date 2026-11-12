@@ -239,7 +239,7 @@ it("single-pass sibling appends preserve original Lore, history and both source 
   const { singlePassFixture, groundedFinding } = await import("../test/singlePassMemory");
   const { prepareSinglePassMemoryBatch } = await import("./singlePassMemory");
   let { a, ids } = singlePassFixture(2);
-  const card = makeStoryCard({ title: "Workshop agreements", type: "lore", content: "Original authored workshop facts.", keys: ["workshop agreements"] });
+  const card = makeStoryCard({ title: "Workshop agreements", type: "lore", content: "Original authored workshop facts.", keys: ["workshop agreements"], lore: { status: "ongoing", sourceMessageIds: [], occurredAt: a.storyClock?.current } });
   a.storyCards.push(card); a.memoryAutoApprove.loreStoryCard = true; a.memoryAutoApprove.otherStoryCard = true;
   const batch = await prepareSinglePassMemoryBatch(a, ids);
   a = reduce(a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });

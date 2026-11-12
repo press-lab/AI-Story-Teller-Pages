@@ -81,7 +81,8 @@ export function loreFactsCovered(content: string, existing: string[]): boolean {
 }
 /** A different explicit occurrence date always survives; dates are never inferred from creation timestamps. */
 export function loreOccurrenceDate(p: { lore?: MemoryProposal["lore"] }): string | undefined {
-  return p.lore?.lastChangedAt?.date ?? p.lore?.occurredAt?.date;
+  const time = p.lore?.occurredAt ?? p.lore?.lastChangedAt;
+  return time?.date ?? (time && time.precision !== "unknown" ? time.text.normalize("NFKC").toLocaleLowerCase().trim() || undefined : undefined);
 }
 export type LoreNovelty = { status: "new" | "covered" | "overlap" | "uncertain"; coveredFacts: string[]; newFacts: string[]; reason: string };
 /** Subject-aware deterministic coverage. Lexical overlap can request review, NEVER delete.
@@ -91,7 +92,7 @@ export function loreNovelty(a: Adventure, p: MemoryProposal, includeProposals = 
   const target = a.storyCards.find(c => c.id === p.targetId && c.type === "lore");
   const titles = new Set([p.title, ...(target ? [target.title] : [])].map(loreTitleKey));
   const date = loreOccurrenceDate(p);
-  const sameOccurrence = (other: { lore?: MemoryProposal["lore"] }) => !date || !loreOccurrenceDate(other) || date === loreOccurrenceDate(other);
+  const sameOccurrence = (other: { lore?: MemoryProposal["lore"] }) => !date || date === loreOccurrenceDate(other);
   const cards = a.storyCards.filter(c => c.type === "lore" && sameOccurrence(c) && (p.targetId ? c.id === p.targetId : titles.has(loreTitleKey(c.title))));
   const proposals = includeProposals ? a.activeState.memoryProposals.filter(q => q.id !== p.id && q.proposedType === "storyCard" && (q.storyCardType ?? "lore") === "lore"
     && sameOccurrence(q) && (p.targetId && q.targetId ? p.targetId === q.targetId : titles.has(loreTitleKey(q.title)))) : [];

@@ -56,7 +56,7 @@ it.each(["create", "historicalLore"])("reroutes the attached Character draft to 
 });
 
 it("reuses existing topical Lore when the reviewer redirects from a participant", async () => {
-  const a = seed(); a.storyCards.push(makeStoryCard({ id: "research", title, type: "lore", content: "Earlier research.", keys: ["Flemish binding theory"] }));
+  const a = seed(); a.storyCards.push(makeStoryCard({ id: "research", title, type: "lore", content: "Earlier research.", keys: ["Flemish binding theory"], lore: { status: "ongoing", sourceMessageIds: [], occurredAt: a.messages.at(-1)?.storyTime } }));
   provider.mockResolvedValue(response(verdict("append", "research")));
   const p = (await validateStoryCardProposal(a, config, draft())).proposal!;
   expect(p).toMatchObject({ targetId: "research", storyCardType: "lore", cardOperation: "append" });

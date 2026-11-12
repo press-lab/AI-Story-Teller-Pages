@@ -1,7 +1,6 @@
 import type { SinglePassMemoryFinding } from "../types/adventure";
 
 const tentative = /\b(?:rumou?r(?:s|ed)?|allegedly|reportedly|supposedly|it is possible|possibly|perhaps|maybe|might|may have|could have|speculat\w*|unconfirmed|uncertain|suspect\w*|seem(?:s|ed)?|apparently)\b/i;
-const privateClaim = /\b(?:privately|secretly|internally)\s+(?:believ\w*|kn\w*|knew|decid\w*|thought|felt|realiz\w*|understood)|\b(?:believ\w*|knew|thought|felt|assum\w*)\b/i;
 const incomplete = /\b(?:attempt\w*|tried|planned?|planning|intend\w*|tomorrow|will|would|invitation|invited|interrupted|declined|failed|refused|withdrew|withdrawn|stopped|before contact|never|did not|didn.t|not (?:yet )?(?:occurred|happened|completed))\b/i;
 const retainedModality = /\b(?:attempt\w*|tried|planned?|planning|intend\w*|tomorrow|will|would|agreed to|accepted .*invitation|invited|interrupted|declined|failed|refused|withdrew|withdrawn|stopped|no kiss|not (?:yet )?(?:occurred|happened|completed))\b/i;
 const normalize = (text: string) => text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
@@ -44,7 +43,6 @@ export function storyCardMeaningReviewReason(finding: SinglePassMemoryFinding, e
   for (const clause of clauses) {
     const matching = source.filter(s => related(clause, s));
     const direct = matching.some(s => !tentative.test(s) && normalize(s).includes(normalize(clause)));
-    if (privateClaim.test(clause) && !direct) return "Uncertain event interpretation: private knowledge or interpretation lacks supporting narrator disclosure.";
     if (!tentative.test(clause) && matching.some(s => tentative.test(s)) && !direct) return "Unsupported certainty: source evidence frames this claim as rumor, possibility, or speculation.";
     if (!retainedModality.test(clause)) {
       const planned = matching.flatMap(plannedActions).filter(action => hasAction(clause, action));

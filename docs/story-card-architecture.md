@@ -101,11 +101,15 @@ completed reviews are reusable only with matching evidence, content and controls
 Adventure category switches govern automatic approval. Word count, protected-card status,
 supported Character profile changes, tentative wording, and advisory destination candidates
 do not independently require manual approval. Ambiguous topic matches create focused Lore
-rather than guessing an existing destination. CREATE title collisions are corrected locally
-with an unused numbered suffix, after duplicate-fact checks and before application; existing
-cards and their authored titles remain unchanged.
+rather than guessing an existing destination. Dated Lore matches an existing card by normalized
+identical title and original event date. The date comes from saved source chronology or the
+established clock, never generated metadata or wall time. A matching occurrence receives an
+APPEND; otherwise CREATE preserves the same title and uses the correct date. Unknown-date
+cards do not stand in for a dated occurrence. Numbered title suffixes remain only for other
+creation paths. Existing cards and their authored dates remain unchanged.
 
-Private-knowledge disclosure, unsupported certainty/completion, Character information in the
+Uncertain-event/private-knowledge interpretation alone no longer blocks Story Cards.
+Unsupported certainty/completion, Character information in the
 wrong card type, source/placement validity and factual overlap checks remain. Date conflicts are informational and do not force manual approval; date metadata is preserved.
 Previously saved explicit review flags remain in force. Brain and component approval rules
 are unchanged. Protected Story Cards still retain their context protection.

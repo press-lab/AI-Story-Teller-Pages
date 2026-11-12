@@ -25,7 +25,7 @@ it("rejects missing Brain destinations instead of creating biography", async () 
 it("automatically appends supported findings to protected Story Cards", async () => {
   let { a, ids } = singlePassFixture();
   a.memoryAutoApprove.loreStoryCard = true; a.memoryAutoApprove.otherStoryCard = true;
-  const card = makeStoryCard({ type: "lore", title: "Workshop collaboration", content: "The workshop exists.", protected: true }); a.storyCards.push(card);
+  const card = makeStoryCard({ type: "lore", title: "Workshop collaboration", content: "The workshop exists.", protected: true, lore: { status: "ongoing", sourceMessageIds: [], occurredAt: a.storyClock?.current } }); a.storyCards.push(card);
   const batch = await prepareSinglePassMemoryBatch(a, ids);
   a = reduce(a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
   const f = { ...groundedFinding(), targetId: card.id, operation: "append" as const };
@@ -51,7 +51,6 @@ it("requires the Character identity-change evidence contract", async () => {
 it.each([
   ["An explicit kiss attempt was withdrawn before contact.", "They kissed.", "completed"],
   ["Hermione accepted tomorrow's research dinner invitation; dinner has not occurred.", "Hermione attended the research dinner.", "completed"],
-  ["Hermione did not disclose her thoughts about the offer.", "Hermione secretly believed the offer meant trust.", "unresolved"],
 ])("holds unsupported or interpretive certainty for author review: %s", async (evidence, content, eventStatus) => {
   let { a, ids } = singlePassFixture(1); a.memoryAutoApprove.loreStoryCard = true; a.memoryAutoApprove.otherStoryCard = true;
   a.messages.find(m => m.id === ids[0])!.content = evidence;
@@ -226,7 +225,7 @@ it("command-derived duplicate facts are suppressed by existing validation", asyn
 it("command-derived protected Story Card appends stay in the Inbox", async () => {
   const f = await commandValidationFixture("Casey Vale and Avery agreed to share research results.");
   // Prepare again after adding the protected destination so the checkpoint includes it.
-  f.a.storyCards.push(makeStoryCard({ id: "protected-lore", title: "Research results", type: "lore", keys: ["research"], content: "Research is underway.", protected: true }));
+  f.a.storyCards.push(makeStoryCard({ id: "protected-lore", title: "Research results", type: "lore", keys: ["research"], content: "Research is underway.", protected: true, lore: { status: "ongoing", sourceMessageIds: [], occurredAt: f.a.storyClock?.current } }));
   const batch = await prepareSinglePassMemoryBatch(f.a, f.ids);
   const alias = Object.entries(batch.outputAliases.S1.cards).find(([, v]) => v.id === "protected-lore")![0];
   const e = Object.entries(batch.outputAliases.S1.evidence).find(([, v]) => v.id === f.ids[0])![0];
@@ -298,7 +297,7 @@ it.each([true, false])("recovers supported Character events with topical Lore pr
   const p = v.proposals[0].proposal;
   expect(p).toMatchObject({ requiresReview: false, status: "pending", cardOperation: "create" });
   expect(p.targetId).toBeUndefined();
-  expect(p.storyCardReview!.targetCandidates.includes(lore.id)).toBe(hasLore);
+  expect(p.storyCardReview!.targetCandidates.includes(lore.id)).toBe(false);
 });
 
 import { qualityFixture, spokenFred, privateFred, privateGeorge, privateDraconia, thoughtFinding, loreFinding, repeatedLore } from "../test/memoryQuality";
@@ -438,7 +437,7 @@ it.each([
   ["He attempted to kiss her but stopped before contact. They agreed to meet tomorrow.", "They kissed and agreed to meet tomorrow.", true],
   ["He failed to kiss her.", "They kissed.", true],
   ["A rumor suggests the headmaster stole the relic.", "The headmaster stole the relic.", true],
-  ["Draco was absent and nobody told him about the agreement.", "Draco secretly knew about the agreement.", true],
+  ["Draco was absent and nobody told him about the agreement.", "Draco secretly knew about the agreement.", false],
   ["Perhaps the relic is cursed.", "The relic might be cursed.", false],
 ])("classifies actual loose findings using concrete source risk: %s", async (evidence, content, requiresReview) => {
   const { a, ids } = looseMemoryFixture(); a.storyCards = []; a.messages[0].content = evidence;
@@ -514,4 +513,18 @@ it.each([false, true])("auto-approves Harvestfall dates without changing their m
   expect(a.activeState.memoryProposals[0]).toMatchObject({ status: "approved", requiresReview: false, lore: { occurredAt: time, lastChangedAt: time } });
   expect(a.storyCards.find(c => c.title === "Harvestfall Courier")?.lore).toMatchObject({ occurredAt: time, lastChangedAt: time });
   expect(a.storyClock?.current).toEqual(time);
+});
+
+it("auto-approves uncertain-event interpretation without the disclosure veto", async () => {
+  let { a, ids } = singlePassFixture(1);
+  a.memoryAutoApprove.loreStoryCard = true;
+  const evidence = "Liam said the court already assumes the Architect is being summoned. He proposed not contradicting them.";
+  a.messages.find(m => m.id === ids[0])!.content = evidence;
+  const batch = await prepareSinglePassMemoryBatch(a, ids);
+  const finding = { ...groundedFinding(), content: "Liam chose a quiet exit, letting the court's assumptions spread the whispers.",
+    evidenceQuotes: [{ messageId: ids[0], quote: evidence }] };
+  a = reduce(a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
+  a = reduce(a, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId,
+    sources: [{ checkpoint: batch.checkpoints[0].checkpoint, result: { sourceId: ids[0], findings: [finding], rejected: [] } }] });
+  expect(a.activeState.memoryProposals[0]).toMatchObject({ status: "approved", requiresReview: false });
 });

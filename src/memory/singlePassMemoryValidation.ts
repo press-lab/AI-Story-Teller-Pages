@@ -1,3 +1,4 @@
+import { routeDatedLoreProposal } from "./datedLoreRouting";
 import { storyCardMeaningReviewReason } from "./storyCardMeaningReview";
 import type { Adventure, MemoryProposal, SinglePassMemoryCheckpoint, SinglePassMemoryFinding, SinglePassMemorySourceResult } from "../types/adventure";
 import { bindPlacement, characterProfileChangeError, placementValidationError } from "./storyCardPlacement";
@@ -83,7 +84,8 @@ export function toSinglePassProposal(a: Adventure, sourceId: string, checkpoint:
     if (p.storyCardReview) p.storyCardReview = { ...p.storyCardReview, candidateOnly: f.candidateOnly, operation: f.operation === "append" ? "update" : "create",
       targetCandidates: choices,
       additionalSources: checkpoint.evidence.filter(m => ids.includes(m.id) && m.id !== sourceId) };
-    p = bindPlacement(a, p, { kind: f.operation === "append" ? "append" : "create", reason: f.reason, newFact: f.content!, identityChange: f.identityChange }, ids);
+    p = routeDatedLoreProposal(a, p);
+    p = bindPlacement(a, p, { kind: p.targetId ? "append" : "create", reason: f.reason, newFact: f.content!, identityChange: f.identityChange }, ids);
   } else {
     const types = { brain: "brainUpdate", plotEssentials: "plotEssentialsUpdate", activePressure: "plotPressureUpdate", currentArc: "currentArcUpdate", immediateMomentum: "plotMomentumUpdate" } as const;
     p = { id: createId("proposal"), sourceTurnId: sourceId, sourceText: f.evidenceQuotes.map(q => q.quote).join("\n"), proposedType: types[f.kind],
@@ -91,7 +93,8 @@ export function toSinglePassProposal(a: Adventure, sourceId: string, checkpoint:
       appendContent: f.kind === "currentArc" ? true : undefined,
       suggestedTriggers: [], confidence: review ? 0.45 : 0.8, rationale: f.reason, status: "pending", requiresReview: review, createdAt: nowIso(), updatedAt: nowIso() };
   }
-  p.evaluationSource = { messages: checkpoint.evidence, target };
+  p.evaluationSource = { messages: checkpoint.evidence, target: p.proposedType === "storyCard"
+    ? p.targetId ? memoryTargetSnapshot(a, "storyCard", p.targetId) : undefined : target };
   if (f.kind === "storyCard" && reviewReasons.length) p.rationale += " Review required: " + reviewReasons.join(" ");
   return p;
 }
