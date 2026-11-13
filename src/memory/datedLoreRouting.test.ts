@@ -97,3 +97,24 @@ it.each(["0100-01-03", "Imperial Year 417, 1 Harvestfall"])("saves a single lite
   expect(routeDatedLoreProposal(a, p)).toMatchObject({ title: once.title, targetId: "existing", cardOperation: "append" });
   expect(JSON.parse(JSON.stringify(once)).title).toBe(once.title);
 });
+
+
+it.each(["same", "next"])("reroutes a saved CREATE at manual approval on the %s day", mode => {
+  let { a, ids } = singlePassFixture(1);
+  const time = a.storyClock!.current!;
+  const oldTime = mode === "same" ? time : { text: "1999-12-31", date: "1999-12-31", precision: "day" as const };
+  const card = makeStoryCard({ id: "existing-event", type: "lore", title: `[${oldTime.text}] Workshop agreement`, content: "They reserved a workshop.",
+    lore: { status: "ongoing", sourceMessageIds: [], occurredAt: oldTime } });
+  a.storyCards = [card];
+  const p = { id: "saved-create", proposedType: "storyCard" as const, storyCardType: "lore" as const,
+    title: `[${time.text}] Workshop agreement`, content: "Avery received a silver workshop key.", sourceTurnId: ids[0], sourceText: "Avery received a silver workshop key.",
+    cardOperation: "create" as const, status: "pending" as const, createdAt: "", updatedAt: "", rationale: "", confidence: 0.8, suggestedTriggers: [], requiresReview: false,
+    lore: { status: "ongoing" as const, sourceMessageIds: [ids[0]], occurredAt: time } };
+  a.activeState.memoryProposals = [p];
+  a = reduce(a, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: p.id });
+  expect(a.activeState.memoryProposals[0]).toMatchObject({ status: "approved", cardOperation: mode === "same" ? "append" : "create" });
+  expect(a.storyCards).toHaveLength(mode === "same" ? 1 : 2);
+  if (mode === "same") expect(a.storyCards[0]).toMatchObject({ id: card.id, title: card.title });
+  else expect(a.storyCards[0]).toEqual(card);
+  expect(a.storyCards.at(-1)!.content).toContain(p.content);
+});

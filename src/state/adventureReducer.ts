@@ -2039,6 +2039,12 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
         proposal = bindPlacement(state, proposal, { ...validation, kind: proposal.targetId ? "append" : "create" }, validation.sources.map(s => s.id));
         proposal.evaluationSource = { ...proposal.evaluationSource!, target: proposal.placementValidation?.target };
       }
+      // Pending CREATE drafts can outlive creation of their same-day destination.
+      // Resolve them at manual approval too, while preserving explicit destinations.
+      if (!action.automatic && !proposal.targetId) {
+        const routed = routeDatedLoreProposal(state, proposal);
+        if (routed.targetId) proposal = routed;
+      }
       if (loreCreateTitleConflict(state, proposal))
         return fail("an equivalent Story Card title or active CREATE suggestion already exists. Select an existing card or edit the title.");
       if (!action.automatic && proposal.proposedType === "storyCard" && proposal.targetId
