@@ -104,7 +104,7 @@ do not independently require manual approval. Ambiguous topic matches create foc
 rather than guessing an existing destination. Dated Lore matches an existing card by normalized
 identical title and original event date. The date comes from saved source chronology or the
 established clock, never generated metadata or wall time. A matching occurrence receives an
-APPEND; otherwise CREATE preserves the same title and uses the correct date. Unknown-date
+APPEND; otherwise CREATE preserves the subject and uses the correct date. New Lore suggestions store the literal title as `[event date] Subject`, using the authored fantasy date text when present. Existing destination titles are preserved on APPEND; matching strips a prefix only when it agrees with the item's saved date metadata. Unknown-date
 cards do not stand in for a dated occurrence. Numbered title suffixes remain only for other
 creation paths. Existing cards and their authored dates remain unchanged.
 

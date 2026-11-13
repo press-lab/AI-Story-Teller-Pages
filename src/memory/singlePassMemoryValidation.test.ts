@@ -92,8 +92,8 @@ it("keeps separate Hermione developments and an attempted kiss distinct without 
   ].map(f => ({ ...f, participants: ["Hermione"], evidenceQuotes: [{ messageId: ids[0], quote: evidence }] }));
   a = reduce(a, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId, sources: [{ checkpoint: batch.checkpoints[0].checkpoint, result: { sourceId: ids[0], findings, rejected: [] } }] });
   expect(a.activeState.memoryProposals).toHaveLength(2);
-  expect(a.activeState.memoryProposals.find(p => p.title === "Hermione's research dinner agreement")?.status).toBe("approved");
-  expect(a.activeState.memoryProposals.find(p => p.title === "Hermione's withdrawn kiss attempt")?.status).toBe("approved");
+  expect(a.activeState.memoryProposals.find(p => p.title === "[2000-01-01] Hermione's research dinner agreement")?.status).toBe("approved");
+  expect(a.activeState.memoryProposals.find(p => p.title === "[2000-01-01] Hermione's withdrawn kiss attempt")?.status).toBe("approved");
   expect(a.activeState.memoryProposals.some(p => /romantic date|completed kiss/.test(p.content))).toBe(false);
 });
 it("keeps explicitly uncertain absent NPC knowledge and past-event pressure under review", async () => {
@@ -128,7 +128,8 @@ it("retains a Draconia magical-rule development as retrievable Lore instead of b
     eventStatus: "unresolved" as const, suggestedTriggers: ["Flemish binding theory", "marriage-binding renegotiation", "Draconia's research test"] };
   a = reduce(a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
   a = reduce(a, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId, sources: [{ checkpoint: batch.checkpoints[0].checkpoint, result: { sourceId, findings: [f], rejected: [] } }] });
-  const p = a.activeState.memoryProposals.find(p => p.title === f.title)!;
+  const p = a.activeState.memoryProposals.find(p => p.sourceTurnId === sourceId)!;
+  expect(p.title).toBe(`[${p.lore!.occurredAt!.text}] ${f.title}`);
   expect(p.storyCardType).toBe("lore"); expect(a.storyCards[0].content).toBe(fixture.card.content);
   a = reduce(a, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: p.id });
   a = reduce(a, { type: "ADD_MESSAGE", role: "user", content: "I review Flemish binding theory and marriage-binding renegotiation." });
@@ -511,7 +512,7 @@ it.each([false, true])("auto-approves Harvestfall dates without changing their m
   a = reduce(a, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId,
     sources: [{ checkpoint: batch.checkpoints[0].checkpoint, result: { sourceId: ids[0], findings: [finding], rejected: [] } }] });
   expect(a.activeState.memoryProposals[0]).toMatchObject({ status: "approved", requiresReview: false, lore: { occurredAt: time, lastChangedAt: time } });
-  expect(a.storyCards.find(c => c.title === "Harvestfall Courier")?.lore).toMatchObject({ occurredAt: time, lastChangedAt: time });
+  expect(a.storyCards.find(c => c.title === (append ? "Harvestfall Courier" : `[${time.text}] Harvestfall Courier`))?.lore).toMatchObject({ occurredAt: time, lastChangedAt: time });
   expect(a.storyClock?.current).toEqual(time);
 });
 

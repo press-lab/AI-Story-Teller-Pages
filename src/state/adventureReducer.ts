@@ -13,7 +13,7 @@ import { singlePassReferenceState } from "../memory/singlePassMemory";
 import { singlePassSourceError, validateSinglePassSource, toSinglePassProposal } from "../memory/singlePassMemoryValidation";
 import { reconcileBrainBatchState } from "../memory/brainBatchRecovery";
 import { memoryDecisionState, rebaseAutomaticAssessments } from "../memory/memoryAssessment";
-import { factsCovered, hasFactOverlap, proposalCoverage, loreNovelty, loreTitleKey, loreStatements, loreFactsCovered } from "../memory/factCoverage";
+import { factsCovered, hasFactOverlap, proposalCoverage, loreNovelty, loreTitleKey, loreSubjectKey, loreStatements, loreFactsCovered } from "../memory/factCoverage";
 import { placementValidationError, placementFingerprint } from "../memory/storyCardPlacement";
 import { backgroundProviderConfigIssue } from "../providers/backgroundProvider";
 import { memoryRecoveryInterval, MEMORY_RECOVERY_MAX_FAILURES } from "../memory/memoryRecoveryBatch";
@@ -738,14 +738,14 @@ function sanitizeProposal(proposal: MemoryProposal): MemoryProposal | null {
 function loreCreateTitleConflict(state: Adventure, proposal: MemoryProposal): boolean {
   if (proposal.proposedType !== "storyCard" || proposal.storyCardType !== "lore"
     || proposal.targetId || proposal.cardOperation === "append" || proposal.appendContent) return false;
-  const title = loreTitleKey(proposal.title);
-  return state.storyCards.some(card => loreTitleKey(card.title) === title
+  const title = loreSubjectKey(proposal);
+  return state.storyCards.some(card => loreSubjectKey(card) === title
     && (!loreEventDateKey(proposal) || card.type !== "lore" || sameLoreEventDate(card, proposal)))
     || state.activeState.memoryProposals.some(other => other.id !== proposal.id
       && (other.status === "pending" || other.status === "approved")
       && other.proposedType === "storyCard" && !other.targetId
       && other.cardOperation !== "append" && !other.appendContent
-      && loreTitleKey(other.title) === title
+      && loreSubjectKey(other) === title
       && (!loreEventDateKey(proposal) || sameLoreEventDate(other, proposal)));
 }
 
@@ -2052,7 +2052,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
           reason: "Approval retained as a no-op: the latest destination already contains the complete reviewed factual delta." } });
       }
       if (action.automatic && proposal.proposedType === "storyCard" && !proposal.targetId) {
-        const collisions = state.storyCards.filter(c => c.type === (proposal.storyCardType ?? "lore") && loreTitleKey(c.title) === loreTitleKey(proposal.title)
+        const collisions = state.storyCards.filter(c => c.type === (proposal.storyCardType ?? "lore") && loreSubjectKey(c) === loreSubjectKey(proposal)
           && (!(proposal.storyCardType === "lore" && loreEventDateKey(proposal)) || sameLoreEventDate(c, proposal)));
         if (collisions.length) {
           const next = touchAdventure(state, { activeState: { ...state.activeState, memoryProposals: state.activeState.memoryProposals.map(p => p.id === proposal.id

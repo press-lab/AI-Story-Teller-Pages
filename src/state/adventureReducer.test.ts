@@ -2013,7 +2013,7 @@ it.each(["create", "append", "disabled", "protected", "ambiguous", "date", "reco
     title: "Archive access", content: fact, evidenceQuotes: [{ messageId: "narrator-1", quote: fact }] }] }] });
   a = await commitLooseCard(a, response);
   if (mode === "ambiguous") {
-    expect(a.activeState.memoryProposals[0]).toMatchObject({ title: "Archive access", status: "approved", requiresReview: false, cardOperation: "append" });
+    expect(a.activeState.memoryProposals[0]).toMatchObject({ title: "[2001-09-02] Archive access", status: "approved", requiresReview: false, cardOperation: "append" });
     expect(a.storyCards).toHaveLength(before.length);
     expect(a.storyCards[0].content).toContain(fact);
     expect(a.storyCards[1]).toEqual(before[1]);
@@ -2208,10 +2208,10 @@ it.each([false, true])("corrects sequential batch Lore CREATE titles while retai
   const result = parseSinglePassMemoryResponse(JSON.stringify({ sources: [{ sourceId: ids[0], findings: [first, second, third] }] }), ids, a).sources[0];
   a = adventureReducer(a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
   a = adventureReducer(a, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId, sources: [{ result, checkpoint: batch.checkpoints[0].checkpoint }] });
-  expect(a.activeState.memoryProposals.map(p => p.title).sort()).toEqual(automatic ? ["Separate Workshop", "Weasley Formal Accessories", "Weasley Formal Accessories"] : ["Separate Workshop", "WEASLEY Formal---Accessories!", "Weasley Formal Accessories"]);
+  expect(a.activeState.memoryProposals.map(p => p.title).sort()).toEqual((automatic ? ["Separate Workshop", "Weasley Formal Accessories", "Weasley Formal Accessories"] : ["Separate Workshop", "WEASLEY Formal---Accessories!", "Weasley Formal Accessories"]).map(title => `[2000-01-01] ${title}`));
   expect(a.activeState.memoryProposals.map(p => p.status)).toEqual([automatic ? "approved" : "pending", automatic ? "approved" : "pending", automatic ? "approved" : "pending"]);
-  // The second finding retains its independent batch review flag after title correction.
-  expect(a.activeState.memoryProposals.find(p => p.content === second.content)?.requiresReview).toBe(!automatic);
+  // Adding a date to the title does not introduce a review requirement.
+  expect(a.activeState.memoryProposals.find(p => p.content === second.content)?.requiresReview).toBe(false);
   expect(a.messages.find(m => m.id === ids[0])?.memoryEvaluation?.singlePass?.dispositions.map(d => d.status)).toEqual([automatic ? "accepted" : "review", automatic ? "accepted" : "review", automatic ? "accepted" : "review"]);
 });
 

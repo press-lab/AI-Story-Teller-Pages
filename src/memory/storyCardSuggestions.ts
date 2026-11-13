@@ -1,4 +1,4 @@
-import { factsCovered, loreFactsCovered, loreTitleKey, loreOccurrenceDate } from "./factCoverage";
+import { factsCovered, loreFactsCovered, loreTitleKey, loreOccurrenceDate, loreSubjectKey } from "./factCoverage";
 import type { Adventure, MemoryProposal, Message, StoryCardType } from "../types/adventure";
 import { createId, nowIso } from "../utils/id";
 import { isHistoricalLore } from "./storyCardArchitecture";
@@ -211,7 +211,7 @@ export function scanStoryCardExchange(adventure: Adventure, source: Message): Me
 export function equivalentStoryCardSuggestions(a: MemoryProposal, b: MemoryProposal): boolean {
   if (a.proposedType !== "storyCard" || b.proposedType !== "storyCard" || (a.storyCardType ?? "lore") !== (b.storyCardType ?? "lore")) return false;
   if ((a.storyCardType ?? "lore") === "lore") {
-    const sameSubject = a.targetId && b.targetId ? a.targetId === b.targetId : loreTitleKey(a.title) === loreTitleKey(b.title);
+    const sameSubject = a.targetId && b.targetId ? a.targetId === b.targetId : loreSubjectKey(a) === loreSubjectKey(b);
     const leftDate = loreOccurrenceDate(a), rightDate = loreOccurrenceDate(b);
     if (!sameSubject || (leftDate && rightDate && leftDate !== rightDate)) return false;
     return loreFactsCovered(a.content, [b.content]) && loreFactsCovered(b.content, [a.content]);

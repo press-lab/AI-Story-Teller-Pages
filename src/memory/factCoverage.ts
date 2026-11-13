@@ -56,6 +56,18 @@ export function relevantProposalCoverage(a: Adventure, excerpt: string, targetId
 }
 
 export const loreTitleKey = (title: string) => factKey(title).replace(/^(?:the|an?) /, "");
+/** Strip only our literal date prefix when it agrees with this item's saved date metadata. */
+export function loreSubjectTitle(item: { title: string; lore?: MemoryProposal["lore"] }): string {
+  let title = item.title.trim();
+  const dates = [item.lore?.occurredAt?.text, item.lore?.occurredAt?.date, item.lore?.lastChangedAt?.text, item.lore?.lastChangedAt?.date].filter(Boolean);
+  for (const date of dates) {
+    const prefix = `[${date}] `;
+    if (title.startsWith(prefix)) title = title.slice(prefix.length);
+  }
+  return title;
+}
+export const loreSubjectKey = (item: { title: string; lore?: MemoryProposal["lore"] }) => loreTitleKey(loreSubjectTitle(item));
+
 /** Boundaries are individual statements, including dated bullets, not whole cards.
  * Keep semicolon clauses together: their qualifier may change the preceding claim. */
 export function loreStatements(text: string): string[] {
@@ -90,12 +102,12 @@ export type LoreNovelty = { status: "new" | "covered" | "overlap" | "uncertain";
 export function loreNovelty(a: Adventure, p: MemoryProposal, includeProposals = true): LoreNovelty {
   const incoming = loreStatements(p.content);
   const target = a.storyCards.find(c => c.id === p.targetId && c.type === "lore");
-  const titles = new Set([p.title, ...(target ? [target.title] : [])].map(loreTitleKey));
+  const titles = new Set([loreSubjectKey(p), ...(target ? [loreSubjectKey(target)] : [])]);
   const date = loreOccurrenceDate(p);
   const sameOccurrence = (other: { lore?: MemoryProposal["lore"] }) => !date || date === loreOccurrenceDate(other);
-  const cards = a.storyCards.filter(c => c.type === "lore" && sameOccurrence(c) && (p.targetId ? c.id === p.targetId : titles.has(loreTitleKey(c.title))));
+  const cards = a.storyCards.filter(c => c.type === "lore" && sameOccurrence(c) && (p.targetId ? c.id === p.targetId : titles.has(loreSubjectKey(c))));
   const proposals = includeProposals ? a.activeState.memoryProposals.filter(q => q.id !== p.id && q.proposedType === "storyCard" && (q.storyCardType ?? "lore") === "lore"
-    && sameOccurrence(q) && (p.targetId && q.targetId ? p.targetId === q.targetId : titles.has(loreTitleKey(q.title)))) : [];
+    && sameOccurrence(q) && (p.targetId && q.targetId ? p.targetId === q.targetId : titles.has(loreSubjectKey(q)))) : [];
   const known = [...cards.map(c => c.content), ...proposals.map(q => q.content)].flatMap(loreStatements).map(loreFactKey);
   const coveredFacts = incoming.filter(f => known.includes(loreFactKey(f)));
   const newFacts = incoming.filter(f => !known.includes(loreFactKey(f)));

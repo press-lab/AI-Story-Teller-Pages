@@ -262,8 +262,8 @@ it.each([false, true])("keeps a fixed chronology batch at one memory API request
   expect(fetch).toHaveBeenCalledTimes(1);
   expect(responseBodies).toHaveLength(1);
   const after = hook.result.current.adventure!;
-  const proposal = after.activeState.memoryProposals.find(p => p.title === title)!;
-  expect(proposal).toMatchObject({ title, content, sourceText: content, lore: { occurredAt: { date: "2001-09-02" } } });
+  const proposal = after.activeState.memoryProposals.find(p => p.sourceTurnId === "clock-c")!;
+  expect(proposal).toMatchObject({ title: `[2001-09-02] ${title}`, content, sourceText: content, lore: { occurredAt: { date: "2001-09-02" } } });
   expect(proposal.status).toBe("approved");
   expect(proposal.requiresReview).toBe(false);
   expect(after.messages.at(-1)!.memoryEvaluation!.singlePass!.findings).toEqual(
