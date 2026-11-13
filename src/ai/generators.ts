@@ -12,6 +12,7 @@ import { sendOpenAICompatibleChatCompletion } from "../providers/openAICompatibl
 import { makeBrain } from "../state/defaults";
 import {
   AI_INSTRUCTIONS_BEST_PRACTICES,
+  NARRATION_RULES_BEST_PRACTICES,
   PLOT_ESSENTIALS_BEST_PRACTICES,
   STORY_CARD_BEST_PRACTICES,
   TRIGGER_BEST_PRACTICES,
@@ -55,7 +56,7 @@ function parseJsonObject(raw: string): Record<string, unknown> | undefined {
 
 const COMPONENT_GEN_PROMPTS: Partial<Record<ComponentType, string>> = {
   narrationRules:
-    "Write a Narration Rules block — the per-adventure behavior contract. Cover POV and tense, prose format, player agency (never decide the player's actions, words, or feelings), continuity discipline, tone, and a few hard \"never\" rules. Make it behavioral and specific to THIS adventure, not generic boilerplate.",
+    "Write a Narration Rules block — the per-adventure behavior contract. Cover POV and tense, prose format, player agency (preserve meaningful choices and respect the selected Strict, Minor Actions, or Cinematic Flow preference), continuity discipline, tone, and a few hard \"never\" rules. Make it behavioral and specific to THIS adventure, not generic boilerplate.",
   aiInstructions:
     "Write an AI Instructions block — scenario-specific genre, drift-prevention, scene-loop, and prose behavior rules that complement, and do not duplicate, the narration rules. Do not store character facts, lore facts, current mission state, backstory, or card-like memory here. Use named ALL-CAPS sections with tight bullets.",
   authorNote:
@@ -63,6 +64,7 @@ const COMPONENT_GEN_PROMPTS: Partial<Record<ComponentType, string>> = {
 };
 
 function componentBestPractices(type: ComponentType): string {
+  if (type === "narrationRules") return NARRATION_RULES_BEST_PRACTICES;
   if (type === "aiInstructions") return AI_INSTRUCTIONS_BEST_PRACTICES;
   if (type === "plotEssentials") return PLOT_ESSENTIALS_BEST_PRACTICES;
   return "";

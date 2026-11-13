@@ -1,4 +1,4 @@
-import { AUTHORING_STANDARDS, PLOT_ESSENTIALS_FOUNDATIONS_RULE } from "./authoringPolicy";
+import { AUTHORING_SECTIONS, AUTHORING_STANDARDS, PLOT_ESSENTIALS_FOUNDATIONS_RULE } from "./authoringPolicy";
 import type { StoryCardMemoryMode } from "../types/adventure";
 
 export const betterRepositoryGuideSources = [
@@ -7,7 +7,10 @@ export const betterRepositoryGuideSources = [
   "https://better-repository.netlify.app/guides?tab=story-cards",
 ];
 
+export const NARRATION_RULES_BEST_PRACTICES = AUTHORING_SECTIONS.filter((section) => ["narration-behavior", "scene-control"].includes(section.id)).map((section) => `${section.title}:\n${section.text}`).join("\n\n");
+
 export const AI_INSTRUCTIONS_BEST_PRACTICES = `AI Instructions best practices:
+${AUTHORING_SECTIONS.find((section) => section.id === "participation-pacing")!.text}
 - Use AI Instructions for enduring scenario tone, genre, drift prevention, an optional scene loop, and scenario-specific prose rules. Keep general narrator behavior in Narration Rules.
 - Keep character and location profiles, relationship facts, current mission state, and backstory in their proper surfaces. An optional hidden narrator-only mechanism belongs here; its observed events belong in Lore.
 - Keep them scenario-specific and non-redundant with Narration Rules.

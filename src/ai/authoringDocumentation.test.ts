@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { PLOT_ESSENTIALS_BEST_PRACTICES } from "./authoringBestPractices";
+import { ADVENTURE_GENERATION_BEST_PRACTICES, AI_INSTRUCTIONS_BEST_PRACTICES, NARRATION_RULES_BEST_PRACTICES, PLOT_ESSENTIALS_BEST_PRACTICES } from "./authoringBestPractices";
 import {
   AUTHORING_SECTIONS,
   AUTHORING_STANDARDS,
@@ -10,6 +10,20 @@ import {
 } from "./authoringPolicy";
 
 describe("written authoring guidance", () => {
+  it("keeps scene control and scenario pacing aligned across authoring consumers", () => {
+    const scene = AUTHORING_SECTIONS.find(section => section.id === "scene-control")!.text;
+    const pacing = AUTHORING_SECTIONS.find(section => section.id === "participation-pacing")!.text;
+    for (const text of [AUTHORING_STANDARDS, CHATGPT_AUTHORING_INSTRUCTIONS, ADVENTURE_GENERATION_BEST_PRACTICES]) {
+      expect(text).toContain(scene);
+      expect(text).toContain(pacing);
+    }
+    expect(NARRATION_RULES_BEST_PRACTICES).toContain(scene);
+    expect(NARRATION_RULES_BEST_PRACTICES).not.toContain(pacing);
+    expect(AI_INSTRUCTIONS_BEST_PRACTICES).toContain(pacing);
+    expect(AI_INSTRUCTIONS_BEST_PRACTICES).not.toContain(scene);
+    expect(NARRATION_RULES_BEST_PRACTICES).toContain("Strict, Minor Actions, or Cinematic Flow");
+  });
+
   it("shares the natural recall rules between authoring surfaces", () => {
     const triggers = AUTHORING_SECTIONS.find(section => section.id === "authoring-triggers")!;
     for (const text of [AUTHORING_STANDARDS, CHATGPT_AUTHORING_INSTRUCTIONS]) {
