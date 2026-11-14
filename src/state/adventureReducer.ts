@@ -1148,7 +1148,12 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
   if ((action.type === "APPROVE_MEMORY_PROPOSAL" || action.type === "UPDATE_MEMORY_PROPOSAL"
     || action.type === "REJECT_MEMORY_PROPOSAL" || action.type === "IGNORE_MEMORY_PROPOSAL")
     && state.activeState.memoryProposals.some(p => p.id === action.proposalId && p.archivedMemoryHistoryId)) return state;
-  const reduced = reduceAdventure(state, action);
+  let reduced = reduceAdventure(state, action);
+  // Discard review-only results after normal approval/application, including companions.
+  if (reduced.memorySuggestionsEnabled === false && reduced.activeState.memoryProposals.some(p => p.status === "pending")) {
+    reduced = { ...reduced, activeState: { ...reduced.activeState,
+      memoryProposals: reduced.activeState.memoryProposals.filter(p => p.status !== "pending") } };
+  }
   const automatic = action.type === "COMMIT_MEMORY_EVALUATION_GROUP"
     || (action.type === "ADD_MEMORY_PROPOSAL" && !action.proposal.userInitiated)
     || (action.type === "APPROVE_MEMORY_PROPOSAL" && action.automatic === true)
@@ -1216,6 +1221,29 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
 
 function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
   switch (action.type) {
+    case "SET_MEMORY_SUGGESTIONS_ENABLED":
+      return touchAdventure(state, { memorySuggestionsEnabled: action.enabled });
+    case "CLEAR_SUGGESTION_HISTORY": {
+      const pending = state.activeState.memoryProposals.filter(p => p.status === "pending");
+      const retainedIds = new Set(pending.map(p => p.archivedMemoryHistoryId));
+      const archive = state.activeState.compressedMemoryHistory;
+      return touchAdventure(state, { activeState: { ...state.activeState,
+        debugHistoryGeneration: (state.activeState.debugHistoryGeneration ?? 0) + 1,
+        memoryProposals: pending,
+        compressedMemoryHistory: archive ? { ...archive, blocks: Object.fromEntries(Object.entries(archive.blocks)
+          .filter(([id, block]) => block.kind !== "proposal" || retainedIds.has(id))) } : undefined } });
+    }
+    case "CLEAR_DECISION_HISTORY": {
+      const clean = pruneDebugHistory(state);
+      const archive = state.activeState.compressedMemoryHistory;
+      return touchAdventure(state, { messages: clean.messages, activeState: { ...state.activeState,
+        debugHistoryGeneration: clean.activeState.debugHistoryGeneration,
+        legacyMemoryEvaluationSourceIds: clean.activeState.legacyMemoryEvaluationSourceIds,
+        memoryDiagnostics: [],
+        evaluationLog: state.activeState.evaluationLog.filter(log => !log.actionsExecuted.some(a => a.startsWith("Memory source:"))),
+        compressedMemoryHistory: archive ? { ...archive, blocks: Object.fromEntries(Object.entries(archive.blocks)
+          .filter(([, block]) => block.kind !== "evaluation")) } : undefined } });
+    }
     case "PRUNE_DEBUG_HISTORY":
       return touchAdventure(pruneDebugHistory(state), {});
     case "MERGE_MEMORY_HISTORY_PROGRESS": {

@@ -976,6 +976,7 @@ export interface Adventure {
   tokenBudgetSettings: TokenBudgetSettings;
   modelConfig: ProviderConfig;
   semanticEvaluationSettings: SemanticEvaluationSettings;
+  memorySuggestionsEnabled?: boolean;
   memoryAutoApprove: MemoryAutoApproveSettings;
   memoryDetectionSettings: MemoryDetectionSettings;
   systemTriggers: SystemTriggerSettings;
@@ -1128,6 +1129,9 @@ export type BrainPatch = {
 
 export type AdventureAction =
   | { type: "MERGE_MEMORY_HISTORY_PROGRESS"; baseline: Adventure; latest: Adventure }
+  | { type: "SET_MEMORY_SUGGESTIONS_ENABLED"; enabled: boolean }
+  | { type: "CLEAR_SUGGESTION_HISTORY" }
+  | { type: "CLEAR_DECISION_HISTORY" }
   | { type: "PRUNE_DEBUG_HISTORY" }
   | { type: "ARCHIVE_MEMORY_HISTORY"; adventureId: string; record: MemoryHistoryRecord; block: CompressedMemoryHistoryBlock }
   | { type: "APPLY_ARCHIVED_PROPOSAL_ACTION"; adventureId: string; archiveId: string; proposal: MemoryProposal; action: HistoricalProposalAction }

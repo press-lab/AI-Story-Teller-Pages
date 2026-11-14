@@ -240,6 +240,7 @@ export function createDefaultAdventure(title = "Untitled Adventure"): Adventure 
     tokenBudgetSettings: defaultTokenBudgetSettings,
     modelConfig: defaultModelConfig,
     semanticEvaluationSettings: defaultSemanticEvaluationSettings,
+    memorySuggestionsEnabled: true,
     memoryAutoApprove: { ...defaultMemoryAutoApproveSettings },
     memoryDetectionSettings: defaultMemoryDetectionSettings,
     systemTriggers: defaultSystemTriggerSettings,
@@ -512,6 +513,7 @@ export function sanitizeAdventureForPersistence(adventure: Adventure): Adventure
   const clean = compactMemoryGuards(stripRetiredAdventureFields(adventure, normalizeMemoryAutoApproveSettings));
   return {
     ...clean,
+    memorySuggestionsEnabled: adventure.memorySuggestionsEnabled !== false,
     memoryAutoApprove: normalizeMemoryAutoApproveSettings(adventure.memoryAutoApprove),
     modelConfig: persistedProviderConfig(adventure.modelConfig) as ProviderConfig,
     semanticEvaluationSettings: persistedSemanticEvaluationSettings(adventure.semanticEvaluationSettings),
@@ -625,6 +627,7 @@ export function normalizeAdventure(adventure: Adventure): Adventure {
       updatePrompt: rule.updatePrompt ?? "",
     })),
     semanticEvaluationSettings: persistedSemanticEvaluationSettings(adventure.semanticEvaluationSettings),
+    memorySuggestionsEnabled: adventure.memorySuggestionsEnabled !== false,
     memoryAutoApprove: normalizeMemoryAutoApproveSettings(adventure.memoryAutoApprove),
     memoryDetectionSettings: {
       ...defaultMemoryDetectionSettings,

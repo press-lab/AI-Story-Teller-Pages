@@ -56,6 +56,10 @@ export function MemoryDecisionsPage({ adventure, onSuggestions, onEvaluateMemory
   }).slice(0, 100);
   return <section className="page editor-surface" aria-label="Memory decisions" style={{ overflowWrap: "anywhere", minWidth: 0 }}>
     <h2>Memory decisions</h2>
+    {dispatch && <>
+      <button type="button" onClick={() => dispatch({ type: "CLEAR_DECISION_HISTORY" })}>Clear decision history</button>
+      <p className="muted">Deletes saved decision logs and completed evaluation evidence from JSON. Current status, unfinished work, suggestions, saved memory, and API accounting stay.</p>
+    </>}
     {!MEMORY_DEBUG_LOGGING && <p>Detailed debug logging is disabled. Current evaluation status and proposal decisions remain available. Previously saved history is shown when available.</p>}
     {dispatch && <>
       <p>Download a full JSON backup before clearing saved debug history. Deleted debugging history cannot be reconstructed.</p>

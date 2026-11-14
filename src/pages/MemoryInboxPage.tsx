@@ -158,6 +158,13 @@ function MemorySuggestionsPage({ adventure, dispatch, onRegenerateProposal, onRe
 
   return (
     <section className="page editor-surface memory-inbox-page">
+      <section className="panel" aria-label="Suggestion controls">
+        <CheckboxField label="Show suggestions" checked={adventure.memorySuggestionsEnabled !== false}
+          onChange={enabled => dispatch({ type: "SET_MEMORY_SUGGESTIONS_ENABLED", enabled })} />
+        <p className="muted">When off, pending suggestions are discarded. Automatic updates keep using your approval settings. AI checks still run.</p>
+        <button type="button" onClick={() => dispatch({ type: "CLEAR_SUGGESTION_HISTORY" })}>Clear suggestion history</button>
+        <p className="muted">Deletes approved, rejected, and ignored suggestion records from saved JSON. Pending suggestions and saved memories stay. Deleted decisions no longer suppress repeat suggestions.</p>
+      </section>
       <section className="panel" aria-label="Auto-approval — This adventure">
         <h3>Auto-approval — This adventure</h3>
         <div className="auto-approve-toggles">
@@ -372,6 +379,41 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
             disabled={proposal.status === "approved"}
           />
         </div>
+        </div>
+      {proposal.storyCardReview && <>
+        <Field label="Story Card destination"><select value={proposal.targetId ?? ""} disabled={proposal.status === "approved"}
+          onChange={event => {
+            const card = adventure.storyCards.find(card => card.id === event.target.value);
+            const suggestedTitle = proposal.storyCardReview!.suggestedTitle;
+            const createTitle = suggestedTitle;
+            onUpdate(proposal, { targetId: card?.id, title: card?.title ?? createTitle,
+              ...(proposal.evaluationSource ? { evaluationSource: { ...proposal.evaluationSource, target: card ? memoryTargetSnapshot(adventure, "storyCard", card.id) : undefined } } : {}),
+              cardOperation: card ? "append" : "create", storyCardType: card?.type ?? proposal.storyCardType, appendContent: card ? true : undefined, memoryMode: card?.memoryMode ?? proposal.memoryMode,
+              storyCardReview: { ...proposal.storyCardReview!, operation: card ? "update" : "create" } });
+          }}>
+          <option value="">CREATE — new Story Card</option>
+          {proposal.targetId && !adventure.storyCards.some(card => card.id === proposal.targetId) && <option value={proposal.targetId}>Missing destination — choose another</option>}
+          {adventure.storyCards.map(card => <option key={card.id} value={card.id}>APPEND — {card.title}{proposal.storyCardReview!.targetCandidates.includes(card.id) ? " (suggested)" : ""}</option>)}
+        </select></Field>
+      </>}
+      {proposal.proposedType === "storyCard" && !proposal.storyCardReview && <Field label="Story Card destination">
+        <select value={proposal.targetId ?? ""} disabled={proposal.status === "approved"} onChange={event => {
+          const card = adventure.storyCards.find(card => card.id === event.target.value);
+          onUpdate(proposal, { targetId: card?.id, cardOperation: card ? "append" : "create", storyCardType: card?.type ?? proposal.storyCardType });
+        }}>
+          <option value="">CREATE — new Story Card</option>
+          {proposal.targetId && !adventure.storyCards.some(card => card.id === proposal.targetId) && <option value={proposal.targetId}>Missing destination — choose another</option>}
+          {adventure.storyCards.map(card => <option key={card.id} value={card.id}>APPEND — {card.title}</option>)}
+        </select>
+      </Field>}
+      <textarea
+        rows={5}
+        value={proposal.content}
+        onChange={(event) => onUpdate(proposal, { content: event.target.value })}
+        placeholder="Proposed content..."
+        disabled={proposal.status === "approved"}
+      />
+
         <div className="row">
           <button
             type="button"
@@ -404,13 +446,14 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
             </>
           )}
         </div>
-      </div>
 
+      {proposal.status !== "approved" && proposal.approvalFeedback && <p role="status">{proposal.approvalFeedback}</p>}
+      {regenerationError && <p role="alert">{regenerationError}</p>}
+      {isPending && (placementError || !sourceValid || dateConflict) && <p role="status">Review needed: {placementError || (dateConflict ? "Event date conflicts with source chronology." : "Source evidence or destination changed.")} See Review details below.</p>}
+      <details className="editor-tools-panel"><summary>Review details</summary>
       {isPending && placementError && <p role="status">{placementError} You can still approve this draft manually.</p>}
       {isPending && !sourceValid && <p role="status">The source evidence or destination changed. Review the current draft; you can still approve it.</p>}
       {proposal.placementValidation && <p>{proposal.placementValidation.reason}</p>}
-      {proposal.status !== "approved" && proposal.approvalFeedback && <p role="status">{proposal.approvalFeedback}</p>}
-      {regenerationError && <p role="alert">{regenerationError}</p>}
       {proposal.evaluationSource && <details><summary>Independent evaluation evidence</summary>
         <p>Destination: {proposal.targetId ?? "new Story Card"}</p>
         {proposal.evaluationSource.messages.map(source => <div key={source.id}><code>{source.id}</code><blockquote>{source.content}</blockquote></div>)}
@@ -421,32 +464,8 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
           <ul>{proposal.storyCardReview.evidenceQuotes!.map((item, index) => <li key={`${item.messageId}-${index}`}><code>{item.messageId}</code><blockquote>{item.quote}</blockquote></li>)}</ul>
         </details>}
         {proposal.lore && <p>{proposal.lore.status} · Sources: {proposal.lore.sourceMessageIds.join(", ")}</p>}
-        <Field label="Story Card destination"><select value={proposal.targetId ?? ""} disabled={proposal.status === "approved"}
-          onChange={event => {
-            const card = adventure.storyCards.find(card => card.id === event.target.value);
-            const suggestedTitle = proposal.storyCardReview!.suggestedTitle;
-            const createTitle = suggestedTitle;
-            onUpdate(proposal, { targetId: card?.id, title: card?.title ?? createTitle,
-              ...(proposal.evaluationSource ? { evaluationSource: { ...proposal.evaluationSource, target: card ? memoryTargetSnapshot(adventure, "storyCard", card.id) : undefined } } : {}),
-              cardOperation: card ? "append" : "create", storyCardType: card?.type ?? proposal.storyCardType, appendContent: card ? true : undefined, memoryMode: card?.memoryMode ?? proposal.memoryMode,
-              storyCardReview: { ...proposal.storyCardReview!, operation: card ? "update" : "create" } });
-          }}>
-          <option value="">CREATE — new Story Card</option>
-          {proposal.targetId && !adventure.storyCards.some(card => card.id === proposal.targetId) && <option value={proposal.targetId}>Missing destination — choose another</option>}
-          {adventure.storyCards.map(card => <option key={card.id} value={card.id}>APPEND — {card.title}{proposal.storyCardReview!.targetCandidates.includes(card.id) ? " (suggested)" : ""}</option>)}
-        </select></Field>
         {proposal.storyCardReview.targetCandidates.length > 1 && !proposal.targetId && <p>Several continuing subjects may fit. Choose an update target or keep this as a separate card.</p>}
       </div>}
-      {proposal.proposedType === "storyCard" && !proposal.storyCardReview && <Field label="Story Card destination">
-        <select value={proposal.targetId ?? ""} disabled={proposal.status === "approved"} onChange={event => {
-          const card = adventure.storyCards.find(card => card.id === event.target.value);
-          onUpdate(proposal, { targetId: card?.id, cardOperation: card ? "append" : "create", storyCardType: card?.type ?? proposal.storyCardType });
-        }}>
-          <option value="">CREATE — new Story Card</option>
-          {proposal.targetId && !adventure.storyCards.some(card => card.id === proposal.targetId) && <option value={proposal.targetId}>Missing destination — choose another</option>}
-          {adventure.storyCards.map(card => <option key={card.id} value={card.id}>APPEND — {card.title}</option>)}
-        </select>
-      </Field>}
       {isPending && proposal.proposedType === "storyCard" && <div aria-label="Automatic approval status">
         {autoApprovalBlockers.length ? <ul>{autoApprovalBlockers.map(reason => <li key={reason}>{reason}</li>)}</ul>
           : <p>This suggestion remains pending. Auto-approval settings apply to new suggestions; review this draft explicitly.</p>}
@@ -455,13 +474,7 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
         <p>Date conflict: this event’s proposed date does not agree with its source chronology.</p>
         <p>{chronology.status === "conflict" ? chronology.reason : ""}</p>
       </div>}
-      <textarea
-        rows={5}
-        value={proposal.content}
-        onChange={(event) => onUpdate(proposal, { content: event.target.value })}
-        placeholder="Proposed content..."
-        disabled={proposal.status === "approved"}
-      />
+      </details>
 
       <details className="editor-tools-panel">
         <summary>Source &amp; details</summary>
