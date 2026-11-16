@@ -3528,9 +3528,7 @@ details.story-card-item:not([open]) > .editor-card {
 
 .brain-history-text {
   display: block;
-  overflow: hidden;
-  max-height: calc(1.45em * 2);
-  white-space: normal;
+  white-space: pre-wrap;
 }
 
 .item-history-meta,
@@ -4875,6 +4873,10 @@ summary {
 }
 
 @media (max-width: 640px) {
+  .brain-history-list {
+    max-height: min(60dvh, 480px);
+  }
+
   /* Context table: hide non-essential columns on small screens */
   .context-table .col-section,
   .context-table .col-priority,

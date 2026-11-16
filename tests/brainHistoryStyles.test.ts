@@ -6,14 +6,15 @@ const styles = fs.readFileSync("src/styles.css", "utf8");
 const cssBlock = (selector: string) => {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const matches = [...styles.matchAll(new RegExp(`${escaped}\\s*\\{(?<body>[^}]*)\\}`, "gs"))];
-  return matches.at(-1)?.groups?.body ?? "";
+  return matches.map((match) => match.groups?.body ?? "").join("\n");
 };
 
 describe("brain thought history styles", () => {
-  it("keeps clickable memory rows wrapped and compact", () => {
+  it("shows complete thoughts in wrapped, non-shrinking clickable rows", () => {
     const listStyles = cssBlock(".brain-history-list");
     expect(listStyles).toContain("display: flex");
     expect(listStyles).toContain("flex-direction: column");
+    expect(listStyles).toContain("max-height: min(60dvh, 480px)");
 
     const entryStyles = cssBlock(".brain-history-entry");
     expect(entryStyles).toContain("flex: 0 0 auto");
@@ -26,8 +27,8 @@ describe("brain thought history styles", () => {
 
     const textStyles = cssBlock(".brain-history-text");
     expect(textStyles).toContain("display: block");
-    expect(textStyles).toContain("overflow: hidden");
-    expect(textStyles).toContain("max-height: calc(1.45em * 2)");
-    expect(textStyles).toContain("white-space: normal");
+    expect(textStyles).not.toContain("overflow: hidden");
+    expect(textStyles).not.toContain("max-height:");
+    expect(textStyles).toContain("white-space: pre-wrap");
   });
 });
