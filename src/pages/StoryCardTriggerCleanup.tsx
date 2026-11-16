@@ -33,15 +33,31 @@ export function StoryCardTriggerCleanup({ adventure, dispatch, providerConfig, l
     } catch { if (run.current === job) setError("Cleanup failed. Existing triggers are unchanged."); }
     finally { if (run.current === job) setRunning(false); }
   }
-  function apply(result: TriggerCleanupResult) {
+  function apply(result: TriggerCleanupResult, mode: "replace" | "append" = "replace") {
+    if (decisions[result.cardId] || !result.keys || result.error) return;
     const card = adventure.storyCards.find(card => card.id === result.cardId);
     if (!card || triggerCleanupSnapshot(card) !== result.original) {
       setDecisions(previous => ({ ...previous, [result.cardId]: "Card changed or was removed. Run cleanup again before applying." }));
       return;
     }
-    if (!result.keys || result.error) return;
-    dispatch({ type: "UPDATE_STORY_CARD", storyCardId: card.id, patch: { keys: result.keys } });
-    setDecisions(previous => ({ ...previous, [card.id]: "Applied" }));
+    const keys = [...card.keys];
+    const seen = new Set(keys.map(key => key.trim().toLocaleLowerCase()));
+    if (mode === "append") {
+      for (const key of result.keys) {
+        const normalized = key.trim().toLocaleLowerCase();
+        if (!seen.has(normalized)) { keys.push(key); seen.add(normalized); }
+      }
+    }
+    const nextKeys = mode === "append" ? keys : result.keys;
+    if (JSON.stringify(nextKeys) !== JSON.stringify(card.keys)) {
+      dispatch({ type: "UPDATE_STORY_CARD", storyCardId: card.id, patch: { keys: nextKeys } });
+    }
+    setDecisions(previous => ({ ...previous, [card.id]: mode === "append" ? "Appended" : "Replaced" }));
+  }
+  const pending = results.filter(result => !result.error && result.keys && !decisions[result.cardId]
+    && JSON.stringify(result.keys) !== JSON.stringify(result.oldKeys));
+  function applyAll(mode: "replace" | "append") {
+    for (const result of pending) apply(result, mode);
   }
   return <details className="panel editor-tools-panel" open>
     <summary>Clean up trigger phrases with AI</summary>
@@ -55,6 +71,11 @@ export function StoryCardTriggerCleanup({ adventure, dispatch, providerConfig, l
     {running && <button type="button" onClick={() => { stop.current = true; }}>Stop after current request</button>}
     <p role="status">{completed > 0 || running ? `${completed} batches completed. ` : ""}{results.length > 0 ? `${results.length} card results available.` : ""}{!running && completed > 0 && completed < totalBatches ? "Stopped before all batches completed. Unprocessed cards are unchanged." : ""}</p>
     {error && <p role="alert">{error}</p>}
+    {results.length > 0 && <div className="story-card-tool-controls">
+      <p>Approve all pending results: append keeps existing phrases and adds new ones; replace uses only the proposed phrases. Failed, rejected and already approved results are skipped.</p>
+      <button type="button" disabled={running || pending.length === 0} onClick={() => applyAll("append")}>Append All Pending Triggers</button>
+      <button type="button" disabled={running || pending.length === 0} onClick={() => applyAll("replace")}>Replace All Pending Triggers</button>
+    </div>}
     {results.map(result => <article className="panel" key={result.cardId}>
       <h3>{result.title}</h3>
       {result.error ? <p role="alert">{result.error}</p> : <>
@@ -63,7 +84,8 @@ export function StoryCardTriggerCleanup({ adventure, dispatch, providerConfig, l
         <p>{result.reason}</p>
         {result.splitNote && <p><strong>Possible separate event (review only):</strong> {result.splitNote}</p>}
         {decisions[result.cardId] ? <p>{decisions[result.cardId]}</p> : JSON.stringify(result.keys) === JSON.stringify(result.oldKeys) ? <p>No change needed.</p> : <>
-          <button type="button" onClick={() => apply(result)}>Apply triggers for {result.title}</button>
+          <button type="button" onClick={() => apply(result, "replace")}>Replace triggers for {result.title}</button>
+          <button type="button" onClick={() => apply(result, "append")}>Append triggers for {result.title}</button>
           <button type="button" onClick={() => setDecisions(previous => ({ ...previous, [result.cardId]: "Rejected" }))}>Reject triggers for {result.title}</button>
         </>}
       </>}
