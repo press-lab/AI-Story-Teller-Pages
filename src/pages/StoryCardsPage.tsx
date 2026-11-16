@@ -1,7 +1,8 @@
+import { StoryCardTriggerCleanup } from "./StoryCardTriggerCleanup";
 import { LoreChronologyEditor } from "./StoryCardChronology";
 import { PRIMARY_STORY_CARD_TYPES, primaryStoryCardType, isHistoricalLore } from "../memory/storyCardArchitecture";
 import { useEffect, useRef, useState } from "react";
-import type { ContextInclusionPolicy, StoryCard, StoryCardAIBuilderIntent, StoryCardType, TriggerMatchType, StoryCardAIBuilderRequest } from "../types/adventure";
+import type { ContextInclusionPolicy, ProviderConfig, StoryCard, StoryCardAIBuilderIntent, StoryCardType, TriggerMatchType, StoryCardAIBuilderRequest } from "../types/adventure";
 import type { AuditRecommendation } from "../memory/storyCardAudit";
 import { storyCardContextContent } from "../memory/storyCardPolicy";
 import { makeStoryCard } from "../state/defaults";
@@ -139,6 +140,7 @@ function sortCards(cards: StoryCard[], mode: SortMode): StoryCard[] {
 }
 
 interface StoryCardsPageProps extends AdventurePageProps {
+  providerConfig?: ProviderConfig;
   loading?: boolean;
   onBuildStoryCardMemory?: (request: StoryCardAIBuilderRequest) => Promise<void>;
   onSuggestCardUpdates?: () => Promise<void>;
@@ -158,6 +160,7 @@ export function StoryCardsPage({
   onBuildStoryCardMemory,
   onSuggestCardUpdates,
   onAuditStoryCards,
+  providerConfig,
 }: StoryCardsPageProps) {
   const [importText, setImportText] = useState("");
   const [aiDescription, setAiDescription] = useState("");
@@ -561,6 +564,8 @@ export function StoryCardsPage({
       )}
 
       <p className="muted">Automatic memory can suggest changes to relevant Story Cards. AIST uses the global memory evaluation interval. Story Cards do not have a separate automatic update interval.</p>
+
+      {providerConfig && <StoryCardTriggerCleanup key={adventure.id} adventure={adventure} dispatch={dispatch} providerConfig={providerConfig} loading={loading} />}
 
       <details className="panel editor-tools-panel story-card-json-panel">
         <summary>Story Card JSON</summary>

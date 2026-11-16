@@ -113,3 +113,13 @@ Unsupported certainty/completion, Character information in the
 wrong card type, source/placement validity and factual overlap checks remain. Date conflicts are informational and do not force manual approval; date metadata is preserved.
 Previously saved explicit review flags remain in force. Brain and component approval rules
 are unchanged. Protected Story Cards still retain their context protection.
+
+## AI trigger-phrase cleanup
+
+Story Cards includes **Clean up trigger phrases with AI** near the bottom, above Story Card JSON. Choose all cards or Character, Location, Lore, or Custom (including factions). This scope includes inactive cards. The title already participates in retrieval; cleanup does not need to repeat it in keys.
+
+Preview sends selected cards' IDs, titles, complete context content and existing keys to the configured background provider (or active provider). Requests run sequentially, with up to eight cards per batch, an estimated 12,000-input-token ceiling, and context/output limits from provider settings. Oversized cards and regex matchers are flagged for manual review; their text is not silently truncated. The displayed token estimate is approximate, not a price quote.
+
+The model proposes natural alternate names, event references and distinctive content-grounded recall phrases. It may flag a substantially separate event for review, but cannot split, rename, delete or rewrite cards. No automatic repair or retry requests are added. Missing, malformed and duplicate results fail per card; valid siblings remain reviewable. A request failure stops subsequent batches. Stop finishes the current request and prevents the next one.
+
+Review each card's existing/proposed keys, explanation and optional split note. Apply or reject individually. Apply changes only keys through the reducer, and refuses results if the card's title, category, matching mode, context content or existing keys have changed. Results are a temporary preview: leaving the page discards unapplied proposals and stops further batches. Existing title matching, context budgets, inclusion controls, card facts and provenance remain unchanged.
