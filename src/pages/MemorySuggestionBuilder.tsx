@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Adventure, MemoryDraftRequest, ProviderConfig, StoryCard, StoryCardAIBuilderIntent } from "../types/adventure";
 import { DRAFT_COMPONENT_TYPES, draftPreview, SINGLETON_DRAFT_TYPES } from "../memory/memoryDraft";
+import { MAX_CHAINED_STORY_CARDS_PER_BUILD } from "../contextBuilder/chainedStoryCardTriggers";
 import { CheckboxField, Field, NumberInput } from "./shared";
 
 const cardTypes = ["character", "location", "lore", "custom"] as const;
@@ -69,7 +70,7 @@ export function MemorySuggestionBuilder({ adventure, providerConfig, loading, on
   const contextPatch = (update: Partial<MemoryDraftRequest["context"]>) => patch({ context: { ...request.context, ...update } });
   const targets = adventure.components.filter(c => c.type === request.componentType);
   const preview = useMemo(() => {
-    try { return { value: draftPreview(adventure, { ...request, description: request.description || "Draft the requested item." }, providerConfig) }; }
+    try { return { value: draftPreview(adventure, request, providerConfig) }; }
     catch (e) { return { error: e instanceof Error ? e.message : "Unable to prepare context." }; }
   }, [adventure, request, providerConfig]);
   const targetCard = adventure.storyCards.find(c => c.id === request.targetId);
@@ -107,15 +108,29 @@ export function MemorySuggestionBuilder({ adventure, providerConfig, loading, on
       </>}
     </div>
     <Field label="Your instructions"><textarea rows={4} value={request.description} onChange={e => patch({ description: e.target.value })} placeholder="Describe the character, component, or change you want. For a subplot, explain the situation and what can develop." /></Field>
-    <details className="editor-tools-panel"><summary>Context to send · {request.context.storyCardIds.length} reference cards · {request.context.recentEntryCount} previous entries</summary>
+    <details className="editor-tools-panel"><summary>Context to send · {request.context.storyCardIds.length} selected cards · {preview.value?.triggeredCards.length ?? 0} triggered cards · {request.context.recentEntryCount} previous entries</summary>
       <Field label="Reference components"><select value={request.context.components} onChange={e => contextPatch({ components: e.target.value as MemoryDraftRequest["context"]["components"] })}><option value="none">None</option><option value="all">All components</option><option value="selected">Selected components</option></select></Field>
       {request.context.components === "selected" && adventure.components.filter(c => c.type in DRAFT_COMPONENT_TYPES).map(c => <CheckboxField key={c.id} label={c.title} checked={request.context.componentIds.includes(c.id)} onChange={v => contextPatch({ componentIds: v ? [...request.context.componentIds, c.id] : request.context.componentIds.filter(id => id !== c.id) })} />)}
       <button type="button" onClick={() => setPicker("references")}>Choose reference cards ({request.context.storyCardIds.length} selected)</button>
       <Field label="Previous entries"><NumberInput min={0} max={adventure.messages.length} value={request.context.recentEntryCount} onChange={value => contextPatch({ recentEntryCount: Math.max(0, Math.round(value)) })} /></Field>
       <p className="muted">Entries are saved messages, not exchanges. Full selected content is sent. {request.reviewSelectedCards ? "You explicitly chose to review selected cards of this type as update targets. Other references only inform the drafts." : "References inform this draft; they are not update targets."}</p>
-      {preview.value && <div aria-label="Draft context manifest"><p>Components: {preview.value.components.map(c => c.title).join(", ") || "None"}</p><p>Story Cards: {preview.value.cards.map(c => c.title).join(", ") || "None"}</p><p>Previous entries: {preview.value.entries.length} available of {request.context.recentEntryCount} requested.</p><p>Destination: {request.reviewSelectedCards ? `Selected ${request.storyCardType} cards` : preview.value.target?.title ?? "Create new"} · full saved content included when updating.</p></div>}
+      <p className="muted">Like Play, one-hop matching adds up to {MAX_CHAINED_STORY_CARDS_PER_BUILD} active, non-manual cards referenced by the selected components, cards, destination, instructions, or previous entries. Added cards do not trigger another round.</p>
+      {preview.value && <div aria-label="Draft context manifest">
+        <p>Components: {preview.value.components.map(c => c.title).join(", ") || "None"}</p>
+        <p>Selected Story Cards: {preview.value.cards.map(c => c.title).join(", ") || "None"}</p>
+        <p>One-hop triggered Story Cards: {preview.value.triggeredCards.length === 0 ? "None" : ""}</p>
+        {preview.value.triggeredCards.length > 0 && <ul>{preview.value.triggeredCards.map(({ card, match }) => <li key={card.id}>
+          {match.sourceTitle} → {card.title} · matched “{match.matchedTriggerPhrase}” · full content included
+        </li>)}</ul>}
+        <p>Previous entries: {preview.value.entries.length} available of {request.context.recentEntryCount} requested.</p>
+        <p>Destination: {request.reviewSelectedCards ? `Selected ${request.storyCardType} cards` : preview.value.target?.title ?? "Create new"} · full saved content included when updating.</p>
+        <details><summary>Full request sent to AI</summary>{preview.value.messages.map((message, index) => <section key={index}>
+          <h4>{message.role}</h4><pre className="memory-draft-payload">{message.content}</pre>
+        </section>)}</details>
+      </div>}
     </details>
-    {preview.value && <p>Estimated input: {preview.value.estimatedTokens.toLocaleString()} tokens · allowance: {preview.value.availableTokens.toLocaleString()}.</p>}
+    {preview.value && <p>Input: {preview.value.estimatedCharacters.toLocaleString()} characters · estimated {preview.value.estimatedTokens.toLocaleString()} tokens · allowance: {preview.value.availableTokens.toLocaleString()} tokens{request.destination === "storyCard" ? " (advisory)" : ""}.</p>}
+    {preview.value?.overAllowance && <p role="status">Above the displayed allowance. Card suggestions can still be sent in full; this tool will not shorten or block them. The model provider’s own limits still apply.</p>}
     {preview.error && <p role="alert">{preview.error}</p>}
     {request.destination === "component" && <p className="muted">Always means available in context, subject to the existing budget rules. It does not require a mention every response.</p>}
     <button type="button" className="primary-action" disabled={Boolean(preview.error) || request.action === "draft" && !request.description.trim()} onClick={() => void create()}>{busy ? "Creating…" : "Create suggestion"}</button>

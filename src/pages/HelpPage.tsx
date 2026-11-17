@@ -172,7 +172,9 @@ npm.cmd run test:live   # optional, uses .env.test.local`}</pre>
         <p>
           Open <strong>Create suggestion with AI</strong> here to draft any active Plot component or Story Card.
           Choose all or selected components, reference cards, and a previous-entry count. The card picker supports search,
-          type filters, and a selected-only view. Selected references are sent in full; oversized requests stop before sending.
+          type filters, and a selected-only view. Selected references and one-hop triggered cards are sent in full.
+          The preview lists added cards with their source and trigger, and exposes the full request.
+          For Story Card suggestions, the input allowance is advisory; component drafts still enforce it.
           Recent-play review supports Plot Essentials and Story Cards, including explicitly selected card update targets.
           These requested drafts always wait for your approval, even when automatic suggestions are hidden.
         </p>

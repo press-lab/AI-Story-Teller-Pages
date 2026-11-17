@@ -1,4 +1,4 @@
-import type { Adventure, ChatMessage, DraftComponentType, MemoryDraftRequest, MemoryProposal, ProviderConfig } from "../types/adventure";
+import type { Adventure, ChatMessage, ContextItem, DraftComponentType, MemoryDraftRequest, MemoryProposal, ProviderConfig } from "../types/adventure";
 import { AUTHORING_SECTIONS } from "../ai/authoringPolicy";
 import { STORY_CARD_BEST_PRACTICES, TRIGGER_BEST_PRACTICES } from "../ai/authoringBestPractices";
 import { approximateTokenCount } from "../tokenizer/approximateTokenCount";
@@ -6,6 +6,8 @@ import { resolveMemoryEvaluationProviderConfig } from "../providers/backgroundPr
 import { sendMemoryCompletion } from "../providers/memoryCompletion";
 import { createId, nowIso } from "../utils/id";
 import { snapshotFingerprint } from "../utils/snapshotFingerprint";
+import { resolveChainedStoryCardTriggers } from "../contextBuilder/chainedStoryCardTriggers";
+import { storyCardContextContent } from "./storyCardPolicy";
 
 export const DRAFT_COMPONENT_TYPES: Record<DraftComponentType, string> = {
   narrationRules: "Narration Rules", aiInstructions: "AI Instructions", plotEssentials: "Plot Essentials",
@@ -43,27 +45,49 @@ export function resolveDraftContext(adventure: Adventure, request: MemoryDraftRe
   if (request.targetId && !target) throw new Error("The selected destination is missing. Choose another destination.");
   if (target && target.type !== (request.destination === "component" ? request.componentType : request.storyCardType))
     throw new Error("The selected destination type changed. Choose another destination.");
+  const sourceItem = (id: string, title: string, content: string, sourceType: ContextItem["sourceType"]): ContextItem => ({
+    id, title, content, sourceType, priority: 0, tokenEstimate: 0, protected: false, pinned: false,
+    active: true, inclusionPolicy: "always", generatedBy: "user",
+  });
+  // Freeze the original sources. Recalled cards never become sources in this request.
+  const componentSources = [...components];
+  const cardSources = [...cards];
+  if (request.targetId && request.destination === "component" && !componentSources.some(c => c.id === request.targetId))
+    componentSources.push(adventure.components.find(c => c.id === request.targetId)!);
+  if (request.targetId && request.destination === "storyCard" && !cardSources.some(c => c.id === request.targetId))
+    cardSources.push(adventure.storyCards.find(c => c.id === request.targetId)!);
+  const candidates = resolveChainedStoryCardTriggers(adventure,
+    componentSources.map(c => sourceItem(c.id, c.title, c.content, "component")),
+    cardSources.map(c => sourceItem(c.id, c.title, storyCardContextContent(c), "storyCard")),
+    [sourceItem("draft-brief", "Your instructions", request.description, "message"),
+      ...entries.map(m => sourceItem(m.id, `Previous entry ${m.id} (${m.role})`, m.content, "message"))]);
+  const triggeredCards = candidates.map(match => ({ card: adventure.storyCards.find(c => c.id === match.destinationId)!, match }));
   const text = [
     `Adventure: ${adventure.title}`,
     `Selected destination (complete saved item):\n${target ? JSON.stringify(target) : "CREATE NEW"}`,
     `Reference components (not update targets):\n${components.map(c => JSON.stringify(c)).join("\n\n") || "None"}`,
     `Reference Story Cards (not update targets):\n${cards.map(c => JSON.stringify(c)).join("\n\n") || "None"}`,
+    `One-hop triggered Story Cards (reference only, never additional update targets):\n${triggeredCards.map(({ card, match }) =>
+      `${match.sourceTitle} → ${card.title}; matched trigger: ${match.matchedTriggerPhrase}\n${JSON.stringify(card)}`).join("\n\n") || "None"}`,
     `Previous entries (${entries.length} saved messages, oldest first):\n${entries.map(m => `[${m.id}] ${m.role}:\n${m.content}`).join("\n\n") || "None"}`,
   ].join("\n\n");
-  return { components, cards, entries, target, text };
+  return { components, cards, triggeredCards, entries, target, text };
 }
 
-export function draftMessages(adventure: Adventure, request: MemoryDraftRequest): ChatMessage[] {
+export function draftMessages(adventure: Adventure, request: MemoryDraftRequest, allowEmptyBrief = false): ChatMessage[] {
+  return draftMessagesWithContext(adventure, request, resolveDraftContext(adventure, request), allowEmptyBrief);
+}
+
+function draftMessagesWithContext(adventure: Adventure, request: MemoryDraftRequest, context: ReturnType<typeof resolveDraftContext>, allowEmptyBrief: boolean): ChatMessage[] {
   if (!(request.componentType in DRAFT_COMPONENT_TYPES) || !["character", "location", "lore", "custom"].includes(request.storyCardType))
     throw new Error("Unsupported draft type.");
-  const context = resolveDraftContext(adventure, request);
   if (request.reviewSelectedCards && (request.action !== "suggest" || request.destination !== "storyCard" || request.targetId))
     throw new Error("Review selected cards requires recent-play Story Card suggestions without a single target.");
   if (request.reviewSelectedCards && !context.cards.some(c => c.type === request.storyCardType))
     throw new Error("Select reference cards of the chosen type to review as update targets.");
   if (request.action === "suggest" && request.destination === "component" && request.componentType !== "plotEssentials")
     throw new Error("Recent-play suggestions support Plot Essentials and Story Cards. Use a written brief for other components.");
-  if (request.action === "draft" && !request.description.trim()) throw new Error("Describe what you want to draft.");
+  if (!allowEmptyBrief && request.action === "draft" && !request.description.trim()) throw new Error("Describe what you want to draft.");
   if (request.action === "suggest" && context.entries.length === 0) throw new Error("Include previous entries to suggest updates from recent play.");
   if (request.destination === "component" && !request.targetId && SINGLETON_DRAFT_TYPES.has(request.componentType)
     && adventure.components.some(c => c.type === request.componentType)) throw new Error("This component already exists. Select it as the update target.");
@@ -86,17 +110,20 @@ ${request.reviewSelectedCards
 
 export function draftPreview(adventure: Adventure, request: MemoryDraftRequest, provider?: ProviderConfig) {
   const context = resolveDraftContext(adventure, request);
-  const messages = draftMessages(adventure, request);
+  const messages = draftMessagesWithContext(adventure, request, context, true);
   const estimatedTokens = messages.reduce((sum, m) => sum + approximateTokenCount(m.content) + 8, 32);
+  const estimatedCharacters = messages.reduce((sum, m) => sum + m.content.length, 0);
   const config = provider ? resolveMemoryEvaluationProviderConfig(adventure, provider) : undefined;
   const limit = Math.min(adventure.tokenBudgetSettings.maxContextTokens, config?.contextWindowTokens ?? Infinity);
   const reserve = config?.maxOutputTokens ?? 4096;
   const availableTokens = Math.max(0, limit - reserve - 512);
-  if (estimatedTokens > availableTokens) throw new Error(`Draft request needs about ${estimatedTokens.toLocaleString()} input tokens; ${availableTokens.toLocaleString()} are available after the response reserve. Select fewer references or entries, or increase the configured context allowance. Nothing was shortened or sent.`);
-  return { ...context, messages, estimatedTokens, availableTokens };
+  const overAllowance = estimatedTokens > availableTokens;
+  if (overAllowance && request.destination !== "storyCard") throw new Error(`Draft request needs about ${estimatedTokens.toLocaleString()} input tokens; ${availableTokens.toLocaleString()} are available after the response reserve. Select fewer references or entries, or increase the configured context allowance. Nothing was shortened or sent.`);
+  return { ...context, messages, estimatedTokens, estimatedCharacters, availableTokens, overAllowance };
 }
 
 export async function generateMemoryDrafts(adventure: Adventure, provider: ProviderConfig, request: MemoryDraftRequest): Promise<MemoryProposal[]> {
+  if (request.action === "draft" && !request.description.trim()) throw new Error("Describe what you want to draft.");
   const preview = draftPreview(adventure, request, provider);
   const response = await sendMemoryCompletion(adventure, provider, preview.messages);
   const clean = response.content.replace(/<think>[\s\S]*?<\/think>/gi, "").trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");

@@ -5718,6 +5718,7 @@ summary {
 .memory-picker-row span { overflow-wrap: anywhere; }
 .memory-picker-row small { display: block; opacity: .7; }
 .memory-suggestion-builder p { overflow-wrap: anywhere; }
+.memory-draft-payload { max-height: 24rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 @media (max-width: 600px) {
   .memory-suggestion-builder .grid.two { grid-template-columns: minmax(0, 1fr); }
   .memory-card-picker { width: calc(100vw - 1rem); max-height: 94dvh; padding: .75rem; }

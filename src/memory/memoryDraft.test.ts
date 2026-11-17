@@ -67,6 +67,79 @@ describe("explicit memory drafting context", () => {
     await expect(generateMemoryDraft(adventure, defaultModelConfig, request)).rejects.toThrow("Nothing was shortened or sent");
     expect(sendMemoryCompletion).not.toHaveBeenCalled();
   });
+  it("sends an above-allowance card request in full, exactly as previewed", async () => {
+    const { adventure, request } = fixture();
+    request.destination = "storyCard";
+    adventure.tokenBudgetSettings.maxContextTokens = 500;
+    const preview = draftPreview(adventure, request, defaultModelConfig);
+    expect(preview.overAllowance).toBe(true);
+    expect(preview.estimatedCharacters).toBe(preview.messages.reduce((sum, m) => sum + m.content.length, 0));
+    expect(preview.messages[1].content).toContain("FULL CARD END");
+    response();
+    await generateMemoryDraft(adventure, defaultModelConfig, request);
+    expect(sendMemoryCompletion).toHaveBeenCalledWith(adventure, defaultModelConfig, preview.messages);
+  });
+  it("adds deduplicated one-hop cards with provenance without following the next level", () => {
+    const { adventure, request } = fixture();
+    adventure.components = [makeComponent({ id: "source-component", title: "Research subplot", content: "Consult Sapphire Vault." })];
+    adventure.storyCards = [makeStoryCard({ id: "source", title: "Research notes", content: "Consult Sapphire Vault.", type: "custom" }),
+      makeStoryCard({ id: "vault", title: "Sapphire Vault", keys: ["Sapphire Vault"], content: "Beyond the Ivory Gate. " + "x".repeat(1200) + "VAULT END", type: "location" }),
+      makeStoryCard({ id: "gate", title: "Ivory Gate", content: "SECOND HOP BODY", type: "location" })];
+    request.context.storyCardIds = ["source"];
+    const preview = resolveDraftContext(adventure, request);
+    expect(preview.triggeredCards.map(item => item.card.id)).toEqual(["vault"]);
+    expect(preview.triggeredCards[0].match).toMatchObject({ sourceId: "source", sourceType: "storyCard", matchedTriggerPhrase: "Sapphire Vault" });
+    expect(preview.text).toContain("Research notes → Sapphire Vault");
+    expect(preview.text).toContain("VAULT END");
+    expect(preview.text).not.toContain("SECOND HOP BODY");
+    expect(preview.cards.map(c => c.id)).toEqual(["source"]);
+  });
+  it("uses selected components and an unselected destination as frozen trigger sources", () => {
+    const { adventure, request } = fixture();
+    adventure.components = [makeComponent({ id: "plot", title: "Subplot", content: "Moon Observatory" })];
+    adventure.storyCards = [makeStoryCard({ id: "observatory", title: "Moon Observatory", content: "Observatory facts", type: "location" })];
+    request.context = { components: "none", componentIds: [], storyCardIds: [], recentEntryCount: 0 };
+    expect(resolveDraftContext(adventure, request).triggeredCards).toEqual([]);
+    request.targetId = "plot";
+    expect(resolveDraftContext(adventure, request).triggeredCards[0].match).toMatchObject({ sourceId: "plot", sourceType: "component" });
+    request.targetId = undefined; request.context.components = "selected"; request.context.componentIds = ["plot"];
+    expect(resolveDraftContext(adventure, request).triggeredCards.map(item => item.card.id)).toEqual(["observatory"]);
+  });
+  it("matches the brief and only the requested previous entries, with no recursive recall", () => {
+    const { adventure, request } = fixture();
+    adventure.components = [];
+    adventure.storyCards = [makeStoryCard({ id: "brief-card", title: "Moon Observatory", content: "Brief reference", type: "location" }),
+      makeStoryCard({ id: "entry-card", title: "Astral Beacon", content: "Entry reference", type: "custom" }),
+      makeStoryCard({ id: "old-card", title: "Old Archive", content: "Not requested", type: "location" })];
+    adventure.messages[0].content = "Old Archive";
+    adventure.messages.at(-1)!.content = "Astral Beacon";
+    request.description = "Create a character working at Moon Observatory.";
+    request.context = { components: "none", componentIds: [], storyCardIds: [], recentEntryCount: 1 };
+    const context = resolveDraftContext(adventure, request);
+    expect(context.triggeredCards.map(c => c.card.id).sort()).toEqual(["brief-card", "entry-card"]);
+    expect(context.triggeredCards.find(c => c.card.id === "brief-card")?.match.sourceTitle).toBe("Your instructions");
+    expect(context.triggeredCards.find(c => c.card.id === "entry-card")?.match.sourceId).toBe("entry-24");
+    request.context.recentEntryCount = 0;
+    expect(resolveDraftContext(adventure, request).triggeredCards.map(c => c.card.id)).toEqual(["brief-card"]);
+  });
+  it("retains Play's six-card ranking, inactive/manual exclusions, and pattern matching", () => {
+    const { adventure, request } = fixture();
+    adventure.components = [];
+    adventure.storyCards = Array.from({ length: 8 }, (_, i) => makeStoryCard({ id: `match-${i}`, title: `Reference ${i}`, keys: ["Astral Beacon"], content: `Reference body ${i}`, type: "custom", priority: i }));
+    adventure.storyCards.push(makeStoryCard({ id: "inactive", title: "Inactive", keys: ["Astral Beacon"], content: "Inactive", active: false, priority: 100 }),
+      makeStoryCard({ id: "manual", title: "Manual", keys: ["Astral Beacon"], content: "Manual", inclusionPolicy: "manual", priority: 100 }));
+    request.description = "Astral Beacon"; request.context = { components: "none", componentIds: [], storyCardIds: [], recentEntryCount: 0 };
+    expect(resolveDraftContext(adventure, request).triggeredCards.map(c => c.card.id)).toEqual(["match-7", "match-6", "match-5", "match-4", "match-3", "match-2"]);
+  });
+  it("never turns a one-hop reference into a selected-card update target", async () => {
+    const { adventure, request } = fixture();
+    adventure.storyCards[0].content = "UNSELECTED CARD";
+    adventure.storyCards[1].type = "lore";
+    request.destination = "storyCard"; request.storyCardType = "lore"; request.action = "suggest"; request.reviewSelectedCards = true;
+    expect(resolveDraftContext(adventure, request).triggeredCards.map(c => c.card.id)).toContain("unselected");
+    vi.mocked(sendMemoryCompletion).mockResolvedValue({ content: JSON.stringify({ proposals: [{ targetId: "unselected", title: "Other", content: "Wrong target", keys: [] }] }) } as never);
+    await expect(generateMemoryDrafts(adventure, defaultModelConfig, request)).rejects.toThrow("unselected update target");
+  });
   it("uses the shared open-ended subplot policy and validates before sending", () => {
     const { adventure, request } = fixture();
     const prompt = draftMessages(adventure, request)[0].content;

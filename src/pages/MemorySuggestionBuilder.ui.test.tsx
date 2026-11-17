@@ -87,3 +87,28 @@ it("shows provider failures without clearing the brief", async () => {
   expect(screen.getByRole("alert")).toHaveTextContent("Provider unavailable");
   expect(screen.getByLabelText("Your instructions")).toHaveValue("Draft the research subplot.");
 });
+
+it("shows one-hop provenance and the full payload while leaving above-allowance card drafts sendable", async () => {
+  const user = userEvent.setup();
+  const adventure = fixture();
+  adventure.components = [];
+  adventure.tokenBudgetSettings.maxContextTokens = 500;
+  adventure.storyCards = [makeStoryCard({ id: "vault", type: "location", title: "Sapphire Vault", content: "Beyond the Ivory Gate. " + "x".repeat(1200) + "FULL VAULT END" }),
+    makeStoryCard({ id: "gate", type: "location", title: "Ivory Gate", content: "SECOND HOP ONLY" })];
+  const onCreate = vi.fn(async () => true);
+  render(<MemorySuggestionBuilder adventure={adventure} onCreate={onCreate} />);
+  await user.click(screen.getByText("Create suggestion with AI"));
+  await user.selectOptions(screen.getByLabelText("Destination"), "storyCard");
+  await user.type(screen.getByLabelText("Your instructions"), "Create a character guarding Sapphire Vault.");
+  await user.click(screen.getByText(/Context to send/));
+  const manifest = screen.getByLabelText("Draft context manifest");
+  expect(within(manifest).getByText(/Your instructions → Sapphire Vault/, { selector: "li" })).toHaveTextContent("full content included");
+  expect(manifest).not.toHaveTextContent("SECOND HOP ONLY");
+  expect(screen.getByText(/characters · estimated/)).toHaveTextContent("(advisory)");
+  expect(screen.getByRole("status")).toHaveTextContent("will not shorten or block");
+  await user.click(screen.getByText("Full request sent to AI", { selector: "summary" }));
+  expect(within(manifest).getByText(/FULL VAULT END/, { selector: "pre" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "Create suggestion" })).toBeEnabled();
+  await user.click(screen.getByRole("button", { name: "Create suggestion" }));
+  expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ destination: "storyCard", context: expect.objectContaining({ storyCardIds: [] }) }));
+});

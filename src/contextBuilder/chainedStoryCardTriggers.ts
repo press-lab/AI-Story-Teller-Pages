@@ -7,18 +7,19 @@ export const MAX_CHAINED_STORY_CARDS_PER_BUILD = 6;
 
 export interface ChainedStoryCardCandidate {
   destinationId: string;
-  sourceType: "component" | "storyCard";
+  sourceType: "component" | "storyCard" | "message";
   sourceId: string;
   sourceTitle: string;
   matchedTriggerPhrase: string;
   sourceContent: string;
 }
 
-/** A single pass over frozen, budget-selected sources. Never scans its own results. */
+/** A single pass over frozen included sources. Never scans its own results. */
 export function resolveChainedStoryCardTriggers(
   adventure: Adventure,
   includedComponents: readonly ContextItem[],
   includedStoryCards: readonly ContextItem[],
+  additionalSources: readonly ContextItem[] = [],
 ): ChainedStoryCardCandidate[] {
   const includedIds = new Set(includedStoryCards.map(source => source.id));
   const candidates = new Map<string, ChainedStoryCardCandidate>();
@@ -26,6 +27,7 @@ export function resolveChainedStoryCardTriggers(
   const sources = [
     ...[...includedStoryCards].sort((a, b) => a.id.localeCompare(b.id)),
     ...[...includedComponents].sort((a, b) => a.id.localeCompare(b.id)),
+    ...additionalSources,
   ];
   for (const source of sources) {
     const recalledEvents = selectEventMemories(adventure.storyCards, source.content);
@@ -37,7 +39,7 @@ export function resolveChainedStoryCardTriggers(
       if (!match.matched || !match.pattern) continue;
       candidates.set(card.id, {
         destinationId: card.id,
-        sourceType: source.sourceType === "storyCard" ? "storyCard" : "component",
+        sourceType: source.sourceType === "storyCard" ? "storyCard" : source.sourceType === "message" ? "message" : "component",
         sourceId: source.id,
         sourceTitle: source.title,
         matchedTriggerPhrase: match.pattern,
