@@ -23,6 +23,9 @@ it("lives in Memory as a collapsed panel and lists every supported component typ
   const user = userEvent.setup();
   render(<MemoryInboxPage adventure={fixture()} dispatch={vi.fn()} onCreateDraft={vi.fn()} />);
   const summary = screen.getByText("Create suggestion with AI");
+  expect(Array.from(document.querySelectorAll(".memory-inbox-page > details > summary")).slice(0, 3).map(el => el.textContent)).toEqual([
+    "Suggestion visibility and history", "Story date", "Create suggestion with AI",
+  ]);
   expect(summary.closest("details")).not.toHaveAttribute("open");
   await user.click(summary);
   expect(within(screen.getByLabelText("Component type")).getAllByRole("option").map(o => o.textContent)).toEqual([

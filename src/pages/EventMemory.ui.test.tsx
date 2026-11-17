@@ -17,6 +17,9 @@ it("starts a Chronicle event scan and exposes progress and cancellation", async 
   });
   render(<MemoryInboxPage adventure={createDefaultAdventure("Seattle")} dispatch={vi.fn()} onFindEventMemories={scan} />);
   const user = userEvent.setup();
+  const summary = screen.getByText("Event memories from earlier play", { selector: "summary" });
+  expect(summary.closest("details")).not.toHaveAttribute("open");
+  await user.click(summary);
   await user.click(screen.getByRole("button", { name: "Find event memories in earlier play" }));
   expect(screen.getByRole("status")).toHaveTextContent("Reading messages");
   expect(screen.getByRole("button", { name: "Find event memories in earlier play" })).toBeDisabled();

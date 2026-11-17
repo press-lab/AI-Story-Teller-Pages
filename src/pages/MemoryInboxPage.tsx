@@ -163,7 +163,6 @@ function MemorySuggestionsPage({ adventure, dispatch, onCreateDraft, providerCon
 
   return (
     <section className="page editor-surface memory-inbox-page">
-      {onCreateDraft && <MemorySuggestionBuilder key={adventure.id} adventure={adventure} providerConfig={providerConfig} loading={loading} onCreate={onCreateDraft} />}
       <details className="panel editor-tools-panel">
         <summary>Suggestion visibility and history</summary>
         <section aria-label="Suggestion controls">
@@ -174,6 +173,11 @@ function MemorySuggestionsPage({ adventure, dispatch, onCreateDraft, providerCon
           <p className="muted">Deletes approved, rejected, and ignored suggestion records from saved JSON. Pending suggestions and saved memories stay. Deleted decisions no longer suppress repeat suggestions.</p>
         </section>
       </details>
+      <details className="panel editor-tools-panel">
+        <summary>Story date</summary>
+        <StoryClockEditor adventure={adventure} dispatch={dispatch} inline />
+      </details>
+      {onCreateDraft && <MemorySuggestionBuilder key={adventure.id} adventure={adventure} providerConfig={providerConfig} loading={loading} onCreate={onCreateDraft} />}
       <details className="panel editor-tools-panel">
         <summary>Auto-approval — This adventure</summary>
         <section aria-label="Auto-approval — This adventure">
@@ -200,13 +204,10 @@ function MemorySuggestionsPage({ adventure, dispatch, onCreateDraft, providerCon
         </div>
       </div>
 
-      <details className="panel editor-tools-panel">
-        <summary>Story date</summary>
-        <StoryClockEditor adventure={adventure} dispatch={dispatch} inline />
-      </details>
       <p aria-live="polite">{allProposals.filter(p => p.status === "approved" && p.approvalFeedback).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]?.approvalFeedback}</p>
 
-      {onFindEventMemories && <div className="panel">
+      {onFindEventMemories && <details className="panel editor-tools-panel">
+        <summary>Event memories from earlier play</summary>
         <button type="button" disabled={loading || Boolean(eventScan)} onClick={async () => {
           const controller = new AbortController(); setEventScan(controller);
           try { await onFindEventMemories(setEventProgress, controller.signal); }
@@ -216,7 +217,7 @@ function MemorySuggestionsPage({ adventure, dispatch, onCreateDraft, providerCon
         {eventScan && <button type="button" onClick={() => eventScan.abort()}>Stop after current excerpt</button>}
         <p className="muted">Scans the Chronicle in excerpts using your background model. Each excerpt uses an AI request. Results remain suggestions for review.</p>
         <p role="status">{eventProgress}</p>
-      </div>}
+      </details>}
       <div className="editor-command-bar">
         <input
           type="search"
@@ -225,22 +226,6 @@ function MemorySuggestionsPage({ adventure, dispatch, onCreateDraft, providerCon
           onChange={(event) => setSearch(event.target.value)}
         />
       </div>
-
-      <details className="panel editor-tools-panel">
-        <summary>Suggestion tools and settings</summary>
-        <h3>Memory Suggestions</h3>
-        <p className="muted">
-          Memory Suggestions holds AI-proposed changes to your story data — new Story Cards, Character Self updates,
-          Plot Essentials rewrites and Current Arc changes. The AI generates these automatically after turns or when
-          you use <strong>Remember This</strong>. Review each proposal and <strong>Approve</strong> to apply it,
-          <strong> Reject</strong> to dismiss it cleanly, or <strong>Ignore</strong> to remove it from view without applying.
-          You can edit the content before approving.
-          {" "}<strong>Approved Story Cards, Character Self updates, and Plot Essentials become active context</strong> — the model reads them when their section is included.
-          Be especially careful with Character Self and plot updates: approving emotional escalation or relationship milestones
-          unchecked is how characters drift. Edit proposals before approving, or reject ones that pull the story somewhere you don't want.
-        </p>
-        <p className="muted">Settings controls evaluation frequency. Component and Brain controls set their cooldowns. Story Cards use relevance-based selection.</p>
-      </details>
 
       <details className="panel">
         <summary>Check Recent Entries</summary>

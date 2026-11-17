@@ -476,8 +476,7 @@ describe("side menu page smoke coverage", () => {
     const user = userEvent.setup();
     renderWithAdventure((adventure, dispatch) => <MemoryInboxPage adventure={adventure} dispatch={dispatch} />);
 
-    await user.click(screen.getByText("Suggestion tools and settings", { selector: "summary" }));
-    expect(screen.getByText(/Story Cards use relevance-based selection/)).toBeVisible();
+    expect(screen.queryByText("Suggestion tools and settings", { selector: "summary" })).not.toBeInTheDocument();
     await user.click(screen.getByText("Auto-approval — This adventure", { selector: "summary" }));
     await user.click(screen.getByLabelText("Story Cards — Lore", { exact: true }));
     expect(screen.getByLabelText("Story Cards — Lore", { exact: true })).toBeChecked();
