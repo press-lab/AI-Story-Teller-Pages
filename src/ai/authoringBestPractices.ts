@@ -1,5 +1,5 @@
 import { AUTHORING_SECTIONS, AUTHORING_STANDARDS, PLOT_ESSENTIALS_FOUNDATIONS_RULE } from "./authoringPolicy";
-import type { StoryCardMemoryMode } from "../types/adventure";
+import type { DraftComponentType, StoryCardMemoryMode } from "../types/adventure";
 
 export const betterRepositoryGuideSources = [
   "https://better-repository.netlify.app/guides?tab=ai-instructions",
@@ -26,6 +26,29 @@ export const PLOT_ESSENTIALS_BEST_PRACTICES = `Plot Essentials best practices:
 - Replaced text remains in component history. Removing a fact is not evidence for a historical event card.
 - Do not include temporary room position, who is standing where, momentary emotions, or one-off scenery.
 - Put situational lore, character identity, relationships, secrets, recurring objects, locations, factions, and completed past events in Story Cards instead.`;
+
+/** Explicit component suggestions only. Not an automatic-memory or global authoring rule. */
+export const COMPONENT_SUGGESTION_PERSISTENCE_GUIDANCE = `Component suggestion: repeated-context authoring
+- The saved component may be reread every turn for the rest of the adventure. Write useful reference material and the requested narrative purpose, not a status snapshot that needs constant manual correction. Repeated text must not reset later story developments.
+- Established facts, supported stakes, and user-requested possible interested parties are valid. Do not remove them merely because they have implications. Keep possible interests conditional rather than making participation or reactions mandatory.
+- For a Custom subplot, retain concise initial facts in past tense when needed to establish its origin. Label them Initial facts or Initial background if useful; do not impose a fixed template. An initial fact describes what happened then, not what must remain true now. Do not turn Plot Essentials into a case recap; its enduring-foundations rules still apply.
+- Do not add a persistent WHO KNOWS WHAT roster or assertions such as "only these four people know" or "the Department does not know yet". These would keep overriding later disclosure. Use an enduring process rule instead: characters learn through witnessed events, communication, records, or credible inference. Later play establishes who has learned what. Preserve explicitly authored narrator-only rules without freezing a changing knowledge roster.
+- Do not add CONSTRAINTS AND OPEN QUESTIONS or an equivalent list of facts that must stay unknown, unresolved, dormant, pending, or undecided. A heading change alone does not fix this. Do not repeatedly assert "its purpose remains unknown", "the offer has not been accepted or refused", or "the entity is dormant". Those are changing conditions, not permanent rules.
+- When uncertainty is necessary background, anchor it to the initial event: "Its purpose was not established at first contact" or "It offered lessons during the initial encounter". Do not invent answers, but do not instruct the narrator to preserve the original uncertainty after later investigation, contact, decisions, or consequences establish an answer.
+- Let later events and choices answer questions, spread knowledge, accept or reject offers, resume contact, change relationships, and resolve or end the thread. Do not force an answer or resolution on a schedule. Available story material is not an order to repeat, escalate, or keep it open indefinitely.
+- Before returning the draft, check each sentence as though it will be repeated after the situation changes. Rewrite or omit any sentence that would reset knowledge, undo a decision, prevent an answer, or restore an earlier status. Return the cleaned component only; do not include this checklist in its body.`;
+
+export function componentSuggestionBestPractices(type: DraftComponentType): string {
+  const roles: Record<DraftComponentType, string> = {
+    narrationRules: NARRATION_RULES_BEST_PRACTICES,
+    aiInstructions: AI_INSTRUCTIONS_BEST_PRACTICES,
+    plotEssentials: PLOT_ESSENTIALS_BEST_PRACTICES,
+    currentArc: "Current Story Arc: record supported completed arc developments as past events. Preserve the existing Arc Director configuration and phase. Do not turn the arc log into a permanent current-state or open-question checklist.",
+    authorNote: "Author’s Note: write concise requested emphasis on tone, mood, pacing, or prose. Its near-context role may be immediate, but do not use it to freeze factual knowledge, decisions, or unanswered questions.",
+    custom: AUTHORING_SECTIONS.find(section => section.id === "components")!.text,
+  };
+  return `${roles[type]}\n\n${COMPONENT_SUGGESTION_PERSISTENCE_GUIDANCE}`;
+}
 
 export const STORY_CARD_BEST_PRACTICES = `Story Card best practices:
 - Use Character, Location, Lore or Custom to describe the subject. Default to Lore for events, agreements, research and shared developments; reuse existing Lore about that topic before creating a new card. Append to Character only for an evidenced enduring profile change (identity, lasting capability, role/status, explicit enduring relationship or correction) with a specific reason beyond scene participation.

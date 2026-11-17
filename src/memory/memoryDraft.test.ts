@@ -4,6 +4,7 @@ import { adventureReducer } from "../state/adventureReducer";
 import { draftMessages, draftPreview, draftTargetFingerprint, generateMemoryDraft, generateMemoryDrafts, resolveDraftContext } from "./memoryDraft";
 import { sendMemoryCompletion } from "../providers/memoryCompletion";
 import type { Adventure, DraftComponentType, MemoryDraftRequest, MemoryProposal } from "../types/adventure";
+import { COMPONENT_SUGGESTION_PERSISTENCE_GUIDANCE, AI_INSTRUCTIONS_BEST_PRACTICES, NARRATION_RULES_BEST_PRACTICES, PLOT_ESSENTIALS_BEST_PRACTICES } from "../ai/authoringBestPractices";
 
 vi.mock("../providers/memoryCompletion", () => ({ sendMemoryCompletion: vi.fn() }));
 afterEach(() => vi.clearAllMocks());
@@ -147,6 +148,30 @@ describe("explicit memory drafting context", () => {
     expect(prompt).toContain("not mandatory mention every scene");
     expect(draftPreview(adventure, request).estimatedTokens).toBeGreaterThan(0);
     expect(() => draftMessages(adventure, { ...request, action: "suggest" })).toThrow("Use a written brief");
+  });
+  it.each<DraftComponentType>(["narrationRules", "aiInstructions", "plotEssentials", "currentArc", "authorNote", "custom"])("sends repeated-context safeguards to the model for %s suggestions", async componentType => {
+    const { adventure, request } = fixture();
+    adventure.components = [];
+    request.componentType = componentType;
+    response();
+    await generateMemoryDraft(adventure, defaultModelConfig, request);
+    const system = vi.mocked(sendMemoryCompletion).mock.calls[0][2][0].content;
+    expect(system).toContain(COMPONENT_SUGGESTION_PERSISTENCE_GUIDANCE);
+    expect(system).toContain("Established facts, supported stakes, and user-requested possible interested parties are valid");
+    expect(system).toContain("Do not add a persistent WHO KNOWS WHAT roster");
+    expect(system).toContain("Do not add CONSTRAINTS AND OPEN QUESTIONS");
+    expect(system).toContain("Its purpose was not established at first contact");
+    expect(system).toContain("Let later events and choices answer questions");
+    expect(system).toContain("check each sentence as though it will be repeated after the situation changes");
+    if (componentType === "plotEssentials") expect(system).toContain(PLOT_ESSENTIALS_BEST_PRACTICES);
+    if (componentType === "aiInstructions") expect(system).toContain(AI_INSTRUCTIONS_BEST_PRACTICES);
+    if (componentType === "narrationRules") expect(system).toContain(NARRATION_RULES_BEST_PRACTICES);
+    if (componentType === "currentArc") expect(system).toContain("Preserve the existing Arc Director configuration and phase");
+  });
+  it("keeps component-specific repeated-context restrictions out of Story Card drafting", () => {
+    const { adventure, request } = fixture();
+    request.destination = "storyCard";
+    expect(draftMessages(adventure, request)[0].content).not.toContain(COMPONENT_SUGGESTION_PERSISTENCE_GUIDANCE);
   });
   it("handles a no-change response and rejects malformed model output", async () => {
     const { adventure, request } = fixture(); request.action = "suggest"; request.destination = "storyCard";

@@ -1,6 +1,6 @@
 import type { Adventure, ChatMessage, ContextItem, DraftComponentType, MemoryDraftRequest, MemoryProposal, ProviderConfig } from "../types/adventure";
 import { AUTHORING_SECTIONS } from "../ai/authoringPolicy";
-import { STORY_CARD_BEST_PRACTICES, TRIGGER_BEST_PRACTICES } from "../ai/authoringBestPractices";
+import { componentSuggestionBestPractices, STORY_CARD_BEST_PRACTICES, TRIGGER_BEST_PRACTICES } from "../ai/authoringBestPractices";
 import { approximateTokenCount } from "../tokenizer/approximateTokenCount";
 import { resolveMemoryEvaluationProviderConfig } from "../providers/backgroundProvider";
 import { sendMemoryCompletion } from "../providers/memoryCompletion";
@@ -94,7 +94,7 @@ function draftMessagesWithContext(adventure: Adventure, request: MemoryDraftRequ
   const guidance = AUTHORING_SECTIONS.filter(s => ["components", "narration-behavior", "scene-control", "pacing-conflict"].includes(s.id)).map(s => s.text).join("\n\n");
   return [{ role: "system", content: `Draft reviewable memory suggestions for an interactive fiction adventure.
 ${guidance}
-${request.destination === "storyCard" ? STORY_CARD_BEST_PRACTICES + "\n" + TRIGGER_BEST_PRACTICES : ""}
+${request.destination === "storyCard" ? STORY_CARD_BEST_PRACTICES + "\n" + TRIGGER_BEST_PRACTICES : componentSuggestionBestPractices(request.componentType)}
 Destination: ${request.destination}; type: ${request.destination === "component" ? request.componentType : request.storyCardType}.
 Writing purpose: ${request.intent}. ${request.reviewSelectedCards ? "Only the explicitly listed selected card targets may change." : "Only this destination may be changed. References are information, never permission to change other items."}
 ${request.action === "suggest" ? "Review the supplied recent play for a meaningful supported update." + (request.reviewSelectedCards ? "" : ' If none exists return {"noChange":true,"rationale":"reason"}.') : "Follow the user’s brief. Use the supplied references for continuity."}

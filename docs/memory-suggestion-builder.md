@@ -22,4 +22,6 @@ These user-requested drafts remain pending even when category auto-approval is e
 
 Always-included Custom components make information available under the existing context budget rules. They do not require repeated mention. Shared authoring guidance establishes supported situations, goals and constraints while leaving future development open. It rejects perpetual buildup, fixed escalation, permanent background activity, and permanent foreground attention.
 
+Component suggestions also receive type-specific best practices and a repeated-context check. They may keep initial facts, supported stakes, and possible interested parties. Initial facts are anchored to past events. They must not turn current knowledge rosters, unanswered questions, pending offers, or dormancy into permanent assertions that override later play. The prompt asks the model to check every sentence against later disclosure, decisions, discovery, and resolution. This is generation guidance, not a guarantee of model compliance or an automatic rewrite of existing components.
+
 The autonomous memory evaluator receives no new permission to change Narration Rules, AI Instructions, Author’s Note, or other authoring controls. No new Arc Director phases or pacing behavior are introduced.
