@@ -191,34 +191,17 @@ describe("side menu page smoke coverage", () => {
     expect(screen.getByRole("button", { name: "Complete Arc -> Story Card" })).toBeDisabled();
   });
 
-  it("sends a guided Story Card builder request to the AI memory suggestion flow", async () => {
-    const user = userEvent.setup();
-    const onBuildStoryCardMemory = vi.fn(async () => undefined);
-    renderWithAdventure((adventure, dispatch) => (
-      <StoryCardsPage
-        adventure={adventure}
-        dispatch={dispatch}
-        loading={false}
-        onBuildStoryCardMemory={onBuildStoryCardMemory}
-      />
-    ));
-
-    const description = "Margo is a ward engineer who hides fear behind dry teasing.";
-    await user.type(screen.getByLabelText("Describe what to generate"), description);
-    await user.click(screen.getByRole("button", { name: "Draft Card Suggestion" }));
-
-    expect(onBuildStoryCardMemory).toHaveBeenCalledWith({
-      description,
-      intent: "relationship",
-      recentMessageCount: 8,
-      targetCardId: undefined,
-    });
+  it("keeps AI suggestion builders out of the Plot and Story Card editors", () => {
+    renderWithAdventure((adventure, dispatch) => <><ComponentsPage adventure={adventure} dispatch={dispatch} /><StoryCardsPage adventure={adventure} dispatch={dispatch} /></>);
+    expect(screen.queryByText("Draft a Story Card with AI")).not.toBeInTheDocument();
+    expect(screen.queryByText("Draft plot memory with AI")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Suggest Card Updates" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Suggest Plot Updates" })).not.toBeInTheDocument();
   });
 
   it("surfaces Story Card cleanup as a maintenance action", async () => {
     const user = userEvent.setup();
     const onAuditStoryCards = vi.fn(async () => []);
-    const onSuggestCardUpdates = vi.fn(async () => undefined);
 
     renderWithAdventure((adventure, dispatch) => (
       <StoryCardsPage
@@ -226,7 +209,6 @@ describe("side menu page smoke coverage", () => {
         dispatch={dispatch}
         loading={false}
         onAuditStoryCards={onAuditStoryCards}
-        onSuggestCardUpdates={onSuggestCardUpdates}
       />
     ));
 
@@ -245,7 +227,6 @@ describe("side menu page smoke coverage", () => {
   it("surfaces Plot Component cleanup as a maintenance action", async () => {
     const user = userEvent.setup();
     const onAuditComponents = vi.fn(async () => []);
-    const onSuggestPlotUpdates = vi.fn(async () => undefined);
 
     renderWithAdventure((adventure, dispatch) => (
       <ComponentsPage
@@ -253,7 +234,6 @@ describe("side menu page smoke coverage", () => {
         dispatch={dispatch}
         loading={false}
         onAuditComponents={onAuditComponents}
-        onSuggestPlotUpdates={onSuggestPlotUpdates}
       />
     ));
 

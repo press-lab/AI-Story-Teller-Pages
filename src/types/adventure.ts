@@ -688,6 +688,7 @@ export interface SystemTriggerSettings {
 }
 
 export type MemoryProposalType =
+  | "componentDraft"
   | "storyCard"
   | "brainUpdate"
   | "plotEssentialsUpdate"
@@ -732,6 +733,13 @@ export interface MemoryPlacementValidation {
 }
 
 export interface MemoryProposal {
+  /** Explicit authoring only; never inferred from an automatic model response. */
+  manualDraft?: {
+    componentType?: DraftComponentType;
+    inclusionPolicy?: ContextInclusionPolicy;
+    targetSnapshot?: string;
+    context: MemoryDraftContext;
+  };
   brainUpdateMode?: "append" | "replace";
   approvalFeedback?: string;
   archivedMemoryHistoryId?: string;
@@ -773,6 +781,29 @@ export interface MemoryReconcileRequest {
   directive?: string;
   entryCount: number;
   includeBrains: boolean;
+}
+
+export type DraftComponentType = "narrationRules" | "aiInstructions" | "plotEssentials" | "currentArc" | "authorNote" | "custom";
+
+export interface MemoryDraftContext {
+  components: "none" | "all" | "selected";
+  componentIds: string[];
+  storyCardIds: string[];
+  recentEntryCount: number;
+}
+
+export interface MemoryDraftRequest {
+  /** Explicit additional update scope for a recent-play card review. */
+  reviewSelectedCards?: boolean;
+  action: "draft" | "suggest";
+  destination: "component" | "storyCard";
+  componentType: DraftComponentType;
+  storyCardType: StoryCardType;
+  intent: StoryCardAIBuilderIntent;
+  targetId?: string;
+  description: string;
+  inclusionPolicy: ContextInclusionPolicy;
+  context: MemoryDraftContext;
 }
 
 export type StoryCardAIBuilderIntent =

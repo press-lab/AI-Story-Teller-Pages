@@ -34,6 +34,7 @@ export function getApprovalCategory(adventure: Adventure, proposal: MemoryPropos
 }
 
 export function shouldAutoApprove(adventure: Adventure, proposal: MemoryProposal): boolean {
+  if (proposal.manualDraft || proposal.proposedType === "componentDraft") return false;
   const category = getApprovalCategory(adventure, proposal);
   return category !== undefined && adventure.memoryAutoApprove?.[category] === true;
 }

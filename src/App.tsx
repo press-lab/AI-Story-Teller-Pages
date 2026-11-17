@@ -360,9 +360,9 @@ export default function App() {
       case "context":
         return <ContextPreviewPage {...common} contextResult={contextResult} onBuildContext={runtime.buildPreview} providerConfig={runtime.activeProviderConfig} />;
       case "components":
-        return <ComponentsPage {...common} loading={runtime.loading} onSuggestPlotUpdates={runtime.suggestPlotUpdates} onBuildPlotMemory={runtime.buildPlotMemory} onAuditComponents={runtime.auditComponents} onRegeneratePlotEssentials={runtime.regeneratePlotEssentials} onUpdatePEComponentNow={runtime.updatePEComponentNow} onGenerateComponent={runtime.generateComponent} onGenerateArc={runtime.generateArc} onProposeArcFromHistory={runtime.proposeArcFromHistory} />;
+        return <ComponentsPage {...common} loading={runtime.loading} onAuditComponents={runtime.auditComponents} onRegeneratePlotEssentials={runtime.regeneratePlotEssentials} onUpdatePEComponentNow={runtime.updatePEComponentNow} onGenerateComponent={runtime.generateComponent} onGenerateArc={runtime.generateArc} onProposeArcFromHistory={runtime.proposeArcFromHistory} />;
       case "storyCards":
-        return <StoryCardsPage {...common} providerConfig={runtime.activeProviderConfig} loading={runtime.loading} onBuildStoryCardMemory={runtime.buildStoryCardMemory} onSuggestCardUpdates={runtime.suggestCardUpdates} onAuditStoryCards={runtime.auditStoryCards} />;
+        return <StoryCardsPage {...common} providerConfig={runtime.activeProviderConfig} loading={runtime.loading} onAuditStoryCards={runtime.auditStoryCards} />;
       case "brains":
         return <BrainsPage {...common} loading={runtime.loading} onUpdateBrainNow={runtime.updateBrainNow} onAuditBrains={runtime.auditBrains} onGenerateBrain={runtime.generateBrainFromName} />;
       case "triggers":
@@ -370,6 +370,8 @@ export default function App() {
       case "memoryInbox":
         return (
           <MemoryInboxPage
+            onCreateDraft={runtime.createMemoryDraft}
+            providerConfig={runtime.activeProviderConfig}
             {...common}
             loading={runtime.loading}
             memoryWork={runtime.memoryWork}

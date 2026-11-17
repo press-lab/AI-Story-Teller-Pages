@@ -169,6 +169,13 @@ npm.cmd run test:live   # optional, uses .env.test.local`}</pre>
           Pending proposals are not active context. Approving a proposal routes it to a Story Card, Brain
           update or Plot Essentials update through reducer-backed paths.
         </p>
+        <p>
+          Open <strong>Create suggestion with AI</strong> here to draft any active Plot component or Story Card.
+          Choose all or selected components, reference cards, and a previous-entry count. The card picker supports search,
+          type filters, and a selected-only view. Selected references are sent in full; oversized requests stop before sending.
+          Recent-play review supports Plot Essentials and Story Cards, including explicitly selected card update targets.
+          These requested drafts always wait for your approval, even when automatic suggestions are hidden.
+        </p>
       </>
     ),
   },
@@ -185,9 +192,8 @@ npm.cmd run test:live   # optional, uses .env.test.local`}</pre>
           and important objects.
         </p>
         <p>
-          Use <strong>Draft a Story Card with AI</strong> to choose a card focus, an optional destination,
-          and the thing that should be remembered. The AI compares the brief with existing cards
-          and creates a pending Memory Suggestion. It does not change active memory until you approve the proposal.
+          Use <strong>Memory → Suggestions → Create suggestion with AI</strong> to draft a Story Card.
+          Choose its type, purpose, destination, and reference context. Review the pending suggestion before approving it.
         </p>
         <p>
           Active cards enter context when their triggers match the current input, latest output, or recent

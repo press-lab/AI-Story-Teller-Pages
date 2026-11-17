@@ -5707,3 +5707,18 @@ summary {
 .manual-approval:not(:disabled) { opacity: 1; cursor: pointer; }
 
 .context-history-notice { color: var(--muted, #999); background: none; border: 0; font: inherit; }
+/* One compact authoring surface; large, bounded card selection on mobile. */
+.memory-suggestion-builder fieldset { border: 0; padding: 1rem 0 0; margin: 0; min-width: 0; }
+.memory-suggestion-builder summary { cursor: pointer; }
+.memory-card-picker { width: min(44rem, calc(100vw - 1.5rem)); max-height: 90dvh; overflow-y: auto; color: var(--text); background: var(--surface); margin: auto; }
+.memory-card-picker::backdrop { background: #000a; }
+.memory-picker-results { max-height: 48dvh; overflow-y: auto; overscroll-behavior: contain; }
+.memory-picker-row { display: flex; align-items: center; gap: .75rem; padding: .75rem .25rem; min-height: 44px; border-bottom: 1px solid #8883; cursor: pointer; }
+.memory-picker-row input { width: auto; flex: 0 0 auto; }
+.memory-picker-row span { overflow-wrap: anywhere; }
+.memory-picker-row small { display: block; opacity: .7; }
+.memory-suggestion-builder p { overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+  .memory-suggestion-builder .grid.two { grid-template-columns: minmax(0, 1fr); }
+  .memory-card-picker { width: calc(100vw - 1rem); max-height: 94dvh; padding: .75rem; }
+}

@@ -56,6 +56,7 @@ export function bindPlacement(a: Adventure, p: MemoryProposal, review: Omit<NonN
 }
 
 export function proposalDestinationLabel(a: Adventure, p: MemoryProposal): string {
+  if (p.proposedType === "componentDraft") return `${p.targetId ? "Update" : "Create"} component · ${p.manualDraft?.componentType ?? "custom"} · ${p.title}`;
   if (p.proposedType !== "storyCard") return p.proposedType;
   const target = a.storyCards.find(c => c.id === p.targetId);
   const type = target?.type ?? p.storyCardType ?? "lore";

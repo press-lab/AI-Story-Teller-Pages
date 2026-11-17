@@ -1,3 +1,5 @@
+import { generateMemoryDrafts } from "../memory/memoryDraft";
+import type { MemoryDraftRequest } from "../types/adventure";
 import { applyResponseLengthHint } from "../providers/narrationConfig";
 import { compareLocalContexts } from "../providers/localCacheDiagnostics";
 export { applyResponseLengthHint } from "../providers/narrationConfig";
@@ -39,14 +41,10 @@ import {
 import {
   runManualBrainUpdate,
   runManualPEComponentUpdate,
-  runManualPlotEssentialsUpdate,
-  runManualStoryCardsUpdate,
   runMemoryReconcile,
-  runPlotAIBuilder,
   runRememberThis,
   runSemanticPostTurnEvaluation,
   runMemoryCycle,
-  runStoryCardAIBuilder,
 } from "../triggers/semanticEngine";
 import type {
   Adventure,
@@ -57,9 +55,7 @@ import type {
   MemoryDetectionSettings,
   MemoryReconcileRequest,
   PendingAdventureUpdate,
-  PlotAIBuilderRequest,
   ProviderUsage,
-  StoryCardAIBuilderRequest,
 } from "../types/adventure";
 import { createId, nowIso } from "../utils/id";
 import type { MemoryWorkStatus, RuntimeProviderSettings } from "../pages/pageTypes";
@@ -670,7 +666,6 @@ export function useAdventureRuntime(
     }
   }
 
-
   const buildPreview = useCallback(() => {
     if (!adventure) return;
     try {
@@ -962,61 +957,16 @@ export function useAdventureRuntime(
     }
   }
 
-  async function suggestPlotUpdates() {
-    if (!adventure || loading) return;
+  async function createMemoryDraft(request: MemoryDraftRequest): Promise<boolean> {
+    if (!adventure || loading) throw new Error("Wait for the current operation to finish.");
     setLoading(true);
     setError(undefined);
     try {
-      const result = await runManualPlotEssentialsUpdate(adventure, activeProviderConfig);
-      applyActionsAndPersist(result.actions);
-      openTab("memoryInbox");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Plot update suggestions failed.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function suggestCardUpdates() {
-    if (!adventure || loading) return;
-    setLoading(true);
-    setError(undefined);
-    try {
-      const result = await runManualStoryCardsUpdate(adventure, activeProviderConfig);
-      applyActionsAndPersist(result.actions);
-      openTab("memoryInbox");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Story card update suggestions failed.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function buildStoryCardMemory(request: StoryCardAIBuilderRequest) {
-    if (!adventure || loading) return;
-    setLoading(true);
-    setError(undefined);
-    try {
-      const result = await runStoryCardAIBuilder(adventure, activeProviderConfig, request);
-      applyActionsAndPersist(result.actions);
-      openTab("memoryInbox");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Story Card builder failed.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function buildPlotMemory(request: PlotAIBuilderRequest) {
-    if (!adventure || loading) return;
-    setLoading(true);
-    setError(undefined);
-    try {
-      const result = await runPlotAIBuilder(adventure, activeProviderConfig, request);
-      applyActionsAndPersist(result.actions);
-      openTab("memoryInbox");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Plot builder failed.");
+      const proposals = await generateMemoryDrafts(adventure, activeProviderConfig, request);
+      if (adventureRef.current?.id !== adventure.id) throw new Error("Draft stopped because the active adventure changed.");
+      if (!proposals.length) return false;
+      applyActionsAndPersist(proposals.map(proposal => ({ type: "ADD_MEMORY_PROPOSAL" as const, proposal })));
+      return true;
     } finally {
       setLoading(false);
     }
@@ -1222,10 +1172,7 @@ Respond with ONLY the new content — no preamble, no labels, no explanation.`;
     rememberThis,
     updateBrainNow,
     updatePEComponentNow,
-    suggestPlotUpdates,
-    suggestCardUpdates,
-    buildStoryCardMemory,
-    buildPlotMemory,
+    createMemoryDraft,
     reconcileMemory,
     auditStoryCards,
     auditComponents,

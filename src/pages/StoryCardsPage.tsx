@@ -2,7 +2,7 @@ import { StoryCardTriggerCleanup } from "./StoryCardTriggerCleanup";
 import { LoreChronologyEditor } from "./StoryCardChronology";
 import { PRIMARY_STORY_CARD_TYPES, primaryStoryCardType, isHistoricalLore } from "../memory/storyCardArchitecture";
 import { useEffect, useRef, useState } from "react";
-import type { ContextInclusionPolicy, ProviderConfig, StoryCard, StoryCardAIBuilderIntent, StoryCardType, TriggerMatchType, StoryCardAIBuilderRequest } from "../types/adventure";
+import type { ContextInclusionPolicy, ProviderConfig, StoryCard, StoryCardType, TriggerMatchType } from "../types/adventure";
 import type { AuditRecommendation } from "../memory/storyCardAudit";
 import { storyCardContextContent } from "../memory/storyCardPolicy";
 import { makeStoryCard } from "../state/defaults";
@@ -24,27 +24,6 @@ const TYPE_LABELS: Record<StoryCardType, string> = {
 type SortMode = "alpha" | "recent";
 type CardStatusFilter = "all" | "active" | "inactive";
 type CardFlagFilter = "all" | "flagged" | "pinned" | "protected";
-
-const DEFAULT_AI_RECENT_MESSAGE_COUNT = 8;
-const MAX_AI_RECENT_MESSAGE_COUNT = 50;
-
-const CARD_BUILDER_INTENTS: Array<{ value: StoryCardAIBuilderIntent; label: string }> = [
-  { value: "relationship", label: "Relationship / dynamic" },
-  { value: "character", label: "Character / voice" },
-  { value: "subplot", label: "Ongoing subplot / status" },
-  { value: "secret", label: "Secret / reveal" },
-  { value: "rule", label: "Rule / lore" },
-  { value: "location", label: "Location" },
-  { value: "faction", label: "Faction" },
-  { value: "object", label: "Object" },
-  { value: "event", label: "Completed event" },
-  { value: "auto", label: "Let AI choose" },
-];
-
-function clampAiRecentMessageCount(value: number): number {
-  if (!Number.isFinite(value)) return 0;
-  return Math.max(0, Math.min(MAX_AI_RECENT_MESSAGE_COUNT, Math.round(value)));
-}
 
 function CardSummary({ card, query }: { card: StoryCard; query: string }) {
   const contextContent = storyCardContextContent(card);
@@ -142,8 +121,6 @@ function sortCards(cards: StoryCard[], mode: SortMode): StoryCard[] {
 interface StoryCardsPageProps extends AdventurePageProps {
   providerConfig?: ProviderConfig;
   loading?: boolean;
-  onBuildStoryCardMemory?: (request: StoryCardAIBuilderRequest) => Promise<void>;
-  onSuggestCardUpdates?: () => Promise<void>;
   onAuditStoryCards?: (nTurns: number, includeAI: boolean) => Promise<AuditRecommendation[]>;
 }
 
@@ -157,16 +134,10 @@ export function StoryCardsPage({
   adventure,
   dispatch,
   loading,
-  onBuildStoryCardMemory,
-  onSuggestCardUpdates,
   onAuditStoryCards,
   providerConfig,
 }: StoryCardsPageProps) {
   const [importText, setImportText] = useState("");
-  const [aiDescription, setAiDescription] = useState("");
-  const [aiIntent, setAiIntent] = useState<StoryCardAIBuilderIntent>("relationship");
-  const [aiRecentMessageCount, setAiRecentMessageCount] = useState(DEFAULT_AI_RECENT_MESSAGE_COUNT);
-  const [aiTargetCardId, setAiTargetCardId] = useState("");
   const [newCardId, setNewCardId] = useState<string | undefined>();
   const [sortMode, setSortMode] = useState<SortMode>("alpha");
   const [typeFilter, setTypeFilter] = useState<StoryCardType | "all">("all");
@@ -297,17 +268,6 @@ export function StoryCardsPage({
   const visibleCount = groups.reduce((sum, group) => sum + group.cards.length, 0);
   const filtersActive = typeFilter !== "all" || statusFilter !== "all" || flagFilter !== "all";
 
-  async function handleBuildStoryCardMemory() {
-    if (!onBuildStoryCardMemory || !aiDescription.trim()) return;
-    await onBuildStoryCardMemory({
-      description: aiDescription.trim(),
-      intent: aiIntent,
-      recentMessageCount: aiRecentMessageCount,
-      targetCardId: aiTargetCardId || undefined,
-    });
-    setAiDescription("");
-  }
-
   return (
     <section className="page editor-surface story-cards-page">
       <div className="editor-page-summary">
@@ -327,66 +287,6 @@ export function StoryCardsPage({
         that are only relevant some of the time. Keep triggers specific; broad keys cause card bleed.
         For always-on world lore that should load every turn regardless, use a <strong>World Block</strong>.
       </p>
-
-      {onBuildStoryCardMemory && (
-        <details className="panel">
-          <summary>Draft a Story Card with AI</summary>
-          <p className="muted">
-            Describe what you want generated, choose how many recent messages should ground it, and the AI will draft a pending Memory Suggestion using Story Card best practices.
-          </p>
-          <div className="grid three">
-            <Field label="Card focus">
-              <select
-                value={aiIntent}
-                onChange={(event) => setAiIntent(event.target.value as StoryCardAIBuilderIntent)}
-              >
-                {CARD_BUILDER_INTENTS.map((intent) => (
-                  <option key={intent.value} value={intent.value}>{intent.label}</option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Target card">
-              <select value={aiTargetCardId} onChange={(event) => setAiTargetCardId(event.target.value)}>
-                <option value="">Create new card</option>
-                {adventure.storyCards.map((card) => (
-                  <option key={card.id} value={card.id}>{card.title}</option>
-                ))}
-              </select>
-            </Field>
-
-          </div>
-          <div className="grid three">
-            <Field label="Use last messages">
-              <NumberInput
-                value={aiRecentMessageCount}
-                min={0}
-                max={MAX_AI_RECENT_MESSAGE_COUNT}
-                onChange={(recentMessageCount) => setAiRecentMessageCount(clampAiRecentMessageCount(recentMessageCount))}
-              />
-            </Field>
-
-          </div>
-          <Field label="Describe what to generate">
-            <textarea
-              rows={5}
-              value={aiDescription}
-              onChange={(event) => setAiDescription(event.target.value)}
-              placeholder="Example: Generate a location card for Jinx's hideout from the recent scene, focusing on durable layout, sensory details, hazards, and trigger phrases."
-            />
-          </Field>
-          <div className="toolbar">
-            <button
-              type="button"
-              className="primary-action"
-              disabled={loading || !aiDescription.trim()}
-              onClick={() => void handleBuildStoryCardMemory()}
-            >
-              {loading ? "Drafting..." : "Draft Card Suggestion"}
-            </button>
-            <span className="muted">Nothing is added to active memory until you approve it.</span>
-          </div>
-        </details>
-      )}
 
       <div className="editor-command-bar">
         <input
@@ -496,11 +396,10 @@ export function StoryCardsPage({
         </div>
       </div>
 
-      {(onAuditStoryCards || onSuggestCardUpdates) && (
+      {onAuditStoryCards && (
         <details className="panel editor-tools-panel story-card-maintenance-panel" open>
           <summary>Review and Maintain Cards</summary>
           <div className="story-card-maintenance-grid">
-            {onAuditStoryCards && (
               <section className="story-card-tool-card story-card-tool-card-primary">
                 <div className="story-card-tool-copy">
                   <h3>Clean up existing cards</h3>
@@ -537,28 +436,7 @@ export function StoryCardsPage({
                   />
                 </div>
               </section>
-            )}
 
-            {onSuggestCardUpdates && (
-              <section className="story-card-tool-card">
-                <div className="story-card-tool-copy">
-                  <h3>Suggest updates from recent play</h3>
-                  <p className="muted">
-                    Ask the AI to review recent story turns and draft Memory Suggestions for relevant cards. You still approve them before they become memory.
-                  </p>
-                </div>
-                <div className="story-card-tool-controls">
-                  <button
-                    type="button"
-                    disabled={loading || activeCards.length === 0}
-                    onClick={onSuggestCardUpdates}
-                    title="Ask the AI to review recent story turns and suggest updates to all relevant Story Cards. Results appear in Memory Suggestions."
-                  >
-                    {loading ? "Generating..." : "Suggest Card Updates"}
-                  </button>
-                </div>
-              </section>
-            )}
           </div>
         </details>
       )}

@@ -146,7 +146,7 @@ Rules learned the hard way:
   does not match the stored keys. Prefer stable references such as
   `Thanksgiving 2018` over changing references such as `Thanksgiving last year`.
 
-The **"Draft a Story Card with AI"** builder and the in-play detector now emit
+The **"Memory → Suggestions → Create suggestion with AI"** builder and the in-play detector now emit
 voice contracts for character cards automatically — so cards you mint mid-game
 match. But hand-author the core cast for control.
 

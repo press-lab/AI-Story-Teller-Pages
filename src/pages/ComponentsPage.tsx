@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Adventure, AdventureAction, ArcPace, ArcPhase, ArcTriggerMode, ComponentEntry, ComponentType, ContextInclusionPolicy, PlotAIBuilderRequest } from "../types/adventure";
+import type { Adventure, AdventureAction, ArcPace, ArcPhase, ArcTriggerMode, ComponentEntry, ComponentType, ContextInclusionPolicy } from "../types/adventure";
 import type { ComponentAuditRecommendation } from "../memory/componentAudit";
 import { makeComponent } from "../state/defaults";
 import { approximateTokenCount } from "../tokenizer/approximateTokenCount";
@@ -320,8 +320,6 @@ function ComponentSummary({ component, query }: { component: ComponentEntry; que
 
 interface ComponentsPageProps extends AdventurePageProps {
   loading?: boolean;
-  onSuggestPlotUpdates?: () => Promise<void>;
-  onBuildPlotMemory?: (request: PlotAIBuilderRequest) => Promise<void>;
   onAuditComponents?: (nTurns: number, includeAI: boolean) => Promise<ComponentAuditRecommendation[]>;
   onRegeneratePlotEssentials?: (componentId: string) => Promise<string>;
   onUpdatePEComponentNow?: (componentId: string) => Promise<void>;
@@ -362,12 +360,8 @@ const PLOT_GROUP_DEFINITIONS: Array<{
   },
 ];
 
-export function ComponentsPage({ adventure, dispatch, loading, onSuggestPlotUpdates, onBuildPlotMemory, onAuditComponents, onRegeneratePlotEssentials, onUpdatePEComponentNow, onGenerateComponent, onGenerateArc, onProposeArcFromHistory }: ComponentsPageProps) {
+export function ComponentsPage({ adventure, dispatch, loading, onAuditComponents, onRegeneratePlotEssentials, onUpdatePEComponentNow, onGenerateComponent, onGenerateArc, onProposeArcFromHistory }: ComponentsPageProps) {
   const [search, setSearch] = useState("");
-  const [plotBuilderDescription, setPlotBuilderDescription] = useState("");
-  const [plotBuilderTarget, setPlotBuilderTarget] = useState<PlotAIBuilderRequest["target"]>("plotEssentials");
-  const [plotBuilderTargetComponentId, setPlotBuilderTargetComponentId] = useState("");
-  const [plotBuilderUseRecentStory, setPlotBuilderUseRecentStory] = useState(true);
   const [pePreview, setPePreview] = useState<Record<string, string>>({});
   const [peRegenerating, setPeRegenerating] = useState<string | null>(null);
   const [graduateConfirm, setGraduateConfirm] = useState<string | null>(null);
@@ -474,7 +468,6 @@ export function ComponentsPage({ adventure, dispatch, loading, onSuggestPlotUpda
     }
   }
   const existingTypes = new Set(adventure.components.map((c) => c.type));
-  const hasActivePlotEssentials = adventure.components.some((c) => c.type === "plotEssentials" && c.active);
 
   const availableTypes = activeComponentTypes.filter(
     (t) => !SINGLETON_TYPES.has(t) || !existingTypes.has(t),
@@ -506,19 +499,6 @@ export function ComponentsPage({ adventure, dispatch, loading, onSuggestPlotUpda
       components: extraComponents,
     });
   }
-  const plotBuilderTargetComponents = adventure.components.filter((component) => component.type === plotBuilderTarget);
-  const selectedPlotBuilderComponentId = plotBuilderTargetComponentId || plotBuilderTargetComponents[0]?.id;
-
-  async function handleBuildPlotMemory() {
-    if (!onBuildPlotMemory || !plotBuilderDescription.trim()) return;
-    await onBuildPlotMemory({
-      description: plotBuilderDescription.trim(),
-      target: plotBuilderTarget,
-      targetComponentId: selectedPlotBuilderComponentId,
-      useRecentStory: plotBuilderUseRecentStory,
-    });
-    setPlotBuilderDescription("");
-  }
 
   return (
     <section className="page editor-surface components-page">
@@ -541,63 +521,6 @@ export function ComponentsPage({ adventure, dispatch, loading, onSuggestPlotUpda
         <strong> Narration Rules, AI Instructions, Plot Essentials,</strong> and <strong>Author's Note</strong> are singletons.
         AI Instructions are optional; Narration Rules can hold the complete stable behavior contract by themselves.
       </p>
-
-      {onBuildPlotMemory && (
-        <details className="panel">
-          <summary>Draft plot memory with AI</summary>
-          <p className="muted">
-            Describe the current situation, pressure, or correction. The AI drafts a pending Plot Essentials update using the app's placement rules.
-          </p>
-          <div className="grid three">
-            <Field label="Target">
-              <select
-                value={plotBuilderTarget}
-                onChange={(event) => {
-                  setPlotBuilderTarget(event.target.value as PlotAIBuilderRequest["target"]);
-                  setPlotBuilderTargetComponentId("");
-                }}
-              >
-                <option value="plotEssentials">Plot Essentials</option>
-              </select>
-            </Field>
-            <Field label="Component">
-              <select
-                value={selectedPlotBuilderComponentId ?? ""}
-                onChange={(event) => setPlotBuilderTargetComponentId(event.target.value)}
-              >
-                {plotBuilderTargetComponents.length === 0 && <option value="">Create if approved</option>}
-                {plotBuilderTargetComponents.map((component) => (
-                  <option key={component.id} value={component.id}>{component.title}</option>
-                ))}
-              </select>
-            </Field>
-            <CheckboxField
-              label="Use recent story"
-              checked={plotBuilderUseRecentStory}
-              onChange={setPlotBuilderUseRecentStory}
-            />
-          </div>
-          <Field label="Plot brief">
-            <textarea
-              rows={4}
-              value={plotBuilderDescription}
-              onChange={(event) => setPlotBuilderDescription(event.target.value)}
-              placeholder="Example: The gala has shifted from social cover to a hostage crisis; keep the mission active, the Red Ring off-balance, and the player's next move open."
-            />
-          </Field>
-          <div className="toolbar">
-            <button
-              type="button"
-              className="primary-action"
-              disabled={loading || !plotBuilderDescription.trim()}
-              onClick={() => void handleBuildPlotMemory()}
-            >
-              {loading ? "Drafting..." : "Draft Plot Suggestion"}
-            </button>
-            <span className="muted">The draft opens in Memory Suggestions for review.</span>
-          </div>
-        </details>
-      )}
 
       <div className="editor-command-bar">
         <input
@@ -623,11 +546,10 @@ export function ComponentsPage({ adventure, dispatch, loading, onSuggestPlotUpda
         </button>
       </div>
 
-      {(onAuditComponents || onSuggestPlotUpdates) && (
+      {onAuditComponents && (
         <details className="panel editor-tools-panel component-maintenance-panel" open>
           <summary>Review and Maintain Components</summary>
           <div className="component-maintenance-grid">
-            {onAuditComponents && (
               <section className="component-tool-card component-tool-card-primary">
                 <div className="component-tool-copy">
                   <h3>Clean up plot components</h3>
@@ -664,28 +586,7 @@ export function ComponentsPage({ adventure, dispatch, loading, onSuggestPlotUpda
                   />
                 </div>
               </section>
-            )}
 
-            {onSuggestPlotUpdates && (
-              <section className="component-tool-card">
-                <div className="component-tool-copy">
-                  <h3>Suggest Plot Essentials updates</h3>
-                  <p className="muted">
-                    Ask the AI to draft Memory Suggestions from recent play. Results open in Memory Suggestions for review.
-                  </p>
-                </div>
-                <div className="component-tool-controls">
-                  <button
-                    type="button"
-                    disabled={loading || !hasActivePlotEssentials}
-                    onClick={onSuggestPlotUpdates}
-                    title="Ask the AI to review recent story turns and suggest updates to Plot Essentials. Results appear in Memory Suggestions."
-                  >
-                    {loading ? "Generating..." : "Suggest Plot Updates"}
-                  </button>
-                </div>
-              </section>
-            )}
           </div>
         </details>
       )}

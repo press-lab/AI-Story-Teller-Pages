@@ -1,3 +1,5 @@
+import { MemorySuggestionBuilder } from "./MemorySuggestionBuilder";
+import type { MemoryDraftRequest, ProviderConfig } from "../types/adventure";
 import { storyCardAutoApprovalBlockers } from "../memory/storyCardAutoApproval";
 import { validateLoreChronology } from "../memory/validateLoreChronology";
 import { ArchivedMemoryDetails } from "./ArchivedMemoryDetails";
@@ -15,6 +17,7 @@ import type { AdventurePageProps, MemoryWorkStatus } from "./pageTypes";
 import { CheckboxField, Field, JsonTextarea, NumberInput, commaList, fromCommaList } from "./shared";
 
 const proposalTypes: MemoryProposalType[] = [
+  "componentDraft",
   "storyCard",
   "brainUpdate",
   "plotEssentialsUpdate",
@@ -26,6 +29,8 @@ const proposalTypes: MemoryProposalType[] = [
 const storyCardTypes: StoryCardType[] = ["character", "location", "lore", "custom"];
 
 interface MemoryInboxPageProps extends AdventurePageProps {
+  onCreateDraft?: (request: MemoryDraftRequest) => Promise<boolean>;
+  providerConfig?: ProviderConfig;
   memoryWork?: MemoryWorkStatus;
   onRetryMemory?: () => Promise<void>;
   onContinueWithExistingMemory?: () => void;
@@ -62,7 +67,7 @@ export function MemoryInboxPage(props: MemoryInboxPageProps) {
   </>;
 }
 
-function MemorySuggestionsPage({ adventure, dispatch, onRegenerateProposal, onReconcileMemory, onFindEventMemories, loading = false, initialSearch = "" }: MemoryInboxPageProps & { initialSearch?: string }) {
+function MemorySuggestionsPage({ adventure, dispatch, onCreateDraft, providerConfig, onRegenerateProposal, onReconcileMemory, onFindEventMemories, loading = false, initialSearch = "" }: MemoryInboxPageProps & { initialSearch?: string }) {
   const allProposals = adventure.activeState.memoryProposals.filter(p => p.proposedType !== "plotPressureUpdate").sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const [eventScan, setEventScan] = useState<AbortController>();
   const [eventProgress, setEventProgress] = useState("");
@@ -158,10 +163,11 @@ function MemorySuggestionsPage({ adventure, dispatch, onRegenerateProposal, onRe
 
   return (
     <section className="page editor-surface memory-inbox-page">
+      {onCreateDraft && <MemorySuggestionBuilder key={adventure.id} adventure={adventure} providerConfig={providerConfig} loading={loading} onCreate={onCreateDraft} />}
       <section className="panel" aria-label="Suggestion controls">
         <CheckboxField label="Show suggestions" checked={adventure.memorySuggestionsEnabled !== false}
           onChange={enabled => dispatch({ type: "SET_MEMORY_SUGGESTIONS_ENABLED", enabled })} />
-        <p className="muted">When off, pending suggestions are discarded. Automatic updates keep using your approval settings. AI checks still run.</p>
+        <p className="muted">When off, automatic pending suggestions are discarded. Drafts you request here remain available for review. Automatic updates keep using your approval settings. AI checks still run.</p>
         <button type="button" onClick={() => dispatch({ type: "CLEAR_SUGGESTION_HISTORY" })}>Clear suggestion history</button>
         <p className="muted">Deletes approved, rejected, and ignored suggestion records from saved JSON. Pending suggestions and saved memories stay. Deleted decisions no longer suppress repeat suggestions.</p>
       </section>
@@ -397,7 +403,7 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
         </select></Field>
       </>}
       {proposal.proposedType === "storyCard" && !proposal.storyCardReview && <Field label="Story Card destination">
-        <select value={proposal.targetId ?? ""} disabled={proposal.status === "approved"} onChange={event => {
+        <select value={proposal.targetId ?? ""} disabled={proposal.status === "approved" || Boolean(proposal.manualDraft)} onChange={event => {
           const card = adventure.storyCards.find(card => card.id === event.target.value);
           onUpdate(proposal, { targetId: card?.id, cardOperation: card ? "append" : "create", storyCardType: card?.type ?? proposal.storyCardType });
         }}>
@@ -424,12 +430,12 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
           </button>
           {isPending && (
             <>
-              {onRegenerate && (
+              {onRegenerate && !proposal.manualDraft && (
                 <button type="button" disabled={regenerating} onClick={() => handleRegenerate()}>
                   {regenerating ? "…" : "Regenerate"}
                 </button>
               )}
-              {onRegenerate && proposal.proposedType === "storyCard" && !isLore && <button type="button" disabled={regenerating} onClick={() => handleRegenerate(true)}>Convert to Lore</button>}
+              {onRegenerate && proposal.proposedType === "storyCard" && !proposal.manualDraft && !isLore && <button type="button" disabled={regenerating} onClick={() => handleRegenerate(true)}>Convert to Lore</button>}
               <button
                 type="button"
                 onClick={() => dispatch({ type: "REJECT_MEMORY_PROPOSAL", proposalId: proposal.id })}
@@ -500,7 +506,7 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
             <select
               value={proposal.proposedType}
               onChange={(event) => onUpdate(proposal, { proposedType: event.target.value as MemoryProposalType })}
-              disabled={proposal.status === "approved"}
+              disabled={proposal.status === "approved" || Boolean(proposal.manualDraft)}
             >
               {proposalTypes.map((type) => (
                 <option key={type} value={type}>
@@ -515,7 +521,7 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
                 <select
                   value={targetCard?.type ?? proposal.storyCardType ?? ""}
                   onChange={(event) => onUpdate(proposal, { storyCardType: event.target.value as StoryCardType, targetId: undefined, appendContent: undefined, placementValidation: undefined })}
-                  disabled={proposal.status === "approved" || Boolean(targetCard)}
+                  disabled={proposal.status === "approved" || Boolean(targetCard) || Boolean(proposal.manualDraft)}
                 >
                   <option value="">Select a card type</option>
                   {storyCardTypes.map((type) => <option key={type} value={type}>{type}</option>)}

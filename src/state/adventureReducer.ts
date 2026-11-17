@@ -1,3 +1,4 @@
+import { DRAFT_COMPONENT_TYPES, SINGLETON_DRAFT_TYPES, draftTargetFingerprint } from "../memory/memoryDraft";
 import { routeDatedLoreProposal, loreEventDateKey, sameLoreEventDate } from "../memory/datedLoreRouting";
 import { bindPlacement } from "../memory/storyCardPlacement";
 import { isActivePressureAction, isActivePressureProposal } from "./activePressureRetirement";
@@ -688,7 +689,9 @@ function normalizedReplacementContent(content: string): string {
 
 function sanitizeProposal(proposal: MemoryProposal): MemoryProposal | null {
   if (isActivePressureProposal(proposal)) return null;
-  if (!["storyCard", "brainUpdate", "plotEssentialsUpdate", "plotPressureUpdate", "currentArcUpdate", "arcProposal", "plotMomentumUpdate", "ignore"].includes(proposal.proposedType)) return null;
+  if (!["componentDraft", "storyCard", "brainUpdate", "plotEssentialsUpdate", "plotPressureUpdate", "currentArcUpdate", "arcProposal", "plotMomentumUpdate", "ignore"].includes(proposal.proposedType)) return null;
+  if (proposal.proposedType === "componentDraft" && (!proposal.userInitiated || !proposal.manualDraft?.componentType
+    || !(proposal.manualDraft.componentType in DRAFT_COMPONENT_TYPES))) return null;
   const rawContent = stripThink(proposal.content ?? "").trim();
   const title = stripThink(proposal.title ?? "").trim();
   const content = proposal.proposedType === "storyCard" ? stripLeadingCardTitle(title, rawContent) : rawContent;
@@ -750,6 +753,7 @@ function loreCreateTitleConflict(state: Adventure, proposal: MemoryProposal): bo
 }
 
 function routedProposal(state: Adventure, proposal: MemoryProposal): MemoryProposal {
+  if (proposal.userInitiated && proposal.manualDraft) return proposal;
   const originalCardType = proposal.storyCardType;
   if (proposal.proposedType === "storyCard") {
     const target = state.storyCards.find(c => proposal.targetId ? c.id === proposal.targetId : c.title.toLocaleLowerCase() === proposal.title.toLocaleLowerCase() || (c.type === "location" && !proposal.storyCardType && cardMatchesName(c, proposal.title)));
@@ -857,6 +861,19 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal,
     proposalId: proposal.id,
     sourceTurnId: proposal.sourceTurnId,
   });
+
+  if (proposal.proposedType === "componentDraft") {
+    const type = proposal.manualDraft?.componentType;
+    if (!manualApproval || !proposal.userInitiated || !type || !(type in DRAFT_COMPONENT_TYPES) || !proposal.content.trim()) return {};
+    const target = state.components.find(c => c.id === proposal.targetId && c.type === type);
+    if (proposal.targetId && !target) return {};
+    const inclusionPolicy = proposal.manualDraft?.inclusionPolicy ?? target?.inclusionPolicy ?? "always";
+    const component = target
+      ? recordComponentMemoryUpdate(target, { ...target, content: proposal.content, inclusionPolicy, alwaysOn: inclusionPolicy === "always" }, proposalMemoryMeta("replace"))
+      : recordComponentMemoryUpdate(undefined, makeComponent({ title: proposal.title, type, content: proposal.content,
+          active: true, inclusionPolicy, alwaysOn: inclusionPolicy === "always", autoUpdate: false }), proposalMemoryMeta("create"));
+    return { components: upsertById(state.components, component) };
+  }
 
   if (proposal.proposedType === "storyCard") {
     if (!proposal.content.trim()) return {};
@@ -1152,7 +1169,7 @@ export function adventureReducer(state: Adventure, action: AdventureAction): Adv
   // Discard review-only results after normal approval/application, including companions.
   if (reduced.memorySuggestionsEnabled === false && reduced.activeState.memoryProposals.some(p => p.status === "pending")) {
     reduced = { ...reduced, activeState: { ...reduced.activeState,
-      memoryProposals: reduced.activeState.memoryProposals.filter(p => p.status !== "pending") } };
+      memoryProposals: reduced.activeState.memoryProposals.filter(p => p.status !== "pending" || Boolean(p.manualDraft && p.userInitiated)) } };
   }
   const automatic = action.type === "COMMIT_MEMORY_EVALUATION_GROUP"
     || (action.type === "ADD_MEMORY_PROPOSAL" && !action.proposal.userInitiated)
@@ -1893,6 +1910,13 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
         candidate: { kind: action.proposal.storyCardType ?? action.proposal.proposedType, title: action.proposal.title, content: action.proposal.content.slice(0, 4000), evidence: (action.proposal.sourceText ?? "").slice(0, 4000), rationale: (action.proposal.rationale ?? "").slice(0, 600) },
       } });
       if (!clean) return suppressed("Proposal sanitization rejected the candidate.");
+      // A deliberate authoring request is a reviewable draft, not an automatic candidate.
+      // Preserve explicit CREATE/target choices and allow the author to revise a prior draft.
+      if (clean.userInitiated && clean.manualDraft) {
+        clean = { ...clean, status: "pending", requiresReview: true };
+        return touchAdventure(state, { activeState: { ...state.activeState,
+          memoryProposals: [clean, ...state.activeState.memoryProposals] } });
+      }
       if (clean.proposedType === "storyCard" && clean.evaluationSource && clean.placementValidation && !placementValidationError(state, clean)) {
         clean = routeDatedLoreProposal(state, clean);
         const validation = clean.placementValidation!;
@@ -2018,6 +2042,10 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
     case "UPDATE_MEMORY_PROPOSAL": {
       const current = state.activeState.memoryProposals.find(p => p.id === action.proposalId);
       if (!current || current.status === "approved" || (action.expectedFingerprint && action.expectedFingerprint !== placementFingerprint(current))) return state;
+      if (current.manualDraft && (action.patch.userInitiated !== undefined || action.patch.manualDraft !== undefined
+        || action.patch.proposedType !== undefined && action.patch.proposedType !== current.proposedType
+        || "targetId" in action.patch && action.patch.targetId !== current.targetId
+        || action.patch.storyCardType !== undefined && action.patch.storyCardType !== current.storyCardType)) return state;
       if (action.patch.placementValidation && placementValidationError(state, { ...current, ...action.patch })) return state;
       return touchAdventure(state, {
         activeState: {
@@ -2033,6 +2061,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
       if (!existing || existing.status === "approved") return state;
       // Reviewers can approve the displayed draft after edits or regeneration.
       // Background approvals still require matching source evidence and placement.
+      if (action.automatic && existing.manualDraft) return state;
       if (action.automatic && existing.proposedType === "storyCard" && existing.status !== "pending") return state;
       if (action.automatic && (existing.proposedType === "storyCard" ? storyCardAutoApprovalBlockers(state, existing).length > 0
         : (!suggestionSourceValid(state, existing) || existing.requiresReview
@@ -2041,7 +2070,27 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
       const fail = (reason: string) => touchAdventure(state, { activeState: { ...state.activeState,
         memoryProposals: state.activeState.memoryProposals.map(p => p.id === existing.id
           ? { ...p, approvalFeedback: `Unable to apply — ${reason}` } : p) } });
-      const draft = proposalWithEdits(existing, action.editedProposal);
+      const draft = { ...proposalWithEdits(existing, action.editedProposal), ...(existing.manualDraft ? { manualDraft: existing.manualDraft, userInitiated: true } : {}) };
+      if (existing.manualDraft) {
+        if (typeof draft.content !== "string" || !draft.content.trim() || typeof draft.title !== "string" || !draft.title.trim())
+          return fail("a draft needs a non-empty title and body.");
+        if (!draft.userInitiated || draft.proposedType !== existing.proposedType || draft.targetId !== existing.targetId)
+          return fail("the draft destination changed. Generate a fresh suggestion for that destination.");
+        const target = draft.proposedType === "componentDraft"
+          ? state.components.find(c => c.id === draft.targetId && c.type === existing.manualDraft?.componentType)
+          : state.storyCards.find(c => c.id === draft.targetId && c.type === existing.storyCardType);
+        if (draft.targetId && (!target || draftTargetFingerprint(target) !== existing.manualDraft.targetSnapshot))
+          return fail("destination changed since this draft was generated. Generate a fresh suggestion using the current destination.");
+        if (draft.proposedType === "componentDraft" && !draft.targetId && existing.manualDraft.componentType
+          && SINGLETON_DRAFT_TYPES.has(existing.manualDraft.componentType) && state.components.some(c => c.type === existing.manualDraft?.componentType))
+          return fail("this component now exists. Generate an update for the existing component.");
+        if (draft.proposedType === "componentDraft" && !["always", "triggered", "manual", "systemSuggested"].includes(draft.manualDraft?.inclusionPolicy ?? "always"))
+          return fail("unsupported component inclusion policy.");
+        if (draft.proposedType === "storyCard" && !draft.targetId
+          && state.storyCards.some(c => normalizeProposalTitle(c.title) === normalizeProposalTitle(draft.title)))
+          return fail("a Story Card with this title exists. Change the draft title or generate an update for that card.");
+      }
+
       if (typeof draft.content !== "string" || typeof draft.title !== "string"
         || !Array.isArray(draft.suggestedTriggers) || draft.suggestedTriggers.some(key => typeof key !== "string"))
         return action.automatic ? state : fail("content, title and trigger keys have invalid data types.");
@@ -2069,7 +2118,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
       }
       // Pending CREATE drafts can outlive creation of their same-day destination.
       // Resolve them at manual approval too, while preserving explicit destinations.
-      if (!action.automatic && !proposal.targetId) {
+      if (!action.automatic && !proposal.targetId && !proposal.manualDraft) {
         const routed = routeDatedLoreProposal(state, proposal);
         if (routed.targetId) proposal = routed;
       }

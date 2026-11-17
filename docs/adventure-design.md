@@ -100,7 +100,7 @@ Example lines: "…" / "…" / "…"
 The **Example lines** are the load-bearing part — two to four direct quotes in
 the character's actual voice. They give the model something to match instead of
 interpret, and they hold the voice steady across hundreds of turns. The
-"Draft a Story Card with AI" builder produces this shape automatically for
+"Memory → Suggestions → Create suggestion with AI" builder produces this shape automatically for
 character cards, and card auto-updates preserve it. Skip the contract for the
 player character — the model never writes their lines.
 
