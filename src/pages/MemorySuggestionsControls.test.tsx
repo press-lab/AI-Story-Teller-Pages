@@ -54,6 +54,10 @@ it("places content adjacent to actions and dispatches separate cleanup controls"
   const content = screen.getByPlaceholderText("Proposed content...");
   expect(content.nextElementSibling?.textContent).toContain("Approve");
   expect(screen.getByText("Review details", { selector: "summary" }).parentElement?.hasAttribute("open")).toBe(false);
+  const visibility = screen.getByText("Suggestion visibility and history", { selector: "summary" });
+  expect(visibility.closest("details")?.hasAttribute("open")).toBe(false);
+  expect(screen.getByText("Story date", { selector: "summary" }).closest("details")?.hasAttribute("open")).toBe(false);
+  fireEvent.click(visibility);
   fireEvent.click(screen.getByLabelText("Show suggestions"));
   expect(dispatch).toHaveBeenLastCalledWith({ type: "SET_MEMORY_SUGGESTIONS_ENABLED", enabled: false });
   fireEvent.click(screen.getByText("Clear suggestion history"));

@@ -29,6 +29,7 @@ it("offers exactly one independent approval toggle per category with detection d
     return <><MemoryInboxPage adventure={adventure} dispatch={dispatch} /><output data-testid="settings">{JSON.stringify(adventure.memoryAutoApprove)}</output><output data-testid="status">{adventure.activeState.memoryProposals[0].status}</output></>;
   }
   render(<Harness />);
+  await user.click(screen.getByText("Auto-approval — This adventure", { selector: "summary" }));
   for (const [label, key] of controls) {
     expect(screen.getAllByLabelText(label)).toHaveLength(1);
     const before = JSON.parse(screen.getByTestId("settings").textContent!);
@@ -59,10 +60,13 @@ it("drops obsolete global approval preferences without changing the background p
   expect(JSON.parse(localStorage.getItem(key)!)).not.toHaveProperty("memoryAutoApprove");
 });
 
-it("keeps six controls visible outside collapsed details when there are no suggestions", () => {
+it("keeps six approval controls in a collapsed section when there are no suggestions", async () => {
   render(<MemoryInboxPage adventure={approvalAdventure()} dispatch={() => undefined} />);
+  const summary = screen.getByText("Auto-approval — This adventure", { selector: "summary" });
+  expect(summary.closest("details")).not.toHaveAttribute("open");
+  for (const [label] of controls) expect(screen.getByLabelText(label)).not.toBeVisible();
+  await userEvent.setup().click(summary);
   const panel = screen.getByRole("region", { name: "Auto-approval — This adventure" });
-  expect(panel.closest("details")).toBeNull();
   expect(panel.querySelectorAll('input[type="checkbox"]')).toHaveLength(6);
   for (const [label] of controls) expect(screen.getByLabelText(label)).toBeVisible();
 });
@@ -161,6 +165,7 @@ it("changing the confirmed clock leaves approved history unchanged", async () =>
   render(<ManualReview initial={a} />); const user = userEvent.setup();
   await user.click(screen.getByRole("button", { name: "Approve" }));
   const history = manualState().storyCards;
+  await user.click(screen.getByText("Story date", { selector: "summary" }));
   await user.clear(screen.getByLabelText("Current story time", { exact: true }));
   await user.type(screen.getByLabelText("Current story time", { exact: true }), "2002-01-01");
   await user.click(screen.getByRole("button", { name: "Apply Story Date" }));

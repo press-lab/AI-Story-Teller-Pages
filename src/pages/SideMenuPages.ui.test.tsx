@@ -478,6 +478,7 @@ describe("side menu page smoke coverage", () => {
 
     await user.click(screen.getByText("Suggestion tools and settings", { selector: "summary" }));
     expect(screen.getByText(/Story Cards use relevance-based selection/)).toBeVisible();
+    await user.click(screen.getByText("Auto-approval — This adventure", { selector: "summary" }));
     await user.click(screen.getByLabelText("Story Cards — Lore", { exact: true }));
     expect(screen.getByLabelText("Story Cards — Lore", { exact: true })).toBeChecked();
 

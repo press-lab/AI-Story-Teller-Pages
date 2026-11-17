@@ -164,25 +164,30 @@ function MemorySuggestionsPage({ adventure, dispatch, onCreateDraft, providerCon
   return (
     <section className="page editor-surface memory-inbox-page">
       {onCreateDraft && <MemorySuggestionBuilder key={adventure.id} adventure={adventure} providerConfig={providerConfig} loading={loading} onCreate={onCreateDraft} />}
-      <section className="panel" aria-label="Suggestion controls">
-        <CheckboxField label="Show suggestions" checked={adventure.memorySuggestionsEnabled !== false}
-          onChange={enabled => dispatch({ type: "SET_MEMORY_SUGGESTIONS_ENABLED", enabled })} />
-        <p className="muted">When off, automatic pending suggestions are discarded. Drafts you request here remain available for review. Automatic updates keep using your approval settings. AI checks still run.</p>
-        <button type="button" onClick={() => dispatch({ type: "CLEAR_SUGGESTION_HISTORY" })}>Clear suggestion history</button>
-        <p className="muted">Deletes approved, rejected, and ignored suggestion records from saved JSON. Pending suggestions and saved memories stay. Deleted decisions no longer suppress repeat suggestions.</p>
-      </section>
-      <section className="panel" aria-label="Auto-approval — This adventure">
-        <h3>Auto-approval — This adventure</h3>
-        <div className="auto-approve-toggles">
-          <CheckboxField label="Plot Essentials" checked={autoApprove.plotEssentialsUpdate} onChange={(v) => setAutoApprove({ plotEssentialsUpdate: v })} />
-          <CheckboxField label="Current Arc" checked={autoApprove.currentArcUpdate} onChange={(v) => setAutoApprove({ currentArcUpdate: v })} />
-          <CheckboxField label="Arc Proposals" checked={autoApprove.arcProposal} onChange={(v) => setAutoApprove({ arcProposal: v })} />
-          <CheckboxField label="Character Self" checked={autoApprove.brainUpdate} onChange={(v) => setAutoApprove({ brainUpdate: v })} />
-          <CheckboxField label="Story Cards — Lore" checked={autoApprove.loreStoryCard} onChange={(v) => setAutoApprove({ loreStoryCard: v })} />
-          <CheckboxField label="Story Cards — Everything Else" checked={autoApprove.otherStoryCard} onChange={(v) => setAutoApprove({ otherStoryCard: v })} />
-        </div>
-        <p className="muted">Enabled categories apply valid new suggestions automatically. Existing pending suggestions still need review.</p>
-      </section>
+      <details className="panel editor-tools-panel">
+        <summary>Suggestion visibility and history</summary>
+        <section aria-label="Suggestion controls">
+          <CheckboxField label="Show suggestions" checked={adventure.memorySuggestionsEnabled !== false}
+            onChange={enabled => dispatch({ type: "SET_MEMORY_SUGGESTIONS_ENABLED", enabled })} />
+          <p className="muted">When off, automatic pending suggestions are discarded. Drafts you request here remain available for review. Automatic updates keep using your approval settings. AI checks still run.</p>
+          <button type="button" onClick={() => dispatch({ type: "CLEAR_SUGGESTION_HISTORY" })}>Clear suggestion history</button>
+          <p className="muted">Deletes approved, rejected, and ignored suggestion records from saved JSON. Pending suggestions and saved memories stay. Deleted decisions no longer suppress repeat suggestions.</p>
+        </section>
+      </details>
+      <details className="panel editor-tools-panel">
+        <summary>Auto-approval — This adventure</summary>
+        <section aria-label="Auto-approval — This adventure">
+          <div className="auto-approve-toggles">
+            <CheckboxField label="Plot Essentials" checked={autoApprove.plotEssentialsUpdate} onChange={(v) => setAutoApprove({ plotEssentialsUpdate: v })} />
+            <CheckboxField label="Current Arc" checked={autoApprove.currentArcUpdate} onChange={(v) => setAutoApprove({ currentArcUpdate: v })} />
+            <CheckboxField label="Arc Proposals" checked={autoApprove.arcProposal} onChange={(v) => setAutoApprove({ arcProposal: v })} />
+            <CheckboxField label="Character Self" checked={autoApprove.brainUpdate} onChange={(v) => setAutoApprove({ brainUpdate: v })} />
+            <CheckboxField label="Story Cards — Lore" checked={autoApprove.loreStoryCard} onChange={(v) => setAutoApprove({ loreStoryCard: v })} />
+            <CheckboxField label="Story Cards — Everything Else" checked={autoApprove.otherStoryCard} onChange={(v) => setAutoApprove({ otherStoryCard: v })} />
+          </div>
+          <p className="muted">Enabled categories apply valid new suggestions automatically. Existing pending suggestions still need review.</p>
+        </section>
+      </details>
 
       <div className="editor-page-summary">
         <p className="muted">
@@ -195,7 +200,10 @@ function MemorySuggestionsPage({ adventure, dispatch, onCreateDraft, providerCon
         </div>
       </div>
 
-      <StoryClockEditor adventure={adventure} dispatch={dispatch} inline />
+      <details className="panel editor-tools-panel">
+        <summary>Story date</summary>
+        <StoryClockEditor adventure={adventure} dispatch={dispatch} inline />
+      </details>
       <p aria-live="polite">{allProposals.filter(p => p.status === "approved" && p.approvalFeedback).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]?.approvalFeedback}</p>
 
       {onFindEventMemories && <div className="panel">

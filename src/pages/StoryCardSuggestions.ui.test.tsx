@@ -253,8 +253,11 @@ function BulkReview({ onAction = (_action: AdventureAction) => {} }: { onAction?
   </>;
 }
 
-it("keeps one clock above evaluation tools without proposal date controls", () => {
+it("keeps one collapsible clock above evaluation tools without proposal date controls", async () => {
   render(<BulkReview />);
+  const summary = screen.getByText("Story date", { selector: "summary" });
+  expect(summary.closest("details")).not.toHaveAttribute("open");
+  await userEvent.setup().click(summary);
   expect(screen.getByRole("heading", { name: "Current Story Date: 2001-09-08 (Saturday)" })).toBeVisible();
   expect(screen.getByRole("region", { name: "Current Story Date" }).compareDocumentPosition(screen.getByText("Check Recent Entries")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(screen.queryByLabelText("Event Date", { exact: true })).not.toBeInTheDocument();
@@ -266,6 +269,7 @@ it("applies the Suggestions clock draft to the saved adventure and persists its 
   Object.defineProperty(globalThis, "indexedDB", { value: new IDBFactory(), configurable: true });
   const actions = vi.fn(); render(<BulkReview onAction={actions} />); const user = userEvent.setup();
   const before = savedReview();
+  await user.click(screen.getByText("Story date", { selector: "summary" }));
   const input = screen.getByLabelText("Current story time", { exact: true });
   await user.clear(input); await user.type(input, "September 10, 2001");
   expect(savedReview()).toEqual(before); expect(actions).not.toHaveBeenCalled();
@@ -308,6 +312,7 @@ it("keeps the Story Cards toggle bound and persisted, with auto-approved history
   const history = screen.getByText("History (2)").closest("details")!;
   expect(history).toHaveTextContent("Archive access"); expect(history).toHaveTextContent("approved");
   expect(screen.queryByText(/Character profile changes require author review/)).toBeNull();
+  await user.click(screen.getByText("Auto-approval — This adventure", { selector: "summary" }));
   const toggle = screen.getByRole("checkbox", { name: "Story Cards — Lore" });
   expect(toggle).toBeChecked();
   await user.click(toggle); expect(toggle).not.toBeChecked();
@@ -316,6 +321,7 @@ it("keeps the Story Cards toggle bound and persisted, with auto-approved history
   await saveAdventure(disabled);
   const loaded = normalizeAdventure((await getAdventure(disabled.id))!);
   page.unmount(); render(<ApprovalSettings initial={loaded} />);
+  await user.click(screen.getByText("Auto-approval — This adventure", { selector: "summary" }));
   expect(screen.getByRole("checkbox", { name: "Story Cards — Lore" })).not.toBeChecked();
   await user.click(screen.getByRole("checkbox", { name: "Story Cards — Lore" }));
   expect(JSON.parse(screen.getByTestId("approval-state").textContent!).activeState.memoryProposals.find((p: { title: string }) => p.title === "Eleanor Vale").status).toBe("approved");
@@ -340,6 +346,7 @@ it.each([false, true])("keeps approval controls exclusively in this adventure's 
   expect((inbox.getByLabelText("Story Cards — Lore") as HTMLInputElement).checked).toBe(enabled);
   expect(settings.queryByLabelText("Story Cards — Lore")).not.toBeInTheDocument();
   expect(settings.queryByLabelText("Require review for automatic updates")).not.toBeInTheDocument();
+  await user.click(inbox.getByText("Auto-approval — This adventure", { selector: "summary" }));
   await user.click(inbox.getByLabelText("Story Cards — Lore"));
   const a = savedReview(); expect(a.memoryAutoApprove.loreStoryCard).toBe(!enabled);
   await saveAdventure(a);
