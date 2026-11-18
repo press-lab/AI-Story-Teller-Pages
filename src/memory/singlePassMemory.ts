@@ -7,6 +7,7 @@ import { memoryBatchProvider, sendMemoryCompletion } from "../providers/memoryCo
 import { generatedStoryCardTriggers } from "./resolveMemoryTarget";
 import { storyCardContextContent } from "./storyCardPolicy";
 import { createId } from "../utils/id";
+import { originalLoreEvidence } from "./datedLoreRouting";
 import { parseLooseMemoryOperations } from "./looseMemoryParser";
 import { routeLooseMemoryOperations } from "./looseMemoryRouter";
 
@@ -107,7 +108,10 @@ export async function prepareSinglePassMemoryBatch(a: Adventure, ids: readonly s
         const plot = inputs.currentPlot.find(p => entry.content === "Canon component: " + snapshot.components.find(c => c.id === p.id)?.title + "\n" + p.content);
         if (plot) return pool({ role: entry.role, prefix: entry.content.slice(0, -plot.content.length), reference: pool(plot) });
         return pool(entry);
-      }), cards: inputs.currentCards.map(pool),
+      }), cards: inputs.currentCards.map(c => {
+        const saved = snapshot.storyCards.find(card => card.id === c.id);
+        return pool(saved?.type === "lore" ? { ...c, originalEvent: { title: saved.title, evidence: originalLoreEvidence(snapshot, saved) } } : c);
+      }),
       brains: brains.map(pool), plot: plot.map(p => pool({ ...p, title: snapshot.components.find(c => c.id === p.id)?.title })), consideredSuggestionsNotCanon: inputs.coverage.map(pool) });
   }
   return { batchId, checkpoints, outputAliases, payload: { references, sources } };
@@ -121,7 +125,7 @@ Use names and topic titles. The application resolves destinations, evidence, tri
 Categories:
 brain: consider EVERY eligible existing Brain whose character directly participated in, witnessed, or demonstrably learned about the latest development. Subject is the character's name. Use established personality/voice from personalityReference and existing Brain state. Write a meaningful NEW private observation, interpretation, intention, reaction, changed belief or revised judgment in that character's first-person voice: what does this privately mean to them? Incremental changes qualify; a major personality transformation is unnecessary. Prefer subtype thoughts. Alternatives currentState, relationshipPressure, emotionalInterpretation, recentDevelopments, notes remain available for a distinct state change; recentDevelopments is NOT a transcript-summary field. Never create Brains.
 Never copy dialogue into thoughts, rewrite narration in first person without private meaning, record location or scene participation, repeat existing thoughts in different words, or invent feelings to force an update. Never grant knowledge of unwitnessed events without evidence of learning them. Return no Brain update when nothing meaningful changed.
-storyCard: default subtype lore. Lore records consequential events, agreements, plans, discoveries and shared developments. Compare each candidate fact against provided Story Cards and considered suggestions; output ONLY information not already recorded or considered. One ongoing conversation is one development unless a new decision, consequence or fact changes it. Do not record conversational restatements or create a new event because an old event is discussed again. Preserve genuinely new consequences and commitments. Plans, invitations, attempts, offers, accepted agreements and completed outcomes are distinct. Return NONE when no new durable information exists. Give every Lore fact a standalone subject. Use storyCard.lore.create for a new event. Use (storyCard.lore.update: Standalone title = New fact || Exact existing Lore title || What this fact changes about that specific event or topic) only for a direct continuation. A later story day starts a new Lore entry. Shared participants do not establish continuity. A participant's biography is not the event destination.
+storyCard: default subtype lore. Lore records consequential events, agreements, plans, discoveries and shared developments. Compare each candidate fact against provided Story Cards and considered suggestions; output ONLY information not already recorded or considered. One ongoing conversation is one development unless a new decision, consequence or fact changes it. Do not record conversational restatements or create a new event because an old event is discussed again. Preserve genuinely new consequences and commitments. Plans, invitations, attempts, offers, accepted agreements and completed outcomes are distinct. Return NONE when no new durable information exists. Give every Lore fact a standalone subject. Use storyCard.lore.create for a new event. Use (storyCard.lore.update: Standalone title = New fact || Exact existing Lore title || Exact complete sentence quoted from originalEvent.evidence followed by what this fact changes about the titled event) only for a direct continuation. A later story day starts a new Lore entry. Shared participants do not establish continuity. Appended content cannot redefine the original event. If original evidence does not support the titled event, create focused Lore. Object, Location and Custom updates may use the same fact || destination || reason fields. A participant's biography is not the event destination.
 storyCard.character: a genuinely missing person's enduring identity. Existing profiles are protected. Only an explicit evidenced enduring correction uses storyCard.character.update, with a specific explanation after ||. Never infer permanence from a single scene.
 storyCard.location: enduring properties of a place, not a one-time event there.
 storyCard.object: enduring identity, capabilities, and limits of a named object. Events involving it belong in Lore.

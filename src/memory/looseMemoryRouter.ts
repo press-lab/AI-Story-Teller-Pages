@@ -48,7 +48,7 @@ export function resolveLooseDestination(a: Adventure, source: Source, op: LooseM
   if (category.category === "component" && category.subtype === "activePressure") {
     return { value: { category, targetId: null, operation: "replace", suppressed: true, diagnostic: "Active Pressure is retired." } };
   }
-  const subject = normalize(op.subject);
+  const subject = normalize(op.loreAppend?.destination ?? op.subject);
   if (category.category === "brain") {
     const eligible = a.brains.filter(b => b.active && Object.values(source.brains).some(entry => entry.id === b.id));
     let matches = eligible.filter(b => normalize(b.characterName) === subject);

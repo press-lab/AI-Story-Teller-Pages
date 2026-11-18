@@ -1,4 +1,4 @@
-import type { Adventure, MemoryProposal, StoryTime } from "../types/adventure";
+import type { Adventure, MemoryProposal, StoryCard, StoryTime } from "../types/adventure";
 import { loreSubjectKey, loreSubjectTitle, loreOccurrenceDate } from "./factCoverage";
 import { sourceLoreEventDate } from "./validateLoreChronology";
 
@@ -38,6 +38,8 @@ export function loreAppendDayError(a: Adventure, p: MemoryProposal): string | un
   if (p.proposedType !== "storyCard" || !p.targetId || p.userInitiated) return undefined;
   const target = a.storyCards.find(card => card.id === p.targetId && card.type === "lore");
   if (!target) return undefined;
+  const originalError = loreOriginalEventError(a, p);
+  if (originalError) return originalError;
   const sourceDay = dayKey(establishedLoreTime(a, p));
   const targetDay = dayKey(target.lore?.occurredAt);
   if (!sourceDay || !targetDay) return "The source and destination need established story days before Lore can append automatically.";
@@ -66,4 +68,26 @@ export function routeDatedLoreProposal(a: Adventure, p: MemoryProposal): MemoryP
     appendContent: appendTarget ? true : undefined, lore,
     ...(p.storyCardReview ? { storyCardReview: { ...p.storyCardReview, operation: appendTarget ? "update" : "create",
       suggestedTitle: title, targetCandidates: appendTarget || !target ? p.storyCardReview.targetCandidates : [] } } : {}) };
+}
+
+export function originalLoreEvidence(a: Adventure, card: StoryCard) {
+  const ids = new Set([...(card.sourceTurnIds ?? []), ...(card.lore?.sourceMessageIds ?? [])]);
+  return a.messages.filter(message => ids.has(message.id)).slice(0, 1)
+    .map(({ id, content, storyTime }) => ({ id, content, storyTime }));
+}
+
+export function loreOriginalEventError(a: Adventure, p: MemoryProposal): string | undefined {
+  const target = a.storyCards.find(card => card.id === p.targetId && card.type === "lore");
+  if (!target || p.userInitiated) return undefined;
+  const original = originalLoreEvidence(a, target)[0];
+  if (!original) return "Original Lore event evidence is unavailable; select a destination manually.";
+  const originalDay = dayKey(original.storyTime);
+  const cardDay = dayKey(target.lore?.occurredAt);
+  if (!originalDay || !cardDay || originalDay !== cardDay)
+    return "Original Lore source date is missing or conflicts with its occurrence date.";
+  const reason = p.placementValidation?.reason ?? p.rationale;
+  const sentences = original.content.split(/[.!?\n]+/).map(text => text.trim());
+  if (!sentences.some(sentence => sentence.length >= 24 && reason.includes(sentence)))
+    return "Lore append needs an exact original-event quote and a continuity explanation.";
+  return undefined;
 }

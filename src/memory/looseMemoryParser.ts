@@ -141,9 +141,13 @@ export function parseLooseMemoryOperations(text: string, allowedSourceAliases: r
     const separator = h.update && h.label.category === "storyCard" && h.label.subtype === "character" ? content.indexOf("||") : -1;
     const enduringReason = separator >= 0 ? cleanEdge(content.slice(separator + 2)) : undefined;
     if (separator >= 0) content = content.slice(0, separator).trim();
-    const loreFields = h.update && h.label.category === "storyCard" && h.label.subtype === "lore" ? content.split("||") : [];
+    const loreFields = h.update && h.label.category === "storyCard" && h.label.subtype !== "character" ? content.split("||") : [];
     const [fact, destination, reason] = loreFields.map(cleanEdge);
     const loreAppend = loreFields.length === 3 && destination && reason ? { destination, reason } : undefined;
+    if (loreFields.length > 1 && !loreAppend) {
+      reject("Update metadata requires exactly fact, destination and reason fields.", pendingSource, index);
+      return;
+    }
     if (loreFields.length) content = fact;
     if (!h.subject || !content) { reject("Malformed operation: empty subject or factual content.", pendingSource, index); return; }
     result.operations.push({ sourceAlias: pendingSource, ...h.label, subject: h.subject, content, ordinal: index,
