@@ -298,7 +298,7 @@ it.each([true, false])("recovers supported Character events with topical Lore pr
   const p = v.proposals[0].proposal;
   expect(p).toMatchObject({ requiresReview: false, status: "pending", cardOperation: "create" });
   expect(p.targetId).toBeUndefined();
-  expect(p.storyCardReview!.targetCandidates.includes(lore.id)).toBe(false);
+  expect(p.storyCardReview!.targetCandidates.includes(lore.id)).toBe(hasLore);
 });
 
 import { qualityFixture, spokenFred, privateFred, privateGeorge, privateDraconia, thoughtFinding, loreFinding, repeatedLore } from "../test/memoryQuality";
@@ -455,10 +455,10 @@ it.each([
 it.each(["protected", "candidate", "recovery"])("separates factual uncertainty from %s review restrictions", async condition => {
   const { a, ids } = looseMemoryFixture();
   a.messages[0].content = "The research team gained access to the library archives.";
-  a.storyCards = [makeStoryCard({ id: "archive", type: "lore", title: "Archive access", content: "The library was founded in 1700.", protected: condition === "protected" })];
+  a.storyCards = [makeStoryCard({ id: "archive", type: "lore", title: "Archive access", content: "The library was founded in 1700.", protected: condition === "protected", lore: { status: "ongoing", sourceMessageIds: [], occurredAt: a.messages[0].storyTime } })];
 
   const batch = await prepareSinglePassMemoryBatch(a, [ids[0]]);
-  const result = routeLooseMemoryOperations(a, batch, parseLooseMemoryOperations("(lore: Archive access = The research team gained access to the library archives.)", ["S1"])).sources[0];
+  const result = routeLooseMemoryOperations(a, batch, parseLooseMemoryOperations("(storyCard.lore.update: Research archive access = The research team gained access to the library archives. || Archive access || This confirms access.)", ["S1"])).sources[0];
   if (condition === "candidate") result.findings[0].candidateOnly = true;
   if (condition === "recovery") {
     const incomplete = { ...result.findings[0], reason: undefined };
@@ -471,7 +471,7 @@ it.each(["protected", "candidate", "recovery"])("separates factual uncertainty f
 it("retains advisory choices without overriding an authoritative exact APPEND", async () => {
   const { a, ids } = looseMemoryFixture();
   const batch = await prepareSinglePassMemoryBatch(a, [ids[0]]);
-  const result = routeLooseMemoryOperations(a, batch, parseLooseMemoryOperations("(lore: Weasley Tattoo Business = Fred and George agreed to produce 96 rune tattoos tomorrow.)", ["S1"])).sources[0];
+  const result = routeLooseMemoryOperations(a, batch, parseLooseMemoryOperations("(storyCard.lore.update: Production agreement = Fred and George agreed to produce 96 rune tattoos tomorrow. || Weasley Tattoo Business || This confirms the order.)", ["S1"])).sources[0];
   result.findings[0].destinationCandidates = ["business", "advisory-other"];
   const p = validateSinglePassSource(a, result, batch.checkpoints[0].checkpoint).proposals[0].proposal;
   expect(p).toMatchObject({ requiresReview: false, targetId: "business", storyCardReview: { candidateOnly: false, targetCandidates: ["business", "advisory-other"] } });

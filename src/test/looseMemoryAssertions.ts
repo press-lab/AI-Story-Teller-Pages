@@ -12,7 +12,7 @@ export function expectSixLooseProposals(a: import("../types/adventure").Adventur
     expect.objectContaining({ proposedType: "storyCard", storyCardType: "location", cardOperation: "create",
       title: "Observatory Annex", sourceTurnId: sourceIds[1] }),
     expect.objectContaining({ proposedType: "storyCard", storyCardType: "lore", cardOperation: "create",
-      title: "Draconia Research Meeting", content: "Draconia agreed to meet Seth tomorrow at six. The meeting has not occurred.", sourceTurnId: sourceIds[2] }),
+      title: expect.stringMatching(/Draconia Research Meeting$/), content: "Draconia agreed to meet Seth tomorrow at six. The meeting has not occurred.", sourceTurnId: sourceIds[2] }),
     expect.objectContaining({ proposedType: "plotEssentialsUpdate", targetId: "pressure", sourceTurnId: sourceIds[2] }),
   ]));
   const brain = proposals.find(p => p.proposedType === "brainUpdate")!;

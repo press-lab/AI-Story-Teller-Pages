@@ -17,13 +17,13 @@ function Editor() {
   return <><StoryCardsPage adventure={adventure} dispatch={dispatch} /><output data-testid="saved">{JSON.stringify(adventure)}</output></>;
 }
 
-it("offers four types and edits Lore knowledge while dates stay read-only", async () => {
+it("offers five types and edits Lore knowledge while dates stay read-only", async () => {
   const user = userEvent.setup();
   render(<Editor />);
   expect(screen.queryByLabelText("Current story time", { exact: true })).not.toBeInTheDocument();
   await user.click(document.querySelector(".story-card-editor-item > summary")!);
   const type = screen.getByLabelText("Type", { exact: true });
-  expect(within(type).getAllByRole("option").map(option => (option as HTMLOptionElement).value)).toEqual(["character", "location", "lore", "custom"]);
+  expect(within(type).getAllByRole("option").map(option => (option as HTMLOptionElement).value)).toEqual(["character", "location", "object", "lore", "custom"]);
   expect(screen.queryByLabelText("Core Facts")).not.toBeInTheDocument();
   expect(screen.queryByLabelText("Current Facts")).not.toBeInTheDocument();
   expect(screen.queryByLabelText("Recent Developments")).not.toBeInTheDocument();

@@ -110,16 +110,17 @@ it("retains valid siblings in the existing Memory Inbox without paid repair", as
 
 it("explicitly retries the three October 27 sources in one HTTP request and preserves pending proposals", async () => {
   const fixture = (await import("../memory/fixtures/memory-failure-20261027.json")).default;
+  const storyDay = { text: "2001-09-04", date: "2001-09-04", precision: "day" } as const;
   const a = createDefaultAdventure();
   a.memoryDetectionSettings.pipeline = "singlePass";
   a.memoryAutoApprove.loreStoryCard = true; a.memoryAutoApprove.otherStoryCard = true;
   a.storyCards = [
-    makeStoryCard({ ...fixture.existingLoreTarget, type: "lore", content: "The products have four designs.", keys: ["production", "supply", "tattoo paper"] }),
+    makeStoryCard({ ...fixture.existingLoreTarget, type: "lore", lore: { status: "ongoing", sourceMessageIds: [], occurredAt: storyDay }, content: "The products have four designs.", keys: ["production", "supply", "tattoo paper"] }),
     makeStoryCard({ id: "twins", title: "Fred and George", type: "character", content: "The twins are students." }),
   ];
   a.messages = fixture.cases.flatMap((c, index) => [
     { ...c.precedingPlayer, role: "user" as const, createdAt: "2026-10-27T00:00:00Z", inputMode: "story" as const },
-    { id: c.narratorSourceId, content: c.narratorContent, role: "assistant" as const, createdAt: "2026-10-27T00:00:01Z", inputMode: "story" as const,
+    { id: c.narratorSourceId, content: c.narratorContent, storyTime: storyDay, role: "assistant" as const, createdAt: "2026-10-27T00:00:01Z", inputMode: "story" as const,
       memoryEvaluation: { pipeline: "singlePass" as const, status: "failed" as const, attempts: 1, turn: index + 1, revision: "original", completedGroups: [] } },
   ]);
   const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
@@ -156,7 +157,7 @@ it("explicitly retries the three October 27 sources in one HTTP request and pres
 });
 
 it("delivers all six loose operations to the Memory Inbox with one HTTP extraction and no paid repair", async () => {
-  const { looseMemoryFixture, looseResponse, looseNarrations } = await import("../test/looseMemory");
+  const { businessDay, looseMemoryFixture, looseResponse, looseNarrations } = await import("../test/looseMemory");
   const { expectSixLooseProposals } = await import("../test/looseMemoryAssertions");
   const { a } = looseMemoryFixture(false);
   const originalCards = structuredClone(a.storyCards), originalBrains = structuredClone(a.brains), originalComponents = structuredClone(a.components);
@@ -166,7 +167,8 @@ it("delivers all six loose operations to the Memory Inbox with one HTTP extracti
   vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
     const body = JSON.parse(init!.body as string);
     const memory = body.model === "evaluator";
-    const content = memory ? (++memoryCalls, looseResponse) : looseNarrations[narrationCalls++];
+    const content = memory ? (++memoryCalls, looseResponse)
+      : narrationCalls === 0 ? "Date: " + businessDay.date + "\n" + looseNarrations[narrationCalls++] : looseNarrations[narrationCalls++];
     return new Response(JSON.stringify({ choices: [{ message: { content } }], usage: { prompt_tokens: 100, completion_tokens: 20, total_tokens: 120 } }));
   });
   const hook = setup(a);

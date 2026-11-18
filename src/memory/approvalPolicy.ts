@@ -7,7 +7,7 @@ export function storyCardApprovalCategory(type: string | undefined): ApprovalCat
   switch (type) {
     case "character": return "otherStoryCard";
     case "lore": return "loreStoryCard";
-    case "location": case "plot": case "custom": return "otherStoryCard";
+    case "location": case "object": case "plot": case "custom": return "otherStoryCard";
     default: return undefined;
   }
 }

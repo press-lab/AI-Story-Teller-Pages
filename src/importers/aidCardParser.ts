@@ -81,6 +81,7 @@ function keysToArray(keysText: string, brainKeyData?: BrainKeyData): string[] {
 
 function mapStoryCardType(typeText: string): StoryCardType {
   const lower = typeText.toLowerCase();
+  if (lower === "object") return "object";
   if (lower === "character") return "character";
   if (lower === "location" || lower === "place") return "location";
   if (lower === "plot" || lower === "event") return "lore";

@@ -283,7 +283,7 @@ describe("side menu page smoke coverage", () => {
     render(<StoryCardsPage adventure={adventure} dispatch={() => undefined} />);
 
     const typeFilter = screen.getByRole("combobox", { name: "Filter by card type" });
-    expect(within(typeFilter).getAllByRole("option").map(option => option.textContent)).toEqual(["All card types", "Character", "Location", "Lore", "Custom"]);
+    expect(within(typeFilter).getAllByRole("option").map(option => option.textContent)).toEqual(["All card types", "Character", "Location", "Object", "Lore", "Custom"]);
     await user.selectOptions(typeFilter, "lore");
     expect(document.querySelectorAll(".story-card-editor-item")).toHaveLength(2);
     expect(screen.getByText("2 shown")).toBeInTheDocument();

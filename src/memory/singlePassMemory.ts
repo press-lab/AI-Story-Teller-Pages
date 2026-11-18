@@ -121,9 +121,10 @@ Use names and topic titles. The application resolves destinations, evidence, tri
 Categories:
 brain: consider EVERY eligible existing Brain whose character directly participated in, witnessed, or demonstrably learned about the latest development. Subject is the character's name. Use established personality/voice from personalityReference and existing Brain state. Write a meaningful NEW private observation, interpretation, intention, reaction, changed belief or revised judgment in that character's first-person voice: what does this privately mean to them? Incremental changes qualify; a major personality transformation is unnecessary. Prefer subtype thoughts. Alternatives currentState, relationshipPressure, emotionalInterpretation, recentDevelopments, notes remain available for a distinct state change; recentDevelopments is NOT a transcript-summary field. Never create Brains.
 Never copy dialogue into thoughts, rewrite narration in first person without private meaning, record location or scene participation, repeat existing thoughts in different words, or invent feelings to force an update. Never grant knowledge of unwitnessed events without evidence of learning them. Return no Brain update when nothing meaningful changed.
-storyCard: default subtype lore. Lore records consequential events, agreements, plans, discoveries and shared developments. Compare each candidate fact against provided Story Cards and considered suggestions; output ONLY information not already recorded or considered. One ongoing conversation is one development unless a new decision, consequence or fact changes it. Do not record conversational restatements or create a new event because an old event is discussed again. Preserve genuinely new consequences and commitments. Plans, invitations, attempts, offers, accepted agreements and completed outcomes are distinct. Return NONE when no new durable information exists. Use an existing topical Lore title only for the same subject; shared participants do not establish a destination. A participant's biography is not the event destination.
+storyCard: default subtype lore. Lore records consequential events, agreements, plans, discoveries and shared developments. Compare each candidate fact against provided Story Cards and considered suggestions; output ONLY information not already recorded or considered. One ongoing conversation is one development unless a new decision, consequence or fact changes it. Do not record conversational restatements or create a new event because an old event is discussed again. Preserve genuinely new consequences and commitments. Plans, invitations, attempts, offers, accepted agreements and completed outcomes are distinct. Return NONE when no new durable information exists. Give every Lore fact a standalone subject. Use storyCard.lore.create for a new event. Use (storyCard.lore.update: Standalone title = New fact || Exact existing Lore title || What this fact changes about that specific event or topic) only for a direct continuation. A later story day starts a new Lore entry. Shared participants do not establish continuity. A participant's biography is not the event destination.
 storyCard.character: a genuinely missing person's enduring identity. Existing profiles are protected. Only an explicit evidenced enduring correction uses storyCard.character.update, with a specific explanation after ||. Never infer permanence from a single scene.
 storyCard.location: enduring properties of a place, not a one-time event there.
+storyCard.object: enduring identity, capabilities, and limits of a named object. Events involving it belong in Lore.
 storyCard.custom: enduring properties of an established non-person subject, not a catch-all for events.
 component.plotEssentials: replacement premise, central conflict and persistent constraints; preserve still-valid foundations (180 words).
 component.currentArc: append a new development within an existing active arc; never change Director phases.
@@ -132,7 +133,7 @@ Components must use the existing title and correct subtype. Never create compone
 
 Examples:
 S1
-(storyCard.lore: Weasley Tattoo Business = Fred and George agreed to produce 96 rune tattoos tomorrow.)
+(storyCard.lore.create: Rune tattoo production order = Fred and George agreed to produce 96 rune tattoos tomorrow.)
 (brain.thoughts: George Weasley = I think this could grow beyond individual customers.)
 S2
 (storyCard.character: Eleanor Vale = Eleanor is a sixth-year Ravenclaw specializing in experimental enchantments.)
@@ -198,7 +199,7 @@ export function singlePassFindingSchemaError(v: unknown): string | undefined {
       key === "thoughts" ? !object(value) || !Object.keys(value).length || Object.values(value).some(t => t !== null && !nonempty(t))
         : !["currentState", "relationshipPressure", "emotionalInterpretation", "recentDevelopments", "notes"].includes(key) || !nonempty(value))) return "Invalid BrainPatch.";
   } else if (!nonempty(v.content)) return "Missing usable factual content.";
-  if (v.kind === "storyCard" && (!["lore", "character", "location", "custom"].includes(String(v.storyCardType))
+  if (v.kind === "storyCard" && (!["lore", "character", "location", "object", "custom"].includes(String(v.storyCardType))
     || !["append", "create"].includes(String(v.operation)) || !["static", "living", "historical"].includes(String(v.memoryMode))
     || !["completed", "ongoing", "unresolved"].includes(String(v.eventStatus))
     || !Array.isArray(v.suggestedTriggers) || v.suggestedTriggers.some(t => !nonempty(t))
@@ -448,7 +449,7 @@ export function parseSinglePassMemoryCommands(text: string, aliases: PreparedSin
       const key = optional[1].toUpperCase();
       if (key in current.metadata) current.errors.push(`Duplicate ${key} field.`);
       current.metadata[key] = optional[2].trim();
-      const choices: Record<string, string[]> = { TYPE: ["lore", "character", "location", "custom"], MODE: ["static", "living", "historical"], STATUS: ["completed", "ongoing", "unresolved"], REVIEW: ["yes", "no"] };
+      const choices: Record<string, string[]> = { TYPE: ["lore", "character", "location", "object", "custom"], MODE: ["static", "living", "historical"], STATUS: ["completed", "ongoing", "unresolved"], REVIEW: ["yes", "no"] };
       if (choices[key] && !choices[key].includes(optional[2].trim().toLowerCase())) current.errors.push(`Invalid ${key} value.`);
       continue;
     }

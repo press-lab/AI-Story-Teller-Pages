@@ -1,3 +1,4 @@
+import { PRIMARY_STORY_CARD_TYPES } from "../memory/storyCardArchitecture";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { paintNarrationLoading } from "../hooks/paintNarrationLoading";
 import type {
@@ -94,7 +95,7 @@ const COMPONENT_TYPE_LABELS: Record<ComponentType, string> = {
   memory: "Lore Block (legacy)",
   custom: "Custom",
 };
-const storyCardTypes: StoryCardType[] = ["character", "location", "lore", "custom"];
+const storyCardTypes = PRIMARY_STORY_CARD_TYPES;
 const uniqueComponentTypes = new Set<ComponentType>([
   "narrationRules",
   "aiInstructions",

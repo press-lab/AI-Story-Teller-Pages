@@ -1918,7 +1918,7 @@ describe("Lore chronology approval boundary", () => {
     state.storyClock = { origin: "established", current: day("2001-09-05") };
     state.messages = [{ id: "chronology-source", role: "assistant", content: "They received exclusive archive access.", storyTime: day("2001-09-05"), createdAt: "2026-10-29" }];
     if (append) state.storyCards = [makeStoryCard({ id: "chronology-target", type: "lore", title: "3 September — Research Agreement", content: "They signed the initial research agreement.",
-      lore: { status: "ongoing", sourceMessageIds: ["original"], occurredAt: day("2001-09-03") } })];
+      lore: { status: "ongoing", sourceMessageIds: ["original"], occurredAt: day(conflict ? "2001-09-03" : "2001-09-05") } })];
     const p = reviewedProposal(state, chronologyProposal({ id: "chronology", proposedType: "storyCard", storyCardType: "lore", title: append ? state.storyCards[0].title : "Archive access",
       content: "They received exclusive archive access.", sourceTurnId: "chronology-source", sourceText: state.messages[0].content,
       targetId: append ? "chronology-target" : undefined, requiresReview: false,
@@ -1930,17 +1930,17 @@ describe("Lore chronology approval boundary", () => {
     for (const append of [false, true]) {
       const state = chronologyFixture(false, append);
       expect(state.activeState.memoryProposals[0].status).toBe("approved");
-      expect(state.storyCards[0].lore?.occurredAt?.date).toBe(append ? "2001-09-03" : "2001-09-05");
+      expect(state.storyCards[0].lore?.occurredAt?.date).toBe("2001-09-05");
       expect(state.storyCards[0].lore?.lastChangedAt?.date).toBe("2001-09-05");
       if (append) expect(state.storyCards[0].content).toContain("They signed the initial research agreement.");
     }
   });
-  it("auto-approves conflicting dates without rewriting saved chronology", () => {
+  it("holds a later-day legacy append for review without rewriting chronology", () => {
     const state = chronologyFixture(true, true);
-    expect(state.activeState.memoryProposals[0]).toMatchObject({ status: "approved", requiresReview: false, targetId: "chronology-target" });
-    expect(state.storyCards[0].content).toContain("They received exclusive archive access.");
+    expect(state.activeState.memoryProposals[0]).toMatchObject({ status: "pending", targetId: "chronology-target" });
+    expect(state.storyCards[0].content).toBe("They signed the initial research agreement.");
     expect(state.storyCards[0].lore?.occurredAt?.date).toBe("2001-09-03");
-    expect(state.storyCards[0].lore?.lastChangedAt?.date).toBe("2001-09-05");
+    expect(state.storyCards[0].lore?.lastChangedAt).toBeUndefined();
   });
   it("approves a correction agreeing with source evidence without another confirmation", () => {
     let state = chronologyFixture();
@@ -1959,7 +1959,7 @@ describe("Lore chronology approval boundary", () => {
       content: state.messages[0].content, lore: { status: "completed", sourceMessageIds: ["chronology-source"], occurredAt: relative, lastChangedAt: relative } }));
     state = adventureReducer(state, { type: "ADD_MEMORY_PROPOSAL", proposal: p });
     expect(state.activeState.memoryProposals[0].status).toBe("approved");
-    expect(state.storyCards[0].lore?.occurredAt).toEqual(day("2001-09-05"));
+    expect(state.storyCards[0].lore?.occurredAt).toEqual({ text: "three days before the coronation", precision: "relative" });
     state = adventureReducer(state, { type: "ADD_MEMORY_PROPOSAL", proposal: { ...p, id: "duplicate" } });
     expect(state.activeState.memoryProposals).toHaveLength(1);
     state.brains = [makeBrain({ id: "chronology-brain", characterName: "Mira" })];
@@ -2012,14 +2012,13 @@ it.each(["create", "append", "disabled", "protected", "ambiguous", "date", "reco
 
   const before = structuredClone(a.storyCards);
   let response = `(lore: ${mode === "date" ? "2001-09-04 - Archive access" : "Archive access"} = ${fact})`;
+  if (mode === "append" || mode === "protected") response = "(storyCard.lore.update: Research archive access = " + fact + " || Archive access || This confirms access.)";
   if (mode === "recovered") response = JSON.stringify({ sources: [{ sourceId: "narrator-1", findings: [{ kind: "storyCard", targetId: null,
     title: "Archive access", content: fact, evidenceQuotes: [{ messageId: "narrator-1", quote: fact }] }] }] });
   a = await commitLooseCard(a, response);
   if (mode === "ambiguous") {
-    expect(a.activeState.memoryProposals[0]).toMatchObject({ title: "[2001-09-02] Archive access", status: "approved", requiresReview: false, cardOperation: "append" });
-    expect(a.storyCards).toHaveLength(before.length);
-    expect(a.storyCards[0].content).toContain(fact);
-    expect(a.storyCards[1]).toEqual(before[1]);
+    expect(a.activeState.memoryProposals[0]).toMatchObject({ title: "[2001-09-02] Archive access", cardOperation: "create" });
+    expect(a.storyCards.slice(0, before.length)).toEqual(before);
     return;
   }
   const p = a.activeState.memoryProposals[0];
@@ -2035,7 +2034,7 @@ it.each(["create", "append", "disabled", "protected", "ambiguous", "date", "reco
     if (mode === "append") {
       expect(a.storyCards[0].content).toContain(prior);
       expect(a.storyCards[0].lore?.occurredAt?.date).toBe("2001-09-02");
-      expect(a.storyCards[0].lore?.lastChangedAt?.date).toBeUndefined();
+      expect(a.storyCards[0].lore?.lastChangedAt?.date).toBe("2001-09-02");
     }
   }
   expect(normalizeAdventure(JSON.parse(JSON.stringify(a))).activeState.memoryProposals[0].status).toBe(p.status);
@@ -2047,10 +2046,10 @@ it.each(["covered", "partial", "distinct"])("retains factual coverage safeguards
   const known = "The research team gained access to the library archives.";
   const fresh = "The librarian gave Mira a silver archive key.";
   const content = mode === "covered" ? known : mode === "partial" ? known + " " + fresh : fresh;
-  a.storyCards = [makeStoryCard({ id: "archive", type: "lore", title: "Archive access", content: known })];
+  a.storyCards = [makeStoryCard({ id: "archive", type: "lore", title: "Archive access", content: known, lore: { status: "ongoing", sourceMessageIds: [], occurredAt: a.messages[0].storyTime } })];
   a.messages[0].content = content;
   const before = structuredClone(a.storyCards);
-  a = await commitLooseCard(a, `(lore: Archive access = ${content})`);
+  a = await commitLooseCard(a, `(storyCard.lore.update: Research archive key = ${content} || Archive access || This records access details.)`);
   if (mode === "covered") expect(a.activeState.memoryProposals).toEqual([]);
   else expect(a.activeState.memoryProposals[0]).toMatchObject({ status: mode === "partial" ? "pending" : "approved", requiresReview: mode === "partial" });
   if (mode !== "distinct") expect(a.storyCards).toEqual(before);
@@ -2071,10 +2070,10 @@ it.each([false, true])("keeps mixed loose batch approval independent (Brain auto
     `(storyCard.character.update: George Weasley = ${profileFact} || The experiment established this lasting loss.)`,
   ].join("\n"));
   expect(a.activeState.memoryProposals).toHaveLength(4);
-  expect(a.activeState.memoryProposals.some(p => p.title === "Archive access (2)")).toBe(true);
-  expect(a.activeState.memoryProposals.find(p => p.title === "Council membership")?.status).toBe("approved");
+  expect(a.activeState.memoryProposals.some(p => p.title === "[2001-09-02] Archive access")).toBe(true);
+  expect(a.activeState.memoryProposals.find(p => p.title.endsWith("Council membership"))?.status).toBe("approved");
   expect(a.activeState.memoryProposals.find(p => p.proposedType === "brainUpdate")?.status).toBe(brainAuto ? "approved" : "pending");
-  expect(a.activeState.memoryProposals.filter(p => p.title === "Archive access (2)" || p.storyCardType === "character").every(p => p.status === "approved" && !p.requiresReview)).toBe(true);
+  expect(a.activeState.memoryProposals.filter(p => p.title === "[2001-09-02] Archive access" || p.storyCardType === "character").every(p => p.status === "approved" && !p.requiresReview)).toBe(true);
   expect(a.storyCards.find(c => c.id === "george")?.content).toContain(profileFact);
   expect(a.storyCards.filter(c => ["one", "two"].includes(c.id)).every(c => c.content === "The library was founded in 1700.")).toBe(true);
 });
@@ -2104,7 +2103,7 @@ for (const path of ["insert", "merge", "scan", "final"] as const) {
     const content = "The research team gained access to the library archives.";
     a.messages = [{ id: "approval-source", role: "assistant", content, createdAt: "2026-10-29",
       storyTime: { text: "2001-09-02", date: "2001-09-02", precision: "day" } }];
-    if (mode === "protected") a.storyCards = [makeStoryCard({ id: "archive-target", title: "Archive access", type: "lore", content: "The library was founded in 1700.", protected: true })];
+    if (mode === "protected") a.storyCards = [makeStoryCard({ id: "archive-target", title: "Archive access", type: "lore", content: "The library was founded in 1700.", protected: true, lore: { status: "ongoing", sourceMessageIds: [], occurredAt: a.messages[0].storyTime } })];
     let p = reviewedProposal(a, makeStoryCardSuggestion(a, "approval-source", content, { title: "Archive access", content, evidence: content,
       reason: "An established research agreement.", evidenceReviewed: true, targetId: mode === "protected" ? "archive-target" : undefined }));
     if (mode === "ambiguous") p.storyCardReview = { ...p.storyCardReview!, targetCandidates: ["one", "two"] };
@@ -2211,7 +2210,7 @@ it.each([false, true])("corrects sequential batch Lore CREATE titles while retai
   const result = parseSinglePassMemoryResponse(JSON.stringify({ sources: [{ sourceId: ids[0], findings: [first, second, third] }] }), ids, a).sources[0];
   a = adventureReducer(a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
   a = adventureReducer(a, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId, sources: [{ result, checkpoint: batch.checkpoints[0].checkpoint }] });
-  expect(a.activeState.memoryProposals.map(p => p.title).sort()).toEqual((automatic ? ["Separate Workshop", "Weasley Formal Accessories", "Weasley Formal Accessories"] : ["Separate Workshop", "WEASLEY Formal---Accessories!", "Weasley Formal Accessories"]).map(title => `[2000-01-01] ${title}`));
+  expect(a.activeState.memoryProposals.map(p => p.title).sort()).toEqual(["Separate Workshop", "WEASLEY Formal---Accessories!", "Weasley Formal Accessories"].map(title => `[2000-01-01] ${title}`));
   expect(a.activeState.memoryProposals.map(p => p.status)).toEqual([automatic ? "approved" : "pending", automatic ? "approved" : "pending", automatic ? "approved" : "pending"]);
   // Adding a date to the title does not introduce a review requirement.
   expect(a.activeState.memoryProposals.find(p => p.content === second.content)?.requiresReview).toBe(false);

@@ -232,9 +232,9 @@ RECENT STORY:
 ${recentStory || "(none)"}
 
 Return ONLY a JSON array — no markdown, no prose. Each item must be one of:
-- {"action":"edit","cardId":"...","title":"...","rationale":"...","suggestedContent":"...","suggestedKeys":["..."],"suggestedType":"character"|"location"|"lore"|"custom"}
+- {"action":"edit","cardId":"...","title":"...","rationale":"...","suggestedContent":"...","suggestedKeys":["..."],"suggestedType":"character"|"location"|"object"|"lore"|"custom"}
 - {"action":"delete","cardId":"...","title":"...","rationale":"..."}
-- {"action":"create","title":"...","rationale":"...","suggestedContent":"...","suggestedKeys":["..."],"suggestedType":"character"|"location"|"lore"|"custom"}
+- {"action":"create","title":"...","rationale":"...","suggestedContent":"...","suggestedKeys":["..."],"suggestedType":"character"|"location"|"object"|"lore"|"custom"}
 
 Rules:
 - Edit: card content is outdated or factually wrong based on recent events
@@ -252,7 +252,7 @@ Rules:
 - Return [] if no changes are needed`;
 }
 
-const VALID_TYPES = new Set(["character", "location", "lore", "custom"]);
+const VALID_TYPES = new Set(["character", "location", "object", "lore", "custom"]);
 const VALID_MEMORY_MODES = new Set(["static", "living", "historical"]);
 
 function parseLLMResponse(raw: string): AuditRecommendation[] {

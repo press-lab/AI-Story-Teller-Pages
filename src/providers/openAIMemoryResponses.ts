@@ -17,7 +17,7 @@ export const MEMORY_RESPONSE_SCHEMA = {
         properties: {
           kind: { type: "string", enum: ["lore", "card", "newCard", "thought"] },
           target: { type: "string" }, targetId: { type: ["string", "null"] },
-          cardType: { type: "string", enum: ["lore", "character", "location", "custom"] },
+          cardType: { type: "string", enum: ["lore", "character", "location", "object", "custom"] },
           operation: { type: "string", enum: ["create", "update"] },
           content: { type: "string" }, evidence: { type: "string" }, reason: { type: "string" },
           triggers: { type: "array", items: { type: "string" } },

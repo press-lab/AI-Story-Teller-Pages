@@ -1,4 +1,4 @@
-import { routeDatedLoreProposal } from "./datedLoreRouting";
+import { establishedLoreTime, routeDatedLoreProposal } from "./datedLoreRouting";
 import { expect, it } from "vitest";
 import { singlePassFixture, groundedFinding } from "../test/singlePassMemory";
 import { makeStoryCard } from "../state/defaults";
@@ -21,35 +21,29 @@ it.each(["same", "different", "missing", "fantasy"])("routes dated Lore by title
   a.storyCards = mode === "same" ? [old, same] : [old];
   const before = structuredClone(old);
   const batch = await prepareSinglePassMemoryBatch(a, ids);
-  // Even a model-selected wrong-date destination is corrected locally.
-  const finding = { ...groundedFinding(), targetId: old.id, operation: "append" as const };
+  // The extracted event title survives a placement change.
+  const finding = { ...groundedFinding(), title: "Workshop access granted", targetId: mode === "same" ? same.id : old.id, operation: "append" as const };
   a = reduce(a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
   a = reduce(a, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId,
     sources: [{ checkpoint: batch.checkpoints[0].checkpoint, result: { sourceId: ids[0], findings: [finding], rejected: [] } }] });
   const p = a.activeState.memoryProposals[0];
-  expect(p).toMatchObject({ title: `[${time.text}] ${old.title}`, status: "approved", requiresReview: false, cardOperation: mode === "same" ? "append" : "create",
+  if (mode === "missing") {
+    expect(p).toMatchObject({ status: "pending", requiresReview: true, cardOperation: "append", targetId: old.id });
+    expect(a.storyCards).toEqual([before]);
+    return;
+  }
+  const title = mode === "same" ? same.title : `[${time.text}] ${finding.title}`;
+  expect(p).toMatchObject({ title, status: "approved", requiresReview: false, cardOperation: mode === "same" ? "append" : "create",
     lore: { occurredAt: time, lastChangedAt: time } });
   expect(p.targetId).toBe(mode === "same" ? same.id : undefined);
   expect(placementValidationError(a, p)).not.toBe("The draft or destination changed since placement was validated.");
   expect(a.storyCards.find(c => c.id === old.id)).toEqual(before);
   expect(a.storyCards).toHaveLength(2);
-  expect(a.storyCards[1].title).toBe(mode === "same" ? old.title : `[${time.text}] ${old.title}`);
+  expect(a.storyCards[1].title).toBe(title);
   expect(a.storyCards[1].content).toContain(finding.content);
-  // Later deltas on that occurrence reuse its card, never a numbered copy.
-  const next = { ...finding, targetId: old.id, content: "Avery received a silver workshop key." };
-  const nextSource = a.messages.find(m => m.id === ids[0])!;
-  nextSource.content += " Avery received a silver workshop key.";
-  next.evidenceQuotes = [{ messageId: ids[0], quote: nextSource.content }];
-  nextSource.memoryEvaluation = { pipeline: "singlePass", status: "pending", attempts: 0, turn: 46, revision: "new-evidence", completedGroups: [] };
-  const again = await prepareSinglePassMemoryBatch(a, ids);
-  a = reduce(a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: again.checkpoints });
-  a = reduce(a, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: again.batchId,
-    sources: [{ checkpoint: again.checkpoints[0].checkpoint, result: { sourceId: ids[0], findings: [next], rejected: [] } }] });
-  expect(a.storyCards).toHaveLength(2);
-  expect(a.storyCards[1].content).toContain(next.content);
 });
 
-it("rechecks title plus date when a matching card appears before automatic approval", async () => {
+it("does not infer an append when a matching card appears before automatic approval", async () => {
   const { toSinglePassProposal } = await import("./singlePassMemoryValidation");
   let { a, ids } = singlePassFixture(1);
   a.storyCards = [];
@@ -58,15 +52,13 @@ it("rechecks title plus date when a matching card appears before automatic appro
   const batch = await prepareSinglePassMemoryBatch(a, ids);
   const p = toSinglePassProposal(a, ids[0], batch.checkpoints[0].checkpoint, groundedFinding());
   a = reduce(a, { type: "ADD_MEMORY_PROPOSAL", proposal: p });
-  expect(a.activeState.memoryProposals[0].status).toBe("pending");
   const card = makeStoryCard({ id: "newly-created", type: "lore", title: p.title, content: "They reserved a workshop.",
     lore: { status: "ongoing", sourceMessageIds: [], occurredAt: time } });
   a.storyCards.push(card);
   a.memoryAutoApprove.loreStoryCard = true;
   a = reduce(a, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: p.id, automatic: true });
-  expect(a.activeState.memoryProposals[0]).toMatchObject({ status: "approved", targetId: card.id, title: card.title });
-  expect(a.storyCards).toHaveLength(1);
-  expect(a.storyCards[0].content).toContain(p.content);
+  expect(a.activeState.memoryProposals[0]).toMatchObject({ status: "pending", cardOperation: "create" });
+  expect(a.storyCards).toEqual([card]);
 });
 
 it("does not suppress an identical fact belonging to a different dated occurrence", async () => {
@@ -83,23 +75,23 @@ it("does not suppress an identical fact belonging to a different dated occurrenc
   expect(p).toMatchObject({ title: `[${a.storyClock!.current!.text}] ${f.title}`, cardOperation: "create", lore: { occurredAt: a.storyClock!.current } });
 });
 
-it.each(["0100-01-03", "Imperial Year 417, 1 Harvestfall"])("saves a single literal date prefix and matches older undated titles: %s", text => {
+it.each(["0100-01-03", "Imperial Year 417, 1 Harvestfall"])("saves a single literal date prefix and preserves explicit creation: %s", text => {
   const a = singlePassFixture(1).a;
   const time = { text, date: text.startsWith("0100") ? text : "0417-09-01", precision: "day" as const };
   a.storyClock = { current: time, origin: "established" };
-  a.messages = [];
+  a.messages = [{ id: "source", content: "Kori issued a challenge.", storyTime: time, role: "assistant", createdAt: "" }];
   const p = { id: "dated", proposedType: "storyCard" as const, storyCardType: "lore" as const, title: "Wine Duel Challenge", content: "Kori issued a challenge.",
     sourceTurnId: "source", sourceText: "Kori issued a challenge.", status: "pending" as const, createdAt: "", updatedAt: "", rationale: "", confidence: 0.8, suggestedTriggers: [], requiresReview: false };
   const once = routeDatedLoreProposal(a, p);
   expect(once.title).toBe(`[${text}] Wine Duel Challenge`);
   expect(routeDatedLoreProposal(a, once).title).toBe(once.title);
   a.storyCards = [makeStoryCard({ id: "existing", type: "lore", title: once.title, content: "Prior facts.", lore: once.lore })];
-  expect(routeDatedLoreProposal(a, p)).toMatchObject({ title: once.title, targetId: "existing", cardOperation: "append" });
+  expect(routeDatedLoreProposal(a, p)).toMatchObject({ title: once.title, targetId: undefined, cardOperation: "create" });
   expect(JSON.parse(JSON.stringify(once)).title).toBe(once.title);
 });
 
 
-it.each(["same", "next"])("reroutes a saved CREATE at manual approval on the %s day", mode => {
+it.each(["same", "next"])("preserves a saved CREATE at manual approval on the %s day", mode => {
   let { a, ids } = singlePassFixture(1);
   const time = a.storyClock!.current!;
   const oldTime = mode === "same" ? time : { text: "1999-12-31", date: "1999-12-31", precision: "day" as const };
@@ -112,9 +104,16 @@ it.each(["same", "next"])("reroutes a saved CREATE at manual approval on the %s 
     lore: { status: "ongoing" as const, sourceMessageIds: [ids[0]], occurredAt: time } };
   a.activeState.memoryProposals = [p];
   a = reduce(a, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: p.id });
-  expect(a.activeState.memoryProposals[0]).toMatchObject({ status: "approved", cardOperation: mode === "same" ? "append" : "create" });
+  expect(a.activeState.memoryProposals[0]).toMatchObject({ status: mode === "same" ? "pending" : "approved", cardOperation: "create" });
   expect(a.storyCards).toHaveLength(mode === "same" ? 1 : 2);
-  if (mode === "same") expect(a.storyCards[0]).toMatchObject({ id: card.id, title: card.title });
-  else expect(a.storyCards[0]).toEqual(card);
-  expect(a.storyCards.at(-1)!.content).toContain(p.content);
+  expect(a.storyCards[0]).toEqual(card);
+  if (mode === "next") expect(a.storyCards.at(-1)!.content).toContain(p.content);
+});
+
+it("does not borrow a later clock date for an undated backlog source", () => {
+  const { a, ids } = singlePassFixture(2);
+  const old = a.messages.find(m => m.id === ids[0])!;
+  old.storyTime = undefined;
+  a.storyClock = { origin: "established", current: { text: "2001-09-05", date: "2001-09-05", precision: "day" }, sourceMessageId: ids[1] };
+  expect(establishedLoreTime(a, { sourceTurnId: old.id })).toBeUndefined();
 });

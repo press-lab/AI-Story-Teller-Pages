@@ -1,10 +1,11 @@
+import { PRIMARY_STORY_CARD_TYPES } from "../memory/storyCardArchitecture";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Adventure, MemoryDraftRequest, ProviderConfig, StoryCard, StoryCardAIBuilderIntent } from "../types/adventure";
 import { DRAFT_COMPONENT_TYPES, draftPreview, SINGLETON_DRAFT_TYPES } from "../memory/memoryDraft";
 import { MAX_CHAINED_STORY_CARDS_PER_BUILD } from "../contextBuilder/chainedStoryCardTriggers";
 import { CheckboxField, Field, NumberInput } from "./shared";
 
-const cardTypes = ["character", "location", "lore", "custom"] as const;
+const cardTypes = PRIMARY_STORY_CARD_TYPES;
 const purposes: Array<[StoryCardAIBuilderIntent, string]> = [["auto", "Let AI choose"], ["relationship", "Relationship / dynamic"],
   ["character", "Character / voice"], ["subplot", "Ongoing subplot / status"], ["secret", "Secret / reveal"],
   ["rule", "Rule / lore"], ["location", "Location"], ["faction", "Faction"], ["object", "Object"], ["event", "Completed event"]];

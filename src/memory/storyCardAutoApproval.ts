@@ -1,3 +1,4 @@
+import { loreAppendDayError } from "./datedLoreRouting";
 import { shouldAutoApprove } from "./approvalPolicy";
 import type { Adventure, MemoryProposal } from "../types/adventure";
 import { storyCardMustBeReviewed, suggestionSourceValid } from "./storyCardSuggestions";
@@ -13,5 +14,7 @@ export function storyCardAutoApprovalBlockers(adventure: Adventure, proposal: Me
   if (!suggestionSourceValid(adventure, proposal)) blockers.push("Source evidence is stale or invalid, or the destination changed.");
   const placementError = placementValidationError(adventure, proposal);
   if (placementError) blockers.push(placementError);
+  const dayError = loreAppendDayError(adventure, proposal);
+  if (dayError) blockers.push(dayError);
   return blockers;
 }

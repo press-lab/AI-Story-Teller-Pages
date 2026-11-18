@@ -938,7 +938,8 @@ it("reuses sibling assessments through actual automatic Lore appends without los
   let a = assessmentBatchSeed();
 
   a.memoryAutoApprove.loreStoryCard = true; a.memoryAutoApprove.otherStoryCard = true;
-  a.storyCards = [makeStoryCard({ id: "research", type: "lore", title: "Research", keys: ["research", "invitation", "kiss"], content: "Research history." })];
+  a.storyCards = [makeStoryCard({ id: "research", type: "lore", title: "Research", keys: ["research", "invitation", "kiss"], content: "Research history.", lore: { status: "ongoing", sourceMessageIds: [], occurredAt: { text: "2001-09-02", date: "2001-09-02", precision: "day" } } })];
+  for (const message of a.messages) message.storyTime = a.storyCards[0].lore!.occurredAt;
   fired = ["storyCard:research"];
   const base = provider.getMockImplementation()!;
   provider.mockImplementation(async request => {

@@ -610,10 +610,10 @@ ${defaultBrainPrompt(brain, adventure.activeState.turn, brainBatch)}`
       let destination: string | null | undefined, identityChange: import("../types/adventure").MemoryPlacementValidation["identityChange"];
       if (!assessmentDraft && (raw.trim().startsWith("{") || raw.trim().startsWith("```"))) {
         const parsed = JSON.parse(raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, ""));
-        if (!parsed || typeof parsed.content !== "string" || (validationPolicy === "legacy" && (typeof parsed.title !== "string" || !["character", "location", "lore", "custom"].includes(parsed.storyCardType)))) throw new Error("memory_model_output_invalid: Invalid placement draft.");
+        if (!parsed || typeof parsed.content !== "string" || (validationPolicy === "legacy" && (typeof parsed.title !== "string" || !["character", "location", "object", "lore", "custom"].includes(parsed.storyCardType)))) throw new Error("memory_model_output_invalid: Invalid placement draft.");
         content = parsed.content; title = typeof parsed.title === "string" ? parsed.title : card.title;
         type = parsed.storyCardType ?? (typeof parsed.targetId === "string" ? primaryStoryCardType(adventure.storyCards.find(c => c.id === parsed.targetId)?.type ?? "lore") : "lore"); mode = parsed.memoryMode ?? "static";
-        if (!["character", "location", "lore", "custom"].includes(type)) throw new Error("Invalid Story Card type.");
+        if (!["character", "location", "object", "lore", "custom"].includes(type)) throw new Error("Invalid Story Card type.");
         destination = parsed.targetId; identityChange = parsed.identityChange;
       }
       const source = [...adventure.messages].reverse().find(m => m.role === "assistant" && m.inputMode !== "comms");
@@ -900,7 +900,7 @@ export async function runManualStoryCardsUpdate(
   return { actions: [...actions, { type: "LOG_EVALUATION_RESULT", entry: logEntry }], logEntry };
 }
 
-const STORY_CARD_TYPES = new Set<StoryCardType>(["character", "location", "lore", "custom"]);
+const STORY_CARD_TYPES = new Set<StoryCardType>(["character", "location", "object", "lore", "custom"]);
 
 function validMemoryMode(value: unknown): StoryCardMemoryMode | undefined {
   return value === "static" || value === "living" || value === "historical" ? value : undefined;
@@ -915,7 +915,8 @@ function defaultStoryCardType(intent: StoryCardAIBuilderRequest["intent"]): Stor
   if (intent === "location") return "location";
   if (intent === "event") return "lore";
   if (intent === "subplot" || intent === "relationship") return "lore";
-  if (intent === "faction" || intent === "object" || intent === "secret" || intent === "rule") return "lore";
+  if (intent === "object") return "object";
+  if (intent === "faction" || intent === "secret" || intent === "rule") return "lore";
   return undefined;
 }
 
@@ -1019,7 +1020,7 @@ Respond ONLY with valid JSON:
       "action": "create",
       "cardId": "existing-card-id-if-updating",
       "title": "Specific Card Title",
-      "storyCardType": "character|location|lore|custom",
+      "storyCardType": "character|location|object|lore|custom",
       "content": "• Bullet fact one.\\n• Bullet fact two.",
       "keys": ["specific phrase", "narrow keyword"],
       "appendContent": true
@@ -1596,7 +1597,7 @@ Respond ONLY with valid JSON:
       "targetId": "listed-target-id",
       "content": "replacement or update content",
       "title": "optional proposal title",
-      "storyCardType": "character|location|lore|custom",
+      "storyCardType": "character|location|object|lore|custom",
       "storyCardPatch": { "active": true, "pinned": false, "protected": false, "compactStatus": "resolved", "inclusionPolicy": "triggered" },
       "componentPatch": { "active": true, "pinned": false, "protected": false },
       "rationale": "one concrete sentence"

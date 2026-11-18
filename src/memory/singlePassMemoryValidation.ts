@@ -84,6 +84,7 @@ export function toSinglePassProposal(a: Adventure, sourceId: string, checkpoint:
     if (p.storyCardReview) p.storyCardReview = { ...p.storyCardReview, candidateOnly: f.candidateOnly, operation: f.operation === "append" ? "update" : "create",
       targetCandidates: choices,
       additionalSources: checkpoint.evidence.filter(m => ids.includes(m.id) && m.id !== sourceId) };
+    if (f.storyCardType === "object" && f.candidateOnly) p.requiresReview = true;
     p = routeDatedLoreProposal(a, p);
     p = bindPlacement(a, p, { kind: p.targetId ? "append" : "create", reason: f.reason, newFact: f.content!, identityChange: f.identityChange }, ids);
   } else {

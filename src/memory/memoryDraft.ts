@@ -79,7 +79,7 @@ export function draftMessages(adventure: Adventure, request: MemoryDraftRequest,
 }
 
 function draftMessagesWithContext(adventure: Adventure, request: MemoryDraftRequest, context: ReturnType<typeof resolveDraftContext>, allowEmptyBrief: boolean): ChatMessage[] {
-  if (!(request.componentType in DRAFT_COMPONENT_TYPES) || !["character", "location", "lore", "custom"].includes(request.storyCardType))
+  if (!(request.componentType in DRAFT_COMPONENT_TYPES) || !["character", "location", "object", "lore", "custom"].includes(request.storyCardType))
     throw new Error("Unsupported draft type.");
   if (request.reviewSelectedCards && (request.action !== "suggest" || request.destination !== "storyCard" || request.targetId))
     throw new Error("Review selected cards requires recent-play Story Card suggestions without a single target.");

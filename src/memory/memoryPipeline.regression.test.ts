@@ -104,6 +104,7 @@ it("keeps a recovered source and duplicate dispositions without replaying failed
 
 it.each([0, 1, 2])("retains October 27 fixture case %i with one extraction request", async index => {
   const fixture = (await import("./fixtures/memory-failure-20261027.json")).default;
+  const storyDay = { text: "2001-09-04", date: "2001-09-04", precision: "day" } as const;
   const { makeStoryCard } = await import("../state/defaults");
   const { prepareSinglePassMemoryBatch, runSinglePassMemoryBatch } = await import("./singlePassMemory");
   const { validateSinglePassSource } = await import("./singlePassMemoryValidation");
@@ -113,12 +114,12 @@ it.each([0, 1, 2])("retains October 27 fixture case %i with one extraction reque
   a.memoryDetectionSettings.pipeline = "singlePass";
   a.memoryAutoApprove.loreStoryCard = true; a.memoryAutoApprove.otherStoryCard = true;
   a.storyCards = [
-    makeStoryCard({ ...fixture.existingLoreTarget, type: "lore", content: "Four product designs exist.", keys: ["production", "supply", "tattoo paper"] }),
+    makeStoryCard({ ...fixture.existingLoreTarget, type: "lore", lore: { status: "ongoing", sourceMessageIds: [], occurredAt: storyDay }, content: "Four product designs exist.", keys: ["production", "supply", "tattoo paper"] }),
     makeStoryCard({ id: "twins", title: "Fred and George", type: "character", content: "The twins are students." }),
   ];
   a.messages = [
     { ...c.precedingPlayer, role: "user", createdAt: "2026-10-27T00:00:00Z", inputMode: "story" },
-    { id: c.narratorSourceId, content: c.narratorContent, role: "assistant", createdAt: "2026-10-27T00:00:01Z", inputMode: "story",
+    { id: c.narratorSourceId, content: c.narratorContent, storyTime: storyDay, role: "assistant", createdAt: "2026-10-27T00:00:01Z", inputMode: "story",
       memoryEvaluation: { pipeline: "singlePass", status: "pending", attempts: 0, turn: 1, revision: "original", completedGroups: [] } },
   ];
   const batch = await prepareSinglePassMemoryBatch(a, [c.narratorSourceId]);

@@ -12,6 +12,7 @@ export interface LooseMemoryOperation {
   explicitCreation: boolean;
   explicitUpdate: boolean;
   enduringReason?: string;
+  loreAppend?: { destination: string; reason: string };
 }
 export interface LooseMemoryParseResult {
   operations: LooseMemoryOperation[];
@@ -22,7 +23,7 @@ export interface LooseMemoryParseResult {
 type Label = Pick<LooseMemoryOperation, "category" | "subtype">;
 const key = (s: string) => s.toLowerCase().replace(/[\s._-]+/g, "");
 const brains = ["thoughts", "currentState", "relationshipPressure", "emotionalInterpretation", "recentDevelopments", "notes"];
-const cards = ["lore", "character", "location", "custom"];
+const cards = ["lore", "character", "location", "object", "custom"];
 const components = ["plotEssentials", "currentArc", "activePressure", "immediateMomentum", "narrationRules", "aiInstructions", "authorNote", "memory", "custom"];
 const aliases: Record<string, Label> = Object.create(null);
 function labels(names: string[], category: Label["category"], subtype: string) {
@@ -36,6 +37,7 @@ labels(["brain developments"], "brain", "recentDevelopments");
 labels(["lore", "event", "story", "memory", "storycard", "story card"], "storyCard", "lore");
 labels(["character", "new character"], "storyCard", "character");
 labels(["location", "place"], "storyCard", "location");
+labels(["object"], "storyCard", "object");
 labels(["custom story card"], "storyCard", "custom");
 for (const subtype of brains) labels(["brain." + subtype], "brain", subtype);
 for (const subtype of cards) labels(["storyCard." + subtype, "story card " + subtype], "storyCard", subtype);
@@ -139,9 +141,13 @@ export function parseLooseMemoryOperations(text: string, allowedSourceAliases: r
     const separator = h.update && h.label.category === "storyCard" && h.label.subtype === "character" ? content.indexOf("||") : -1;
     const enduringReason = separator >= 0 ? cleanEdge(content.slice(separator + 2)) : undefined;
     if (separator >= 0) content = content.slice(0, separator).trim();
+    const loreFields = h.update && h.label.category === "storyCard" && h.label.subtype === "lore" ? content.split("||") : [];
+    const [fact, destination, reason] = loreFields.map(cleanEdge);
+    const loreAppend = loreFields.length === 3 && destination && reason ? { destination, reason } : undefined;
+    if (loreFields.length) content = fact;
     if (!h.subject || !content) { reject("Malformed operation: empty subject or factual content.", pendingSource, index); return; }
     result.operations.push({ sourceAlias: pendingSource, ...h.label, subject: h.subject, content, ordinal: index,
-      explicitCreation: h.creation, explicitUpdate: h.update, ...(enduringReason ? { enduringReason } : {}) });
+      explicitCreation: h.creation, explicitUpdate: h.update, ...(enduringReason ? { enduringReason } : {}), ...(loreAppend ? { loreAppend } : {}) });
     evaluated.add(pendingSource);
   };
   // A bracket followed by an operation head is a boundary even if the preceding block never closed.

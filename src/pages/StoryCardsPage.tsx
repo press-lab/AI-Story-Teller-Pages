@@ -17,6 +17,7 @@ const inclusionPolicies: ContextInclusionPolicy[] = ["always", "triggered", "man
 const TYPE_LABELS: Record<StoryCardType, string> = {
   character: "Character",
   location: "Location",
+  object: "Object",
   lore: "Lore",
   custom: "Custom",
 };

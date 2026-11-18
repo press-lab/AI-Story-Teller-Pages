@@ -1,5 +1,5 @@
 import { DRAFT_COMPONENT_TYPES, SINGLETON_DRAFT_TYPES, draftTargetFingerprint } from "../memory/memoryDraft";
-import { routeDatedLoreProposal, loreEventDateKey, sameLoreEventDate } from "../memory/datedLoreRouting";
+import { establishedLoreTime, routeDatedLoreProposal, loreEventDateKey, sameLoreEventDate } from "../memory/datedLoreRouting";
 import { bindPlacement } from "../memory/storyCardPlacement";
 import { isActivePressureAction, isActivePressureProposal } from "./activePressureRetirement";
 import { snapshotFingerprint } from "../utils/snapshotFingerprint";
@@ -891,7 +891,7 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal,
     if (!manualApproval) {
       if (existing && proposal.storyCardType && existing.type !== primaryStoryCardType(proposal.storyCardType)) return {};
     }
-    const changeTime = state.storyClock?.origin === "established" ? state.storyClock.current : undefined;
+    const changeTime = proposal.storyCardType === "lore" && !manualApproval ? establishedLoreTime(state, proposal) : state.storyClock?.origin === "established" ? state.storyClock.current : undefined;
     if (proposal.storyCardType === "lore" || existing?.type === "lore") {
       proposal = { ...proposal, lore: { ...proposalLore(state, proposal),
         occurredAt: existing ? existing.lore?.occurredAt : changeTime, lastChangedAt: changeTime } };
@@ -1526,7 +1526,8 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
       const prior = state.messages.at(-1);
       const duplicateTransition = message.role === "assistant" && prior?.role === "user" && state.storyClock?.sourceMessageId === prior.id
         && Boolean(transitionKey(message.content)) && transitionKey(message.content) === transitionKey(prior.content);
-      const messageTime = (duplicateTransition ? state.storyClock?.current : observed?.time) ?? (observed && !observed.flashback ? state.storyClock?.current : undefined);
+      const messageTime = (duplicateTransition ? state.storyClock?.current : observed?.time) ?? (message.inputMode !== "comms" && message.role !== "system" && !observed?.flashback
+          && state.storyClock?.origin === "established" ? state.storyClock.current : undefined);
       if (messageTime) message.storyTime = messageTime;
       const storyClock = observed?.advances && observed.time && !duplicateTransition ? { ...state.storyClock, current: observed.time, sourceMessageId: message.id, origin: transitionKey(message.content) ? state.storyClock?.origin : "established" as const, pendingReference: undefined }
         : observed?.time && !observed.advances && !observed.flashback ? { ...state.storyClock, pendingReference: observed.time.text } : state.storyClock;
@@ -2115,12 +2116,6 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
         const validation = proposal.placementValidation!;
         proposal = bindPlacement(state, proposal, { ...validation, kind: proposal.targetId ? "append" : "create" }, validation.sources.map(s => s.id));
         proposal.evaluationSource = { ...proposal.evaluationSource!, target: proposal.placementValidation?.target };
-      }
-      // Pending CREATE drafts can outlive creation of their same-day destination.
-      // Resolve them at manual approval too, while preserving explicit destinations.
-      if (!action.automatic && !proposal.targetId && !proposal.manualDraft) {
-        const routed = routeDatedLoreProposal(state, proposal);
-        if (routed.targetId) proposal = routed;
       }
       if (loreCreateTitleConflict(state, proposal))
         return fail("an equivalent Story Card title or active CREATE suggestion already exists. Select an existing card or edit the title.");

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { looseMemoryFixture, looseResponse } from "../test/looseMemory";
+import { businessDay, looseMemoryFixture, looseResponse } from "../test/looseMemory";
 import { makeBrain, makeComponent, makeStoryCard } from "../state/defaults";
 import type { Adventure, ComponentType } from "../types/adventure";
 import { prepareSinglePassMemoryBatch, parseSinglePassMemoryResponse } from "./singlePassMemory";
@@ -90,7 +90,9 @@ describe("Story Card routing", () => {
   ])("routes %s %s", async (label, subject, target, type, op) => {
     const content = type === "character" ? "Eleanor is a sixth-year Ravenclaw." : type === "location" ? "A sealed chamber lies under the western tower."
       : type === "custom" ? "The enchantment lasts for three days." : subject === "Draconia Research Meeting" ? "Draconia agreed to meet Seth tomorrow at six." : "Fred and George agreed to produce 96 rune tattoos tomorrow.";
-    const r = await routed("(" + label + ": " + subject + " = " + content + ")");
+    const r = await routed(type === "lore" && target
+      ? "(storyCard.lore.update: Production agreement = " + content + " || " + subject + " || New production commitment.)"
+      : "(" + label + ": " + subject + " = " + content + ")");
     expectFinding(r, "storyCard", type as string, target, op as string, "storyCard");
     expect(r.checked.proposals[0].proposal.placementValidation?.sources).toEqual([{ id: "narrator-1", content: r.a.messages[0].content }]);
     expect(r.result.findings[0].suggestedTriggers!.length).toBeGreaterThan(0);
@@ -104,7 +106,7 @@ describe("Story Card routing", () => {
     expect(r.result.diagnostics).toContainEqual({ index: 0, reason: expect.stringContaining("No unique strong Lore topic match") });
   });
   it("keeps protected Lore pending and suppresses an already covered fact", async () => {
-    const text = "(lore: Weasley Tattoo Business = The twins agreed to produce 96 rune tattoos tomorrow.)";
+    const text = "(storyCard.lore.update: Production agreement = The twins agreed to produce 96 rune tattoos tomorrow. || Weasley Tattoo Business || New production commitment.)";
     const protectedResult = await routed(text, a => { a.storyCards[0].protected = true; });
     expectFinding(protectedResult, "storyCard", "lore", "business", "append", "storyCard");
     const duplicate = await routed(text, a => { a.storyCards[0].content += " The twins agreed to produce 96 rune tattoos tomorrow."; });
@@ -144,7 +146,7 @@ describe("Story Card routing", () => {
   it("recovers an unclassified assignment as review-only Lore", async () => {
     const r = await routed("(Weasley Tattoo Business = Fred and George agreed to produce 96 rune tattoos tomorrow.)");
     expect(r.result.findings[0].candidateOnly).toBe(true);
-    expectFinding(r, "storyCard", "lore", "business", "append", "storyCard");
+    expectFinding(r, "storyCard", "lore", null, "create", "storyCard");
   });
 });
 describe("Component routing", () => {
@@ -214,7 +216,7 @@ it("automatically names ambiguous exact-title Lore CREATE without modifying exis
   expect(r.result.findings[0]).toMatchObject({ targetId: null, storyCardType: "lore", operation: "create", destinationCandidates: ["business", "second-business"] });
   let saved = reduce(r.a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: r.batch.checkpoints });
   saved = reduce(saved, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: r.batch.batchId, sources: [{ result: r.result, checkpoint: r.batch.checkpoints[0].checkpoint }] });
-  expect(saved.activeState.memoryProposals[0]).toMatchObject({ title: "Weasley Tattoo Business (2)", status: "approved", requiresReview: false });
+  expect(saved.activeState.memoryProposals[0]).toMatchObject({ title: "[2001-09-02] Weasley Tattoo Business", status: "approved", requiresReview: false });
   expect(saved.storyCards.slice(0, r.a.storyCards.length)).toEqual(r.a.storyCards);
   expect(saved.storyCards.at(-1)?.content).toBe("The twins agreed to ship 96 tattoos.");
 });
@@ -302,23 +304,26 @@ it("never places Quidditch facts in public relationship Lore; exact topics appen
   const unsafe = await routed(text, a => a.storyCards.push(relation));
   expectFinding(unsafe, "storyCard", "lore", null, "create", "storyCard");
   expect(unsafe.checked.proposals[0].proposal.storyCardReview!.targetCandidates).toContain("exposure");
-  const topic = makeStoryCard({ id: "quidditch", type: "lore", title: "Gryffindor Quidditch Tryouts 2001", content: "Tryouts are planned." });
-  const exact = await routed(text, a => a.storyCards.push(relation, topic));
+  const topic = makeStoryCard({ id: "quidditch", type: "lore", title: "Gryffindor Quidditch Tryouts 2001", content: "Tryouts are planned.", lore: { status: "ongoing", sourceMessageIds: [], occurredAt: businessDay } });
+  const nominated = text.replace("lore:", "storyCard.lore.update:").replace(/\)$/, " || Gryffindor Quidditch Tryouts 2001 || This adds a candidate to the tryouts.)");
+  const exact = await routed(nominated, a => a.storyCards.push(relation, topic));
   expectFinding(exact, "storyCard", "lore", topic.id, "append", "storyCard");
-  const ambiguous = await routed(text, a => a.storyCards.push(topic, { ...topic, id: "other-topic" }));
+  const ambiguous = await routed(nominated, a => a.storyCards.push(topic, { ...topic, id: "other-topic" }));
   expectFinding(ambiguous, "storyCard", "lore", null, "create", "storyCard");
   expect(ambiguous.checked.proposals[0].proposal.requiresReview).toBe(false);
 });
 it("appends different facts about the same explicitly named relationship topic", async () => {
-  const text = "(lore: Seth and Draconia's Public Exposure = Draconia publicly committed to supporting Seth's independent designs.)";
-  const r = await routed(text, a => a.storyCards.push(makeStoryCard({ id: "exposure", type: "lore", title: "Seth and Draconia's Public Exposure", content: "They wore matching rings." })));
+  const text = "(storyCard.lore.update: Public support for Seth = Draconia publicly committed to supporting Seth's independent designs. || Seth and Draconia's Public Exposure || The public commitment adds to their public exposure.)";
+  const r = await routed(text, a => a.storyCards.push(makeStoryCard({ id: "exposure", type: "lore", title: "Seth and Draconia's Public Exposure", content: "They wore matching rings.", lore: { status: "ongoing", sourceMessageIds: [], occurredAt: businessDay } })));
   expectFinding(r, "storyCard", "lore", "exposure", "append", "storyCard");
 });
 
 it.each(["create", "append"])("builds complete ordinary Lore metadata before normalization (%s)", async operation => {
   const { normalizeSinglePassFinding } = await import("./singlePassMemory");
-  const r = await routed("(lore: Archive access = The research team gained access to the library archives.)", a => {
-    a.storyCards = operation === "append" ? [makeStoryCard({ id: "archives", type: "lore", title: "Archive access", content: "The library was founded in 1700." })] : [];
+  const r = await routed(operation === "append"
+    ? "(storyCard.lore.update: Research archive access = The research team gained access to the library archives. || Archive access || The team secured access.)"
+    : "(lore: Archive access = The research team gained access to the library archives.)", a => {
+    a.storyCards = operation === "append" ? [makeStoryCard({ id: "archives", type: "lore", title: "Archive access", content: "The library was founded in 1700.", lore: { status: "ongoing", sourceMessageIds: [], occurredAt: businessDay } })] : [];
     a.messages[0].content = "The research team gained access to the library archives.";
   });
   const f = r.result.findings[0];
@@ -335,4 +340,19 @@ it.each(["location", "custom"])("does not auto-approve permanent Character chang
   const r = await routed(`(storyCard.${type}: ${type === "location" ? "Great Hall" : "Rune Tattoo System"} = ${content})`, a => { a.messages[0].content = content; });
   expect(r.checked.proposals[0].proposal.requiresReview).toBe(true);
   expect(r.checked.proposals[0].proposal.rationale).toContain("Character profile changes require Character placement");
+});
+
+it("routes Object by its exact alias and preserves the type through normalization", async () => {
+  const r = await routed("(object: prism = The prism only refracts blue light.)", a => {
+    a.storyCards.push(makeStoryCard({ id: "prism", type: "object", title: "Research prism", keys: ["prism"], content: "The prism is made of quartz." }));
+    a.messages[0].content = "The prism only refracts blue light.";
+  });
+  expectFinding(r, "storyCard", "object", "prism", "append", "storyCard");
+  const { normalizeAdventure } = await import("../state/defaults");
+  expect(normalizeAdventure(JSON.parse(JSON.stringify(r.a))).storyCards.at(-1)?.type).toBe("object");
+});
+
+it("does not authorize a Lore append from a reused title alone", async () => {
+  const r = await routed("(lore: Weasley Tattoo Business = An invitation to a research meeting was accepted.)");
+  expectFinding(r, "storyCard", "lore", null, "create", "storyCard");
 });

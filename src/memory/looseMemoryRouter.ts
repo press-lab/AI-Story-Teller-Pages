@@ -10,7 +10,7 @@ import { factsCovered } from "./factCoverage";
 
 const normalize = (s: string) => s.normalize("NFKC").toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 const brainFields = ["thoughts", "currentState", "relationshipPressure", "emotionalInterpretation", "recentDevelopments", "notes"];
-const cardTypes: StoryCardType[] = ["lore", "character", "location", "custom"];
+const cardTypes: StoryCardType[] = ["lore", "character", "location", "object", "custom"];
 const componentTypes: ComponentType[] = ["plotEssentials", "currentArc", "activePressure", "immediateMomentum", "narrationRules", "aiInstructions", "authorNote", "memory", "custom"];
 type Source = PreparedSinglePassMemoryBatch["outputAliases"][string];
 export type LooseCategory = { category: "brain" | "storyCard" | "component"; subtype: string };
@@ -88,13 +88,17 @@ export function resolveLooseDestination(a: Adventure, source: Source, op: LooseM
   }
   if (category.subtype === "character" && op.explicitUpdate) return { error: "Character correction requires an existing unique Character identity." };
   if (category.subtype === "lore") {
-    const targetId = safeLoreAppendTarget(a, { title: op.subject }) ?? null;
+    const targetId = !op.explicitCreation && op.loreAppend
+      ? safeLoreAppendTarget(a, { title: op.loreAppend.destination }) ?? null : null;
     const candidates = [...new Set([...matches.map(c => c.id), ...storyCardTargets(a, { title: op.subject, content: op.content, type: "lore" })])]
       .filter(id => cards.some(c => c.id === id));
     return { value: { category, targetId, operation: targetId ? "append" : "create", candidates,
-      ...(!targetId && candidates.length ? { diagnostic: "No unique strong Lore topic match; create focused Lore with a nonconflicting title." } : {}) } };
+      ...(!targetId && candidates.length ? { diagnostic: "No unique strong Lore topic match with an explicit nomination; create focused Lore with a nonconflicting title." } : {}) } };
   }
   const candidates = matches.map(c => c.id);
+  if (category.subtype === "object" && candidates.length > 1) return {
+    value: { category, targetId: null, operation: "create", candidates, diagnostic: "Several Object cards match; choose a destination." },
+  };
   if (candidates.length > 1) return { error: "Ambiguous " + category.subtype + " destination; no duplicate created." };
   return { value: { category, targetId: candidates.length === 1 ? candidates[0] : null,
     operation: candidates.length === 1 ? "append" : "create", candidates } };
@@ -113,7 +117,7 @@ export function buildLooseFinding(a: Adventure, source: Source, op: LooseMemoryO
   const base: SinglePassMemoryFinding = { kind, targetId: destination.targetId, title: op.subject, candidateOnly: kind === "storyCard"
     ? op.category === "unclassified" || destination.category.subtype === "character" || Boolean(destination.diagnostic)
     : kind !== "brain",
-    reason: destination.diagnostic ?? (op.category === "unclassified" ? "Unclassified assignment recovered as focused Lore." : "Extracted factual candidate; narrator provenance attached locally."),
+    reason: (destination.targetId ? op.loreAppend?.reason : undefined) ?? destination.diagnostic ?? (op.category === "unclassified" ? "Unclassified assignment recovered as focused Lore." : "Extracted factual candidate; narrator provenance attached locally."),
     evidenceQuotes, operation: destination.operation };
   if (kind === "storyCard" && destination.category.subtype === "lore" && !destination.targetId
     && a.storyCards.some(c => c.type !== "lore" && normalize(c.title) === normalize(op.subject))) {

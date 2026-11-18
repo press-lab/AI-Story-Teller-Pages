@@ -36,7 +36,7 @@ function related(left: string, right: string): boolean {
  */
 export function storyCardMeaningReviewReason(finding: SinglePassMemoryFinding, evidence: readonly { content: string }[]): string | undefined {
   const proposed = finding.content ?? "";
-  if (["location", "custom"].includes(finding.storyCardType ?? "") && /\b(?:permanently|enduring (?:profile|trait)|personality|voice contract)\b/i.test(proposed)
+  if (["location", "object", "custom"].includes(finding.storyCardType ?? "") && /\b(?:permanently|enduring (?:profile|trait)|personality|voice contract)\b/i.test(proposed)
     && finding.participants?.length) return "Character profile changes require Character placement and author review.";
   const source = evidence.flatMap(e => e.content.split(/(?<=[.!?])\s+|\n+/)).filter(Boolean);
   const clauses = proposed.split(/(?<=[.!?])\s+|;\s*|\s+(?:and|but)\s+/i).filter(Boolean);

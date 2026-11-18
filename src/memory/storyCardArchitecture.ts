@@ -3,12 +3,12 @@ import { formatStoryTime } from "./storyTime";
 import { resolveLoreEventDate } from "./validateLoreChronology";
 import { approximateTokenCount } from "../tokenizer/approximateTokenCount";
 
-export const PRIMARY_STORY_CARD_TYPES = ["character", "location", "lore", "custom"] as const;
+export const PRIMARY_STORY_CARD_TYPES = ["character", "location", "object", "lore", "custom"] as const;
 
 /** Legacy values are accepted at data boundaries, never offered as creation choices. */
 export function primaryStoryCardType(type: string | undefined): StoryCardType {
   if (type === "plot" || type === "event") return "lore";
-  return type === "character" || type === "location" || type === "lore" ? type : "custom";
+  return type === "character" || type === "location" || type === "object" || type === "lore" ? type : "custom";
 }
 
 export function isHistoricalLore(card: Pick<StoryCard, "memoryMode" | "eventMemory"> & { type: StoryCardType | LegacyStoryCardType }): boolean {

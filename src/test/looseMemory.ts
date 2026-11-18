@@ -3,7 +3,7 @@ import type { Message } from "../types/adventure";
 /** Synthetic data; never copied from synchronized user saves. */
 export const looseResponse = [
   "S1",
-  "(storyCard.lore: Weasley Tattoo Business = Fred and George agreed to produce 96 rune tattoos tomorrow.",
+  "(storyCard.lore.update: Rune tattoo production agreement = Fred and George agreed to produce 96 rune tattoos tomorrow. || Weasley Tattoo Business || This adds the order quantity to the existing business.",
   "(brain: George Weasley = I believe the business can grow beyond individual customers.)",
   "S2",
   "(storyCard.character: Eleanor Vale = Eleanor is a sixth-year Ravenclaw specializing in experimental enchantments.)",
@@ -17,13 +17,14 @@ export const looseNarrations = [
   "Eleanor Vale is a sixth-year Ravenclaw specializing in experimental enchantments. The Observatory Annex contains a sealed underground chamber.",
   "Draconia agreed to meet Seth tomorrow at six. The meeting has not occurred. The Ministry expects the research report tomorrow.",
 ];
+export const businessDay = { text: "2001-09-02", date: "2001-09-02", precision: "day" } as const;
 export function looseMemoryFixture(withSources = true) {
   const a = createDefaultAdventure("Synthetic loose memory routing");
   a.memoryDetectionSettings = { ...a.memoryDetectionSettings, pipeline: "singlePass", enabled: true, everyNTurns: 1, generateContent: true };
   a.memoryAutoApprove.loreStoryCard = true; a.memoryAutoApprove.otherStoryCard = true; a.memoryAutoApprove.brainUpdate = true; a.memoryAutoApprove.plotEssentialsUpdate = true;
 
   a.storyCards = [
-    makeStoryCard({ id: "business", title: "Weasley Tattoo Business", type: "lore", keys: ["rune tattoos", "tattoo business"], content: "Fred and George run a tattoo business." }),
+    makeStoryCard({ id: "business", title: "Weasley Tattoo Business", type: "lore", keys: ["rune tattoos", "tattoo business"], content: "Fred and George run a tattoo business.", lore: { status: "ongoing", sourceMessageIds: [], occurredAt: businessDay } }),
     ...["Fred Weasley", "George Weasley", "Draconia Malfoy"].map(name => makeStoryCard({
       id: name.split(" ")[0].toLowerCase(), title: name, type: "character", keys: [name, name.split(" ")[0]], content: name + " is an established student.",
     })),
@@ -39,7 +40,7 @@ export function looseMemoryFixture(withSources = true) {
     makeComponent({ id: "arc", title: "Research Arc", type: "currentArc", active: true, autoUpdate: true, arcPremise: "Investigate magical research.", content: "The investigation began." }),
   ];
   a.messages = withSources ? looseNarrations.map((content, index): Message => ({ id: "narrator-" + (index + 1), role: "assistant", content,
-    createdAt: "2000-01-01", inputMode: "story", memoryEvaluation: { pipeline: "singlePass", status: "pending", attempts: 0, turn: index + 1,
+    createdAt: "2000-01-01", storyTime: index === 0 ? businessDay : undefined, inputMode: "story", memoryEvaluation: { pipeline: "singlePass", status: "pending", attempts: 0, turn: index + 1,
       revision: "revision-" + index, completedGroups: [] } })) : [];
   return { a, ids: a.messages.map(m => m.id) };
 }

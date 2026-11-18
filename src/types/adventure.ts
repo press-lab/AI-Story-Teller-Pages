@@ -343,7 +343,7 @@ export interface ComponentEntry {
   updatedAt: ISODateString;
 }
 
-export type PrimaryStoryCardType = "character" | "location" | "lore" | "custom";
+export type PrimaryStoryCardType = "character" | "location" | "object" | "lore" | "custom";
 /** Read compatibility only; normalized cards always use a primary type. */
 export type LegacyStoryCardType = "plot" | "event" | "faction";
 export type StoryCardType = PrimaryStoryCardType;

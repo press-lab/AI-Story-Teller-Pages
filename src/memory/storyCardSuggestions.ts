@@ -17,7 +17,7 @@ END STORY CARD MEMORY CHECK`;
 /** Eligibility policy only. Each caller supplies its own array, object or envelope contract. */
 export const STORY_CARD_MEMORY_CHECK = `${SHARED_STORY_MEMORY_POLICY}\nUncertain Story Card candidates require candidateOnly=true,eventStatus=unresolved. Never suggest Plot Component updates.`;
 
-export const STORY_CARD_OUTPUT_SCHEMA = `Story Card fields: kind=lore (events/changes), newCard (missing subject), card (existing subject); cardType=lore|character|location|custom; operation=CREATE|APPEND; target=title; targetId=existing ID for UPDATE; content=new fact, max70 words; evidence=exact quote; reason; triggers=3-6 short reusable topic phrases covering the card's subjects, activities and concepts (for example "runic research", "ward design", "government reform"). Use ordinary future wording, not exact scene sentences or only the full title; never leave triggers empty. Avoid unrelated catch-all words and bare participant names on Lore. Optional participants. Return only new factual deltas; never a replacement body. Shared maximum: four updates.`;
+export const STORY_CARD_OUTPUT_SCHEMA = `Story Card fields: kind=lore (events/changes), newCard (missing subject), card (existing subject); cardType=lore|character|location|object|custom; operation=CREATE|APPEND; target=title; targetId=existing ID for UPDATE; content=new fact, max70 words; evidence=exact quote; reason; triggers=3-6 short reusable topic phrases covering the card's subjects, activities and concepts (for example "runic research", "ward design", "government reform"). Use ordinary future wording, not exact scene sentences or only the full title; never leave triggers empty. Avoid unrelated catch-all words and bare participant names on Lore. Optional participants. Return only new factual deltas; never a replacement body. Shared maximum: four updates.`;
 
 export const normalizeMemoryText = (text: string) => text.normalize("NFKC").toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 const stop = new Set("the a an and but then now later today tomorrow yesterday i you he she they we it his her their our my your yes no january february march april may june july august september october november december monday tuesday wednesday thursday friday saturday sunday ministry current story date flashback candidate first possible political ordinary dinner breakfast lunch evening morning night meanwhile suddenly after before nearby fuck silver".split(" "));
@@ -134,6 +134,10 @@ export function storyCardTargets(adventure: Adventure, finding: { title: string;
   const identityTerms = new Set(participants.flatMap(name => normalizeMemoryText(name).split(" ")));
   const terms = new Set([...titleWords(text)].filter(word => !identityTerms.has(word)));
   const ranked = adventure.storyCards.map(card => {
+    if (card.type === "object") {
+      const named = [card.title, ...card.keys].some(name => normalizeMemoryText(name) === normalizeMemoryText(finding.title));
+      return { card, score: finding.type === "object" && (finding.targetId === card.id || named) ? 200 : 0 };
+    }
     if (card.type === "character" || card.type === "location") {
       return { card, score: finding.type === card.type && (finding.targetId === card.id || normalizeMemoryText(finding.title) === normalizeMemoryText(card.title)) ? 200 : 0 };
     }
@@ -217,7 +221,7 @@ export function equivalentStoryCardSuggestions(a: MemoryProposal, b: MemoryPropo
     return loreFactsCovered(a.content, [b.content]) && loreFactsCovered(b.content, [a.content]);
   }
   const ar = a.storyCardReview, br = b.storyCardReview;
-  if (["character", "location", "custom"].includes(a.storyCardType ?? "lore") && !a.targetId && !b.targetId && normalizeMemoryText(a.title) === normalizeMemoryText(b.title)) return true;
+  if (["character", "location", "object", "custom"].includes(a.storyCardType ?? "lore") && !a.targetId && !b.targetId && normalizeMemoryText(a.title) === normalizeMemoryText(b.title)) return true;
   const exact = factsCovered(a.content, [b.content]) && factsCovered(b.content, [a.content]);
   if (exact && (normalizeMemoryText(a.title) === normalizeMemoryText(b.title) || Boolean(a.targetId && a.targetId === b.targetId) || Boolean(ar?.eventKind && ar.eventKind === br?.eventKind && ar.participants.length && ar.participants.every(name => br.participants.includes(name))))) return true;
   if (!ar || !br || ar.sourceMessageId !== br.sourceMessageId) return false;

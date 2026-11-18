@@ -31,7 +31,7 @@ export function parseDiscoveryCandidate(raw: unknown): { candidate: MemoryDiscov
       kind: typeof event.kind === "string" ? event.kind : undefined };
   }
   if (!candidate.title || !candidate.content || typeof item.content !== "string" || item.content.length > 4000 || String(item.title).trim().length > 160
-    || !["lore", "character", "location", "custom", "event", "plot", "faction"].includes(String(item.storyCardType ?? "lore"))) {
+    || !["lore", "character", "location", "object", "custom", "event", "plot", "faction"].includes(String(item.storyCardType ?? "lore"))) {
     return { candidate, error: { code: "discovery_candidate_schema_invalid", reason: "Discovery candidate has invalid title, content or card type." } };
   }
   return { candidate };

@@ -63,7 +63,7 @@ export function StoryCardTriggerCleanup({ adventure, dispatch, providerConfig, l
     <summary>Clean up trigger phrases with AI</summary>
     <p>The title already triggers recall. Review natural alternate names and memorable event references without changing card content. Custom includes factions and organizations.</p>
     <label>Cards to review <select aria-label="Trigger cleanup category" value={scope} disabled={running} onChange={event => setScope(event.target.value as typeof scope)}>
-      <option value="all">All Story Cards</option><option value="character">Character</option><option value="location">Location</option><option value="lore">Lore</option><option value="custom">Custom (including factions)</option>
+      <option value="all">All Story Cards</option><option value="character">Character</option><option value="location">Location</option><option value="object">Object</option><option value="lore">Lore</option><option value="custom">Custom (including factions)</option>
     </select></label>
     {setup ? <p className="muted">{setup.cards.length} cards selected; {setup.plan.batches.length} sequential AI requests; approximately {setup.plan.estimatedInputTokens.toLocaleString()} input tokens, plus output. Uses the background provider when configured. {setup.plan.skipped.length} cards require manual review. Full card text is sent; none is truncated.</p>
       : <p role="alert">Correct the background provider settings before running cleanup.</p>}

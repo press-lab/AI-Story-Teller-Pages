@@ -1,3 +1,4 @@
+import { PRIMARY_STORY_CARD_TYPES } from "../memory/storyCardArchitecture";
 import { MemorySuggestionBuilder } from "./MemorySuggestionBuilder";
 import type { MemoryDraftRequest, ProviderConfig } from "../types/adventure";
 import { storyCardAutoApprovalBlockers } from "../memory/storyCardAutoApproval";
@@ -26,7 +27,7 @@ const proposalTypes: MemoryProposalType[] = [
   "plotMomentumUpdate",
   "ignore",
 ];
-const storyCardTypes: StoryCardType[] = ["character", "location", "lore", "custom"];
+const storyCardTypes = PRIMARY_STORY_CARD_TYPES;
 
 interface MemoryInboxPageProps extends AdventurePageProps {
   onCreateDraft?: (request: MemoryDraftRequest) => Promise<boolean>;
