@@ -7,7 +7,7 @@ import { memoryBatchProvider, sendMemoryCompletion } from "../providers/memoryCo
 import { generatedStoryCardTriggers } from "./resolveMemoryTarget";
 import { storyCardContextContent } from "./storyCardPolicy";
 import { createId } from "../utils/id";
-import { originalLoreEvidence } from "./datedLoreRouting";
+import { originalLoreEvidence, sameDayLoreCards } from "./datedLoreRouting";
 import { parseLooseMemoryOperations } from "./looseMemoryParser";
 import { routeLooseMemoryOperations } from "./looseMemoryRouter";
 
@@ -31,7 +31,9 @@ export function singlePassReferenceState(a: Adventure, sourceId: string): string
     activeState: { ...a.activeState, turn: a.messages.find(m => m.id === sourceId)?.memoryEvaluation?.turn ?? a.activeState.turn },
     semanticEvaluationSettings: { ...a.semanticEvaluationSettings, messagesIncluded: memoryEvidenceWindow(a, sourceId).length } };
   const conditions = buildMemoryAssessmentConditions(snapshot);
-  return snapshotFingerprint(JSON.stringify([assessmentSourceState(snapshot, sourceId, conditions), memoryDecisionState(snapshot, sourceId), snapshot.components.filter(c => c.type === "immediateMomentum").map(({ memoryUpdateHistory: _history, ...c }) => c),
+  return snapshotFingerprint(JSON.stringify([assessmentSourceState(snapshot, sourceId, conditions), memoryDecisionState(snapshot, sourceId),
+    sameDayLoreCards(a, sourceId).map(card => [card.id, card.title, card.content, card.lore?.occurredAt, originalLoreEvidence(snapshot, card)]),
+    snapshot.components.filter(c => c.type === "immediateMomentum").map(({ memoryUpdateHistory: _history, ...c }) => c),
     snapshot.brains.filter(b => conditions.brains.some(c => c.id === `brain:${b.id}`)).map(b => {
       const card = singlePassCharacterCard(snapshot, b);
       return card ? { brainId: b.id, id: card.id, title: card.title, keys: card.keys, content: card.content } : { brainId: b.id };
@@ -43,6 +45,7 @@ export interface PreparedSinglePassMemoryBatch {
   outputAliases: Record<string, { sourceId: string; sourceTurn: number;
     evidence: Record<string, { id: string; reference: number }>;
     cards: Record<string, { id: string; reference: number; type: string; memoryMode?: SinglePassMemoryFinding["memoryMode"] }>;
+    lore?: Record<string, { id: string; reference: number }>;
     brains: Record<string, { id: string; reference: number; type: "brain" }>;
     plot: Record<string, { id: string; reference: number; type: string }> }>;
   payload: { references: unknown[]; sources: unknown[] };
@@ -94,14 +97,18 @@ export async function prepareSinglePassMemoryBatch(a: Adventure, ids: readonly s
     checkpoints.push({ sourceId: source.id, checkpoint: { batchId, sourceContent: source.content, sourceRevision: source.memoryEvaluation?.revision,
       evidence: inputs.evidence.map(({ id, content }) => ({ id, content })), referenceState: singlePassReferenceState(a, source.id),
       status: "running", findings: [], dispositions: [], acceptedCount: 0, rejectedCount: 0, suppressedCount: 0, reviewCount: 0 } });
+    const lore = Object.fromEntries(sameDayLoreCards(a, source.id).map((card, i) => [`L${i + 1}`, {
+      id: card.id, reference: pool({ title: card.title, day: card.lore?.occurredAt,
+        recentDevelopments: card.content.slice(-1200), originalEvidence: originalLoreEvidence(snapshot, card) }),
+    }]));
     outputAliases[`S${sources.length + 1}`] = {
-      sourceId: source.id, sourceTurn: source.memoryEvaluation!.turn,
+      sourceId: source.id, sourceTurn: source.memoryEvaluation!.turn, lore,
       evidence: Object.fromEntries(inputs.evidence.map((e, i) => [`E${i + 1}`, { id: e.id, reference: pool(e) }])),
       cards: Object.fromEntries(inputs.currentCards.map((c, i) => [`C${i + 1}`, { id: c.id, reference: pool(c), type: c.type, memoryMode: c.memoryMode }])),
       brains: Object.fromEntries(brains.map((b, i) => [`B${i + 1}`, { id: b.id, reference: pool(b), type: "brain" as const }])),
       plot: Object.fromEntries(plot.map((p, i) => [`P${i + 1}`, { id: p.id, reference: pool({ ...p, title: snapshot.components.find(c => c.id === p.id)?.title }), type: p.type }])),
     };
-    sources.push({ sourceId: source.id, conditions,
+    sources.push({ sourceId: source.id, conditions, sameDayLore: lore,
       evidence: inputs.evidence.map(pool), canon: inputs.canon.map(entry => {
         const card = inputs.currentCards.find(c => entry.content === "Canon story card: " + c.title + "\n" + c.content);
         if (card) return pool({ role: entry.role, prefix: "Canon story card: " + card.title + "\n", reference: pool(card) });
@@ -125,7 +132,7 @@ Use names and topic titles. The application resolves destinations, evidence, tri
 Categories:
 brain: consider EVERY eligible existing Brain whose character directly participated in, witnessed, or demonstrably learned about the latest development. Subject is the character's name. Use established personality/voice from personalityReference and existing Brain state. Write a meaningful NEW private observation, interpretation, intention, reaction, changed belief or revised judgment in that character's first-person voice: what does this privately mean to them? Incremental changes qualify; a major personality transformation is unnecessary. Prefer subtype thoughts. Alternatives currentState, relationshipPressure, emotionalInterpretation, recentDevelopments, notes remain available for a distinct state change; recentDevelopments is NOT a transcript-summary field. Never create Brains.
 Never copy dialogue into thoughts, rewrite narration in first person without private meaning, record location or scene participation, repeat existing thoughts in different words, or invent feelings to force an update. Never grant knowledge of unwitnessed events without evidence of learning them. Return no Brain update when nothing meaningful changed.
-storyCard: default subtype lore. Lore records consequential events, agreements, plans, discoveries and shared developments. Compare each candidate fact against provided Story Cards and considered suggestions; output ONLY information not already recorded or considered. One ongoing conversation is one development unless a new decision, consequence or fact changes it. Do not record conversational restatements or create a new event because an old event is discussed again. Preserve genuinely new consequences and commitments. Plans, invitations, attempts, offers, accepted agreements and completed outcomes are distinct. Return NONE when no new durable information exists. Give every Lore fact a standalone subject. Use storyCard.lore.create for a new event. Use (storyCard.lore.update: Standalone title = New fact || Exact existing Lore title || Exact complete sentence quoted from originalEvent.evidence followed by what this fact changes about the titled event) only for a direct continuation. A later story day starts a new Lore entry. Shared participants do not establish continuity. Appended content cannot redefine the original event. If original evidence does not support the titled event, create focused Lore. Object, Location and Custom updates may use the same fact || destination || reason fields. A participant's biography is not the event destination.
+storyCard: default subtype lore. Lore records consequential events, agreements, plans, discoveries and shared developments. Compare each candidate fact against provided Story Cards and considered suggestions; output ONLY information not already recorded or considered. One ongoing conversation is one development unless a new decision, consequence or fact changes it. Do not record conversational restatements or create a new event because an old event is discussed again. Preserve genuinely new consequences and commitments. Plans, invitations, attempts, offers, accepted agreements and completed outcomes are distinct. Return NONE when no new durable information exists. Give every Lore fact a standalone subject. Use storyCard.lore.create for a new event. Use (storyCard.lore.update: Standalone title = New fact || L1 || Explain how this fact continues the original event) for a direct continuation of a card in this source’s sameDayLore list. Use the listed alias for that source. If the continuation destination is uncertain, use ? in place of the alias and explain the ambiguity. A distinct event on the same day gets its own entry. A later story day starts a new Lore entry. Shared participants do not establish continuity. Appended content cannot redefine the original event. If original evidence does not support the titled event, create focused Lore. Object, Location and Custom updates may use the same fact || destination || reason fields. A participant's biography is not the event destination.
 storyCard.character: a genuinely missing person's enduring identity. Existing profiles are protected. Only an explicit evidenced enduring correction uses storyCard.character.update, with a specific explanation after ||. Never infer permanence from a single scene.
 storyCard.location: enduring properties of a place, not a one-time event there.
 storyCard.object: enduring identity, capabilities, and limits of a named object. Events involving it belong in Lore.
@@ -159,7 +166,7 @@ export function buildSinglePassMemoryMessages(batch: PreparedSinglePassMemoryBat
 }
 const object = (v: unknown): v is Record<string, unknown> => Boolean(v) && typeof v === "object" && !Array.isArray(v);
 const nonempty = (v: unknown): v is string => typeof v === "string" && Boolean(v.trim());
-const findingKeys = ["kind", "targetId", "title", "content", "brainPatch", "reason", "evidenceQuotes", "candidateOnly", "storyCardType", "operation", "memoryMode", "eventStatus", "suggestedTriggers", "participants", "identityChange", "destinationCandidates"];
+const findingKeys = ["kind", "targetId", "title", "content", "brainPatch", "reason", "evidenceQuotes", "candidateOnly", "storyCardType", "operation", "memoryMode", "eventStatus", "suggestedTriggers", "participants", "identityChange", "destinationCandidates", "loreContinuation"];
 /** Recover metadata only. Never create facts, evidence, patches, or target IDs. */
 export function normalizeSinglePassFinding(v: unknown, sourceId: string, adventure?: Adventure, diagnostics: string[] = []): SinglePassMemoryFinding | undefined {
   if (!object(v)) return undefined;
@@ -194,9 +201,10 @@ export function normalizeSinglePassFinding(v: unknown, sourceId: string, adventu
 }
 /** Structural checks only. Exact quotation is not proof of the model's interpretation. */
 export function singlePassFindingSchemaError(v: unknown): string | undefined {
-  if (!object(v) || Object.keys(v).some(key => !["kind", "targetId", "title", "content", "brainPatch", "reason", "evidenceQuotes", "candidateOnly", "storyCardType", "operation", "memoryMode", "eventStatus", "suggestedTriggers", "participants", "identityChange", "destinationCandidates"].includes(key)) || !["storyCard", "brain", "plotEssentials", "activePressure", "currentArc", "immediateMomentum"].includes(String(v.kind))
+  if (!object(v) || Object.keys(v).some(key => !["kind", "targetId", "title", "content", "brainPatch", "reason", "evidenceQuotes", "candidateOnly", "storyCardType", "operation", "memoryMode", "eventStatus", "suggestedTriggers", "participants", "identityChange", "destinationCandidates", "loreContinuation"].includes(key)) || !["storyCard", "brain", "plotEssentials", "activePressure", "currentArc", "immediateMomentum"].includes(String(v.kind))
     || !(v.targetId === null || nonempty(v.targetId)) || !nonempty(v.title) || !nonempty(v.reason) || typeof v.candidateOnly !== "boolean"
     || !Array.isArray(v.evidenceQuotes) || !v.evidenceQuotes.length || v.evidenceQuotes.some(q => !object(q) || !nonempty(q.messageId) || !nonempty(q.quote))) return "Missing or invalid required finding fields.";
+  if (v.loreContinuation !== undefined && v.loreContinuation !== "identified" && v.loreContinuation !== "review") return "Invalid Lore continuation flag.";
   if (v.destinationCandidates !== undefined && (!Array.isArray(v.destinationCandidates) || v.destinationCandidates.some(id => !nonempty(id)))) return "Invalid destination candidates.";
   if (v.kind === "brain") {
     if (!object(v.brainPatch) || !Object.keys(v.brainPatch).length || Object.entries(v.brainPatch).some(([key, value]) =>

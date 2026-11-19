@@ -110,7 +110,7 @@ describe("Active Pressure retirement", () => {
     expect(result.rejected).toEqual([]);
     expect(result.failureReason).toBeUndefined();
     expect(result.findings).toHaveLength(1);
-    expect(result.findings[0]).toMatchObject({ kind: "storyCard", operation: "create", targetId: null });
+    expect(result.findings[0]).toMatchObject({ kind: "storyCard", operation: "append", targetId: "business" });
   });
 
   it("skips disabled component imports and keeps valid siblings", () => {

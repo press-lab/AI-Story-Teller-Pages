@@ -34,6 +34,12 @@ function dayKey(time?: StoryTime): string | undefined {
     : undefined;
 }
 
+export function sameDayLoreCards(a: Adventure, sourceTurnId: string): StoryCard[] {
+  const sourceDay = dayKey(establishedLoreTime(a, { sourceTurnId }));
+  if (!sourceDay) return [];
+  return a.storyCards.filter(card => card.type === "lore" && dayKey(card.lore?.occurredAt) === sourceDay);
+}
+
 export function loreAppendDayError(a: Adventure, p: MemoryProposal): string | undefined {
   if (p.proposedType !== "storyCard" || !p.targetId || p.userInitiated) return undefined;
   const target = a.storyCards.find(card => card.id === p.targetId && card.type === "lore");
@@ -85,7 +91,17 @@ export function loreOriginalEventError(a: Adventure, p: MemoryProposal): string 
   const cardDay = dayKey(target.lore?.occurredAt);
   if (!originalDay || !cardDay || originalDay !== cardDay)
     return "Original Lore source date is missing or conflicts with its occurrence date.";
-  const reason = p.placementValidation?.reason ?? p.rationale;
+  const placement = p.placementValidation;
+  const incoming = a.messages.find(message => message.id === p.sourceTurnId);
+  if (placement?.loreOriginalSourceId) {
+    const originalIndex = a.messages.findIndex(message => message.id === original.id);
+    const incomingIndex = incoming ? a.messages.indexOf(incoming) : -1;
+    if (placement.loreOriginalSourceId === original.id && originalIndex >= 0 && originalIndex <= incomingIndex
+      && placement.sources.some(source => source.id === original.id && source.content === original.content)
+      && placement.sources.some(source => source.id === incoming?.id && source.content === incoming.content)) return undefined;
+    return "The bound Lore evidence no longer matches the original event and incoming turn.";
+  }
+  const reason = placement?.reason ?? p.rationale;
   const sentences = original.content.split(/[.!?\n]+/).map(text => text.trim());
   if (!sentences.some(sentence => sentence.length >= 24 && reason.includes(sentence)))
     return "Lore append needs an exact original-event quote and a continuity explanation.";

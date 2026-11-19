@@ -6,7 +6,8 @@ import { validateSinglePassSource } from "./singlePassMemoryValidation";
 import { safeLoreAppendTarget, storyCardTargets } from "./storyCardSuggestions";
 import { matchingStoryCardEntities, characterParticipants } from "./storyCardEntities";
 import { generatedStoryCardTriggers } from "./resolveMemoryTarget";
-import { factsCovered } from "./factCoverage";
+import { sameDayLoreCards } from "./datedLoreRouting";
+import { factsCovered, loreSubjectKey } from "./factCoverage";
 
 const normalize = (s: string) => s.normalize("NFKC").toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 const brainFields = ["thoughts", "currentState", "relationshipPressure", "emotionalInterpretation", "recentDevelopments", "notes"];
@@ -21,6 +22,7 @@ export interface LooseDestination {
   candidates?: string[];
   diagnostic?: string;
   suppressed?: boolean;
+  loreContinuation?: "identified" | "review";
 }
 type Resolution<T> = { value: T; error?: never } | { value?: never; error: string };
 
@@ -88,12 +90,25 @@ export function resolveLooseDestination(a: Adventure, source: Source, op: LooseM
   }
   if (category.subtype === "character" && op.explicitUpdate) return { error: "Character correction requires an existing unique Character identity." };
   if (category.subtype === "lore") {
-    const targetId = !op.explicitCreation && op.loreAppend
-      ? safeLoreAppendTarget(a, { title: op.loreAppend.destination }) ?? null : null;
-    const candidates = [...new Set([...matches.map(c => c.id), ...storyCardTargets(a, { title: op.subject, content: op.content, type: "lore" })])]
-      .filter(id => cards.some(c => c.id === id));
-    return { value: { category, targetId, operation: targetId ? "append" : "create", candidates,
-      ...(!targetId && candidates.length ? { diagnostic: "No unique strong Lore topic match with an explicit nomination; create focused Lore with a nonconflicting title." } : {}) } };
+    const sameDay = sameDayLoreCards(a, source.sourceId);
+    const exact = sameDay.filter(card => loreSubjectKey(card) === loreSubjectKey({ title: op.subject }));
+    const nomination = op.loreAppend?.destination;
+    const alias = nomination && /^L\d+$/i.test(nomination) ? nomination.toUpperCase() : undefined;
+    const aliasedCard = alias ? source.lore?.[alias] : undefined;
+    const aliasTarget = aliasedCard ? sameDay.find(card => card.id === aliasedCard.id) : undefined;
+    const fallback = !nomination && exact.length === 1 ? exact[0] : undefined;
+    const legacyTarget = nomination && !alias && nomination !== "?" ? safeLoreAppendTarget(a, { title: nomination }) : undefined;
+    const targetId = op.explicitCreation ? null : aliasTarget?.id ?? fallback?.id ?? legacyTarget ?? null;
+    const unresolvedContinuation = !op.explicitCreation && !targetId && Boolean(nomination || op.explicitUpdate || exact.length > 1);
+    const candidates = [...new Set([
+      ...exact.map(card => card.id), ...matches.map(card => card.id),
+      ...storyCardTargets(a, { title: op.subject, content: op.content, type: "lore" }),
+      ...(unresolvedContinuation ? sameDay.map(card => card.id) : []),
+    ])].filter(id => cards.some(card => card.id === id));
+    const diagnostic = unresolvedContinuation ? "Lore continuation needs a destination. Select the existing event or confirm a new event."
+      : !targetId && candidates.length && !op.explicitCreation ? "No unique strong Lore topic match; create focused Lore with a nonconflicting title." : undefined;
+    return { value: { category, targetId, operation: targetId ? "append" : "create", candidates, diagnostic,
+      loreContinuation: targetId && aliasTarget ? "identified" : unresolvedContinuation || (targetId && fallback) ? "review" : undefined } };
   }
   const candidates = matches.map(c => c.id);
   if (category.subtype === "object" && candidates.length > 1) return {
@@ -117,7 +132,8 @@ export function buildLooseFinding(a: Adventure, source: Source, op: LooseMemoryO
   const base: SinglePassMemoryFinding = { kind, targetId: destination.targetId, title: op.subject, candidateOnly: kind === "storyCard"
     ? op.category === "unclassified" || destination.category.subtype === "character" || Boolean(destination.diagnostic)
     : kind !== "brain",
-    reason: (destination.targetId ? op.loreAppend?.reason : undefined) ?? destination.diagnostic ?? (op.category === "unclassified" ? "Unclassified assignment recovered as focused Lore." : "Extracted factual candidate; narrator provenance attached locally."),
+    reason: (destination.targetId ? op.loreAppend?.reason : undefined) ?? destination.diagnostic ?? (destination.loreContinuation === "review" && destination.targetId
+      ? "The subject and story day match an existing Lore card. Confirm that this continues the same event." : undefined) ?? (op.category === "unclassified" ? "Unclassified assignment recovered as focused Lore." : "Extracted factual candidate; narrator provenance attached locally."),
     evidenceQuotes, operation: destination.operation };
   if (kind === "storyCard" && destination.category.subtype === "lore" && !destination.targetId
     && a.storyCards.some(c => c.type !== "lore" && normalize(c.title) === normalize(op.subject))) {
@@ -143,6 +159,7 @@ export function buildLooseFinding(a: Adventure, source: Source, op: LooseMemoryO
       // An attached source proves provenance, not completion. Preserve all factual modality in content.
       base.eventStatus = "unresolved";
       base.destinationCandidates = destination.candidates;
+      if (destination.loreContinuation) base.loreContinuation = destination.loreContinuation;
       if (base.storyCardType === "character" && card && op.explicitUpdate && op.enduringReason) {
         base.identityChange = { targetId: card.id, kind: "profile", fact: op.content, reason: op.enduringReason, evidenceQuotes };
       }

@@ -1,4 +1,4 @@
-import { routeDatedLoreProposal } from "./datedLoreRouting";
+import { originalLoreEvidence, routeDatedLoreProposal } from "./datedLoreRouting";
 import { storyCardMeaningReviewReason } from "./storyCardMeaningReview";
 import type { Adventure, MemoryProposal, SinglePassMemoryCheckpoint, SinglePassMemoryFinding, SinglePassMemorySourceResult } from "../types/adventure";
 import { bindPlacement, characterProfileChangeError, placementValidationError } from "./storyCardPlacement";
@@ -86,7 +86,11 @@ export function toSinglePassProposal(a: Adventure, sourceId: string, checkpoint:
       additionalSources: checkpoint.evidence.filter(m => ids.includes(m.id) && m.id !== sourceId) };
     if (f.storyCardType === "object" && f.candidateOnly) p.requiresReview = true;
     p = routeDatedLoreProposal(a, p);
-    p = bindPlacement(a, p, { kind: p.targetId ? "append" : "create", reason: f.reason, newFact: f.content!, identityChange: f.identityChange }, ids);
+    if (f.storyCardType === "lore" && f.loreContinuation === "review") p.requiresReview = true;
+    const loreTarget = f.loreContinuation === "identified" && p.targetId && a.storyCards.find(card => card.id === p.targetId && card.type === "lore");
+    const original = loreTarget ? originalLoreEvidence(a, loreTarget)[0] : undefined;
+    p = bindPlacement(a, p, { kind: p.targetId ? "append" : "create", reason: f.reason, newFact: f.content!, identityChange: f.identityChange,
+      ...(original ? { loreOriginalSourceId: original.id } : {}) }, original ? [...ids, original.id] : ids);
   } else {
     const types = { brain: "brainUpdate", plotEssentials: "plotEssentialsUpdate", activePressure: "plotPressureUpdate", currentArc: "currentArcUpdate", immediateMomentum: "plotMomentumUpdate" } as const;
     p = { id: createId("proposal"), sourceTurnId: sourceId, sourceText: f.evidenceQuotes.map(q => q.quote).join("\n"), proposedType: types[f.kind],

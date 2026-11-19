@@ -130,6 +130,7 @@ export interface SinglePassMemoryFinding {
   storyCardType?: StoryCardType;
   operation?: "append" | "create" | "replace" | "patch";
   destinationCandidates?: string[];
+  loreContinuation?: "identified" | "review";
   memoryMode?: StoryCardMemoryMode;
   eventStatus?: "completed" | "ongoing" | "unresolved";
   suggestedTriggers?: string[];
@@ -730,6 +731,7 @@ export interface MemoryPlacementValidation {
   fingerprint: string;
   sources: Array<{ id: string; content: string }>;
   target?: MemoryTargetSnapshot;
+  loreOriginalSourceId?: string;
   identityChange?: { targetId: string; kind: "correction" | "transformation" | "profile"; fact: string; reason?: string;
     evidenceQuotes: Array<{ messageId: string; quote: string }>; supportingLore?: string };
 }

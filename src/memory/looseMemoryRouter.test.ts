@@ -25,7 +25,7 @@ function expectFinding(r: Awaited<ReturnType<typeof routed>>, kind: string, subt
   if (kind === "storyCard") expect(f.storyCardType).toBe(subtype);
   if (kind === "brain") expect(Object.keys(f.brainPatch!)).toEqual([subtype]);
   expect(r.checked.proposals).toHaveLength(1);
-  expect(r.checked.proposals[0].proposal).toMatchObject({ proposedType: proposalType, requiresReview: (kind !== "storyCard" && candidateOnly) || Boolean(r.a.brains.find(b => b.id === id)?.protected), status: "pending" });
+  expect(r.checked.proposals[0].proposal).toMatchObject({ proposedType: proposalType, requiresReview: f.loreContinuation === "review" || (kind !== "storyCard" && candidateOnly) || Boolean(r.a.brains.find(b => b.id === id)?.protected), status: "pending" });
   expect(r.checked.proposals[0].proposal.targetId ?? null).toBe(id);
 }
 describe("Brain routing", () => {
@@ -146,7 +146,7 @@ describe("Story Card routing", () => {
   it("recovers an unclassified assignment as review-only Lore", async () => {
     const r = await routed("(Weasley Tattoo Business = Fred and George agreed to produce 96 rune tattoos tomorrow.)");
     expect(r.result.findings[0].candidateOnly).toBe(true);
-    expectFinding(r, "storyCard", "lore", null, "create", "storyCard");
+    expectFinding(r, "storyCard", "lore", "business", "append", "storyCard", true);
   });
 });
 describe("Component routing", () => {
@@ -209,16 +209,15 @@ it("resolves neither missing sources nor unsupported subtypes", async () => {
   expect(result.sources.map(s => s.findings.length)).toEqual([2, 2, 2]);
 });
 
-it("automatically names ambiguous exact-title Lore CREATE without modifying existing cards", async () => {
+it("holds ambiguous exact-title same-day Lore without creating a duplicate", async () => {
   const r = await routed("(lore: Weasley Tattoo Business = The twins agreed to ship 96 tattoos.)", a => {
     a.storyCards.push({ ...a.storyCards[0], id: "second-business" });
   });
   expect(r.result.findings[0]).toMatchObject({ targetId: null, storyCardType: "lore", operation: "create", destinationCandidates: ["business", "second-business"] });
   let saved = reduce(r.a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: r.batch.checkpoints });
   saved = reduce(saved, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: r.batch.batchId, sources: [{ result: r.result, checkpoint: r.batch.checkpoints[0].checkpoint }] });
-  expect(saved.activeState.memoryProposals[0]).toMatchObject({ title: "[2001-09-02] Weasley Tattoo Business", status: "approved", requiresReview: false });
-  expect(saved.storyCards.slice(0, r.a.storyCards.length)).toEqual(r.a.storyCards);
-  expect(saved.storyCards.at(-1)?.content).toBe("The twins agreed to ship 96 tattoos.");
+  expect(saved.activeState.memoryProposals[0]).toMatchObject({ title: "[2001-09-02] Weasley Tattoo Business", status: "pending", requiresReview: true });
+  expect(saved.storyCards).toEqual(r.a.storyCards);
 });
 it("does not bypass stale source revisions, historical evidence, destination or control edits", async () => {
   const { a } = looseMemoryFixture();
@@ -310,7 +309,7 @@ it("never places Quidditch facts in public relationship Lore; exact topics appen
   expectFinding(exact, "storyCard", "lore", topic.id, "append", "storyCard");
   const ambiguous = await routed(nominated, a => a.storyCards.push(topic, { ...topic, id: "other-topic" }));
   expectFinding(ambiguous, "storyCard", "lore", null, "create", "storyCard");
-  expect(ambiguous.checked.proposals[0].proposal.requiresReview).toBe(false);
+  expect(ambiguous.checked.proposals[0].proposal.requiresReview).toBe(true);
 });
 it("appends different facts about the same explicitly named relationship topic", async () => {
   const text = "(storyCard.lore.update: Public support for Seth = Draconia publicly committed to supporting Seth's independent designs. || Seth and Draconia's Public Exposure || The public commitment adds to their public exposure.)";
@@ -352,7 +351,41 @@ it("routes Object by its exact alias and preserves the type through normalizatio
   expect(normalizeAdventure(JSON.parse(JSON.stringify(r.a))).storyCards.at(-1)?.type).toBe("object");
 });
 
-it("does not authorize a Lore append from a reused title alone", async () => {
+it("recovers a same-day title match for review without authorizing it to auto-append", async () => {
   const r = await routed("(lore: Weasley Tattoo Business = An invitation to a research meeting was accepted.)");
-  expectFinding(r, "storyCard", "lore", null, "create", "storyCard");
+  expectFinding(r, "storyCard", "lore", "business", "append", "storyCard");
+  expect(r.checked.proposals[0].proposal.requiresReview).toBe(true);
+});
+
+it.each(["continue", "distinct", "next day", "uncertain"] as const)("routes game-night facts through approval: %s", async mode => {
+  const original = "They began game night at Mara's house with a round of charades.";
+  const delta = "The group adopted a new rule that each round would use written clues.";
+  const day = mode === "next day" ? { ...businessDay, text: "2001-09-03", date: "2001-09-03" } : businessDay;
+  const fact = mode === "distinct" ? "Mara announced a separate fundraiser after game night ended." : delta;
+  const title = mode === "distinct" ? "Mara's fundraiser" : "Game night with written clues";
+  const operation = mode === "continue" || mode === "uncertain" ? "update" : "create";
+  const metadata = mode === "continue" ? " || L1 || Adds the new rule for the game in progress."
+    : mode === "uncertain" ? " || ? || The event destination is unclear." : "";
+  const r = await routed(`(storyCard.lore.${operation}: ${title} = ${fact}${metadata})`, a => {
+    a.messages[0].storyTime = day;
+    a.messages[0].content = fact;
+    a.messages.unshift({ id: "game-night-original", role: "assistant", content: original, storyTime: businessDay, createdAt: "2000-01-01" });
+    a.storyCards = [makeStoryCard({ id: "game-night", title: "[2001-09-02] Game Night at Mara's", type: "lore", content: original,
+      lore: { status: "ongoing", occurredAt: businessDay, sourceMessageIds: ["game-night-original"] } })];
+  });
+  expect(r.batch.outputAliases.S1.lore?.L1?.id).toBe(mode === "next day" ? undefined : "game-night");
+  const claimed = reduce(r.a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: r.batch.checkpoints });
+  const saved = reduce(claimed, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: r.batch.batchId,
+    sources: [{ result: r.result, checkpoint: r.batch.checkpoints[0].checkpoint }] });
+  const proposal = saved.activeState.memoryProposals[0];
+  expect(proposal.status).toBe(mode === "uncertain" ? "pending" : "approved");
+  if (mode === "continue") {
+    expect(proposal).toMatchObject({ targetId: "game-night", cardOperation: "append", placementValidation: { loreOriginalSourceId: "game-night-original" } });
+    expect(saved.storyCards).toHaveLength(1);
+    expect(saved.storyCards[0].content).toContain(delta);
+  } else {
+    expect(saved.storyCards[0]).toEqual(r.a.storyCards[0]);
+    expect(saved.storyCards).toHaveLength(mode === "uncertain" ? 1 : 2);
+    if (mode !== "uncertain") expect(saved.storyCards[1].content).toBe(fact);
+  }
 });
