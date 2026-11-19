@@ -36,7 +36,7 @@ interface MemoryInboxPageProps extends AdventurePageProps {
   onRetryMemory?: () => Promise<void>;
   onContinueWithExistingMemory?: () => void;
   onEvaluateMemory?: (sourceIds: string[]) => Promise<void>;
-  onFindEventMemories?: (onProgress: (message: string) => void, signal: AbortSignal) => Promise<void>;
+  onFindEventMemories?: (onProgress: (message: string) => void, signal: AbortSignal, range?: { start: number; end: number }) => Promise<void>;
   onRegenerateProposal?: (proposalId: string, convertToLore?: boolean) => Promise<void>;
   onReconcileMemory?: (request: MemoryReconcileRequest) => Promise<void>;
   loading?: boolean;
@@ -72,6 +72,10 @@ function MemorySuggestionsPage({ adventure, dispatch, onCreateDraft, providerCon
   const allProposals = adventure.activeState.memoryProposals.filter(p => p.proposedType !== "plotPressureUpdate").sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const [eventScan, setEventScan] = useState<AbortController>();
   const [eventProgress, setEventProgress] = useState("");
+  const [eventScope, setEventScope] = useState("full");
+  const [eventStart, setEventStart] = useState(1);
+  const [eventEnd, setEventEnd] = useState(adventure.messages.length);
+  const invalidEventRange = eventScope === "range" && (!Number.isInteger(eventStart) || !Number.isInteger(eventEnd) || eventStart < 1 || eventEnd < eventStart || eventEnd > adventure.messages.length);
   const [sourceText, setSourceText] = useState("");
   const [reconcileDirective, setReconcileDirective] = useState("");
   const [reconcileEntryCount, setReconcileEntryCount] = useState(20);
@@ -209,9 +213,18 @@ function MemorySuggestionsPage({ adventure, dispatch, onCreateDraft, providerCon
 
       {onFindEventMemories && <details className="panel editor-tools-panel">
         <summary>Event memories from earlier play</summary>
-        <button type="button" disabled={loading || Boolean(eventScan)} onClick={async () => {
+        <label>Scan <select value={eventScope} disabled={Boolean(eventScan)} onChange={e => setEventScope(e.target.value)}>
+          <option value="full">Full adventure</option><option value="range">Entry range</option>
+        </select></label>
+        {eventScope === "range" && <div>
+          <label>First entry <input type="number" min={1} max={adventure.messages.length} value={eventStart} disabled={Boolean(eventScan)} onChange={e => setEventStart(e.target.valueAsNumber)} /></label>
+          <label>Last entry <input type="number" min={eventStart} max={adventure.messages.length} value={eventEnd} disabled={Boolean(eventScan)} onChange={e => setEventEnd(e.target.valueAsNumber)} /></label>
+          <p className="muted">Inclusive Chronicle entry numbers, from 1 to {adventure.messages.length}.</p>
+          {invalidEventRange && <p role="alert">Enter a valid first and last entry.</p>}
+        </div>}
+        <button type="button" disabled={loading || Boolean(eventScan) || invalidEventRange} onClick={async () => {
           const controller = new AbortController(); setEventScan(controller);
-          try { await onFindEventMemories(setEventProgress, controller.signal); }
+          try { await onFindEventMemories(setEventProgress, controller.signal, eventScope === "range" ? { start: eventStart, end: eventEnd } : undefined); }
           catch (error) { setEventProgress(error instanceof Error ? error.message : "Event scan failed."); }
           finally { setEventScan(undefined); }
         }}>Find event memories in earlier play</button>

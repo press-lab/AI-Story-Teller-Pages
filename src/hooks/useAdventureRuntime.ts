@@ -1027,14 +1027,14 @@ export function useAdventureRuntime(
     } finally { setLoading(false); }
   }
 
-  async function findEventMemories(onProgress: (message: string) => void, signal: AbortSignal): Promise<void> {
+  async function findEventMemories(onProgress: (message: string) => void, signal: AbortSignal, range?: { start: number; end: number }): Promise<void> {
     if (!adventure || loading) return;
     setLoading(true);
     try {
       await scanEventMemories(adventure, activeProviderConfig, actions => {
         if (adventureRef.current?.id !== adventure.id) throw new Error("Event scan stopped because the active adventure changed.");
         applyActionsAndPersist(actions);
-      }, onProgress, signal);
+      }, onProgress, signal, range);
     } finally { setLoading(false); }
   }
 

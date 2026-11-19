@@ -9,9 +9,12 @@ export async function scanEventMemories(
   onActions: (actions: AdventureAction[]) => void,
   onProgress: (message: string) => void,
   signal: AbortSignal,
+  range?: { start: number; end: number },
 ): Promise<number> {
   let snapshot = adventure;
-  const messages = adventure.messages.filter(m => m.role === "user" || m.role === "assistant");
+  if (range && (!Number.isInteger(range.start) || !Number.isInteger(range.end) || range.start < 1 || range.end < range.start || range.end > adventure.messages.length)) throw new Error("Enter a valid inclusive Chronicle entry range.");
+  const entries = range ? adventure.messages.slice(range.start - 1, range.end) : adventure.messages;
+  const messages = entries.filter(m => m.role === "user" || m.role === "assistant");
   let found = 0;
   // Overlap excerpts to retain events crossing a chunk boundary.
   for (let start = 0; start < messages.length && !signal.aborted; start += 20) {
