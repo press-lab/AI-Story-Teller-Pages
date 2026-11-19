@@ -235,7 +235,7 @@ describe("Moody placement regressions", () => {
   });
 });
 
-it("single-pass sibling appends preserve original Lore, history and both source IDs", async () => {
+it("single-pass sibling appends without original evidence preserve Lore and retain both proposals", async () => {
   const { singlePassFixture, groundedFinding } = await import("../test/singlePassMemory");
   const { prepareSinglePassMemoryBatch } = await import("./singlePassMemory");
   let { a, ids } = singlePassFixture(2);
@@ -249,8 +249,9 @@ it("single-pass sibling appends preserve original Lore, history and both source 
       evidenceQuotes: [{ messageId: sourceId, quote: a.messages.find(m => m.id === sourceId)!.content }] }] } })) });
   const changed = a.storyCards.find(c => c.id === card.id)!;
   expect(changed.content).toContain(card.content);
-  for (const content of contents) expect(changed.content).toContain(content);
-  expect(changed.memoryUpdateHistory?.map(h => h.sourceTurnId)).toEqual(expect.arrayContaining(ids));
+  expect(changed.content).toBe(card.content);
+  expect(a.activeState.memoryProposals.filter(p => p.targetId === card.id).map(p => p.status)).toEqual(["pending", "pending"]);
+  expect(changed.memoryUpdateHistory ?? []).toEqual([]);
   expect(a.messages.filter(m => ids.includes(m.id)).every(m => m.memoryEvaluation?.status === "complete")).toBe(true);
 });
 

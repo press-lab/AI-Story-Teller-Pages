@@ -145,10 +145,10 @@ it("explicitly retries the three October 27 sources in one HTTP request and pres
   await waitFor(() => expect(hook.result.current.adventure!.messages.filter(m => ids.includes(m.id)).every(m => m.memoryEvaluation?.status === "complete")).toBe(true));
   const saved = hook.result.current.adventure!;
   expect(saved.storyCards.find(card => card.id === "twins")).toEqual(a.storyCards.find(card => card.id === "twins"));
-  expect(saved.storyCards[0].content).toContain(fixture.cases[0].originalModelFindings[0].content);
+  expect(saved.storyCards[0]).toEqual(a.storyCards[0]);
   expect(saved.activeState.memoryProposals.filter(p => ids.includes(p.sourceTurnId!))).toHaveLength(3);
-  expect(saved.activeState.memoryProposals.find(p => p.sourceTurnId === ids[0])).toMatchObject({ status: "approved", requiresReview: false });
-  expect(saved.activeState.memoryProposals.filter(p => p.sourceTurnId !== ids[0]).every(p => p.status === "approved" && !p.requiresReview)).toBe(true);
+  expect(saved.activeState.memoryProposals.find(p => p.sourceTurnId === ids[0])).toMatchObject({ status: "pending", requiresReview: false });
+  expect(saved.activeState.memoryProposals.filter(p => p.sourceTurnId !== ids[0]).every(p => p.status === (p.targetId === fixture.existingLoreTarget.id ? "pending" : "approved") && !p.requiresReview)).toBe(true);
   expect(saved.activeState.memoryProposals.find(p => p.sourceTurnId === ids[2])!.content).toBe(fixture.cases[2].originalModelFindings[0].content);
   expect(saved.messages.filter(m => ids.includes(m.id)).every(m => m.memoryEvaluation?.singlePass?.dispositions.some(d => d.index === 0))).toBe(true);
   expect(fetch).toHaveBeenCalledTimes(1);
@@ -177,7 +177,7 @@ it("delivers all six loose operations to the Memory Inbox with one HTTP extracti
   const saved = hook.result.current.adventure!;
   const ids = saved.messages.filter(m => m.role === "assistant").map(m => m.id);
   expectSixLooseProposals(saved, ids);
-  expect(saved.storyCards.find(c => c.id === "business")?.content).toContain("96 rune tattoos");
+  expect(saved.storyCards.find(c => c.id === "business")).toEqual(originalCards.find(c => c.id === "business"));
   expect(saved.storyCards.filter(c => c.id !== "business" && originalCards.some(old => old.id === c.id))).toEqual(originalCards.filter(c => c.id !== "business")); expect(saved.brains.filter(b => b.id !== "brain-george")).toEqual(originalBrains.filter(b => b.id !== "brain-george"));
   expect(Object.values(saved.brains.find(b => b.id === "brain-george")!.thoughts)).toEqual([expect.stringContaining("I believe the business can grow beyond individual customers.")]); expect(saved.components).toEqual(originalComponents);
   expect(memoryCalls).toBe(1); expect(narrationCalls).toBe(3);

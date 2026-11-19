@@ -1926,12 +1926,12 @@ describe("Lore chronology approval boundary", () => {
     state = adventureReducer(state, { type: "ADD_MEMORY_PROPOSAL", proposal: p });
     return state;
   }
-  it("automatically approves valid dates and preserves original APPEND chronology", () => {
+  it("approves dated creation and holds legacy appends without original evidence", () => {
     for (const append of [false, true]) {
       const state = chronologyFixture(false, append);
-      expect(state.activeState.memoryProposals[0].status).toBe("approved");
+      expect(state.activeState.memoryProposals[0].status).toBe(append ? "pending" : "approved");
       expect(state.storyCards[0].lore?.occurredAt?.date).toBe("2001-09-05");
-      expect(state.storyCards[0].lore?.lastChangedAt?.date).toBe("2001-09-05");
+      expect(state.storyCards[0].lore?.lastChangedAt?.date).toBe(append ? undefined : "2001-09-05");
       if (append) expect(state.storyCards[0].content).toContain("They signed the initial research agreement.");
     }
   });
@@ -2022,7 +2022,7 @@ it.each(["create", "append", "disabled", "protected", "ambiguous", "date", "reco
     return;
   }
   const p = a.activeState.memoryProposals[0];
-  const eligible = ["create", "append", "recovered", "protected", "date"].includes(mode);
+  const eligible = ["create", "recovered", "date"].includes(mode);
   expect(p).toMatchObject({ status: eligible ? "approved" : "pending", requiresReview: !["create", "append", "disabled", "recovered", "protected", "date"].includes(mode), content: fact });
   expect(p.evaluationSource?.messages).toContainEqual({ id: "narrator-1", content: sourceContent });
   expect(p.storyCardReview?.sourceMessageId).toBe("narrator-1");
@@ -2051,9 +2051,8 @@ it.each(["covered", "partial", "distinct"])("retains factual coverage safeguards
   const before = structuredClone(a.storyCards);
   a = await commitLooseCard(a, `(storyCard.lore.update: Research archive key = ${content} || Archive access || This records access details.)`);
   if (mode === "covered") expect(a.activeState.memoryProposals).toEqual([]);
-  else expect(a.activeState.memoryProposals[0]).toMatchObject({ status: mode === "partial" ? "pending" : "approved", requiresReview: mode === "partial" });
-  if (mode !== "distinct") expect(a.storyCards).toEqual(before);
-  else expect(a.storyCards[0].content).toContain(fresh);
+  else expect(a.activeState.memoryProposals[0]).toMatchObject({ status: "pending", requiresReview: mode === "partial" });
+  expect(a.storyCards).toEqual(before);
 });
 
 it.each([false, true])("keeps mixed loose batch approval independent (Brain auto=%s)", async brainAuto => {
@@ -2096,16 +2095,22 @@ it("Story Card toggle leaves historical pending proposals alone and applies only
 import { storyCardAutoApprovalBlockers } from "../memory/storyCardAutoApproval";
 import { makeStoryCardSuggestion } from "../memory/storyCardSuggestions";
 for (const path of ["insert", "merge", "scan", "final"] as const) {
-  it.each(["eligible", "disabled", "both", "protected", "ambiguous", "date", "stale", "uncertain", "candidate", "placement"])(`shared Story Card approval gates: ${path} / %s`, mode => {
+  it.each(["eligible", "disabled", "both", "protected", "evidenced", "ambiguous", "date", "stale", "uncertain", "candidate", "placement"])(`shared Story Card approval gates: ${path} / %s`, mode => {
     let a = createDefaultAdventure();
     a.memoryAutoApprove.loreStoryCard = !["disabled", "both"].includes(mode); a.memoryAutoApprove.otherStoryCard = !["disabled", "both"].includes(mode);
 
     const content = "The research team gained access to the library archives.";
     a.messages = [{ id: "approval-source", role: "assistant", content, createdAt: "2026-10-29",
       storyTime: { text: "2001-09-02", date: "2001-09-02", precision: "day" } }];
-    if (mode === "protected") a.storyCards = [makeStoryCard({ id: "archive-target", title: "Archive access", type: "lore", content: "The library was founded in 1700.", protected: true, lore: { status: "ongoing", sourceMessageIds: [], occurredAt: a.messages[0].storyTime } })];
+    if (["protected", "evidenced"].includes(mode)) a.storyCards = [makeStoryCard({ id: "archive-target", title: "Archive access", type: "lore", content: "The library was founded in 1700.", protected: true, lore: { status: "ongoing", sourceMessageIds: [], occurredAt: a.messages[0].storyTime } })];
+    const original = "The library granted the team a research agreement.";
+    if (mode === "evidenced") {
+      a.messages.unshift({ id: "original-agreement", role: "assistant", content: original, createdAt: "2026-10-28", storyTime: a.messages[0].storyTime });
+      a.storyCards[0].lore!.sourceMessageIds = ["original-agreement"];
+    }
     let p = reviewedProposal(a, makeStoryCardSuggestion(a, "approval-source", content, { title: "Archive access", content, evidence: content,
-      reason: "An established research agreement.", evidenceReviewed: true, targetId: mode === "protected" ? "archive-target" : undefined }));
+      reason: "An established research agreement.", evidenceReviewed: true, targetId: ["protected", "evidenced"].includes(mode) ? "archive-target" : undefined }),
+      mode === "evidenced" ? original + " This adds archive access to that agreement." : undefined);
     if (mode === "ambiguous") p.storyCardReview = { ...p.storyCardReview!, targetCandidates: ["one", "two"] };
     if (mode === "date") p.lore = { ...p.lore!, occurredAt: { text: "2001-09-04", date: "2001-09-04", precision: "day" } };
     if (mode === "stale") a.messages[0].content = "The author corrected this event.";
@@ -2113,7 +2118,8 @@ for (const path of ["insert", "merge", "scan", "final"] as const) {
     if (mode === "candidate") p.storyCardReview = { ...p.storyCardReview!, candidateOnly: true };
     if (mode === "placement") p.placementValidation = undefined;
     const before = structuredClone(a.storyCards);
-    expect(storyCardAutoApprovalBlockers(a, p).length === 0).toBe(["eligible", "candidate", "protected", "ambiguous", "date"].includes(mode));
+    expect(storyCardAutoApprovalBlockers(a, p).length === 0).toBe(["eligible", "candidate", "evidenced", "ambiguous", "date"].includes(mode));
+    if (mode === "protected") expect(storyCardAutoApprovalBlockers(a, p)).toContain("Original Lore event evidence is unavailable; select a destination manually.");
     if (path === "insert") a = adventureReducer(a, { type: "ADD_MEMORY_PROPOSAL", proposal: p });
     else {
       a.activeState.memoryProposals = [p];
@@ -2121,8 +2127,8 @@ for (const path of ["insert", "merge", "scan", "final"] as const) {
       if (path === "scan") a = adventureReducer(a, { type: "SCAN_STORY_CARD_EXCHANGE", sourceMessageId: "approval-source", manual: true });
       if (path === "final") a = adventureReducer(a, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: p.id, automatic: true });
     }
-    expect(a.activeState.memoryProposals.find(entry => entry.id === p.id)?.status).toBe(["eligible", "candidate", "protected", "ambiguous", "date"].includes(mode) ? "approved" : "pending");
-    if (!["eligible", "candidate", "protected", "ambiguous", "date"].includes(mode)) expect(a.storyCards).toEqual(before);
+    expect(a.activeState.memoryProposals.find(entry => entry.id === p.id)?.status).toBe(["eligible", "candidate", "evidenced", "ambiguous", "date"].includes(mode) ? "approved" : "pending");
+    if (!["eligible", "candidate", "evidenced", "ambiguous", "date"].includes(mode)) expect(a.storyCards).toEqual(before);
     if (mode === "uncertain") expect(a.activeState.memoryProposals[0].requiresReview).toBe(true);
   });
 }

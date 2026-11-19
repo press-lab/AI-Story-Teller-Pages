@@ -934,7 +934,7 @@ it("reuses all batch decisions after an automatic Brain write and still invalida
   expect(provider).toHaveBeenCalledTimes(1);
 });
 
-it("reuses sibling assessments through actual automatic Lore appends without losing any distinct delta", async () => {
+it("reuses sibling assessments while holding Lore appends without original evidence", async () => {
   let a = assessmentBatchSeed();
 
   a.memoryAutoApprove.loreStoryCard = true; a.memoryAutoApprove.otherStoryCard = true;
@@ -958,8 +958,8 @@ it("reuses sibling assessments through actual automatic Lore appends without los
     a = result.actions.reduce(reduce, a);
   }
   expect(counts().assessment).toBe(1);
-  expect(a.activeState.memoryProposals.filter(p => p.status === "approved")).toHaveLength(3);
-  for (const message of a.messages) expect(a.storyCards[0].content).toContain(message.content);
+  expect(a.activeState.memoryProposals.filter(p => p.status === "pending")).toHaveLength(3);
+  expect(a.storyCards[0].content).toBe("Research history.");
   expect(a.messages.every(m => m.memoryEvaluation?.status === "complete")).toBe(true);
   expect(a.messages.every(m => m.memoryEvaluation?.assessment?.reusableState === undefined)).toBe(true);
 });

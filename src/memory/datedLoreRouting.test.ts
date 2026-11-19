@@ -33,14 +33,15 @@ it.each(["same", "different", "missing", "fantasy"])("routes dated Lore by title
     return;
   }
   const title = mode === "same" ? same.title : `[${time.text}] ${finding.title}`;
-  expect(p).toMatchObject({ title, status: "approved", requiresReview: false, cardOperation: mode === "same" ? "append" : "create",
+  expect(p).toMatchObject({ title, status: mode === "same" ? "pending" : "approved", requiresReview: false, cardOperation: mode === "same" ? "append" : "create",
     lore: { occurredAt: time, lastChangedAt: time } });
   expect(p.targetId).toBe(mode === "same" ? same.id : undefined);
   expect(placementValidationError(a, p)).not.toBe("The draft or destination changed since placement was validated.");
   expect(a.storyCards.find(c => c.id === old.id)).toEqual(before);
   expect(a.storyCards).toHaveLength(2);
   expect(a.storyCards[1].title).toBe(title);
-  expect(a.storyCards[1].content).toContain(finding.content);
+  if (mode === "same") expect(a.storyCards[1]).toEqual(same);
+  else expect(a.storyCards[1].content).toContain(finding.content);
 });
 
 it("does not infer an append when a matching card appears before automatic approval", async () => {

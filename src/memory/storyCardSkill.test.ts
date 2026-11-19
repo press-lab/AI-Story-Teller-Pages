@@ -121,14 +121,14 @@ describe("Story Card skill policy", () => {
     expect(proposals(state).find(p => p.id === "older")?.status).toBe("pending");
     expect(state.storyCards).toHaveLength(3);
   });
-  it("auto-approves supported protected targets with opt-in", async () => {
+  it("holds protected Lore without original evidence despite opt-in", async () => {
     const state = seed(true);
     state.storyCards.push(makeStoryCard({ id: "protected", title: "Secret agreement", type: "lore", content: "Old facts.", protected: true, lore: { status: "ongoing", sourceMessageIds: [], occurredAt: { text: "2001-09-02", date: "2001-09-02", precision: "day" } } }));
     state.storyClock = { origin: "established", current: state.storyCards.at(-1)!.lore!.occurredAt };
     const text = "Draconia agreed to protect Seth's research.";
     const next = await play(text, [{ ...finding(text, "Secret agreement"), targetId: "protected" }], state);
-    expect(proposals(next).find(p => p.targetId === "protected")?.status).toBe("approved");
-    expect(next.storyCards.find(card => card.id === "protected")?.content).toContain(text);
+    expect(proposals(next).find(p => p.targetId === "protected")?.status).toBe("pending");
+    expect(next.storyCards.find(card => card.id === "protected")?.content).toBe("Old facts.");
   });
   it("discovers organizations as Custom references without a Faction category", async () => {
     const state = await play("The Order of the Phoenix establishes a secret alliance.");

@@ -22,7 +22,7 @@ it("rejects missing Brain destinations instead of creating biography", async () 
   const f = { ...groundedFinding(), kind: "brain" as const, targetId: "missing", brainPatch: { notes: "I understand the agreement." } };
   expect(validateSinglePassFinding(a, partnershipSourceId, batch.checkpoints.at(-1)!.checkpoint, f)).toContain("Brain");
 });
-it("automatically appends supported findings to protected Story Cards", async () => {
+it("holds protected Lore appends without original evidence for review", async () => {
   let { a, ids } = singlePassFixture();
   a.memoryAutoApprove.loreStoryCard = true; a.memoryAutoApprove.otherStoryCard = true;
   const card = makeStoryCard({ type: "lore", title: "Workshop collaboration", content: "The workshop exists.", protected: true, lore: { status: "ongoing", sourceMessageIds: [], occurredAt: a.storyClock?.current } }); a.storyCards.push(card);
@@ -30,8 +30,8 @@ it("automatically appends supported findings to protected Story Cards", async ()
   a = reduce(a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
   const f = { ...groundedFinding(), targetId: card.id, operation: "append" as const };
   a = reduce(a, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId, sources: [{ checkpoint: batch.checkpoints.at(-1)!.checkpoint, result: { sourceId: partnershipSourceId, findings: [f], rejected: [] } }] });
-  expect(a.storyCards.find(c => c.id === card.id)!.content).toContain(f.content);
-  expect(a.activeState.memoryProposals[0]).toMatchObject({ status: "approved", requiresReview: false });
+  expect(a.storyCards.find(c => c.id === card.id)!.content).toBe(card.content);
+  expect(a.activeState.memoryProposals[0]).toMatchObject({ status: "pending", requiresReview: false });
 });
 it.each(["source", "destination"])("rejects stale %s edits at commit", async edit => {
   let { a, ids } = singlePassFixture(); const batch = await prepareSinglePassMemoryBatch(a, ids);
@@ -233,8 +233,8 @@ it("command-derived protected Story Card appends stay in the Inbox", async () =>
   const result = parseSinglePassMemoryCommands(`MEM S1 storyCard ${alias}\nE ${e} | Casey Vale and Avery agreed to share research results.\nTEXT\nCasey and Avery agreed to share research results.\nEND\nDONE S1`, batch.outputAliases, f.a).sources[0];
   let state = reduce(f.a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
   state = reduce(state, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId, sources: [{ result, checkpoint: batch.checkpoints[0].checkpoint }] });
-  expect(state.activeState.memoryProposals[0]).toMatchObject({ status: "approved", requiresReview: false });
-  expect(state.storyCards.find(c => c.id === "protected-lore")!.content).toContain("Casey and Avery agreed to share research results.");
+  expect(state.activeState.memoryProposals[0]).toMatchObject({ status: "pending", requiresReview: false });
+  expect(state.storyCards.find(c => c.id === "protected-lore")!.content).toBe("Research is underway.");
 });
 it.each(["source", "destination"])("command-derived findings fail stale %s checkpoint checks", async edit => {
   const f = await commandValidationFixture("Casey Vale and Avery agreed to share research results.");
@@ -511,8 +511,8 @@ it.each([false, true])("auto-approves Harvestfall dates without changing their m
   a = reduce(a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
   a = reduce(a, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId,
     sources: [{ checkpoint: batch.checkpoints[0].checkpoint, result: { sourceId: ids[0], findings: [finding], rejected: [] } }] });
-  expect(a.activeState.memoryProposals[0]).toMatchObject({ status: "approved", requiresReview: false, lore: { occurredAt: time, lastChangedAt: time } });
-  expect(a.storyCards.find(c => c.title === (append ? "Harvestfall Courier" : `[${time.text}] Harvestfall Courier`))?.lore).toMatchObject({ occurredAt: time, lastChangedAt: time });
+  expect(a.activeState.memoryProposals[0]).toMatchObject({ status: append ? "pending" : "approved", requiresReview: false, lore: { occurredAt: time, lastChangedAt: time } });
+  expect(a.storyCards.find(c => c.title === (append ? "Harvestfall Courier" : `[${time.text}] Harvestfall Courier`))?.lore).toMatchObject(append ? { occurredAt: time } : { occurredAt: time, lastChangedAt: time });
   expect(a.storyClock?.current).toEqual(time);
 });
 

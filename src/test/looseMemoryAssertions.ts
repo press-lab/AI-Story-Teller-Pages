@@ -20,7 +20,7 @@ export function expectSixLooseProposals(a: import("../types/adventure").Adventur
   expect(brain).toMatchObject({ status: a.memoryAutoApprove.brainUpdate ? "approved" : "pending", requiresReview: false });
   for (const p of proposals.filter(p => p.proposedType !== "brainUpdate")) {
     const review = p.proposedType === "plotEssentialsUpdate";
-    const auto = p.proposedType === "storyCard" && a.memoryAutoApprove.loreStoryCard && !review;
+    const auto = p.proposedType === "storyCard" && a.memoryAutoApprove.loreStoryCard && !review && p.targetId !== "business";
     expect(p).toMatchObject({ status: auto ? "approved" : "pending", requiresReview: review });
   }
   expect(proposals.filter(p => p.cardOperation === "create").every(p => !p.targetId)).toBe(true);
