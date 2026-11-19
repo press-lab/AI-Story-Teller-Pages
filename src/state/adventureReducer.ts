@@ -1343,7 +1343,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
         const e = next.messages.find(m => m.id === sourceId)?.memoryEvaluation;
         if (e?.status !== "running" || e.singlePass?.batchId !== action.batchId) continue;
         next = touchAdventure(next, { messages: next.messages.map(m => m.id === sourceId ? { ...m, memoryEvaluation: { ...e,
-          status: "failed" as const, lastError: action.reason, singlePass: { ...e.singlePass!, status: "failed" as const, failureReason: action.reason } } } : m) });
+          status: "failed" as const, lastError: action.reason, singlePass: { ...e.singlePass!, status: "failed" as const, failureReason: action.reason, failureStack: action.stack } } } : m) });
         if (MEMORY_DEBUG_LOGGING) next = adventureReducer(next, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: { id: createId("decision"), sourceId,
           createdAt: nowIso(), stage: "independent", requestStage: "singlePass", outcome: "evaluation_failed", reason: action.reason, retryable: false } });
       }

@@ -577,6 +577,7 @@ export function normalizeAdventure(adventure: Adventure): Adventure {
     },
     brains: (adventure.brains ?? []).map((brain) => ({
       ...brain,
+      notes: brain.notes ?? "",
       source: brain.source ?? "manual",
       protected: brain.protected ?? false,
       inclusionPolicy: brain.inclusionPolicy ?? "triggered",

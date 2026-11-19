@@ -146,6 +146,7 @@ export interface SinglePassMemorySourceResult {
   diagnostics?: Array<{ index: number; reason: string }>;
   rejected: Array<{ index: number; reason: string }>;
   failureReason?: string;
+  failureStack?: string;
 }
 export interface SinglePassMemoryBatchResult {
   sources: SinglePassMemorySourceResult[];
@@ -169,6 +170,7 @@ export interface SinglePassMemoryCheckpoint {
   reviewCount: number;
   suppressedCount: number;
   failureReason?: string;
+  failureStack?: string;
 }
 
 export interface MemoryEvaluationState {
@@ -1168,7 +1170,7 @@ export type AdventureAction =
   | { type: "APPLY_ARCHIVED_PROPOSAL_ACTION"; adventureId: string; archiveId: string; proposal: MemoryProposal; action: HistoricalProposalAction }
   | { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH"; checkpoints: Array<{ sourceId: string; checkpoint: SinglePassMemoryCheckpoint }>; manual?: boolean }
   | { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH"; batchId: string; sources: Array<{ result: SinglePassMemorySourceResult; checkpoint: SinglePassMemoryCheckpoint }> }
-  | { type: "FAIL_SINGLE_PASS_MEMORY_BATCH"; batchId: string; sourceIds: string[]; reason: string }
+  | { type: "FAIL_SINGLE_PASS_MEMORY_BATCH"; batchId: string; sourceIds: string[]; reason: string; stack?: string }
 
   | { type: "RECORD_MEMORY_DIAGNOSTIC"; entry: MemoryDiagnostic }
   | { type: "QUEUE_MEMORY_EVALUATION"; sourceId: string; turn: number }

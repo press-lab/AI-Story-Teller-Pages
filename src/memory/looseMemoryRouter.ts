@@ -1,7 +1,7 @@
 import type { Adventure, ComponentType, SinglePassMemoryBatchResult, SinglePassMemoryFinding, StoryCardType } from "../types/adventure";
 import type { PreparedSinglePassMemoryBatch } from "./singlePassMemory";
 import type { LooseMemoryOperation, LooseMemoryParseResult } from "./looseMemoryParser";
-import { normalizeSinglePassFinding } from "./singlePassMemory";
+import { singlePassCharacterCard, normalizeSinglePassFinding } from "./singlePassMemory";
 import { validateSinglePassSource } from "./singlePassMemoryValidation";
 import { safeLoreAppendTarget, storyCardTargets } from "./storyCardSuggestions";
 import { matchingStoryCardEntities, characterParticipants } from "./storyCardEntities";
@@ -54,7 +54,7 @@ export function resolveLooseDestination(a: Adventure, source: Source, op: LooseM
     let matches = eligible.filter(b => normalize(b.characterName) === subject);
     if (!matches.length) {
       const aliases = a.storyCards.filter(c => c.type === "character" && [c.title, ...c.keys].some(name => normalize(name) === subject));
-      matches = eligible.filter(b => aliases.some(c => c.id === b.linkedStoryCardId));
+      matches = eligible.filter(b => aliases.some(c => c.id === singlePassCharacterCard(a, b)?.id));
       if (aliases.length > 1 && matches.length) return { error: "Ambiguous Brain destination: linked Character alias is not unique." };
     }
     if (matches.length > 1) return { error: "Ambiguous Brain destination: multiple eligible characters match." };

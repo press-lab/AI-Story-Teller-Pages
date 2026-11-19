@@ -127,7 +127,7 @@ export function validateSinglePassSource(a: Adventure, result: SinglePassMemoryS
     const component = a.components.find(c => c.id === finding.targetId);
     const brainValues = finding.kind === "brain" ? Object.values(finding.brainPatch ?? {}).flatMap(v => typeof v === "string" ? [v] : Object.values(v).filter((t): t is string => typeof t === "string")) : [];
     const priorBrain = brain ? [brain.currentState, brain.relationshipPressure, brain.emotionalInterpretation, brain.recentDevelopments, brain.notes, ...Object.values(brain.thoughts), ...Object.values(brain.archivedThoughts)] : [];
-    const thoughtText = (value: string) => value.replace(/^\s*\d+\s*(?:\u2192|:)\s*/, "");
+    const thoughtText = (value: string = "") => value.replace(/^\s*\d+\s*(?:\u2192|:)\s*/, "");
     const card = finding.kind === "storyCard" ? a.storyCards.find(c => c.id === finding.targetId) : undefined;
     const covered = proposalCoverage(a, proposal) || (finding.storyCardType !== "lore" && Boolean(card) && facts(finding.content!).every(fact => (" " + factKey(card!.content) + " ").includes(" " + fact + " "))) || (finding.kind === "brain" && brainValues.length > 0
       && brainValues.every(value => factsCovered(thoughtText(value), priorBrain.map(thoughtText))))

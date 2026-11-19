@@ -1,6 +1,6 @@
 import type { BrainEntry, BrainPatch } from "../types/adventure";
 
-export const thoughtText = (text: string) => text.replace(/^\s*\d+\s*(?:→|:)\s*/, "");
+export const thoughtText = (text: string = "") => text.replace(/^\s*\d+\s*(?:→|:)\s*/, "");
 const key = (text: string) => thoughtText(text).normalize("NFKC").toLocaleLowerCase()
   .replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 

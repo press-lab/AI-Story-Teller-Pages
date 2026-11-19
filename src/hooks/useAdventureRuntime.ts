@@ -414,6 +414,7 @@ export function useAdventureRuntime(
       return currentJob() ? adventureRef.current : undefined;
     };
     const promise = (async () => {
+      let stage = "preparation";
       let batch: Awaited<ReturnType<typeof prepareSinglePassMemoryBatch>> | undefined;
       try {
         // A cancelled worker can leave a saved running claim. The shared worker gate above ensures it is abandoned.
@@ -430,10 +431,12 @@ export function useAdventureRuntime(
         if (!currentJob()) return;
         const claimed = await persistActions([{ type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints, manual: Boolean(sourceIds) }]);
         if (!claimed || !currentJob() || !ids.every(id => claimed.messages.find(m => m.id === id)?.memoryEvaluation?.singlePass?.batchId === batch!.batchId)) return;
+        stage = "processing";
         const result = await runSinglePassMemoryBatch(claimed, guardMemoryRequests(mergeProviderConfig(claimed, providerSettingsRef.current), currentJob), batch);
         if (!currentJob()) return;
         // Pure local validation before reducer revalidation. It never starts further requests.
         for (const source of result.sources) validateSinglePassSource(claimed, source, batch.checkpoints.find(c => c.sourceId === source.sourceId)!.checkpoint);
+        stage = "commit_or_persistence";
         await persistActions([{ type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId,
           sources: result.sources.map(result => ({ result, checkpoint: batch!.checkpoints.find(c => c.sourceId === result.sourceId)!.checkpoint })) },
           ...(result.usage ? [{ type: "ACCUMULATE_BACKGROUND_TOKENS" as const, promptTokens: result.usage.promptTokens, completionTokens: result.usage.completionTokens }] : [])]);
@@ -442,8 +445,9 @@ export function useAdventureRuntime(
           error: "Single-pass extraction failed for some sources. Saved findings remain available. Retry explicitly to make another paid request." } : undefined);
       } catch (error) {
         if (!currentJob()) return;
-        const reason = safeMemoryFailure(error).message;
-        if (batch) await persistActions([{ type: "FAIL_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId, sourceIds: ids, reason }]);
+        const reason = error instanceof Error && error.message.startsWith("memory_") ? error.message
+          : "memory_" + stage + "_failed: " + (error instanceof Error ? error.message : String(error));
+        if (batch) await persistActions([{ type: "FAIL_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId, sourceIds: ids, reason, stack: error instanceof Error ? error.stack : undefined }]);
         setMemoryWork({ adventureId: initial.id, status: "failed", sourceIds: ids, remaining: ids.length, error: reason });
       } finally {
         if (currentJob()) { memoryWorkerRef.current = undefined; armAssessmentIdleTimer(); }

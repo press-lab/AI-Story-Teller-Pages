@@ -474,7 +474,13 @@ export async function runSinglePassMemoryBatch(a: Adventure, provider: ProviderC
   const extractionLimit = Math.min(8192, Math.max(provider.maxOutputTokens || 0, 1024 + batch.checkpoints.length * 2048));
   config.maxOutputTokens = provider.connectionType === "local" ? Math.min(provider.maxOutputTokens, extractionLimit) : extractionLimit;
   const response = await sendMemoryCompletion(a, config, buildSinglePassMemoryMessages(batch), "singlePass");
-  const result = parseSinglePassMemoryResponse(response.content, batch.checkpoints.map(s => s.sourceId), a, batch.outputAliases, batch);
+  let result: SinglePassMemoryBatchResult;
+  try { result = parseSinglePassMemoryResponse(response.content, batch.checkpoints.map(s => s.sourceId), a, batch.outputAliases, batch); }
+  catch (error) {
+    const failure = new Error("memory_parsing_or_validation_failed: " + (error instanceof Error ? error.message : String(error)));
+    if (error instanceof Error) failure.stack = error.stack;
+    throw failure;
+  }
   return { ...result, usage: response.usage };
 }
 
