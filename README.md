@@ -1,5 +1,7 @@
 # AI Story Teller
 
+[Relationship Story Cards](docs/relationship-story-cards.md) link existing Character Cards by ID. Narration can include their shared history when all linked characters are in the final context and the full card fits.
+
 Automatic memory now uses the [original independent memory foundation](docs/foundation-migration.md), with Pages evidence, review, chronology and browser-local saves preserved.
 
 A browser-only MVP for building and playing local AI adventure sessions. It uses React, TypeScript, Vite, IndexedDB persistence, and an OpenAI-compatible provider call. Users supply their own API key in Settings.
@@ -91,7 +93,7 @@ The Context Preview page shows:
 
 - **Adventure Chronicle**: `adventure.messages`, the full persisted transcript. Inspectable in the Chronicle tab. Never automatically compressed or flooded into model context.
 - **Next Output Bias**: `activeState.nextTurnNote`, a visible short-term steering note. It appears in section J, is token-counted, and expires after one successful generation by default.
-- **Story Cards**: durable triggered records for one subject: character, location, faction, object, relationship, secret, rule, or completed event. Cards carry `memoryMode` (`static`, `living`, or `historical`) so generated updates know whether to write always-true facts, current evolving state, or past-tense history. The Story Cards page can turn a user description into a pending AI-generated Memory Proposal for review. Optional AI auto-updates use a per-card cooldown and can be routed through Memory Inbox when approval is required.
+- **Story Cards** store durable reference material. The primary types are Character, Location, Object, Lore, Relationship and Custom. Generated factual updates use the shared append/create proposal pipeline and the adventure approval settings. Relationship Cards use linked Character IDs and no phrase triggers.
 - **Brains**: opt-in character-internal state for major characters only. AI may update a Brain only when a `BrainEntry` already exists. Do not create Brains for random NPCs.
 - **Plot Essentials**: compact enduring premise, optional central conflict, and persistent scenario-wide constraints. NEVER include NOW, CURRENTLY, CURRENT SITUATION, active story dates, current character positions, or temporary state. Historical dates may establish durable background. Put the starting moment in the Opening Scene; the story clock and gameplay history handle ongoing time and continuity. Removing a fact does not establish a historical event. Section C.
 - **Active Pressure**: one sentence naming the current external threat, obligation, or force pressing on the player character. Section C. Auto-updated and pending by default.
@@ -209,6 +211,6 @@ The live suite verifies the OpenAI-compatible Groq provider call, semantic trigg
 
 Auto-approval belongs to each adventure. New adventures start with all seven switches OFF: Plot Essentials, Active Pressure, Current Arc, Arc Proposals, Character Self, Story Cards — Lore, and Story Cards — Everything Else. The permanent panel appears at the top of Memory Suggestions, including when its queue is empty. Settings has no approval controls, and global localStorage approval properties are discarded.
 
-The shared policy reads only `adventure.memoryAutoApprove`. Existing cards use their stored type. Lore uses `loreStoryCard`; character, location, legacy plot, and custom use `otherStoryCard`. Unknown new card types wait for classification. Missing-Brain card fallbacks use the card category. Existing pending proposals are never replayed when a switch changes. Evidence, duplicate, destination, protection, chronology, and companion-proposal checks remain in the reducer pipeline.
+The shared policy reads only `adventure.memoryAutoApprove`. Existing cards use their stored type. Lore uses `loreStoryCard`; character, location, object, relationship, legacy plot, and custom use `otherStoryCard`. Unknown new card types wait for classification. Missing-Brain card fallbacks use the card category. Existing pending proposals are never replayed when a switch changes. Evidence, duplicate, destination, protection, chronology, and companion-proposal checks remain in the reducer pipeline.
 
 Migration preserves boolean active settings. Lore falls back to the old broad Story Card preference only when its own preference is absent. Both split Character and Other preferences must be true to enable the combined category; an isolated split preference is ambiguous and leaves it OFF. A saved broad Story Card preference covers all cards. Invalid and missing preferences are false.

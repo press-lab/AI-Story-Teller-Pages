@@ -1,3 +1,4 @@
+import { RelationshipParticipants } from "./RelationshipParticipants";
 import { PRIMARY_STORY_CARD_TYPES } from "../memory/storyCardArchitecture";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Adventure, MemoryDraftRequest, ProviderConfig, StoryCard, StoryCardAIBuilderIntent } from "../types/adventure";
@@ -64,6 +65,9 @@ export function MemorySuggestionBuilder({ adventure, providerConfig, loading, on
       }
       if (next.action !== "suggest" || next.destination !== "storyCard") next.reviewSelectedCards = false;
       if (next.reviewSelectedCards) next.targetId = undefined;
+      if (next.destination !== "storyCard" || next.storyCardType !== "relationship") next.relationship = undefined;
+      else if (next.targetId) next.relationship = adventure.storyCards.find(card => card.id === next.targetId)?.relationship;
+      else if (r.targetId || next.reviewSelectedCards) next.relationship = undefined;
       return next;
     });
     setStatus(""); setError("");
@@ -103,8 +107,11 @@ export function MemorySuggestionBuilder({ adventure, providerConfig, loading, on
         </select></Field>
       </> : <>
         <Field label="Story Card type"><select value={request.storyCardType} onChange={e => patch({ storyCardType: e.target.value as MemoryDraftRequest["storyCardType"], targetId: undefined })}>{cardTypes.map(type => <option key={type}>{type}</option>)}</select></Field>
-        <Field label="Writing purpose"><select value={request.intent} onChange={e => patch({ intent: e.target.value as StoryCardAIBuilderIntent })}>{purposes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field>
+        <Field label="Writing purpose"><select value={request.intent} onChange={e => patch({ intent: e.target.value as StoryCardAIBuilderIntent, ...(e.target.value === "relationship" ? { storyCardType: "relationship", targetId: undefined } : {}) })}>{purposes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field>
         {request.action === "suggest" && <Field label="Update scope"><select value={request.reviewSelectedCards ? "selected" : "single"} onChange={e => patch({ reviewSelectedCards: e.target.value === "selected" })}><option value="single">One destination</option><option value="selected">Relevant selected cards of this type</option></select></Field>}
+        {request.storyCardType === "relationship" && !request.reviewSelectedCards && !request.targetId
+          && <RelationshipParticipants cards={adventure.storyCards} selected={request.relationship?.characterIds ?? []}
+            onChange={characterIds => patch({ relationship: { characterIds } })} />}
         {!request.reviewSelectedCards && <div><p>Target: {request.targetId ? targetCard?.title ?? "Missing card" : "Create new Story Card"}</p><div className="toolbar"><button type="button" onClick={() => setPicker("target")}>Choose existing card</button>{request.targetId && <button type="button" onClick={() => patch({ targetId: undefined })}>Create new instead</button>}</div></div>}
       </>}
     </div>

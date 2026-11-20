@@ -29,10 +29,12 @@ export function resolveChainedStoryCardTriggers(
     ...[...includedComponents].sort((a, b) => a.id.localeCompare(b.id)),
     ...additionalSources,
   ];
+  const relationships = new Set(adventure.storyCards.filter(card => card.type === "relationship").map(card => card.id));
   for (const source of sources) {
+    if (source.sourceType === "storyCard" && relationships.has(source.id)) continue;
     const recalledEvents = selectEventMemories(adventure.storyCards, source.content);
     for (const card of adventure.storyCards) {
-      if (!card.active || card.inclusionPolicy === "manual" || includedIds.has(card.id) || candidates.has(card.id)) continue;
+      if (card.type === "relationship" || !card.active || card.inclusionPolicy === "manual" || includedIds.has(card.id) || candidates.has(card.id)) continue;
       const match = isHistoricalLore(card)
         ? { matched: recalledEvents.has(card.id), pattern: recalledEvents.get(card.id) }
         : matchPatterns(source.content, [card.title, ...card.keys], card.matchType ?? "phrase");

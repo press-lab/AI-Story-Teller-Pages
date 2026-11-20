@@ -1,6 +1,8 @@
+import { RelationshipParticipants } from "./RelationshipParticipants";
+import { linkedRelationships, relationshipCardError, relationshipMatches, relationshipTitle, relationshipWriteError, validateRelationshipIds } from "../memory/relationshipCards";
 import { StoryCardTriggerCleanup } from "./StoryCardTriggerCleanup";
 import { LoreChronologyEditor } from "./StoryCardChronology";
-import { PRIMARY_STORY_CARD_TYPES, primaryStoryCardType, isHistoricalLore } from "../memory/storyCardArchitecture";
+import { PRIMARY_STORY_CARD_TYPES, primaryStoryCardType, isHistoricalLore, migrateStoryCard } from "../memory/storyCardArchitecture";
 import { useEffect, useRef, useState } from "react";
 import type { ContextInclusionPolicy, ProviderConfig, StoryCard, StoryCardType, TriggerMatchType } from "../types/adventure";
 import type { AuditRecommendation } from "../memory/storyCardAudit";
@@ -19,6 +21,7 @@ const TYPE_LABELS: Record<StoryCardType, string> = {
   location: "Location",
   object: "Object",
   lore: "Lore",
+  relationship: "Relationship",
   custom: "Custom",
 };
 
@@ -26,7 +29,7 @@ type SortMode = "alpha" | "recent";
 type CardStatusFilter = "all" | "active" | "inactive";
 type CardFlagFilter = "all" | "flagged" | "pinned" | "protected";
 
-function CardSummary({ card, query }: { card: StoryCard; query: string }) {
+function CardSummary({ card, query, participantNames }: { card: StoryCard; query: string; participantNames?: string }) {
   const contextContent = storyCardContextContent(card);
   const snippet = contentSnippet(contextContent, query);
   const archivedCount = card.archivedFacts?.split("\n").filter((line) => line.trim()).length ?? 0;
@@ -54,7 +57,7 @@ function CardSummary({ card, query }: { card: StoryCard; query: string }) {
         )}
       </span>
       <span className="story-card-keys">
-        {card.keys.length > 0 ? card.keys.slice(0, 4).join(", ") : "title trigger"}
+        {card.type === "relationship" ? participantNames : card.keys.length > 0 ? card.keys.slice(0, 4).join(", ") : "title trigger"}
       </span>
       {snippet && <span className="search-snippet"><Highlight text={snippet} query={query} /></span>}
     </span>
@@ -138,6 +141,7 @@ export function StoryCardsPage({
   onAuditStoryCards,
   providerConfig,
 }: StoryCardsPageProps) {
+  const [linkEditor, setLinkEditor] = useState<{ cardId?: string; ids: string[] }>();
   const [importText, setImportText] = useState("");
   const [newCardId, setNewCardId] = useState<string | undefined>();
   const [sortMode, setSortMode] = useState<SortMode>("alpha");
@@ -159,6 +163,7 @@ export function StoryCardsPage({
   }
 
   function approveRec(rec: AuditRecommendation) {
+    if (rec.suggestedType === "relationship" || adventure.storyCards.some(card => card.id === rec.cardId && card.type === "relationship")) return;
     if (rec.decision === "approved") return;
     if (rec.action !== "create" && !adventure.storyCards.some(card => card.id === rec.cardId)) {
       setAudit(previous => previous && { ...previous, errorMessage: "Unable to apply — destination card is missing. Keep this recommendation and choose an existing card or create a new one." });
@@ -219,13 +224,53 @@ export function StoryCardsPage({
 
   function importCards() {
     try {
-      const parsed = JSON.parse(importText) as StoryCard[];
-      if (!Array.isArray(parsed)) throw new Error("Expected an array of story cards.");
-      parsed.forEach((card) => dispatch({ type: "UPSERT_STORY_CARD", storyCard: card }));
+      const input = JSON.parse(importText);
+      const parsed = Array.isArray(input) ? input : input?.storyCards;
+      if (!Array.isArray(parsed)) throw new Error("Expected an array of Story Cards.");
+      const incoming = new Map<string, StoryCard>();
+      for (const card of parsed) {
+        if (!card || typeof card.id !== "string" || !card.id || typeof card.title !== "string" || typeof card.content !== "string"
+          || !Array.isArray(card.keys) || incoming.has(card.id)) throw new Error("Invalid Story Card data or duplicate card ID.");
+        incoming.set(card.id, migrateStoryCard(card));
+      }
+      const merged = new Map(adventure.storyCards.map(card => [card.id, card]));
+      for (const [id, card] of incoming) merged.set(id, card);
+      const finalCards = [...merged.values()];
+      for (const card of incoming.values()) {
+        const previous = adventure.storyCards.find(saved => saved.id === card.id);
+        const error = relationshipWriteError(finalCards, previous, card);
+        if (error) throw new Error(card.title + ": " + error);
+      }
+      for (const card of finalCards) {
+        if (card.type !== "relationship" || !Array.isArray(card.relationship?.characterIds)
+          || !card.relationship.characterIds.some(id => incoming.has(id))) continue;
+        const error = relationshipCardError(finalCards, card);
+        if (error) throw new Error(card.title + ": " + error);
+      }
+      dispatch({ type: "IMPORT_STORY_CARDS", storyCards: [...incoming.values()] });
       setImportText("");
     } catch (error) {
       alert(error instanceof Error ? error.message : "Could not import story cards.");
     }
+  }
+
+  function participantNames(card: StoryCard): string {
+    const ids = card.relationship?.characterIds;
+    return Array.isArray(ids) ? ids.map(id => adventure.storyCards.find(candidate => candidate.id === id)?.title ?? id).join(" + ") : "";
+  }
+  const linkConflict = linkEditor && relationshipMatches(adventure.storyCards, linkEditor.ids).find(card => card.id !== linkEditor.cardId);
+  const linkError = linkEditor && (validateRelationshipIds(adventure.storyCards, linkEditor.ids)
+    ?? (linkConflict ? "A Relationship Card already links these characters." : undefined));
+  function saveLinks() {
+    if (!linkEditor || linkError) return;
+    const relationship = { characterIds: linkEditor.ids };
+    if (linkEditor.cardId) dispatch({ type: "UPDATE_STORY_CARD", storyCardId: linkEditor.cardId, patch: { relationship } });
+    else {
+      const card = makeStoryCard({ type: "relationship", title: relationshipTitle(adventure.storyCards, linkEditor.ids), content: "", relationship });
+      dispatch({ type: "UPSERT_STORY_CARD", storyCard: card });
+      setNewCardId(card.id);
+    }
+    setLinkEditor(undefined);
   }
 
   const searchLower = search.toLowerCase().trim();
@@ -239,7 +284,7 @@ export function StoryCardsPage({
       ...(card.recentDevelopments ?? []),
       ...(card.sourceTurnIds ?? []),
     ].filter(Boolean).join(" ");
-    return card.title.toLowerCase().includes(searchLower) ||
+    return participantNames(card).toLowerCase().includes(searchLower) || card.title.toLowerCase().includes(searchLower) ||
       card.keys.some((k) => k.toLowerCase().includes(searchLower)) ||
       card.content.toLowerCase().includes(searchLower) ||
       compactText.toLowerCase().includes(searchLower);
@@ -274,7 +319,7 @@ export function StoryCardsPage({
       <div className="editor-page-summary">
         <p className="muted">
           Triggered memory for characters, places, relationships, secrets, rules, and recurring facts.
-          Every card can grow with new facts. Memory appends to a matching subject or creates a new card. Generated changes follow your approval settings.
+          Relationship Cards are checked for broken links in the editor. Phrase-key audits cover the other card types. Every card can grow with new facts. Memory appends to a matching subject or creates a new card. Generated changes follow your approval settings.
         </p>
         <div className="editor-stat-row" aria-label="Story card counts">
           <span>{totalCards} total</span>
@@ -372,6 +417,7 @@ export function StoryCardsPage({
           type="button"
           className="primary-action"
           onClick={() => {
+            if (typeFilter === "relationship") { setLinkEditor({ ids: [] }); return; }
             const card = makeStoryCard({ title: "New Story Card", content: "", type: typeFilter === "all" ? "custom" : typeFilter });
             dispatch({ type: "UPSERT_STORY_CARD", storyCard: card });
             setNewCardId(card.id);
@@ -379,6 +425,15 @@ export function StoryCardsPage({
         >
           Create Story Card
         </button>
+        {linkEditor && <div>
+          <RelationshipParticipants cards={adventure.storyCards} selected={linkEditor.ids}
+            onChange={ids => setLinkEditor({ ...linkEditor, ids })} />
+          {linkError && <p role="alert">{linkError}</p>}
+          {linkConflict && <button type="button" onClick={() => { setOpenCardId(linkConflict.id); setLinkEditor(undefined); }}>Open {linkConflict.title}</button>}
+          <button type="button" disabled={Boolean(linkError)} onClick={saveLinks}>Save linked characters</button>
+          <button type="button" onClick={() => setLinkEditor(undefined)}>Cancel</button>
+        </div>}
+        <button type="button" onClick={() => { setTypeFilter("relationship"); setLinkEditor({ ids: [] }); }}>Create Relationship Card</button>
         <div className="sort-toggle">
           <button
             type="button"
@@ -566,7 +621,7 @@ export function StoryCardsPage({
                     setOpenCardId((current) => current === card.id ? null : card.id);
                   }}
                 >
-                  <CardSummary card={card} query={searchLower} />
+                  <CardSummary card={card} query={searchLower} participantNames={participantNames(card)} />
                 </summary>
 
                 <div className="editor-card item-inspector story-card-inspector">
@@ -577,13 +632,17 @@ export function StoryCardsPage({
                       </p>
                       <h3>{card.title || "Untitled Card"}</h3>
                       <div className="item-tag-row" aria-label="Story card triggers">
-                        {card.keys.length === 0 && <span className="item-tag muted">Title trigger only</span>}
+                        {card.type !== "relationship" && card.keys.length === 0 && <span className="item-tag muted">Title trigger only</span>}
                         {card.keys.map((key) => (
                           <span key={key} className="item-tag">{key}</span>
                         ))}
                       </div>
                     </div>
-                    <button type="button" className="danger" onClick={() => dispatch({ type: "DELETE_STORY_CARD", storyCardId: card.id })}>
+                    <button type="button" className="danger" onClick={() => {
+                      const links = linkedRelationships(adventure.storyCards, card.id);
+                      if (links.length) { alert("Remove this character from: " + links.map(link => link.title).join(", ")); return; }
+                      dispatch({ type: "DELETE_STORY_CARD", storyCardId: card.id });
+                    }}>
                       Delete
                     </button>
                   </div>
@@ -594,28 +653,36 @@ export function StoryCardsPage({
                         onChange={(event) => dispatch({ type: "UPDATE_STORY_CARD", storyCardId: card.id, patch: { title: event.target.value } })}
                       />
                     </Field>
-                    <Field label="Trigger Keys">
+                    {card.type === "relationship" ? <div>
+                      <p>All linked Character Cards must be in context.</p>
+                      <p>{participantNames(card)}</p>
+                      {relationshipCardError(adventure.storyCards, card) && <p role="alert">{relationshipCardError(adventure.storyCards, card)}</p>}
+                      <button type="button" onClick={() => setLinkEditor({ cardId: card.id,
+                        ids: Array.isArray(card.relationship?.characterIds) ? [...new Set(card.relationship.characterIds.filter(id => adventure.storyCards.some(candidate => candidate.id === id && candidate.type === "character")))] : [] })}>Edit linked characters</button>
+                    </div> : <Field label="Trigger Keys">
                       <input
                         value={commaList(card.keys)}
                         title="Comma-separated; leave blank to use title only."
                         placeholder="Blazer, Blonde Blazer"
                         onChange={(event) => dispatch({ type: "UPDATE_STORY_CARD", storyCardId: card.id, patch: { keys: fromCommaList(event.target.value) } })}
                       />
-                    </Field>
+                    </Field>}
                     <Field label="Type">
+                      {linkedRelationships(adventure.storyCards, card.id).length > 0 && <p>Remove this character from {linkedRelationships(adventure.storyCards, card.id).map(link => link.title).join(", ")} before changing its type.</p>}
                       <select
                         value={card.type}
+                        disabled={card.type === "relationship" || linkedRelationships(adventure.storyCards, card.id).length > 0}
                         onChange={(event) =>
                           dispatch({ type: "UPDATE_STORY_CARD", storyCardId: card.id, patch: { type: event.target.value as StoryCardType } })
                         }
                       >
-                        {Object.entries(TYPE_LABELS).map(([value, label]) => (
+                        {Object.entries(TYPE_LABELS).filter(([value]) => value !== "relationship" || card.type === "relationship").map(([value, label]) => (
                           <option key={value} value={value}>{label}</option>
                         ))}
                       </select>
                     </Field>
                   </div>
-                  <details className="brain-secondary-details item-secondary-details">
+                  {card.type !== "relationship" && <details className="brain-secondary-details item-secondary-details">
                     <summary>Trigger behavior</summary>
 
                   <div className="grid two">
@@ -632,7 +699,7 @@ export function StoryCardsPage({
                       </select>
                     </Field>
                   </div>
-                  </details>
+                  </details>}
                   <section className="item-focus-section">
                     <div className="item-section-heading">
                       <div>
@@ -700,18 +767,18 @@ export function StoryCardsPage({
                       onChange={(checked) => dispatch({ type: checked ? "ACTIVATE_STORY_CARD" : "DEACTIVATE_STORY_CARD", storyCardId: card.id })}
                     />
                     <CheckboxField
-                      label="Pinned (included even without a trigger match)"
+                      label={card.type === "relationship" ? "Pinned (prioritize when all linked characters are included)" : "Pinned (included even without a trigger match)"}
                       checked={card.pinned}
                       onChange={(checked) => dispatch({ type: checked ? "PIN_STORY_CARD" : "UNPIN_STORY_CARD", storyCardId: card.id })}
                     />
                   </div>
                   <div className="grid two">
                     <CheckboxField
-                      label="Protected (cannot be dropped by token truncation)"
+                      label={card.type === "relationship" ? "Protected (first choice of remaining context budget)" : "Protected (cannot be dropped by token truncation)"}
                       checked={card.protected}
                       onChange={(checked) => dispatch({ type: "UPDATE_STORY_CARD", storyCardId: card.id, patch: { protected: checked } })}
                     />
-                    <Field label="Inclusion Policy">
+                    {card.type !== "relationship" && <Field label="Inclusion Policy">
                       <select
                         value={card.inclusionPolicy}
                         onChange={(event) =>
@@ -724,7 +791,7 @@ export function StoryCardsPage({
                           </option>
                         ))}
                       </select>
-                    </Field>
+                    </Field>}
                   </div>
                   <Field label="State (runtime note visible to automation conditions)">
                     <input
@@ -775,7 +842,11 @@ export function StoryCardsPage({
                     <button type="button" onClick={() => dispatch({ type: "REORDER_STORY_CARD", storyCardId: card.id, direction: "down" })}>
                       Move Down
                     </button>
-                    <button type="button" className="danger" onClick={() => dispatch({ type: "DELETE_STORY_CARD", storyCardId: card.id })}>
+                    <button type="button" className="danger" onClick={() => {
+                      const links = linkedRelationships(adventure.storyCards, card.id);
+                      if (links.length) { alert("Remove this character from: " + links.map(link => link.title).join(", ")); return; }
+                      dispatch({ type: "DELETE_STORY_CARD", storyCardId: card.id });
+                    }}>
                       Delete
                     </button>
                   </div>

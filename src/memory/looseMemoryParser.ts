@@ -1,3 +1,5 @@
+import { relationshipNameKey } from "./relationshipCards";
+
 /**
  * Transient extraction grammar. This module knows labels and source aliases only;
  * it never reads an Adventure or chooses a database destination.
@@ -11,6 +13,7 @@ export interface LooseMemoryOperation {
   ordinal: number;
   explicitCreation: boolean;
   explicitUpdate: boolean;
+  relationshipParticipants?: string[];
   enduringReason?: string;
   loreAppend?: { destination: string; reason: string };
 }
@@ -23,7 +26,7 @@ export interface LooseMemoryParseResult {
 type Label = Pick<LooseMemoryOperation, "category" | "subtype">;
 const key = (s: string) => s.toLowerCase().replace(/[\s._-]+/g, "");
 const brains = ["thoughts", "currentState", "relationshipPressure", "emotionalInterpretation", "recentDevelopments", "notes"];
-const cards = ["lore", "character", "location", "object", "custom"];
+const cards = ["lore", "character", "location", "object", "relationship", "custom"];
 const components = ["plotEssentials", "currentArc", "activePressure", "immediateMomentum", "narrationRules", "aiInstructions", "authorNote", "memory", "custom"];
 const aliases: Record<string, Label> = Object.create(null);
 function labels(names: string[], category: Label["category"], subtype: string) {
@@ -37,6 +40,7 @@ labels(["brain developments"], "brain", "recentDevelopments");
 labels(["lore", "event", "story", "memory", "storycard", "story card"], "storyCard", "lore");
 labels(["character", "new character"], "storyCard", "character");
 labels(["location", "place"], "storyCard", "location");
+labels(["relationship"], "storyCard", "relationship");
 labels(["object"], "storyCard", "object");
 labels(["custom story card"], "storyCard", "custom");
 for (const subtype of brains) labels(["brain." + subtype], "brain", subtype);
@@ -48,6 +52,7 @@ for (const subtype of components) {
 function label(raw: string): Label {
   const normalized = key(raw);
   if (aliases[normalized]) return aliases[normalized];
+  if (/^relationship[.\s_-]/i.test(raw)) return { category: "storyCard", subtype: normalized };
   // Preserve explicit but unknown subtypes so routing can reject them.
   for (const [prefix, category] of [["storycard", "storyCard"], ["component", "component"], ["brain", "brain"]] as const) {
     if (new RegExp("^" + (prefix === "storycard" ? "story\\s*card" : prefix) + "(?:$|[.\\s_-])", "i").test(raw)) return { category, subtype: normalized.slice(prefix.length) || undefined };
@@ -138,6 +143,13 @@ export function parseLooseMemoryOperations(text: string, allowedSourceAliases: r
       if (content.split(closing).length > content.split(opening).length) content = content.slice(0, closer.index).trim();
     }
     content = cleanEdge(content);
+    const relationshipParticipants = h.label.subtype === "relationship" ? h.subject.split(/\s+\+\s+/).map(name => name.trim()) : undefined;
+    if (relationshipParticipants && (h.creation || h.update || raw.includes("||")
+      || relationshipParticipants.length < 2 || relationshipParticipants.some(name => !relationshipNameKey(name) || name.includes("+"))
+      || new Set(relationshipParticipants.map(relationshipNameKey)).size !== relationshipParticipants.length)) {
+      reject("Relationship operations require at least two distinct names separated by ' + ', without a suffix or metadata.", pendingSource, index);
+      return;
+    }
     const separator = h.update && h.label.category === "storyCard" && h.label.subtype === "character" ? content.indexOf("||") : -1;
     const enduringReason = separator >= 0 ? cleanEdge(content.slice(separator + 2)) : undefined;
     if (separator >= 0) content = content.slice(0, separator).trim();
@@ -151,7 +163,7 @@ export function parseLooseMemoryOperations(text: string, allowedSourceAliases: r
     if (loreFields.length) content = fact;
     if (!h.subject || !content) { reject("Malformed operation: empty subject or factual content.", pendingSource, index); return; }
     result.operations.push({ sourceAlias: pendingSource, ...h.label, subject: h.subject, content, ordinal: index,
-      explicitCreation: h.creation, explicitUpdate: h.update, ...(enduringReason ? { enduringReason } : {}), ...(loreAppend ? { loreAppend } : {}) });
+      ...(relationshipParticipants ? { relationshipParticipants } : {}), explicitCreation: h.creation, explicitUpdate: h.update, ...(enduringReason ? { enduringReason } : {}), ...(loreAppend ? { loreAppend } : {}) });
     evaluated.add(pendingSource);
   };
   // A bracket followed by an operation head is a boundary even if the preceding block never closed.

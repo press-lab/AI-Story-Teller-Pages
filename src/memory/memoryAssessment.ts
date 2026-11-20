@@ -120,7 +120,7 @@ export function memoryDecisionState(adventure: Adventure, sourceId: string): str
   const evidence = memoryEvidenceWindow(a, sourceId).map(({ id, role, content }) => ({ id, role, content }));
   const excerpt = evidence.map(m => `[${m.id}] ${m.role}: ${m.content}`).join("\n\n");
   const relevant = new Set(relevantStoryCardInventory(a, excerpt).map(c => c.id));
-  const cards = [...a.storyCards.filter(c => relevant.has(c.id)), ...a.storyCards.filter(c => !relevant.has(c.id) && !c.keys.length)].slice(0, 8);
+  const cards = [...a.storyCards.filter(c => relevant.has(c.id)), ...a.storyCards.filter(c => c.type !== "relationship" && !relevant.has(c.id) && !c.keys.length)].slice(0, 8);
   const meaningful = (entry: object) => Object.fromEntries(Object.entries(entry).filter(([key]) =>
     !["createdAt", "updatedAt", "lastMemoryUpdatedAt", "memoryUpdateHistory", "usageCount", "lastUsedTurn", "lastTriggeredTurn"].includes(key)));
   return JSON.stringify({ version: 1, evidence, pendingBrainDeltas: a.activeState.pendingBrainDeltas ?? [],

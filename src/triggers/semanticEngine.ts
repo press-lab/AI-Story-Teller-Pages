@@ -278,7 +278,7 @@ function storyCardUpdateConditions(adventure: Adventure): SemanticCondition[] {
   const excerpt = recentExcerpt(adventure);
   const relevant = new Set(relevantStoryCardInventory(adventure, excerpt).map(card => card.id));
   const eligible = [...adventure.storyCards.filter(card => relevant.has(card.id)),
-    ...adventure.storyCards.filter(card => !relevant.has(card.id) && card.keys.length === 0)].slice(0, 8);
+    ...adventure.storyCards.filter(card => card.type !== "relationship" && !relevant.has(card.id) && card.keys.length === 0)].slice(0, 8);
   return eligible.map((target) => ({
     id: `storyCard:${target.id}`,
     label: `Story Card: ${target.title}`,
@@ -602,6 +602,7 @@ ${defaultBrainPrompt(brain, adventure.activeState.turn, brainBatch)}`
     if (triggerAction.type === "updateStoryCard") {
       const card = adventure.storyCards.find((entry) => entry.id === triggerAction.storyCardId);
       if (!card) return { actions: [], error: `Story card not found: ${triggerAction.storyCardId}` };
+      if (card.type === "relationship") return { actions: [], error: "Relationship updates require the participant-aware proposal path." };
       const prompt = storyCardPrompt(card);
       const assessmentDraft = card.type === "lore" && assessmentDraftDelta?.trim() ? assessmentDraftDelta : undefined;
       const raw = assessmentDraft ?? await targeted(rule?.updatePrompt || prompt);
@@ -610,6 +611,7 @@ ${defaultBrainPrompt(brain, adventure.activeState.turn, brainBatch)}`
       let destination: string | null | undefined, identityChange: import("../types/adventure").MemoryPlacementValidation["identityChange"];
       if (!assessmentDraft && (raw.trim().startsWith("{") || raw.trim().startsWith("```"))) {
         const parsed = JSON.parse(raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, ""));
+        if (parsed?.storyCardType === "relationship" || adventure.storyCards.some(card => card.id === parsed?.targetId && card.type === "relationship")) throw new Error("Relationship extraction requires the single-pass loose grammar.");
         if (!parsed || typeof parsed.content !== "string" || (validationPolicy === "legacy" && (typeof parsed.title !== "string" || !["character", "location", "object", "lore", "custom"].includes(parsed.storyCardType)))) throw new Error("memory_model_output_invalid: Invalid placement draft.");
         content = parsed.content; title = typeof parsed.title === "string" ? parsed.title : card.title;
         type = parsed.storyCardType ?? (typeof parsed.targetId === "string" ? primaryStoryCardType(adventure.storyCards.find(c => c.id === parsed.targetId)?.type ?? "lore") : "lore"); mode = parsed.memoryMode ?? "static";
@@ -859,7 +861,7 @@ export async function runManualStoryCardsUpdate(
   adventure: Adventure,
   providerConfig: ProviderConfig,
 ): Promise<SemanticRunResult> {
-  const cards = adventure.storyCards.filter((c) => c.active);
+  const cards = adventure.storyCards.filter((c) => c.type !== "relationship" && c.active);
   const emptyLog: EvaluationLogEntry = {
     id: createId("evaluation"),
     turn: adventure.activeState.turn,
@@ -979,7 +981,7 @@ export async function runStoryCardAIBuilder(
   const recentBlock = recentMessageCount > 0
     ? recent || "(none available)"
     : "(not included by user choice)";
-  const cardList = adventure.storyCards
+  const cardList = adventure.storyCards.filter(card => card.type !== "relationship")
     .map((c) => `[ID: ${c.id}] "${c.title}" (${c.type}, ${c.memoryMode}${c.autoUpdate ? ", auto-updating" : ""}; keys: ${c.keys.join(", ") || "title"})\n${c.content.slice(0, 350)}`)
     .join("\n\n");
   const brainList = adventure.brains
@@ -1090,6 +1092,10 @@ Recent story messages:
 ${recentBlock}`;
 
     for (const p of parsed.proposals.slice(0, 3)) {
+      if ((p.storyCardType ?? p.type) === "relationship" || adventure.storyCards.some(card => card.type === "relationship" && card.id === (p.cardId ?? selectedCard?.id))) {
+        emptyLog.errors.push("Relationship drafts require explicit participant selection in the Memory Suggestion Builder.");
+        continue;
+      }
       const memoryMode = validMemoryMode(p.memoryMode) ?? requestedMode ?? "static";
       const storyCardType = validStoryCardType(p.storyCardType ?? p.type) ?? requestedType ?? "custom";
       const targetId = p.action === "update" ? (p.cardId ?? selectedCard?.id) : undefined;
@@ -1420,7 +1426,8 @@ function discoverReconcileTargets(adventure: Adventure, request: MemoryReconcile
   const recentTerms = extractReconcileTerms(recent, false);
   const terms = uniqTerms([...directiveTerms, ...recentTerms]);
   const strongTerms = directiveTerms.length > 0 ? directiveTerms : terms;
-  const duplicateIndexes = duplicateTitleIndexes(adventure.storyCards);
+  const ordinaryCards = adventure.storyCards.filter(card => card.type !== "relationship");
+  const duplicateIndexes = duplicateTitleIndexes(ordinaryCards);
   const targets: ReconcileTarget[] = [];
 
   const addTarget = (target: ReconcileTarget) => {
@@ -1446,7 +1453,7 @@ function discoverReconcileTargets(adventure: Adventure, request: MemoryReconcile
     });
   }
 
-  for (const card of adventure.storyCards) {
+  for (const card of ordinaryCards) {
     if (!card.active && !directiveLooksRemoval(directive)) continue;
     const titleMatches = matchedReconcileTerms(`${card.title}\n${card.keys.join("\n")}`, strongTerms);
     const contentMatches = matchedReconcileTerms(storyCardSearchText(card), strongTerms);
@@ -1660,6 +1667,10 @@ ${recent}`;
 
     const retiredPressureIds = new Set(adventure.components.filter(c => c.type === "activePressure").map(c => c.id));
     for (const update of parsed.updates.filter(update => !retiredPressureIds.has(update.targetId)).slice(0, targets.length)) {
+      if (update.storyCardType === "relationship" || adventure.storyCards.some(card => card.type === "relationship" && card.id === update.targetId)) {
+        errors.push("Relationship updates require the participant-aware proposal path.");
+        continue;
+      }
       const target = targetById.get(update.targetId);
       const proposedType = target ? proposedTypeForReconcileTarget(target) : undefined;
       if (!target || !proposedType || !update.content?.trim()) continue;
@@ -1743,7 +1754,7 @@ export async function runRememberThis(
   config: ProviderConfig,
   fact: string,
 ): Promise<SemanticRunResult> {
-  const cardList = adventure.storyCards
+  const cardList = adventure.storyCards.filter(card => card.type !== "relationship")
     .map((c) => `[ID: ${c.id}] "${c.title}": ${c.content.slice(0, 150)}`)
     .join("\n");
 
@@ -1828,6 +1839,10 @@ Write the example lines in the character's actual voice. Existing-card appends m
     const turnId = String(adventure.activeState.turn);
 
     for (const p of parsed.proposals) {
+      if (p.storyCardType === "relationship" || adventure.storyCards.some(card => card.type === "relationship" && card.id === p.cardId)) {
+        emptyLog.errors.push("Relationship drafts require explicit participant selection in the Memory Suggestion Builder.");
+        continue;
+      }
       const routed = resolveMemoryTarget(adventure, {
         proposedType: "storyCard",
         storyCardType: validStoryCardType(p.storyCardType) ?? "lore",

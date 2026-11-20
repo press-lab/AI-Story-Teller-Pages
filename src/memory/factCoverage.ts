@@ -1,3 +1,4 @@
+import { relationshipIdError, relationshipKey, relationshipMatches } from "./relationshipCards";
 import type { Adventure, MemoryProposal } from "../types/adventure";
 
 /** Deliberately narrow paraphrase normalization. Never stem event verbs, remove
@@ -28,6 +29,10 @@ export function proposalFacts(p: MemoryProposal): string {
 }
 function related(p: MemoryProposal, q: MemoryProposal): boolean {
   if (p.proposedType !== q.proposedType || p.storyCardType !== q.storyCardType) return false;
+  if (p.storyCardType === "relationship") {
+    const a = p.relationship?.characterIds, b = q.relationship?.characterIds;
+    return Boolean(a && b && !relationshipIdError(a) && !relationshipIdError(b) && relationshipKey(a) === relationshipKey(b));
+  }
   if (p.targetId && q.targetId) return p.targetId === q.targetId;
   return factKey(p.title) === factKey(q.title)
     || Boolean(p.sourceTurnId === q.sourceTurnId && p.sourceText === q.sourceText
@@ -38,7 +43,9 @@ function related(p: MemoryProposal, q: MemoryProposal): boolean {
 export function proposalCoverage(a: Adventure, p: MemoryProposal, includeProposals = true): boolean {
   if (p.proposedType !== "storyCard" || p.storyCardPatch || p.componentPatch) return false;
   if ((p.storyCardType ?? "lore") === "lore") return loreNovelty(a, p, includeProposals).status === "covered";
-  const cards = a.storyCards.filter(c => c.id === p.targetId || (!p.targetId && c.type === p.storyCardType && factKey(c.title) === factKey(p.title)));
+  const cards = p.storyCardType === "relationship"
+    ? relationshipMatches(a.storyCards, p.relationship?.characterIds ?? [])
+    : a.storyCards.filter(c => c.type !== "relationship" && (c.id === p.targetId || (!p.targetId && c.type === p.storyCardType && factKey(c.title) === factKey(p.title))));
   const proposals = includeProposals ? a.activeState.memoryProposals.filter(q => q.id !== p.id && related(p, q)) : [];
   return factsCovered(p.content, [...cards.map(c => c.content), ...proposals.map(proposalFacts)]);
 }
@@ -46,7 +53,7 @@ export function proposalCoverage(a: Adventure, p: MemoryProposal, includeProposa
 export function relevantProposalCoverage(a: Adventure, excerpt: string, targetIds: string[] = [], sourceIds: string[] = []) {
   const excerptKey = factKey(excerpt);
   const words = new Set(excerptKey.split(" ").filter(w => w.length > 3));
-  return a.activeState.memoryProposals.filter(p => p.proposedType === "storyCard" && (
+  return a.activeState.memoryProposals.filter(p => p.proposedType === "storyCard" && p.storyCardType !== "relationship" && (
     Boolean(p.targetId && targetIds.includes(p.targetId)) || sourceIds.includes(p.sourceTurnId)
     || p.storyCardReview?.participants.some(name => excerptKey.includes(factKey(name)))
     || facts(p.title + " " + p.content + " " + p.suggestedTriggers.join(" ")).some(f => f.split(" ").filter(w => words.has(w)).length >= 2)

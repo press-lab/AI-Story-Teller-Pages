@@ -1,3 +1,4 @@
+import { relationshipMatches, relationshipProposalError, validateRelationshipIds } from "./relationshipCards";
 import { originalLoreEvidence, routeDatedLoreProposal } from "./datedLoreRouting";
 import { storyCardMeaningReviewReason } from "./storyCardMeaningReview";
 import type { Adventure, MemoryProposal, SinglePassMemoryCheckpoint, SinglePassMemoryFinding, SinglePassMemorySourceResult } from "../types/adventure";
@@ -35,6 +36,15 @@ export function validateSinglePassFinding(a: Adventure, sourceId: string, checkp
     const target = a.storyCards.find(c => c.id === f.targetId);
     if (f.targetId && (!target || target.type !== f.storyCardType || f.operation !== "append")) return "Invalid destination type or append operation.";
     if (!f.targetId && f.operation !== "create") return "New Story Cards require create.";
+    if (f.storyCardType === "relationship") {
+      const ids = f.relationship?.characterIds;
+      const error = validateRelationshipIds(a.storyCards, ids);
+      if (error || !ids) return error;
+      const matches = relationshipMatches(a.storyCards, ids);
+      if (matches.length > 1) return "Multiple Relationship Cards link this exact participant set.";
+      if (f.targetId && matches[0]?.id !== f.targetId) return "The relationship destination no longer matches the participant set.";
+      if (!f.targetId && matches.length) return "The participant set already has a Relationship Card. Use append.";
+    }
     if (target?.type === "character") return characterProfileChangeError(a, target.id, f.identityChange, evidence.map(m => m.id));
   } else {
     const conditions = buildMemoryAssessmentConditions({ ...a, messages: a.messages.slice(0, a.messages.findIndex(m => m.id === sourceId) + 1), activeState: { ...a.activeState, turn: a.messages.find(m => m.id === sourceId)!.memoryEvaluation!.turn } });
@@ -74,11 +84,11 @@ export function toSinglePassProposal(a: Adventure, sourceId: string, checkpoint:
   let p: MemoryProposal;
   if (f.kind === "storyCard") {
     p = makeStoryCardSuggestion(a, sourceId, checkpoint.sourceContent, { title: f.title, content: f.content!, evidence: f.evidenceQuotes.map(q => q.quote).join("\n"),
-      reason: f.reason, type: f.storyCardType, targetId: f.targetId ?? undefined, triggers: f.suggestedTriggers, participants: f.participants,
+      reason: f.reason, type: f.storyCardType, relationship: f.relationship, targetId: f.targetId ?? undefined, triggers: f.suggestedTriggers, participants: f.participants,
       candidateOnly: f.candidateOnly, evidenceReviewed: true, origin: "model" });
     // Routing chooses placement. The helper supplies chronology and established trigger generation.
-    const choices = f.destinationCandidates ?? storyCardTargets(a, { title: f.title, content: f.content!, participants: f.participants, targetId: f.targetId ?? undefined, type: f.storyCardType }).filter(id => a.storyCards.some(c => c.id === id && c.type === f.storyCardType));
-    p = { ...p, content: f.content!, title: f.title, targetId: f.targetId ?? undefined, storyCardType: f.storyCardType, memoryMode: f.memoryMode,
+    const choices = f.destinationCandidates ?? storyCardTargets(a, { title: f.title, content: f.content!, participants: f.participants, relationship: f.relationship, targetId: f.targetId ?? undefined, type: f.storyCardType }).filter(id => a.storyCards.some(c => c.id === id && c.type === f.storyCardType));
+    p = { ...p, content: f.content!, title: f.title, relationship: f.relationship, targetId: f.targetId ?? undefined, storyCardType: f.storyCardType, memoryMode: f.memoryMode,
       cardOperation: f.operation === "append" ? "append" : "create", appendContent: f.operation === "append" ? true : undefined, requiresReview: review || reviewReasons.length > 0,
       lore: f.storyCardType === "lore" ? { ...p.lore, status: f.eventStatus!, sourceMessageIds: ids } : undefined };
     if (p.storyCardReview) p.storyCardReview = { ...p.storyCardReview, candidateOnly: f.candidateOnly, operation: f.operation === "append" ? "update" : "create",
@@ -125,7 +135,7 @@ export function validateSinglePassSource(a: Adventure, result: SinglePassMemoryS
       ? loreNovelty({ ...a, activeState: { ...a.activeState, memoryProposals: [...a.activeState.memoryProposals, ...proposals.map(p => p.proposal)] } }, proposal) : undefined;
     if (novelty?.status === "covered") { suppressed.push(index); suppressionReasons[index] = novelty.reason; return; }
     if (novelty && novelty.status !== "new") { proposal.requiresReview = true; proposal.rationale += " " + novelty.reason; }
-    const placementError = placementValidationError(a, proposal);
+    const placementError = relationshipProposalError(a, proposal) ?? placementValidationError(a, proposal);
     if (placementError) { rejected.push({ index, reason: placementError }); return; }
     const brain = finding.kind === "brain" ? a.brains.find(b => b.id === finding.targetId) : undefined;
     const component = a.components.find(c => c.id === finding.targetId);
@@ -133,7 +143,7 @@ export function validateSinglePassSource(a: Adventure, result: SinglePassMemoryS
     const priorBrain = brain ? [brain.currentState, brain.relationshipPressure, brain.emotionalInterpretation, brain.recentDevelopments, brain.notes, ...Object.values(brain.thoughts), ...Object.values(brain.archivedThoughts)] : [];
     const thoughtText = (value: string = "") => value.replace(/^\s*\d+\s*(?:\u2192|:)\s*/, "");
     const card = finding.kind === "storyCard" ? a.storyCards.find(c => c.id === finding.targetId) : undefined;
-    const covered = proposalCoverage(a, proposal) || (finding.storyCardType !== "lore" && Boolean(card) && facts(finding.content!).every(fact => (" " + factKey(card!.content) + " ").includes(" " + fact + " "))) || (finding.kind === "brain" && brainValues.length > 0
+    const covered = proposalCoverage(finding.storyCardType === "relationship" ? { ...a, activeState: { ...a.activeState, memoryProposals: [...a.activeState.memoryProposals, ...proposals.map(entry => entry.proposal)] } } : a, proposal) || (finding.storyCardType !== "lore" && Boolean(card) && facts(finding.content!).every(fact => (" " + factKey(card!.content) + " ").includes(" " + fact + " "))) || (finding.kind === "brain" && brainValues.length > 0
       && brainValues.every(value => factsCovered(thoughtText(value), priorBrain.map(thoughtText))))
       || (!["brain", "storyCard"].includes(finding.kind) && Boolean(component) && factsCovered(finding.content!, [component!.content]));
     if (covered) { suppressed.push(index); suppressionReasons[index] = "Factual delta already recorded or considered."; }

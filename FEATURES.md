@@ -1,8 +1,10 @@
 > Active Pressure is retired. Older references below describe legacy behavior. It is not created, shown, evaluated, updated, approved, or included in context. Existing text remains inactive compatibility data; the six remaining approval categories are unchanged.
 
+[Relationship Story Cards](docs/relationship-story-cards.md) link existing Character Cards by ID. Narration can include their shared history when all linked characters are in the final context and the full card fits.
+
 ## Current Story Card update contract (October 25, 2026)
 
-Every Character, Location, Lore and Custom card can grow through validated factual appends. Automatic memory appends to the matching subject or creates a new card; it preserves the original body, voice, controls, chronology and provenance. Legacy modes and per-card opt-in do not restrict updates. The Memory Mode selector and single-card auto-update controls have been removed. Global memory cadence, approvals, protected-target review, source snapshots and context budgets remain. See `docs/story-card-architecture.md`; older mode-specific notes below describe the previous implementation.
+Every Character, Location, Object, Lore, Relationship and Custom card can grow through validated factual appends. Automatic memory appends to the matching subject or creates a new card; it preserves the original body, voice, controls, chronology and provenance. Legacy modes and per-card opt-in do not restrict updates. The Memory Mode selector and single-card auto-update controls have been removed. Global memory cadence, approvals, protected-target review, source snapshots and context budgets remain. See `docs/story-card-architecture.md`; older mode-specific notes below describe the previous implementation.
 
 # AI Story Teller — Feature Map
 
@@ -525,6 +527,6 @@ The clock recognizes following-morning and calendar-month skips, clamps month en
 
 Auto-approval belongs to each adventure. New adventures start with all six switches OFF: Plot Essentials, Current Arc, Arc Proposals, Character Self, Story Cards — Lore, and Story Cards — Everything Else. The permanent panel appears at the top of Memory Suggestions, including when its queue is empty. Settings has no approval controls, and global localStorage approval properties are discarded.
 
-The shared policy reads only `adventure.memoryAutoApprove`. Existing cards use their stored type. Lore uses `loreStoryCard`; character, location, legacy plot, and custom use `otherStoryCard`. Unknown new card types wait for classification. Missing-Brain card fallbacks use the card category. Existing pending proposals are never replayed when a switch changes. Evidence, duplicate, destination, protection, chronology, and companion-proposal checks remain in the reducer pipeline.
+The shared policy reads only `adventure.memoryAutoApprove`. Existing cards use their stored type. Lore uses `loreStoryCard`; character, location, object, relationship, legacy plot, and custom use `otherStoryCard`. Unknown new card types wait for classification. Missing-Brain card fallbacks use the card category. Existing pending proposals are never replayed when a switch changes. Evidence, duplicate, destination, protection, chronology, and companion-proposal checks remain in the reducer pipeline.
 
 Migration preserves boolean active settings. Lore falls back to the old broad Story Card preference only when its own preference is absent. Both split Character and Other preferences must be true to enable the combined category; an isolated split preference is ambiguous and leaves it OFF. A saved broad Story Card preference covers all cards. Invalid and missing preferences are false.

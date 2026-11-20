@@ -1,4 +1,6 @@
-import type { Adventure, ComponentType, SinglePassMemoryBatchResult, SinglePassMemoryFinding, StoryCardType } from "../types/adventure";
+import type { CharacterIdentity } from "./relationshipCards";
+import { canonicalRelationshipIds, relationshipCharacterMatches, relationshipMatches, relationshipTitle, validateRelationshipIds } from "./relationshipCards";
+import type { RelationshipMetadata, Adventure, ComponentType, SinglePassMemoryBatchResult, SinglePassMemoryFinding, StoryCardType } from "../types/adventure";
 import type { PreparedSinglePassMemoryBatch } from "./singlePassMemory";
 import type { LooseMemoryOperation, LooseMemoryParseResult } from "./looseMemoryParser";
 import { singlePassCharacterCard, normalizeSinglePassFinding } from "./singlePassMemory";
@@ -11,11 +13,12 @@ import { factsCovered, loreSubjectKey } from "./factCoverage";
 
 const normalize = (s: string) => s.normalize("NFKC").toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 const brainFields = ["thoughts", "currentState", "relationshipPressure", "emotionalInterpretation", "recentDevelopments", "notes"];
-const cardTypes: StoryCardType[] = ["lore", "character", "location", "object", "custom"];
+const cardTypes: StoryCardType[] = ["lore", "character", "location", "object", "relationship", "custom"];
 const componentTypes: ComponentType[] = ["plotEssentials", "currentArc", "activePressure", "immediateMomentum", "narrationRules", "aiInstructions", "authorNote", "memory", "custom"];
-type Source = PreparedSinglePassMemoryBatch["outputAliases"][string];
+type Source = Omit<PreparedSinglePassMemoryBatch["outputAliases"][string], "characters"> & { characters?: CharacterIdentity[] };
 export type LooseCategory = { category: "brain" | "storyCard" | "component"; subtype: string };
 export interface LooseDestination {
+  relationship?: RelationshipMetadata;
   category: LooseCategory;
   targetId: string | null;
   operation: "append" | "create" | "replace" | "patch";
@@ -32,7 +35,11 @@ export function resolveLooseSource(a: Adventure, batch: PreparedSinglePassMemory
   if (!source || !batch.checkpoints.some(c => c.sourceId === source.sourceId)) return { error: "Missing or unknown source alias." };
   const message = a.messages.find(m => m.id === source.sourceId);
   if (!message || message.role !== "assistant" || message.inputMode === "comms" || !message.content.trim()) return { error: "Missing saved in-story narrator source." };
-  return { value: source };
+  const characters = Object.values(source.characters ?? {}).flatMap(({ id, reference }) => {
+    const entry = batch.payload.references[reference] as CharacterIdentity | undefined;
+    return entry?.id === id && typeof entry.title === "string" && Array.isArray(entry.keys) ? [entry] : [];
+  });
+  return { value: { ...source, characters } };
 }
 /** Stage 2: validate the complete taxonomy; unsupported component intents stay components. */
 export function resolveLooseCategory(op: LooseMemoryOperation): Resolution<LooseCategory> {
@@ -71,6 +78,20 @@ export function resolveLooseDestination(a: Adventure, source: Source, op: LooseM
     if (matches.length > 1) return { error: "Ambiguous component destination: multiple eligible titles and subtypes match." };
     if (!matches.length) return { error: "Ineligible component destination: missing, inactive, opted out, wrong subtype or outside source eligibility." };
     return { value: { category, targetId: matches[0].id, operation: category.subtype === "currentArc" ? "append" : "replace" } };
+  }
+  if (category.subtype === "relationship") {
+    const ids: string[] = [];
+    for (const participant of op.relationshipParticipants ?? []) {
+      const matches = relationshipCharacterMatches(source.characters ?? [], participant);
+      if (matches.length !== 1) return { error: (matches.length ? "Ambiguous participant: " : "Unknown participant: ") + participant };
+      ids.push(matches[0].id);
+    }
+    const error = validateRelationshipIds(a.storyCards, ids);
+    if (error) return { error };
+    const matches = relationshipMatches(a.storyCards, ids);
+    if (matches.length > 1) return { error: "Multiple Relationship Cards link this exact participant set." };
+    return { value: { category, targetId: matches[0]?.id ?? null, operation: matches.length ? "append" : "create",
+      relationship: { characterIds: canonicalRelationshipIds(ids) } } };
   }
   const cards = a.storyCards.filter(c => c.type === category.subtype);
   let matches = cards.filter(c => normalize(c.title) === subject);
@@ -152,6 +173,14 @@ export function buildLooseFinding(a: Adventure, source: Source, op: LooseMemoryO
     if (kind === "storyCard") {
       const card = a.storyCards.find(c => c.id === destination.targetId);
       base.storyCardType = destination.category.subtype as StoryCardType;
+      if (destination.relationship) {
+        base.relationship = destination.relationship;
+        base.title = card?.title ?? relationshipTitle(a.storyCards, destination.relationship.characterIds);
+        base.participants = destination.relationship.characterIds.map(id => a.storyCards.find(entry => entry.id === id)!.title);
+        base.memoryMode = "static";
+        base.suggestedTriggers = [];
+        return normalizeSinglePassFinding(base, narrator.id, a);
+      }
       base.participants = characterParticipants(a.storyCards, op.content);
       base.operation = card ? "append" : "create";
       base.memoryMode = card?.memoryMode ?? "static";

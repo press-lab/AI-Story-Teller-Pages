@@ -14,7 +14,7 @@ export function memoryCanonMessages(adventure: Adventure, excerpt: string, task:
   // Discovery needs story evidence and nearby canon. Its long generic instructions
   // mention many card concepts and must not trigger unrelated reference cards.
   const references = discovery ? excerpt : [excerpt, task, ...components.map((component) => component.content)].join("\n");
-  const directCards = adventure.storyCards.filter((card) => card.active && (
+  const directCards = adventure.storyCards.filter((card) => card.type !== "relationship" && card.active && (
     card.pinned || card.protected || card.inclusionPolicy === "always"
     || /player[ -]character/i.test(storyCardContextContent(card))
     || matchPatterns(references, [card.title, ...card.keys], card.matchType).matched
@@ -23,7 +23,7 @@ export function memoryCanonMessages(adventure: Adventure, excerpt: string, task:
   // bringing every off-scene character (and their voice samples) into each call.
   const relatedReferences = directCards.map(storyCardContextContent).join("\n");
   const directIds = new Set(directCards.map(card => card.id));
-  const cards = adventure.storyCards.filter(card => card.active && (
+  const cards = adventure.storyCards.filter(card => card.type !== "relationship" && card.active && (
     directIds.has(card.id)
     || (!discovery && matchPatterns(relatedReferences, [card.title, ...card.keys], card.matchType).matched)
   ));

@@ -1,3 +1,5 @@
+import { RelationshipParticipants } from "./RelationshipParticipants";
+import { canonicalRelationshipIds, relationshipTitle, validateRelationshipIds, relationshipIdError, relationshipKey, relationshipMatches, relationshipProposalError } from "../memory/relationshipCards";
 import { PRIMARY_STORY_CARD_TYPES } from "../memory/storyCardArchitecture";
 import { MemorySuggestionBuilder } from "./MemorySuggestionBuilder";
 import type { MemoryDraftRequest, ProviderConfig } from "../types/adventure";
@@ -76,6 +78,8 @@ function MemorySuggestionsPage({ adventure, dispatch, onCreateDraft, providerCon
   const [eventStart, setEventStart] = useState(1);
   const [eventEnd, setEventEnd] = useState(adventure.messages.length);
   const invalidEventRange = eventScope === "range" && (!Number.isInteger(eventStart) || !Number.isInteger(eventEnd) || eventStart < 1 || eventEnd < eventStart || eventEnd > adventure.messages.length);
+  const [linkedDraft, setLinkedDraft] = useState(false);
+  const [linkedIds, setLinkedIds] = useState<string[]>([]);
   const [sourceText, setSourceText] = useState("");
   const [reconcileDirective, setReconcileDirective] = useState("");
   const [reconcileEntryCount, setReconcileEntryCount] = useState(20);
@@ -93,7 +97,8 @@ function MemorySuggestionsPage({ adventure, dispatch, onCreateDraft, providerCon
   const groups = new Map<string, { label: string; proposals: MemoryProposal[] }>();
   const normalizeTitle = (text: string) => text.normalize("NFKC").toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
   for (const proposal of pending) {
-    const key = proposal.targetId ? `target:${proposal.proposedType}:${proposal.targetId}`
+    const ids = proposal.relationship?.characterIds;
+    const key = proposal.storyCardType === "relationship" ? "relationship:" + (ids && !relationshipIdError(ids) ? relationshipKey(ids) : proposal.id) : proposal.targetId ? `target:${proposal.proposedType}:${proposal.targetId}`
       : `create:${proposal.proposedType}:${proposal.storyCardType ?? "lore"}:${normalizeTitle(proposal.title)}`;
     const label = proposal.proposedType === "brainUpdate"
       ? `Brain: ${adventure.brains.find(b => b.id === proposal.targetId)?.characterName ?? proposal.title}`
@@ -112,6 +117,23 @@ function MemorySuggestionsPage({ adventure, dispatch, onCreateDraft, providerCon
   }
 
   function createProposal() {
+    if (linkedDraft) {
+      if (validateRelationshipIds(adventure.storyCards, linkedIds)) return;
+      const matches = relationshipMatches(adventure.storyCards, linkedIds);
+      if (matches.length > 1) return;
+      const target = matches[0];
+      const now = nowIso();
+      dispatch({ type: "ADD_MEMORY_PROPOSAL", proposal: {
+        id: createId("proposal"), proposedType: "storyCard", storyCardType: "relationship",
+        relationship: { characterIds: canonicalRelationshipIds(linkedIds) }, sourceText,
+        sourceTurnId: adventure.messages.at(-1)?.id ?? "manual",
+        title: target?.title ?? relationshipTitle(adventure.storyCards, linkedIds), content: sourceText.trim(),
+        targetId: target?.id, suggestedTriggers: [], confidence: 1, status: "pending",
+        rationale: "Author-created relationship suggestion.", userInitiated: true, requiresReview: true, createdAt: now, updatedAt: now,
+      } });
+      setSourceText("");
+      return;
+    }
     const classified = classifyMemory(sourceText, {
       existingBrainNames: adventure.brains.map((brain) => brain.characterName),
       existingStoryCards: adventure.storyCards.map((card) => ({ id: card.id, title: card.title, keys: card.keys, type: card.type })),
@@ -280,7 +302,10 @@ function MemorySuggestionsPage({ adventure, dispatch, onCreateDraft, providerCon
             placeholder="Paste narrative content to classify into a memory suggestion."
           />
         </Field>
-        <button type="button" disabled={!sourceText.trim()} onClick={createProposal}>
+        <CheckboxField label="Linked Relationship Card" checked={linkedDraft} onChange={setLinkedDraft} />
+        {linkedDraft && <RelationshipParticipants cards={adventure.storyCards} selected={linkedIds} onChange={setLinkedIds} />}
+        <button type="button" disabled={!sourceText.trim() || (linkedDraft && (Boolean(validateRelationshipIds(adventure.storyCards, linkedIds))
+          || relationshipMatches(adventure.storyCards, linkedIds).length > 1))} onClick={createProposal}>
           Create Suggestion
         </button>
       </details>
@@ -345,6 +370,12 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
   ])] : [];
   const sourceValid = suggestionSourceValid(adventure, proposal);
   const placementError = placementValidationError(adventure, proposal);
+  const relationship = proposal.storyCardType === "relationship";
+  const relationshipError = relationshipProposalError(adventure, proposal);
+  const [editingLinks, setEditingLinks] = useState<string[]>();
+  const participantIds = Array.isArray(proposal.relationship?.characterIds) ? proposal.relationship.characterIds : [];
+  const destinations = relationship ? relationshipMatches(adventure.storyCards, participantIds)
+    : adventure.storyCards.filter(card => card.type !== "relationship");
   const destinationLabel = proposalDestinationLabel(adventure, proposal);
   const [regenerationError, setRegenerationError] = useState<string>();
   const [regenerating, setRegenerating] = useState(false);
@@ -406,7 +437,7 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
           }}>
           <option value="">CREATE — new Story Card</option>
           {proposal.targetId && !adventure.storyCards.some(card => card.id === proposal.targetId) && <option value={proposal.targetId}>Missing destination — choose another</option>}
-          {adventure.storyCards.map(card => <option key={card.id} value={card.id}>APPEND — {card.title}{proposal.storyCardReview!.targetCandidates.includes(card.id) ? " (suggested)" : ""}</option>)}
+          {destinations.map(card => <option key={card.id} value={card.id}>APPEND — {card.title}{proposal.storyCardReview!.targetCandidates.includes(card.id) ? " (suggested)" : ""}</option>)}
         </select></Field>
       </>}
       {proposal.proposedType === "storyCard" && !proposal.storyCardReview && <Field label="Story Card destination">
@@ -416,9 +447,24 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
         }}>
           <option value="">CREATE — new Story Card</option>
           {proposal.targetId && !adventure.storyCards.some(card => card.id === proposal.targetId) && <option value={proposal.targetId}>Missing destination — choose another</option>}
-          {adventure.storyCards.map(card => <option key={card.id} value={card.id}>APPEND — {card.title}</option>)}
+          {destinations.map(card => <option key={card.id} value={card.id}>APPEND — {card.title}</option>)}
         </select>
       </Field>}
+      {relationship && <p>Linked characters: {participantIds.map(id => (adventure.storyCards.find(card => card.id === id)?.title ?? "Missing") + " (" + id + ")").join(", ")}</p>}
+      {relationshipError && <p role="alert">{relationshipError}</p>}
+      {relationship && isPending && !proposal.manualDraft && <>
+        {editingLinks ? <>
+          <RelationshipParticipants cards={adventure.storyCards} selected={editingLinks} onChange={setEditingLinks} />
+          <button type="button" disabled={Boolean(validateRelationshipIds(adventure.storyCards, editingLinks)) || relationshipMatches(adventure.storyCards, editingLinks).length > 1} onClick={() => {
+            const target = relationshipMatches(adventure.storyCards, editingLinks)[0];
+            onUpdate(proposal, { relationship: { characterIds: canonicalRelationshipIds(editingLinks) }, targetId: target?.id, title: target?.title ?? relationshipTitle(adventure.storyCards, editingLinks),
+              cardOperation: target ? "append" : "create", appendContent: target ? true : undefined, placementValidation: undefined, requiresReview: true,
+              evaluationSource: proposal.evaluationSource && { ...proposal.evaluationSource, target: undefined } });
+            setEditingLinks(undefined);
+          }}>Save proposal participants</button>
+          <button type="button" onClick={() => setEditingLinks(undefined)}>Cancel</button>
+        </> : <button type="button" onClick={() => setEditingLinks(participantIds.filter(id => adventure.storyCards.some(card => card.id === id && card.type === "character")))}>Edit proposal participants</button>}
+      </>}
       <textarea
         rows={5}
         value={proposal.content}
@@ -430,7 +476,7 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
         <div className="row">
           <button
             type="button"
-            className="manual-approval" disabled={proposal.status === "approved"}
+            className="manual-approval" disabled={proposal.status === "approved" || Boolean(relationshipError)}
             onClick={() => dispatch({ type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id })}
           >
             Approve
@@ -528,10 +574,10 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
                 <select
                   value={targetCard?.type ?? proposal.storyCardType ?? ""}
                   onChange={(event) => onUpdate(proposal, { storyCardType: event.target.value as StoryCardType, targetId: undefined, appendContent: undefined, placementValidation: undefined })}
-                  disabled={proposal.status === "approved" || Boolean(targetCard) || Boolean(proposal.manualDraft)}
+                  disabled={proposal.status === "approved" || Boolean(targetCard) || Boolean(proposal.manualDraft) || relationship}
                 >
                   <option value="">Select a card type</option>
-                  {storyCardTypes.map((type) => <option key={type} value={type}>{type}</option>)}
+                  {storyCardTypes.filter(type => type !== "relationship" || relationship).map((type) => <option key={type} value={type}>{type}</option>)}
                 </select>
               </Field>
 
@@ -539,7 +585,8 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
           )}
           <Field label="Triggers">
             <input
-              value={commaList(proposal.suggestedTriggers)}
+              value={relationship ? "" : commaList(proposal.suggestedTriggers)}
+              readOnly={relationship}
               onChange={(event) => onUpdate(proposal, { suggestedTriggers: fromCommaList(event.target.value) })}
             />
           </Field>

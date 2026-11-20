@@ -1,9 +1,11 @@
 # Story Card architecture
 
+[Relationship Story Cards](relationship-story-cards.md) link existing Character Cards by ID. Narration can include their shared history when all linked characters are in the final context and the full card fits.
+
 ## Structure and responsibilities
 
-`StoryCardType` has four values: `character`, `location`, `lore`, `custom`.
-Lore is the default for events, shared developments, agreements, research and discoveries, even when a participant has a Character card. Append to existing Lore about that topic or create focused Lore. Character updates are exceptional: a specific enduring identity, capability, role/status, relationship or correction must change the profile beyond the scene, with a reason and exact supporting source quotes. Scene participation, dialogue, offers and tests do not justify a biography append. Location/Custom updates concern the enduring subject itself. All four types retain append/create support for eligible facts. Content is the single editable body. Type describes the subject, not its mutability. Plot Components and private Brain state remain separate.
+`StoryCardType` has six values: `character`, `location`, `object`, `lore`, `relationship`, `custom`.
+Lore is the default for events, shared developments, agreements, research and discoveries, even when a participant has a Character card. Append to existing Lore about that topic or create focused Lore. Character updates are exceptional: a specific enduring identity, capability, role/status or correction must change the profile beyond the scene, with a reason and exact supporting source quotes. Scene participation, dialogue, offers and tests do not justify a biography append. Location, Object and Custom updates concern the enduring subject itself. Relationship updates record durable interpersonal facts for the exact linked set. All six types retain append/create support for eligible facts. Content is the single editable body. Type describes the subject, not its mutability. Plot Components and private Brain state remain separate.
 
 Lore metadata (`StoryCard.lore`) holds `occurredAt`, `lastChangedAt`, `status`
 (`completed`, `ongoing`, `unresolved`, `superseded`), Chronicle `sourceMessageIds`,
@@ -25,7 +27,7 @@ No clock inference request, automatic backfill or wall-clock conversion is added
 
 ## Writes and retrieval
 
-All automatic card writes use the shared append/create proposal pipeline. Every saved card is an eligible destination, including inactive cards, historical Lore and legacy autoUpdate=false cards. Bounded relevance selection limits condition checks; context inclusion and per-card legacy update cooldowns do not authorize or forbid new memory. Global memory enablement/cadence and approval settings remain authoritative. Protected targets require review.
+All automatic card writes use the shared append/create proposal pipeline. Inactive cards, historical Lore and legacy autoUpdate=false cards can receive valid updates. Automatic Relationship updates require the single-pass loose grammar and exact-set resolution. Bounded relevance selection limits condition checks; context inclusion and per-card legacy update cooldowns do not authorize or forbid new memory. Global memory enablement/cadence and approval settings remain authoritative. Protected targets require review.
 
 Generated updates contain only new facts. The reducer appends them, retains existing content byte-for-byte, preserves type and authored controls, merges source IDs and relevant triggers, and records revision snapshots. It never silently replaces a biography, changes the voice contract or archives facts for a context budget. Manual editing remains available. Later corrections are dated additions; historical text is not an instruction to replay an event.
 

@@ -1,14 +1,15 @@
 import type { Adventure, LoreMetadata, MemoryProposal, StoryCard, StoryCardType, LegacyStoryCardType } from "../types/adventure";
+import { canonicalRelationshipIds, relationshipIdError } from "./relationshipCards";
 import { formatStoryTime } from "./storyTime";
 import { resolveLoreEventDate } from "./validateLoreChronology";
 import { approximateTokenCount } from "../tokenizer/approximateTokenCount";
 
-export const PRIMARY_STORY_CARD_TYPES = ["character", "location", "object", "lore", "custom"] as const;
+export const PRIMARY_STORY_CARD_TYPES = ["character", "location", "object", "lore", "relationship", "custom"] as const;
 
 /** Legacy values are accepted at data boundaries, never offered as creation choices. */
 export function primaryStoryCardType(type: string | undefined): StoryCardType {
   if (type === "plot" || type === "event") return "lore";
-  return type === "character" || type === "location" || type === "object" || type === "lore" ? type : "custom";
+  return type === "character" || type === "location" || type === "object" || type === "lore" || type === "relationship" ? type : "custom";
 }
 
 export function isHistoricalLore(card: Pick<StoryCard, "memoryMode" | "eventMemory"> & { type: StoryCardType | LegacyStoryCardType }): boolean {
@@ -33,7 +34,15 @@ export function migrateStoryCard(card: Omit<StoryCard, "type"> & { type: StoryCa
     status: historical || card.memoryMode === "historical" ? "completed" : "unresolved",
     sourceMessageIds: card.eventMemory?.sourceMessageIds ?? card.sourceTurnIds ?? [],
   } satisfies LoreMetadata : card.lore;
-  return { ...card, type, ...(historical ? { memoryMode: "historical" } : {}), ...(lore ? { lore } : {}) };
+  const { relationship, ...rest } = card;
+  if (type === "relationship") {
+    const ids = relationship?.characterIds;
+    return {
+      ...rest, type, keys: [], matchType: "phrase", inclusionPolicy: "triggered", memoryMode: "static",
+      relationship: ids && !relationshipIdError(ids) ? { characterIds: canonicalRelationshipIds(ids) } : relationship,
+    };
+  }
+  return { ...rest, type, ...(historical ? { memoryMode: "historical" } : {}), ...(lore ? { lore } : {}) };
 }
 
 export function proposalLore(adventure: Adventure, proposal: MemoryProposal): LoreMetadata {

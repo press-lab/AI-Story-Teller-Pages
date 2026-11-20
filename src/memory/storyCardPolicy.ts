@@ -78,6 +78,7 @@ export function normalizeStoryCardFact(fact: string): string {
 }
 
 export function isGuardedStoryCardMemory(card: StoryCardPolicyInput, incomingContent = ""): boolean {
+  if (card.type === "relationship") return false;
   const titleText = normalizePolicyText([card.title, ...(card.keys ?? [])].join(" "));
   if (GUARDED_CARD_TERMS.some((term) => titleText.includes(term))) return true;
 
@@ -142,6 +143,7 @@ export function consolidateStoryCardContent<T extends StoryCardPolicyInput>(card
 }
 
 export function applyGuardedStoryCardPolicy<T extends StoryCardPolicyInput>(card: T): T {
+  if (card.type === "relationship") return card;
   card = consolidateStoryCardContent(card);
   const compactKind = inferredCompactKind(card);
   if (!compactKind) return card;
@@ -186,5 +188,5 @@ export function appendSourceTurnIds(existing: string[] | undefined, sourceTurnId
 }
 
 export function storyCardContextContent(card: StoryCard): string {
-  return consolidateStoryCardContent(card).content;
+  return card.type === "relationship" ? card.content : consolidateStoryCardContent(card).content;
 }

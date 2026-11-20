@@ -1,3 +1,4 @@
+import { canonicalRelationshipIds, linkedRelationships, relationshipCardError, relationshipIdError, relationshipMatches, relationshipProposalError, relationshipTitle, relationshipWriteError } from "../memory/relationshipCards";
 import { DRAFT_COMPONENT_TYPES, SINGLETON_DRAFT_TYPES, draftTargetFingerprint } from "../memory/memoryDraft";
 import { establishedLoreTime, routeDatedLoreProposal, loreEventDateKey, sameLoreEventDate } from "../memory/datedLoreRouting";
 import { bindPlacement } from "../memory/storyCardPlacement";
@@ -91,6 +92,7 @@ function storyCardMemorySnapshot(card: StoryCard): MemoryUpdateSnapshot {
     type: card.type,
     eventMemory: card.eventMemory,
     lore: card.lore,
+    relationship: card.relationship,
     memoryMode: card.memoryMode,
     compactKind: card.compactKind,
     compactStatus: card.compactStatus,
@@ -149,7 +151,7 @@ function recordStoryCardMemoryUpdate(
 ): StoryCard {
   const timestamp = nowIso();
   const stamped = { ...next, updatedAt: timestamp, lastMemoryUpdatedAt: timestamp };
-  if (!MEMORY_DEBUG_LOGGING) return { ...stamped, memoryUpdateHistory: previous?.memoryUpdateHistory ?? next.memoryUpdateHistory };
+  if (!MEMORY_DEBUG_LOGGING && next.type !== "relationship") return { ...stamped, memoryUpdateHistory: previous?.memoryUpdateHistory ?? next.memoryUpdateHistory };
   return {
     ...stamped,
     memoryUpdateHistory: [
@@ -589,8 +591,14 @@ function updateMemoryProposal(proposal: MemoryProposal, patch: Partial<MemoryPro
   delete sanitizedPatch.updatedAt;
   delete sanitizedPatch.approvalFeedback;
   const next = { ...proposal, ...sanitizedPatch, id: proposal.id, createdAt: proposal.createdAt, updatedAt: nowIso() };
-  if (["sourceTurnId", "sourceText", "storyCardReview", "evaluationSource", "title", "content", "targetId", "cardOperation", "appendContent", "lore"].some(key =>
+  if (["sourceTurnId", "sourceText", "storyCardReview", "evaluationSource", "title", "content", "targetId", "cardOperation", "appendContent", "lore", "relationship", "storyCardType"].some(key =>
     JSON.stringify(proposal[key as keyof MemoryProposal]) !== JSON.stringify(next[key as keyof MemoryProposal]))) next.approvalFeedback = undefined;
+  if (next.storyCardType !== "relationship" || next.proposedType !== "storyCard") delete next.relationship;
+  else {
+    next.suggestedTriggers = [];
+    const ids = next.relationship?.characterIds;
+    if (ids && !relationshipIdError(ids)) next.relationship = { characterIds: canonicalRelationshipIds(ids) };
+  }
   if (next.placementValidation && next.placementValidation.fingerprint !== placementFingerprint(next)) next.placementValidation = undefined;
   return next;
 }
@@ -731,7 +739,12 @@ function sanitizeProposal(proposal: MemoryProposal): MemoryProposal | null {
     ...proposal,
     content,
     title: safeTitle,
-    suggestedTriggers: proposal.suggestedTriggers ?? [],
+    suggestedTriggers: proposal.storyCardType === "relationship" ? [] : proposal.suggestedTriggers ?? [],
+    ...(proposal.storyCardType === "relationship" ? {
+      memoryMode: "static" as const, lore: undefined, eventMemory: undefined,
+      relationship: proposal.relationship && !relationshipIdError(proposal.relationship.characterIds)
+        ? { characterIds: canonicalRelationshipIds(proposal.relationship.characterIds) } : proposal.relationship,
+    } : {}),
     ...(proposal.proposedType === "storyCard" ? { cardOperation: proposal.targetId ? "append" as const : "create" as const, appendContent: proposal.targetId ? true : undefined } : {}),
     autoUpdateCooldownTurns,
   };
@@ -753,10 +766,10 @@ function loreCreateTitleConflict(state: Adventure, proposal: MemoryProposal): bo
 }
 
 function routedProposal(state: Adventure, proposal: MemoryProposal): MemoryProposal {
-  if (proposal.userInitiated && proposal.manualDraft) return proposal;
+  if (proposal.storyCardType === "relationship" || (proposal.userInitiated && proposal.manualDraft)) return proposal;
   const originalCardType = proposal.storyCardType;
   if (proposal.proposedType === "storyCard") {
-    const target = state.storyCards.find(c => proposal.targetId ? c.id === proposal.targetId : c.title.toLocaleLowerCase() === proposal.title.toLocaleLowerCase() || (c.type === "location" && !proposal.storyCardType && cardMatchesName(c, proposal.title)));
+    const target = state.storyCards.find(c => c.type !== "relationship" && (proposal.targetId ? c.id === proposal.targetId : c.title.toLocaleLowerCase() === proposal.title.toLocaleLowerCase() || (c.type === "location" && !proposal.storyCardType && cardMatchesName(c, proposal.title))));
     if (target) proposal = { ...proposal, storyCardType: target.type };
     if (proposal.placementValidation) return proposal;
     const legacyEvent = proposal.storyCardType === "event";
@@ -854,6 +867,24 @@ function outgoingBrainFieldProposalsForReplacement(
   return results;
 }
 
+function relationshipSourceIds(state: Adventure, proposal: MemoryProposal): string[] {
+  const ids = new Set([proposal.sourceTurnId, ...(proposal.placementValidation?.sources.map(source => source.id) ?? [])]);
+  return state.messages.filter(message => ids.has(message.id)).map(message => message.id);
+}
+
+function reconcileRelationshipCreate(state: Adventure, proposal: MemoryProposal): MemoryProposal {
+  if (proposal.storyCardType !== "relationship" || proposal.targetId) return proposal;
+  const match = relationshipMatches(state.storyCards, proposal.relationship?.characterIds ?? [])[0];
+  if (!match) return proposal;
+  return {
+    ...proposal, targetId: match.id, title: match.title, appendContent: true, cardOperation: "append",
+    requiresReview: true, placementValidation: undefined,
+    evaluationSource: proposal.evaluationSource && { ...proposal.evaluationSource, target: undefined },
+    manualDraft: proposal.manualDraft && { ...proposal.manualDraft, targetSnapshot: draftTargetFingerprint(match) },
+    rationale: "This participant set now has a Relationship Card. Review the new append destination. " + proposal.rationale,
+  };
+}
+
 function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal, manualApproval = false): Partial<Adventure> {
   const proposalMemoryMeta = (operation: MemoryUpdateOperation): MemoryUpdateMeta => ({
     source: "memoryProposal",
@@ -861,6 +892,24 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal,
     proposalId: proposal.id,
     sourceTurnId: proposal.sourceTurnId,
   });
+
+  if (proposal.proposedType === "storyCard" && proposal.storyCardType === "relationship") {
+    if (relationshipProposalError(state, proposal) || !proposal.content.trim()) return {};
+    const ids = proposal.relationship!.characterIds;
+    const existing = relationshipMatches(state.storyCards, ids)[0];
+    if ((!proposal.targetId && existing) || (proposal.targetId && !existing)) return {};
+    const novel = proposal.content.split(/\n+/).filter(fact => fact.trim() && !factsCovered(fact, [existing?.content ?? ""])).join("\n");
+    if (!novel) return {};
+    const time = establishedLoreTime(state, proposal);
+    const delta = existing && time?.text ? "[" + formatStoryTime(time) + "] " + novel : novel;
+    const card = existing
+      ? { ...existing, content: existing.content ? existing.content + (existing.content.endsWith("\n") ? "" : "\n") + delta : delta,
+          sourceTurnIds: [...new Set([...(existing.sourceTurnIds ?? []), ...relationshipSourceIds(state, proposal)])] }
+      : makeStoryCard({ type: "relationship", relationship: proposal.relationship,
+          title: relationshipTitle(state.storyCards, ids), content: delta, sourceTurnIds: relationshipSourceIds(state, proposal) });
+    if (relationshipCardError(state.storyCards, card)) return {};
+    return { storyCards: upsertById(state.storyCards, recordStoryCardMemoryUpdate(existing, card, proposalMemoryMeta(existing ? "append" : "create"))) };
+  }
 
   if (proposal.proposedType === "componentDraft") {
     const type = proposal.manualDraft?.componentType;
@@ -882,7 +931,7 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal,
     const safeContent = stripLeadingCardTitle(cardTitle, proposal.content);
     if (!safeContent.trim()) return {};
     const existing = state.storyCards.find(
-      (card) => proposal.targetId ? card.id === proposal.targetId : !manualApproval && !proposal.storyCardReview && normalizeProposalTitle(card.title) === normalizeProposalTitle(proposal.title),
+      (card) => card.type !== "relationship" && (proposal.targetId ? card.id === proposal.targetId : !manualApproval && !proposal.storyCardReview && normalizeProposalTitle(card.title) === normalizeProposalTitle(proposal.title)),
     );
     // A manual approval updates the chosen card without undoing a later type change.
     if (existing) proposal = { ...proposal, storyCardType: existing.type };
@@ -1671,27 +1720,49 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
     }
     case "REORDER_COMPONENT":
       return touchAdventure(state, { components: moveByPriority(state.components, action.componentId, action.direction) });
-    case "UPSERT_STORY_CARD":
-      return touchAdventure(state, { storyCards: upsertById(state.storyCards, touch(migrateStoryCard(action.storyCard))) });
+    case "IMPORT_STORY_CARDS": {
+      const incoming = action.storyCards.map(migrateStoryCard);
+      const ids = new Set(incoming.map(card => card.id));
+      if (ids.size !== incoming.length) return state;
+      const merged = new Map(state.storyCards.map(card => [card.id, card]));
+      for (const card of incoming) merged.set(card.id, touch(card));
+      const finalCards = [...merged.values()];
+      if (incoming.some(card => relationshipWriteError(finalCards, state.storyCards.find(previous => previous.id === card.id), card))) return state;
+      if (finalCards.some(card => card.type === "relationship" && Array.isArray(card.relationship?.characterIds)
+        && card.relationship.characterIds.some(id => ids.has(id)) && relationshipCardError(finalCards, card))) return state;
+      return touchAdventure(state, { storyCards: finalCards });
+    }
+    case "UPSERT_STORY_CARD": {
+      const card = migrateStoryCard(action.storyCard);
+      const previous = state.storyCards.find(candidate => candidate.id === card.id);
+      if (relationshipWriteError(state.storyCards, previous, card)) return state;
+      return touchAdventure(state, { storyCards: upsertById(state.storyCards, touch(card)) });
+    }
     case "DELETE_STORY_CARD":
+      if (state.storyCards.some(card => card.id === action.storyCardId && card.type === "character")
+        && linkedRelationships(state.storyCards, action.storyCardId).length) return state;
       return touchAdventure(state, { storyCards: deleteById(state.storyCards, action.storyCardId) });
-    case "ACTIVATE_STORY_CARD":
+    case "ACTIVATE_STORY_CARD": {
+      const card = state.storyCards.find(candidate => candidate.id === action.storyCardId);
+      if (card && relationshipCardError(state.storyCards, card)) return state;
       return touchAdventure(state, { storyCards: updateById(state.storyCards, action.storyCardId, (item) => touch({ ...item, active: true })) });
+    }
     case "DEACTIVATE_STORY_CARD":
       return touchAdventure(state, { storyCards: updateById(state.storyCards, action.storyCardId, (item) => touch({ ...item, active: false })) });
     case "PIN_STORY_CARD":
       return touchAdventure(state, { storyCards: updateById(state.storyCards, action.storyCardId, (item) => touch({ ...item, pinned: true })) });
     case "UNPIN_STORY_CARD":
       return touchAdventure(state, { storyCards: updateById(state.storyCards, action.storyCardId, (item) => touch({ ...item, pinned: false })) });
-    case "UPDATE_STORY_CARD":
-      return touchAdventure(state, {
-        storyCards: updateById(state.storyCards, action.storyCardId, (item) => {
-          const next = mergePatch<StoryCard>(item, action.patch);
-          return migrateStoryCard(item.eventMemory ? { ...next, memoryMode: "historical", autoUpdate: false } : next);
-        }),
-      });
+    case "UPDATE_STORY_CARD": {
+      const previous = state.storyCards.find(card => card.id === action.storyCardId);
+      if (!previous) return state;
+      const patched = mergePatch<StoryCard>(previous, action.patch);
+      const next = migrateStoryCard(previous.eventMemory ? { ...patched, memoryMode: "historical", autoUpdate: false } : patched);
+      if (relationshipWriteError(state.storyCards, previous, next)) return state;
+      return touchAdventure(state, { storyCards: updateById(state.storyCards, action.storyCardId, () => next) });
+    }
     case "APPLY_STORY_CARD_UPDATE":
-
+      if (state.storyCards.some(card => card.id === action.storyCardId && card.type === "relationship")) return state;
       if (action.content === undefined && (!action.patch || Object.keys(action.patch).length === 0)) return state;
       return touchAdventure(state, {
         storyCards: updateById(state.storyCards, action.storyCardId, (item) => {
@@ -1911,6 +1982,20 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
         candidate: { kind: action.proposal.storyCardType ?? action.proposal.proposedType, title: action.proposal.title, content: action.proposal.content.slice(0, 4000), evidence: (action.proposal.sourceText ?? "").slice(0, 4000), rationale: (action.proposal.rationale ?? "").slice(0, 600) },
       } });
       if (!clean) return suppressed("Proposal sanitization rejected the candidate.");
+      const relationError = relationshipProposalError(state, clean);
+      if (relationError) return suppressed(relationError);
+      if (clean.storyCardType === "relationship") {
+        if (!clean.userInitiated && !clean.placementValidation) return suppressed("Relationship extraction requires validated participant-aware placement.");
+        if (proposalCoverage(state, clean)) return suppressed("Relationship fact already recorded or considered.");
+        clean = reconcileRelationshipCreate(state, clean);
+        if (clean.manualDraft) return touchAdventure(state, { activeState: { ...state.activeState,
+          memoryProposals: [{ ...clean, status: "pending", requiresReview: true }, ...state.activeState.memoryProposals] } });
+        clean.requiresReview = storyCardMustBeReviewed(state, clean) || Boolean(placementValidationError(state, clean));
+        const next = touchAdventure(state, { activeState: { ...state.activeState,
+          memoryProposals: [{ ...clean, status: "pending" }, ...state.activeState.memoryProposals] } });
+        return storyCardAutoApprovalBlockers(next, clean).length === 0
+          ? adventureReducer(next, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: clean.id, automatic: true }) : next;
+      }
       // A deliberate authoring request is a reviewable draft, not an automatic candidate.
       // Preserve explicit CREATE/target choices and allow the author to revise a prior draft.
       if (clean.userInitiated && clean.manualDraft) {
@@ -1993,13 +2078,13 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
         clean.storyCardType !== "lore" && clean.proposedType === "storyCard" &&
         !clean.targetId &&
         !(clean.requiresReview && clean.storyCardReview?.targetCandidates.length) &&
-        state.storyCards.some((c) => normalizeProposalTitle(c.title) === normTitle);
+        state.storyCards.some((c) => c.type !== "relationship" && normalizeProposalTitle(c.title) === normTitle);
       // Similarity can deduplicate event retellings, but must not merge distinct character identities.
       const duplicatesStoryCardContent = clean.proposedType === "storyCard" && clean.storyCardType !== "character" && clean.storyCardType !== "lore"
         && !isUpdate && !clean.targetId && comparableProposals.some(p =>
-          p.proposedType === "storyCard" && p.storyCardType !== "character" && !p.targetId && contentLooksDuplicate(p.content, clean.content));
+          p.proposedType === "storyCard" && p.storyCardType !== "relationship" && p.storyCardType !== "character" && !p.targetId && contentLooksDuplicate(p.content, clean.content));
       const duplicatesExistingCardContent = clean.proposedType === "storyCard" && clean.storyCardType !== "character" && clean.storyCardType !== "lore"
-        && !isUpdate && !clean.targetId && state.storyCards.some(c => c.type !== "character" && contentLooksDuplicate(c.content, clean.content));
+        && !isUpdate && !clean.targetId && state.storyCards.some(c => c.type !== "relationship" && c.type !== "character" && contentLooksDuplicate(c.content, clean.content));
       const duplicatesExistingTargetContent =
         clean.storyCardType !== "lore" && clean.proposedType === "storyCard" &&
         isUpdate &&
@@ -2072,6 +2157,13 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
         memoryProposals: state.activeState.memoryProposals.map(p => p.id === existing.id
           ? { ...p, approvalFeedback: `Unable to apply — ${reason}` } : p) } });
       const draft = { ...proposalWithEdits(existing, action.editedProposal), ...(existing.manualDraft ? { manualDraft: existing.manualDraft, userInitiated: true } : {}) };
+      const relationError = relationshipProposalError(state, draft);
+      if (relationError) return fail(relationError);
+      const reconciled = reconcileRelationshipCreate(state, draft);
+      if (reconciled !== draft && !proposalCoverage(state, draft, false)) {
+        return touchAdventure(state, { activeState: { ...state.activeState, memoryProposals: state.activeState.memoryProposals.map(p =>
+          p.id === draft.id ? { ...reconciled, approvalFeedback: "Review and approve the updated append destination." } : p) } });
+      }
       if (existing.manualDraft) {
         if (typeof draft.content !== "string" || !draft.content.trim() || typeof draft.title !== "string" || !draft.title.trim())
           return fail("a draft needs a non-empty title and body.");
@@ -2087,7 +2179,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
           return fail("this component now exists. Generate an update for the existing component.");
         if (draft.proposedType === "componentDraft" && !["always", "triggered", "manual", "systemSuggested"].includes(draft.manualDraft?.inclusionPolicy ?? "always"))
           return fail("unsupported component inclusion policy.");
-        if (draft.proposedType === "storyCard" && !draft.targetId
+        if (draft.proposedType === "storyCard" && draft.storyCardType !== "relationship" && !draft.targetId
           && state.storyCards.some(c => normalizeProposalTitle(c.title) === normalizeProposalTitle(draft.title)))
           return fail("a Story Card with this title exists. Change the draft title or generate an update for that card.");
       }
@@ -2101,7 +2193,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
         const reference = draft.storyCardPatch === patch ? makeStoryCard({ title: "", content: "" }) : makeComponent({ title: "", content: "" });
         for (const [key, value] of Object.entries(patch)) {
           const expected = (reference as unknown as Record<string, unknown>)[key];
-          if (key === "id" || key === "type" || key === "lore") return fail(`edit ${key} through the destination controls, not the patch.`);
+          if (key === "id" || key === "type" || key === "lore" || key === "relationship") return fail(`edit ${key} through the destination controls, not the patch.`);
           if (value !== undefined && expected !== undefined && (Array.isArray(expected)
             ? !Array.isArray(value) || value.some(item => typeof item !== "string") : typeof value !== typeof expected))
             return fail(`invalid ${key} in memory patch.`);
@@ -2122,14 +2214,14 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
       if (!action.automatic && proposal.proposedType === "storyCard" && proposal.targetId
         && !state.storyCards.some(card => card.id === proposal.targetId)) return fail("destination card is missing. Select CREATE or an existing Story Card.");
       if (action.automatic && proposal.proposedType === "storyCard" && storyCardAutoApprovalBlockers(state, proposal).length) return state;
-      if ((action.automatic || Boolean(proposal.targetId)) && proposalCoverage(state, proposal, false)) {
+      if ((action.automatic || Boolean(proposal.targetId) || proposal.storyCardType === "relationship") && proposalCoverage(state, proposal, false)) {
         const next = touchAdventure(state, { activeState: { ...state.activeState,
           memoryProposals: state.activeState.memoryProposals.map(p => p.id === proposal.id ? { ...updateMemoryProposal(proposal, { status: "approved" }), approvalFeedback: "Approved — no new memory content." } : p) } });
         return adventureReducer(next, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: { id: createId("decision"), sourceId: proposal.sourceTurnId,
           createdAt: nowIso(), stage: "reducer", outcome: "candidate_suppressed", proposalId: proposal.id,
           reason: "Approval retained as a no-op: the latest destination already contains the complete reviewed factual delta." } });
       }
-      if (action.automatic && proposal.proposedType === "storyCard" && !proposal.targetId) {
+      if (action.automatic && proposal.proposedType === "storyCard" && proposal.storyCardType !== "relationship" && !proposal.targetId) {
         const collisions = state.storyCards.filter(c => c.type === (proposal.storyCardType ?? "lore") && loreSubjectKey(c) === loreSubjectKey(proposal)
           && (!(proposal.storyCardType === "lore" && loreEventDateKey(proposal)) || sameLoreEventDate(c, proposal)));
         if (collisions.length) {
@@ -2163,6 +2255,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
       }
       const approved = updateMemoryProposal(proposal, { status: "approved" });
       const applied = applyApprovedMemoryProposal(state, approved, !action.automatic);
+      if (approved.storyCardType === "relationship" && !applied.storyCards) return fail("the relationship update could not be applied.");
       approved.approvalFeedback = Object.entries(applied).some(([key, value]) => JSON.stringify(state[key as keyof Adventure]) !== JSON.stringify(value))
         ? "Approved — memory updated." : "Approved — no new memory content.";
       return touchAdventure(state, {

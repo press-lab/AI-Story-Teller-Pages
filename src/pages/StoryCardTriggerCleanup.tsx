@@ -17,7 +17,7 @@ export function StoryCardTriggerCleanup({ adventure, dispatch, providerConfig, l
   const setup = useMemo(() => {
     try {
       const config = triggerCleanupConfig(adventure, providerConfig);
-      const cards = adventure.storyCards.filter(card => scope === "all" || card.type === scope);
+      const cards = adventure.storyCards.filter(card => card.type !== "relationship" && (scope === "all" || card.type === scope));
       return { config, cards, plan: planTriggerCleanup(cards, config) };
     } catch { return undefined; }
   }, [adventure, providerConfig, scope]);
@@ -36,7 +36,7 @@ export function StoryCardTriggerCleanup({ adventure, dispatch, providerConfig, l
   function apply(result: TriggerCleanupResult, mode: "replace" | "append" = "replace") {
     if (decisions[result.cardId] || !result.keys || result.error) return;
     const card = adventure.storyCards.find(card => card.id === result.cardId);
-    if (!card || triggerCleanupSnapshot(card) !== result.original) {
+    if (!card || card.type === "relationship" || triggerCleanupSnapshot(card) !== result.original) {
       setDecisions(previous => ({ ...previous, [result.cardId]: "Card changed or was removed. Run cleanup again before applying." }));
       return;
     }
@@ -62,6 +62,7 @@ export function StoryCardTriggerCleanup({ adventure, dispatch, providerConfig, l
   return <details className="panel editor-tools-panel" open>
     <summary>Clean up trigger phrases with AI</summary>
     <p>The title already triggers recall. Review natural alternate names and memorable event references without changing card content. Custom includes factions and organizations.</p>
+    <p>Relationship Cards recall through linked characters and have no phrase triggers.</p>
     <label>Cards to review <select aria-label="Trigger cleanup category" value={scope} disabled={running} onChange={event => setScope(event.target.value as typeof scope)}>
       <option value="all">All Story Cards</option><option value="character">Character</option><option value="location">Location</option><option value="object">Object</option><option value="lore">Lore</option><option value="custom">Custom (including factions)</option>
     </select></label>

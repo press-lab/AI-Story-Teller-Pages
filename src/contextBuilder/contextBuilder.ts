@@ -1,3 +1,4 @@
+import { resolveRelationshipCardTriggers } from "./relationshipCardTriggers";
 import { resolveChainedStoryCardTriggers } from "./chainedStoryCardTriggers";
 import { isHistoricalLore, loreExcerpt } from "../memory/storyCardArchitecture";
 import { formatStoryTimeWithWeekday } from "../memory/storyTime";
@@ -510,6 +511,7 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
   const unmatchedStoryCards: Adventure["storyCards"] = [];
   const recalledEvents = selectEventMemories(adventure.storyCards, triggerText);
   for (const card of prioritySort(adventure.storyCards)) {
+    if (card.type === "relationship") continue;
     const forced = isForced(adventure, "storyCard", card.id);
     if (!card.active && !forced) {
       pushExcluded("storyCard", card.id, card.title, "inactive");
@@ -792,6 +794,31 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
     if (!resolvedChainedIds.has(card.id)) {
       pushExcluded("storyCard", card.id, card.title, "not_triggered", "No story card trigger matched current input, output, recent history, or included baseline content.");
     }
+  }
+
+  const includedCards = sections.find(section => section.id === "storyCards")?.items ?? [];
+  for (const relation of resolveRelationshipCardTriggers(adventure, includedCards)) {
+    const { card, names, reason, detail } = relation;
+    if (reason) {
+      pushExcluded("storyCard", card.id, card.title, reason, detail);
+      continue;
+    }
+    const header = "Relationship: " + names.join(" + ") + ". Established interpersonal history; later evidenced changes supersede earlier states. Do not force future developments or grant unreceived knowledge.";
+    const next = item(card.id, "storyCard", card.title, header + "\n" + storyCardContextContent(card),
+      card.priority, card.protected, card.pinned, card.active, "triggered", "user");
+    const propose = () => recalculate(sections.map(section => section.id === "storyCards"
+      ? { ...section, items: prioritySort([...section.items, next]) } : section));
+    const removableHistoryTokens = sections.find(section => section.id === "recentMessages")?.items
+      .filter(entry => isDroppable("recentMessages", entry))
+      .reduce((sum, entry) => sum + entry.tokenEstimate, 0) ?? 0;
+    if (totalTokens(sections) > budget || totalTokens(propose()) - removableHistoryTokens > budget) {
+      pushExcluded("storyCard", card.id, card.title, "budget_exceeded", detail);
+      continue;
+    }
+    while (totalTokens(propose()) > budget && dropOldestRecent()) { /* Retain protected history. */ }
+    sections = propose();
+    triggeredThreadIds.add(card.id);
+    decisions.push(decision(next, "included", "relationship_members_included", detail));
   }
 
   sections.forEach((contextSection) => {

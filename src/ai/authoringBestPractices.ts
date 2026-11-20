@@ -51,7 +51,8 @@ export function componentSuggestionBestPractices(type: DraftComponentType): stri
 }
 
 export const STORY_CARD_BEST_PRACTICES = `Story Card best practices:
-- Use Character, Location, Lore or Custom to describe the subject. Default to Lore for events, agreements, research and shared developments; reuse existing Lore about that topic before creating a new card. Append to Character only for an evidenced enduring profile change (identity, lasting capability, role/status, explicit enduring relationship or correction) with a specific reason beyond scene participation.
+- Use Character, Location, Object, Lore, Relationship or Custom to describe the subject. Default to Lore for events, agreements, research and shared developments; reuse existing Lore about that topic before creating a new card. Append to Character only for an evidenced enduring profile change (identity, lasting capability, role/status or correction) with a specific reason beyond scene participation.
+- Relationship Cards link two or more existing Character Cards by ID and record durable interpersonal history. Use one card per exact set, attribute directional facts, and record later changes as history. Use Lore for the events and Brains for private interpretations.
 - A Story Card is durable triggered memory for one subject: a character, location, faction, object, relationship, secret, rule, or completed event.
 - The entry must be self-contained. Repeat the subject name in the body; do not rely on the title alone.
 - Keep entries concise, concrete, and unambiguous. Avoid temporary scene state and excessive appearance details unless they matter.
@@ -64,10 +65,10 @@ export const TRIGGER_BEST_PRACTICES = `Trigger best practices:
 - Choose natural phrases a character or narrator might use, such as "our first date", "first date with Kori", or "ward design". Avoid word permutations and generic filler.
 - Use the same keys array for occasion and specific event phrases. Use "Thanksgiving" for a relevant occasion summary and "Thanksgiving bonfire" for the specific event.
 - Use bare names and aliases primarily on Character cards and bare place names primarily on Location cards. For Lore, use the name with a distinguishing event.
-- Aim for 3-6 useful keys for new cards, with a maximum of eight. Keep valid existing keys and check likely phrases for missed or unrelated matches.`;
+- Relationship Cards use empty keys and require all linked Character Cards in final context. For other new cards, aim for 3-6 useful keys, with a maximum of eight. Keep valid existing keys and check likely phrases for missed or unrelated matches.`;
 
 export const PLOT_MEMORY_THRESHOLD = `Plot and relationship memory threshold:
-- Create a new Lore card only for a lasting change in an obligation, alliance, relationship, secret, or consequential unresolved situation. Routine hospitality, casual invitations, flirting, repeated affection, and ordinary conversation do not by themselves qualify.
+- Use Lore for consequential events and their outcomes. Use linked Relationship Cards for established interpersonal transitions. Routine hospitality, casual invitations, flirting, repeated affection, and ordinary conversation do not by themselves qualify.
 - Prefer updating the existing subject over a sibling card. If the fact is already captured in canon or a proposal, omit it even when a different title would describe it.
 - A casual offer is not a binding pact. Preserve an explicitly accepted consequential commitment, but never promote a tentative plan into a completed event or obligation.`;
 

@@ -30,6 +30,9 @@ export function parseDiscoveryCandidate(raw: unknown): { candidate: MemoryDiscov
     candidate.eventMemory = { participants: strings(event.participants), recallCues: strings(event.recallCues),
       kind: typeof event.kind === "string" ? event.kind : undefined };
   }
+  if (candidate.storyCardType === "relationship") return { candidate, error: {
+    code: "discovery_relationship_unsupported", reason: "Relationship extraction requires the single-pass loose grammar.",
+  } };
   if (!candidate.title || !candidate.content || typeof item.content !== "string" || item.content.length > 4000 || String(item.title).trim().length > 160
     || !["lore", "character", "location", "object", "custom", "event", "plot", "faction"].includes(String(item.storyCardType ?? "lore"))) {
     return { candidate, error: { code: "discovery_candidate_schema_invalid", reason: "Discovery candidate has invalid title, content or card type." } };

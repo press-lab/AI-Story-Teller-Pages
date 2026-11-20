@@ -319,6 +319,7 @@ export async function runStoryCardAudit(
   nTurns: number,
   options: StoryCardAuditOptions = {},
 ): Promise<AuditRecommendation[]> {
+  adventure = { ...adventure, storyCards: adventure.storyCards.filter(card => card.type !== "relationship") };
   const recentMessages = lastNTurns(adventure.messages, nTurns);
 
   // Deterministic pass — free, runs first

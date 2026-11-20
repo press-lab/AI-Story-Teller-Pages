@@ -1,5 +1,6 @@
+import { relationshipIdError, relationshipKey, relationshipMatches, relationshipTitle } from "./relationshipCards";
 import { factsCovered, loreFactsCovered, loreTitleKey, loreOccurrenceDate, loreSubjectKey } from "./factCoverage";
-import type { Adventure, MemoryProposal, Message, StoryCardType } from "../types/adventure";
+import type { Adventure, MemoryProposal, Message, RelationshipMetadata, StoryCardType } from "../types/adventure";
 import { createId, nowIso } from "../utils/id";
 import { isHistoricalLore } from "./storyCardArchitecture";
 import { resolveLoreEventDate } from "./validateLoreChronology";
@@ -44,7 +45,7 @@ export function relevantStoryCardInventory(adventure: Adventure, text: string): 
   const normalized = normalizeMemoryText(text);
   const padded = ` ${normalized} `;
   const words = new Set(normalized.split(" ").filter(word => word.length > 3 && !stop.has(word)));
-  const result = adventure.storyCards.map(card => ({ card,
+  const result = adventure.storyCards.filter(card => card.type !== "relationship").map(card => ({ card,
     score: [card.title, ...card.keys].filter(name => Boolean(name.trim()) && padded.includes(` ${normalizeMemoryText(name)} `)).length * 10
       + [...titleWords(card.title + " " + card.keys.join(" "))].filter(word => words.has(word)).length,
   })).filter(entry => entry.score >= 2).sort((a, b) => b.score - a.score || b.card.priority - a.card.priority).slice(0, 8)
@@ -122,10 +123,14 @@ export function safeLoreAppendTarget(adventure: Adventure, finding: { title: str
 }
 
 /** A bounded local search. Participants alone never establish a shared continuing subject. */
-export function storyCardTargets(adventure: Adventure, finding: { title: string; content: string; participants?: string[]; targetId?: string; type?: StoryCardType }): string[] {
-  const explicit = finding.targetId ? adventure.storyCards.find(card => card.id === finding.targetId) : undefined;
+export function storyCardTargets(adventure: Adventure, finding: { title: string; content: string; participants?: string[]; targetId?: string; type?: StoryCardType; relationship?: RelationshipMetadata }): string[] {
+  if (finding.type === "relationship") {
+    const matches = relationshipMatches(adventure.storyCards, finding.relationship?.characterIds ?? []);
+    return matches.length === 1 && (!finding.targetId || finding.targetId === matches[0].id) ? [matches[0].id] : [];
+  }
+  const explicit = finding.targetId ? adventure.storyCards.find(card => card.id === finding.targetId && card.type !== "relationship") : undefined;
   if (explicit && (!finding.type || explicit.type === finding.type)) return [explicit.id];
-  const exact = adventure.storyCards.filter(card => normalizeMemoryText(card.title) === normalizeMemoryText(finding.title) && (!finding.type || card.type === finding.type));
+  const exact = adventure.storyCards.filter(card => card.type !== "relationship" && normalizeMemoryText(card.title) === normalizeMemoryText(finding.title) && (!finding.type || card.type === finding.type));
   if (exact.length) return exact.map(card => card.id);
   const text = finding.title + " " + finding.content;
   const rule = subjectPatterns.find(rule => rule.pattern.test(text));
@@ -133,7 +138,7 @@ export function storyCardTargets(adventure: Adventure, finding: { title: string;
   const participants = characterParticipants(adventure.storyCards, text, finding.participants);
   const identityTerms = new Set(participants.flatMap(name => normalizeMemoryText(name).split(" ")));
   const terms = new Set([...titleWords(text)].filter(word => !identityTerms.has(word)));
-  const ranked = adventure.storyCards.map(card => {
+  const ranked = adventure.storyCards.filter(card => card.type !== "relationship").map(card => {
     if (card.type === "object") {
       const named = [card.title, ...card.keys].some(name => normalizeMemoryText(name) === normalizeMemoryText(finding.title));
       return { card, score: finding.type === "object" && (finding.targetId === card.id || named) ? 200 : 0 };
@@ -154,7 +159,7 @@ export function storyCardTargets(adventure: Adventure, finding: { title: string;
 }
 
 export function makeStoryCardSuggestion(adventure: Adventure, sourceId: string, story: string, finding: {
-  title: string; content: string; evidence: string; reason: string; type?: StoryCardType; targetId?: string;
+  title: string; content: string; evidence: string; reason: string; type?: StoryCardType; targetId?: string; relationship?: RelationshipMetadata;
   triggers?: string[]; participants?: string[]; candidateOnly?: boolean; evidenceReviewed?: boolean; eventKind?: string; origin?: "model" | "deterministic";
 }): MemoryProposal {
   const player = sourcePlayer(adventure, sourceId);
@@ -173,10 +178,11 @@ export function makeStoryCardSuggestion(adventure: Adventure, sourceId: string, 
   const content = uncertain && !/^Candidate|^Plan \(/.test(finding.content) ? `Candidate interpretation (unconfirmed): ${finding.content}` : finding.content;
   const closedTitle = !choices.length && adventure.storyCards.some(card => isHistoricalLore(card) && normalizeMemoryText(card.title) === normalizeMemoryText(finding.title));
   const identityTitle = type === "lore" && !target && adventure.storyCards.some(c => (c.type === "character" || c.type === "location") && normalizeMemoryText(c.title) === normalizeMemoryText(finding.title));
-  const suggestedTitle = closedTitle || identityTitle ? `${finding.title}: ${finding.content.slice(0, 60)}` : finding.title;
+  const suggestedTitle = type === "relationship" && finding.relationship ? relationshipTitle(adventure.storyCards, finding.relationship.characterIds) : closedTitle || identityTitle ? `${finding.title}: ${finding.content.slice(0, 60)}` : finding.title;
   const memoryMode = target?.memoryMode ?? (type === "lore" && !uncertain && !continuing ? "historical" : "static");
   return {
     id: createId("proposal"), proposedType: "storyCard", cardOperation: target ? "append" : "create", storyCardType: target?.type ?? type, title: target?.title ?? suggestedTitle,
+    relationship: type === "relationship" ? finding.relationship : undefined,
     content, sourceTurnId: sourceId, sourceText: finding.evidence, rationale: finding.reason,
     suggestedTriggers: generatedStoryCardTriggers(adventure, finding.title, finding.content, finding.triggers, target?.id, memoryMode, type), requiresReview: false, status: "pending", confidence: candidateOnly ? 0.45 : 0.8,
     targetId: target?.id, appendContent: target ? true : undefined, memoryMode,
@@ -219,6 +225,11 @@ export function equivalentStoryCardSuggestions(a: MemoryProposal, b: MemoryPropo
     const leftDate = loreOccurrenceDate(a), rightDate = loreOccurrenceDate(b);
     if (!sameSubject || (leftDate && rightDate && leftDate !== rightDate)) return false;
     return loreFactsCovered(a.content, [b.content]) && loreFactsCovered(b.content, [a.content]);
+  }
+  if (a.storyCardType === "relationship") {
+    const left = a.relationship?.characterIds, right = b.relationship?.characterIds;
+    return Boolean(left && right && !relationshipIdError(left) && !relationshipIdError(right)
+      && relationshipKey(left) === relationshipKey(right) && factsCovered(a.content, [b.content]) && factsCovered(b.content, [a.content]));
   }
   const ar = a.storyCardReview, br = b.storyCardReview;
   if (["character", "location", "object", "custom"].includes(a.storyCardType ?? "lore") && !a.targetId && !b.targetId && normalizeMemoryText(a.title) === normalizeMemoryText(b.title)) return true;
@@ -269,6 +280,7 @@ export function storyCardMustBeReviewed(_adventure: Adventure, proposal: MemoryP
 
 /** CREATE keeps its destination and receives a stable unused title instead of a review task. */
 export function uniqueStoryCardTitle(adventure: Adventure, title: string, type: MemoryProposal["storyCardType"]): string {
+  if (type === "relationship") return title;
   const occupied = new Set([
     ...adventure.storyCards.map(c => loreTitleKey(c.title)),
     ...adventure.activeState.memoryProposals.filter(p => p.proposedType === "storyCard" && !p.targetId

@@ -1,3 +1,4 @@
+import { canonicalRelationshipIds, relationshipCardError, relationshipIdError } from "../memory/relationshipCards";
 import { compactMemoryGuards } from "../memory/compactMemoryGuards";
 import { stripRetiredAdventureFields, stripRetiredTokenSettings } from "./legacyAdventureInput";
 import { reconcileBrainBatchState } from "../memory/brainBatchRecovery";
@@ -300,6 +301,7 @@ export function makeStoryCard(overrides: Omit<Partial<StoryCard>, "type"> & { ty
     type: overrides.type ?? "custom",
     eventMemory: overrides.eventMemory,
     lore: overrides.lore,
+    relationship: overrides.relationship,
     memoryMode,
     compactKind: overrides.compactKind,
     compactStatus: overrides.compactStatus,
@@ -443,6 +445,7 @@ function normalizeComponentEntry(component: ComponentEntry): ComponentEntry {
 }
 
 function normalizeStoryCardEntry(card: StoryCard, migrateGuardedFacts: boolean): StoryCard {
+  if (card.type === "relationship") return migrateStoryCard(card);
   const normalized: StoryCard = {
     ...migrateStoryCard(card),
     matchType: card.matchType ?? "phrase",
@@ -531,6 +534,7 @@ export function normalizeAdventure(adventure: Adventure): Adventure {
       singlePass: evaluation.singlePass ? { ...evaluation.singlePass, status: "failed" as const, failureReason: reason } : undefined } };
   });
   const migrateGuardedStoryCards = !adventure.activeState?.stateFlags?.compactStoryCardsMigrated;
+  const cards = (adventure.storyCards ?? []).map(card => normalizeStoryCardEntry(card, migrateGuardedStoryCards));
   return compactMemoryGuards(reconcileBrainBatchState({
     ...baseline,
     ...adventure,
@@ -545,8 +549,15 @@ export function normalizeAdventure(adventure: Adventure): Adventure {
       ...adventure.activeState,
       memoryDiagnostics: (adventure.activeState?.memoryDiagnostics ?? []).slice(-600),
       evaluationLog: adventure.activeState?.evaluationLog ?? [],
-      memoryProposals: (adventure.activeState?.memoryProposals ?? []).map(proposal => proposal.proposedType === "storyCard" && proposal.storyCardType
-        ? { ...proposal, storyCardType: primaryStoryCardType(proposal.storyCardType), ...(proposal.storyCardType === "event" ? { memoryMode: "historical" as const } : {}) } : proposal),
+      memoryProposals: (adventure.activeState?.memoryProposals ?? []).map(proposal => {
+        const { relationship, ...rest } = proposal;
+        if (proposal.proposedType !== "storyCard" || !proposal.storyCardType) return rest;
+        const storyCardType = primaryStoryCardType(proposal.storyCardType);
+        if (storyCardType === "relationship") return { ...rest, storyCardType, memoryMode: "static" as const, suggestedTriggers: [],
+          relationship: relationship && !relationshipIdError(relationship.characterIds)
+            ? { characterIds: canonicalRelationshipIds(relationship.characterIds) } : relationship };
+        return { ...rest, storyCardType, ...(proposal.storyCardType === "event" ? { memoryMode: "historical" as const } : {}) };
+      }),
       pendingBrainDeltas: adventure.activeState?.pendingBrainDeltas ?? [],
       pendingUpdates: adventure.activeState?.pendingUpdates ?? [],
       storyUndoStack: adventure.activeState?.storyUndoStack ?? [],
@@ -592,7 +603,7 @@ export function normalizeAdventure(adventure: Adventure): Adventure {
       ...migrateBrainThoughts(brain),
       linkedStoryCardId: brain.linkedStoryCardId,
     })),
-    storyCards: (adventure.storyCards ?? []).map((card) => normalizeStoryCardEntry(card, migrateGuardedStoryCards)),
+    storyCards: cards.map(card => card.type === "relationship" && relationshipCardError(cards, card) ? { ...card, active: false } : card),
     components: (() => {
       const existing = adventure.components ?? baseline.components;
       const normalized = existing.map((component) => {

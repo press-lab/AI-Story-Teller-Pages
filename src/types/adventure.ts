@@ -128,6 +128,7 @@ export interface SinglePassMemoryFinding {
   evidenceQuotes: Array<{ messageId: string; quote: string }>;
   candidateOnly: boolean;
   storyCardType?: StoryCardType;
+  relationship?: RelationshipMetadata;
   operation?: "append" | "create" | "replace" | "patch";
   destinationCandidates?: string[];
   loreContinuation?: "identified" | "review";
@@ -280,6 +281,7 @@ export interface MemoryUpdateSnapshot {
   type?: ComponentType | StoryCardType | LegacyStoryCardType;
   eventMemory?: EventMemory;
   lore?: LoreMetadata;
+  relationship?: RelationshipMetadata;
   memoryMode?: StoryCardMemoryMode;
   compactKind?: StoryCardCompactKind;
   compactStatus?: StoryCardCompactStatus;
@@ -346,7 +348,7 @@ export interface ComponentEntry {
   updatedAt: ISODateString;
 }
 
-export type PrimaryStoryCardType = "character" | "location" | "object" | "lore" | "custom";
+export type PrimaryStoryCardType = "character" | "location" | "object" | "lore" | "relationship" | "custom";
 /** Read compatibility only; normalized cards always use a primary type. */
 export type LegacyStoryCardType = "plot" | "event" | "faction";
 export type StoryCardType = PrimaryStoryCardType;
@@ -369,6 +371,10 @@ export interface StoryClock {
   /** Last existing message at an explicit user clock correction. */
   anchorMessageId?: string;
 }
+export interface RelationshipMetadata {
+  characterIds: string[];
+}
+
 export interface LoreMetadata {
   occurredAt?: StoryTime;
   lastChangedAt?: StoryTime;
@@ -409,6 +415,7 @@ export interface StoryCard {
   type: StoryCardType;
   eventMemory?: EventMemory;
   lore?: LoreMetadata;
+  relationship?: RelationshipMetadata;
   /**
    * static: always-true reference facts; living: current evolving subject whose
    * updates merge/archive; historical: past event or completed arc record.
@@ -773,6 +780,7 @@ export interface MemoryProposal {
   storyCardType?: StoryCardType | LegacyStoryCardType;
   eventMemory?: EventMemory;
   lore?: LoreMetadata;
+  relationship?: RelationshipMetadata;
   autoUpdate?: boolean;
   autoUpdateCooldownTurns?: number;
   storyCardPatch?: Partial<Pick<StoryCard, "active" | "pinned" | "protected" | "inclusionPolicy" | "priority" | "state" | "compactKind" | "compactStatus">>;
@@ -803,6 +811,7 @@ export interface MemoryDraftRequest {
   destination: "component" | "storyCard";
   componentType: DraftComponentType;
   storyCardType: StoryCardType;
+  relationship?: RelationshipMetadata;
   intent: StoryCardAIBuilderIntent;
   targetId?: string;
   description: string;
@@ -1078,7 +1087,7 @@ export type ContextSectionKind =
   | "recentMessages"  // K. Recent Messages
   | "challengeMode";  // M. Continuity Challenge — one-turn verification instruction
 
-export type ExcludedReason = "budget_exceeded" | "inactive" | "cooldown" | "not_triggered";
+export type ExcludedReason = "relationship_members_missing" | "relationship_invalid_links" | "budget_exceeded" | "inactive" | "cooldown" | "not_triggered";
 
 export interface ContextItem {
   id: string;
@@ -1201,6 +1210,7 @@ export type AdventureAction =
   | { type: "UPDATE_COMPONENT"; componentId: string; patch: Partial<ComponentEntry> }
   | { type: "APPLY_COMPONENT_UPDATE"; componentId: string; content: string }
   | { type: "REORDER_COMPONENT"; componentId: string; direction: "up" | "down" }
+  | { type: "IMPORT_STORY_CARDS"; storyCards: StoryCard[] }
   | { type: "UPSERT_STORY_CARD"; storyCard: StoryCard }
   | { type: "DELETE_STORY_CARD"; storyCardId: string }
   | { type: "ACTIVATE_STORY_CARD"; storyCardId: string }

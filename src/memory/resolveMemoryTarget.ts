@@ -1,8 +1,10 @@
-import type { Adventure, MemoryProposalType, StoryCard, StoryCardMemoryMode, StoryCardType } from "../types/adventure";
+import { canonicalRelationshipIds, relationshipMatches, relationshipTitle, validateRelationshipIds } from "./relationshipCards";
+import type { RelationshipMetadata, Adventure, MemoryProposalType, StoryCard, StoryCardMemoryMode, StoryCardType } from "../types/adventure";
 
 export interface MemoryTargetDraft {
   proposedType: MemoryProposalType;
   storyCardType?: StoryCardType;
+  relationship?: RelationshipMetadata;
   title: string;
   content: string;
   sourceText?: string;
@@ -17,6 +19,7 @@ export interface MemoryTargetDraft {
 export interface MemoryTargetResolution {
   proposedType: MemoryProposalType;
   storyCardType?: StoryCardType;
+  relationship?: RelationshipMetadata;
   title: string;
   content: string;
   suggestedTriggers: string[];
@@ -51,12 +54,12 @@ export function inferStoryCardMemoryMode(draft: Pick<MemoryTargetDraft, "title" 
 }
 
 function exactStoryCardTarget(adventure: Adventure, draft: MemoryTargetDraft): StoryCard | undefined {
-  if (draft.targetId) return adventure.storyCards.find(card => card.id === draft.targetId);
+  if (draft.targetId) return adventure.storyCards.find(card => card.id === draft.targetId && card.type !== "relationship");
   const title = normalize(draft.title);
-  const exact = adventure.storyCards.filter(card => normalize(card.title) === title);
+  const exact = adventure.storyCards.filter(card => card.type !== "relationship" && normalize(card.title) === title);
   if (exact.length === 1) return exact[0];
   if (exact.length > 1) return undefined;
-  const aliases = adventure.storyCards.filter(card => card.type !== "character" && card.keys.some(key => normalize(key) === title));
+  const aliases = adventure.storyCards.filter(card => card.type !== "relationship" && card.type !== "character" && card.keys.some(key => normalize(key) === title));
   return aliases.length === 1 ? aliases[0] : undefined;
 }
 
@@ -86,6 +89,7 @@ export function sanitizeStoryCardTriggers(
   memoryMode?: StoryCardMemoryMode,
   content = "",
 ): string[] {
+  if (adventure.storyCards.some(card => card.id === targetId && card.type === "relationship")) return [];
   const seen = new Set<string>();
   const result: string[] = [];
   for (const raw of triggers ?? []) {
@@ -125,6 +129,7 @@ export function generatedStoryCardTriggers(
   adventure: TriggerContext, title: string, content: string, triggers?: string[], targetId?: string,
   memoryMode?: StoryCardMemoryMode, type?: StoryCard["type"],
 ): string[] {
+  if (type === "relationship" || adventure.storyCards.some(card => card.id === targetId && card.type === "relationship")) return [];
   const supplied = sanitizeStoryCardTriggers(adventure, title, triggers, targetId, memoryMode, content);
   if (type === "character") return sanitizeStoryCardTriggers(adventure, title, [title, ...supplied], targetId, "static", content);
   if (supplied.length) return supplied;
@@ -168,6 +173,18 @@ export function resolveMemoryTarget(adventure: Adventure, draft: MemoryTargetDra
       memoryMode: draft.memoryMode,
       rationale: draft.rationale,
     };
+  }
+
+  if (draft.storyCardType === "relationship") {
+    const ids = draft.relationship?.characterIds;
+    const error = validateRelationshipIds(adventure.storyCards, ids);
+    if (error || !ids) throw new Error(error ?? "Relationship Cards require explicit linked participants.");
+    const matches = relationshipMatches(adventure.storyCards, ids);
+    if (matches.length > 1 || (draft.targetId && matches[0]?.id !== draft.targetId)) throw new Error("Invalid or ambiguous Relationship Card destination.");
+    const target = matches[0];
+    return { proposedType: "storyCard", storyCardType: "relationship", title: target?.title ?? relationshipTitle(adventure.storyCards, ids),
+      relationship: { characterIds: canonicalRelationshipIds(ids) }, content: draft.content, suggestedTriggers: [],
+      targetId: target?.id, appendContent: target ? true : undefined, memoryMode: "static", rationale: draft.rationale };
   }
 
   const requestedTarget = draft.targetId ? adventure.storyCards.find((card) => card.id === draft.targetId) : undefined;

@@ -48,6 +48,7 @@ export function planTriggerCleanup(cards: StoryCard[], config: ProviderConfig): 
   const plan: TriggerCleanupPlan = { batches: [], skipped: [], estimatedInputTokens: 0 };
   let batch: StoryCard[] = [], tokens = overhead;
   for (const card of cards) {
+    if (card.type === "relationship") continue;
     const size = approximateTokenCount(JSON.stringify(payload(card))) + 20;
     if (card.matchType === "regex" || size + overhead > inputLimit || output < 512) {
       plan.skipped.push({ ...resultFor(card), error: card.matchType === "regex"
@@ -69,7 +70,7 @@ export function parseTriggerCleanup(raw: string, cards: StoryCard[]): TriggerCle
   try { parsed = JSON.parse(raw.replace(/<think>[\s\S]*?<\/think>/gi, "").trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "")); }
   catch { return cards.map(card => ({ ...resultFor(card), error: "Invalid JSON response; existing triggers retained." })); }
   if (!Array.isArray(parsed)) return cards.map(card => ({ ...resultFor(card), error: "Expected an array of card results; existing triggers retained." }));
-  return cards.map(card => {
+  return cards.filter(card => card.type !== "relationship").map(card => {
     const entries = parsed.filter(value => value && typeof value === "object" && value.cardId === card.id);
     const entry = entries[0];
     if (entries.length !== 1 || !Array.isArray(entry?.keys) || entry.keys.length > 8

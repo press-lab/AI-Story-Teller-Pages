@@ -1,3 +1,4 @@
+import { relationshipCardError, relationshipCharacterMatches, relationshipIdError, relationshipKey, relationshipNameKey, validateRelationshipIds } from "./relationshipCards";
 import { snapshotFingerprint } from "../utils/snapshotFingerprint";
 import type { Adventure, BrainEntry, ChatMessage, ProviderConfig, SinglePassMemoryBatchResult, SinglePassMemoryCheckpoint, SinglePassMemoryFinding, SinglePassMemorySourceResult } from "../types/adventure";
 import { assessmentInputs, assessmentSourceState, memoryDecisionState } from "./memoryAssessment";
@@ -25,6 +26,26 @@ export function singlePassPersonality(content: string): string {
   return [...parts.filter(s => priority.test(s)), ...parts.filter(s => !priority.test(s))].join(" ").slice(0, 500);
 }
 
+function relationshipReferences(a: Adventure, sourceId: string) {
+  const characters = a.storyCards.filter(card => card.type === "character").map(({ id, title, keys }) => ({ id, title, keys }));
+  const evidence = " " + relationshipNameKey(memoryEvidenceWindow(a, sourceId).map(message => message.content).join("\n")) + " ";
+  const namesInEvidence = [...new Set(characters.flatMap(card => [card.title, ...card.keys].map(relationshipNameKey)))]
+    .filter(name => name && evidence.includes(" " + name + " "));
+  const identified = new Set(namesInEvidence.flatMap(name => {
+    const matches = relationshipCharacterMatches(characters, name);
+    return matches.length === 1 ? [matches[0].id] : [];
+  }));
+  const relevant = (ids: string[] | undefined) => Boolean(ids && !validateRelationshipIds(a.storyCards, ids) && ids.some(id => identified.has(id)));
+  const relationships = a.storyCards.filter(card => card.type === "relationship" && relevant(card.relationship?.characterIds))
+    .map(card => ({ id: card.id, title: card.title, characterIds: card.relationship!.characterIds, key: relationshipKey(card.relationship!.characterIds),
+      content: card.content, invalidLinks: relationshipCardError(a.storyCards, card), active: card.active, pinned: card.pinned, protected: card.protected, priority: card.priority }));
+  const coverage = a.activeState.memoryProposals.filter(proposal => proposal.storyCardType === "relationship"
+    && ["pending", "rejected", "ignored"].includes(proposal.status) && relevant(proposal.relationship?.characterIds))
+    .filter(proposal => !a.messages.slice(a.messages.findIndex(message => message.id === sourceId) + 1).some(message => message.id === proposal.sourceTurnId))
+    .map(proposal => ({ characterIds: proposal.relationship!.characterIds, content: proposal.content, status: proposal.status }));
+  return { characters, relationships, coverage };
+}
+
 /** Exact reference/control guard. Worker bookkeeping and request records are not evidence. */
 export function singlePassReferenceState(a: Adventure, sourceId: string): string {
   const snapshot = { ...a, messages: a.messages.slice(0, a.messages.findIndex(m => m.id === sourceId) + 1),
@@ -32,6 +53,7 @@ export function singlePassReferenceState(a: Adventure, sourceId: string): string
     semanticEvaluationSettings: { ...a.semanticEvaluationSettings, messagesIncluded: memoryEvidenceWindow(a, sourceId).length } };
   const conditions = buildMemoryAssessmentConditions(snapshot);
   return snapshotFingerprint(JSON.stringify([assessmentSourceState(snapshot, sourceId, conditions), memoryDecisionState(snapshot, sourceId),
+    relationshipReferences(a, sourceId),
     sameDayLoreCards(a, sourceId).map(card => [card.id, card.title, card.content, card.lore?.occurredAt, originalLoreEvidence(snapshot, card)]),
     snapshot.components.filter(c => c.type === "immediateMomentum").map(({ memoryUpdateHistory: _history, ...c }) => c),
     snapshot.brains.filter(b => conditions.brains.some(c => c.id === `brain:${b.id}`)).map(b => {
@@ -45,6 +67,8 @@ export interface PreparedSinglePassMemoryBatch {
   outputAliases: Record<string, { sourceId: string; sourceTurn: number;
     evidence: Record<string, { id: string; reference: number }>;
     cards: Record<string, { id: string; reference: number; type: string; memoryMode?: SinglePassMemoryFinding["memoryMode"] }>;
+    characters?: Record<string, { id: string; reference: number }>;
+    relationships?: Record<string, { id: string; reference: number }>;
     lore?: Record<string, { id: string; reference: number }>;
     brains: Record<string, { id: string; reference: number; type: "brain" }>;
     plot: Record<string, { id: string; reference: number; type: string }> }>;
@@ -101,14 +125,18 @@ export async function prepareSinglePassMemoryBatch(a: Adventure, ids: readonly s
       id: card.id, reference: pool({ title: card.title, day: card.lore?.occurredAt,
         recentDevelopments: card.content.slice(-1200), originalEvidence: originalLoreEvidence(snapshot, card) }),
     }]));
+    const relationRefs = relationshipReferences(a, source.id);
+    const characters = Object.fromEntries(relationRefs.characters.map((card, index) => ["C" + (index + 1), { id: card.id, reference: pool(card) }]));
+    const relationships = Object.fromEntries(relationRefs.relationships.map((card, index) => ["R" + (index + 1), { id: card.id, reference: pool(card) }]));
     outputAliases[`S${sources.length + 1}`] = {
-      sourceId: source.id, sourceTurn: source.memoryEvaluation!.turn, lore,
+      sourceId: source.id, sourceTurn: source.memoryEvaluation!.turn, lore, characters, relationships,
       evidence: Object.fromEntries(inputs.evidence.map((e, i) => [`E${i + 1}`, { id: e.id, reference: pool(e) }])),
       cards: Object.fromEntries(inputs.currentCards.map((c, i) => [`C${i + 1}`, { id: c.id, reference: pool(c), type: c.type, memoryMode: c.memoryMode }])),
       brains: Object.fromEntries(brains.map((b, i) => [`B${i + 1}`, { id: b.id, reference: pool(b), type: "brain" as const }])),
       plot: Object.fromEntries(plot.map((p, i) => [`P${i + 1}`, { id: p.id, reference: pool({ ...p, title: snapshot.components.find(c => c.id === p.id)?.title }), type: p.type }])),
     };
     sources.push({ sourceId: source.id, conditions, sameDayLore: lore,
+      consideredRelationshipsNotCanon: relationRefs.coverage.map(pool),
       evidence: inputs.evidence.map(pool), canon: inputs.canon.map(entry => {
         const card = inputs.currentCards.find(c => entry.content === "Canon story card: " + c.title + "\n" + c.content);
         if (card) return pool({ role: entry.role, prefix: "Canon story card: " + card.title + "\n", reference: pool(card) });
@@ -136,6 +164,38 @@ storyCard: default subtype lore. Lore records consequential events, agreements, 
 storyCard.character: a genuinely missing person's enduring identity. Existing profiles are protected. Only an explicit evidenced enduring correction uses storyCard.character.update, with a specific explanation after ||. Never infer permanence from a single scene.
 storyCard.location: enduring properties of a place, not a one-time event there.
 storyCard.object: enduring identity, capabilities, and limits of a named object. Events involving it belong in Lore.
+storyCard.relationship: Record only new, established, durable interpersonal facts
+between two or more identified characters. Use an exact participant set. A group
+relationship is separate from every pair within the group. Do not emit pairs merely
+because a group interacts. Use names or unique identity aliases from this source's
+Character manifest, separated by ' + ' in the subject. Each participant must have
+an existing Character Card. If an identity is missing or ambiguous, do not emit a
+relationship operation; a genuinely new person may qualify for Character discovery.
+
+Use the relationship for established friendship, family, rivalry, trust, enduring
+boundaries, recurring interaction patterns, commitments, and meaningful changes to
+established interpersonal dynamics. Distinguish observable behavior from inference.
+Attribute directional facts to the right person. A private belief or feeling is a
+Brain finding, not evidence of mutual feeling. Temporary emotion, routine banter,
+ordinary affection, flirting, a single gesture or a proposed future relationship
+is not a durable change. Never infer consent, attraction or reciprocity.
+
+Compare the exact participant set with existing relationships and considered
+suggestions. Output only the novel durable factual delta. Use the same operation
+for creation or append; the application chooses the destination. Preserve history:
+write a changed relationship as an evidenced transition, not an eternal present
+state. Use past tense for superseded facts; do not reset the relationship to an
+old state or prescribe future behavior. Do not write a current-status tracker.
+
+Lore records the event, action, circumstances and outcome. Relationship records
+what the event actually establishes about the participants' durable connection.
+Emit both only when both independently qualify and carry distinct information.
+Character records the person's independent identity, traits, role, abilities and
+voice; place participant-specific dynamics in Relationship, not Character updates.
+Brain records a private interpretation from an eligible existing perspective.
+Return NONE if no eligible new fact exists. Never use ordinary trigger phrases
+or invent card IDs for a relationship.
+
 storyCard.custom: enduring properties of an established non-person subject, not a catch-all for events.
 component.plotEssentials: replacement premise, central conflict and persistent constraints; preserve still-valid foundations (180 words).
 component.currentArc: append a new development within an existing active arc; never change Director phases.
@@ -149,6 +209,12 @@ S1
 S2
 (storyCard.character: Eleanor Vale = Eleanor is a sixth-year Ravenclaw specializing in experimental enchantments.)
 (storyCard.location: Observatory Annex = A sealed chamber lies beneath the western tower.)
+S1
+(storyCard.relationship: Seth + Elliot = Seth and Elliot agreed to rely on one another as trusted confidants.)
+S2
+(storyCard.relationship: Elliot + Margo + Seth = All three established a recurring post-exam gathering.)
+S3
+(storyCard.relationship: Elliot + Seth = Elliot withdrew the earlier agreement to share confidential research after their dispute.)
 
 Brain and Story Card subtypes may be omitted when using their defaults. lore: Topic = Information is also valid.
 Private interpretation examples (illustrative, not established canon):
@@ -166,7 +232,7 @@ export function buildSinglePassMemoryMessages(batch: PreparedSinglePassMemoryBat
 }
 const object = (v: unknown): v is Record<string, unknown> => Boolean(v) && typeof v === "object" && !Array.isArray(v);
 const nonempty = (v: unknown): v is string => typeof v === "string" && Boolean(v.trim());
-const findingKeys = ["kind", "targetId", "title", "content", "brainPatch", "reason", "evidenceQuotes", "candidateOnly", "storyCardType", "operation", "memoryMode", "eventStatus", "suggestedTriggers", "participants", "identityChange", "destinationCandidates", "loreContinuation"];
+const findingKeys = ["kind", "targetId", "title", "content", "brainPatch", "reason", "evidenceQuotes", "candidateOnly", "storyCardType", "operation", "memoryMode", "eventStatus", "suggestedTriggers", "participants", "identityChange", "destinationCandidates", "loreContinuation", "relationship"];
 /** Recover metadata only. Never create facts, evidence, patches, or target IDs. */
 export function normalizeSinglePassFinding(v: unknown, sourceId: string, adventure?: Adventure, diagnostics: string[] = []): SinglePassMemoryFinding | undefined {
   if (!object(v)) return undefined;
@@ -191,7 +257,7 @@ export function normalizeSinglePassFinding(v: unknown, sourceId: string, adventu
     missing("operation", f.targetId === null ? "create" : "append");
     missing("storyCardType", card?.type ?? (f.targetId === null ? "lore" : undefined));
     missing("memoryMode", card?.memoryMode ?? (f.targetId === null ? "static" : undefined));
-    missing("eventStatus", "unresolved");
+    if (f.storyCardType !== "relationship") missing("eventStatus", "unresolved");
     missing("participants", []);
     if (f.suggestedTriggers === undefined) missing("suggestedTriggers", adventure && nonempty(f.title) && nonempty(f.content)
       ? generatedStoryCardTriggers(adventure, f.title, f.content, undefined, typeof f.targetId === "string" ? f.targetId : undefined, f.memoryMode as SinglePassMemoryFinding["memoryMode"], f.storyCardType as SinglePassMemoryFinding["storyCardType"]) : []);
@@ -201,7 +267,7 @@ export function normalizeSinglePassFinding(v: unknown, sourceId: string, adventu
 }
 /** Structural checks only. Exact quotation is not proof of the model's interpretation. */
 export function singlePassFindingSchemaError(v: unknown): string | undefined {
-  if (!object(v) || Object.keys(v).some(key => !["kind", "targetId", "title", "content", "brainPatch", "reason", "evidenceQuotes", "candidateOnly", "storyCardType", "operation", "memoryMode", "eventStatus", "suggestedTriggers", "participants", "identityChange", "destinationCandidates", "loreContinuation"].includes(key)) || !["storyCard", "brain", "plotEssentials", "activePressure", "currentArc", "immediateMomentum"].includes(String(v.kind))
+  if (!object(v) || Object.keys(v).some(key => !["kind", "targetId", "title", "content", "brainPatch", "reason", "evidenceQuotes", "candidateOnly", "storyCardType", "operation", "memoryMode", "eventStatus", "suggestedTriggers", "participants", "identityChange", "destinationCandidates", "loreContinuation", "relationship"].includes(key)) || !["storyCard", "brain", "plotEssentials", "activePressure", "currentArc", "immediateMomentum"].includes(String(v.kind))
     || !(v.targetId === null || nonempty(v.targetId)) || !nonempty(v.title) || !nonempty(v.reason) || typeof v.candidateOnly !== "boolean"
     || !Array.isArray(v.evidenceQuotes) || !v.evidenceQuotes.length || v.evidenceQuotes.some(q => !object(q) || !nonempty(q.messageId) || !nonempty(q.quote))) return "Missing or invalid required finding fields.";
   if (v.loreContinuation !== undefined && v.loreContinuation !== "identified" && v.loreContinuation !== "review") return "Invalid Lore continuation flag.";
@@ -211,9 +277,15 @@ export function singlePassFindingSchemaError(v: unknown): string | undefined {
       key === "thoughts" ? !object(value) || !Object.keys(value).length || Object.values(value).some(t => t !== null && !nonempty(t))
         : !["currentState", "relationshipPressure", "emotionalInterpretation", "recentDevelopments", "notes"].includes(key) || !nonempty(value))) return "Invalid BrainPatch.";
   } else if (!nonempty(v.content)) return "Missing usable factual content.";
-  if (v.kind === "storyCard" && (!["lore", "character", "location", "object", "custom"].includes(String(v.storyCardType))
+  const relationship = v.kind === "storyCard" && v.storyCardType === "relationship";
+  if (relationship && (!object(v.relationship) || relationshipIdError(v.relationship.characterIds)
+    || !Array.isArray(v.relationship.characterIds) || JSON.stringify(v.relationship.characterIds) !== relationshipKey(v.relationship.characterIds as string[])
+    || Object.keys(v.relationship).length !== 1 || v.memoryMode !== "static" || v.eventStatus !== undefined
+    || !Array.isArray(v.suggestedTriggers) || v.suggestedTriggers.length)) return "Invalid Relationship Card fields.";
+  if (!relationship && v.relationship !== undefined) return "Relationship metadata requires a Relationship Card.";
+  if (v.kind === "storyCard" && (!["lore", "character", "location", "object", "relationship", "custom"].includes(String(v.storyCardType))
     || !["append", "create"].includes(String(v.operation)) || !["static", "living", "historical"].includes(String(v.memoryMode))
-    || !["completed", "ongoing", "unresolved"].includes(String(v.eventStatus))
+    || (!relationship && !["completed", "ongoing", "unresolved"].includes(String(v.eventStatus)))
     || !Array.isArray(v.suggestedTriggers) || v.suggestedTriggers.some(t => !nonempty(t))
     || !Array.isArray(v.participants) || v.participants.some(t => !nonempty(t)))) return "Missing Story Card contract fields.";
   return undefined;
@@ -284,7 +356,14 @@ export function parseSinglePassMemoryResponse(text: string, sourceIds: readonly 
   const legacyJson = /^\{\s*"sources"\s*:/.test(clean);
   if (adventure && aliases && !legacyJson) {
     // Direct parsing also supports previews; running workers always supply their original batch.
-    const localBatch = batch ?? { batchId: "parse-preview", payload: { references: [], sources: [] }, outputAliases: aliases,
+    const previewReferences: unknown[] = [];
+    if (!batch) for (const source of Object.values(aliases)) {
+      for (const { id, reference } of Object.values(source.characters ?? {})) {
+        const card = adventure.storyCards.find(entry => entry.id === id && entry.type === "character");
+        if (card) previewReferences[reference] = { id, title: card.title, keys: card.keys };
+      }
+    }
+    const localBatch = batch ?? { batchId: "parse-preview", payload: { references: previewReferences, sources: [] }, outputAliases: aliases,
       checkpoints: Object.values(aliases).map(manifest => {
         const source = adventure.messages.find(m => m.id === manifest.sourceId);
         const checkpoint: SinglePassMemoryCheckpoint = source?.memoryEvaluation?.singlePass ?? {
@@ -306,6 +385,11 @@ export function parseSinglePassMemoryResponse(text: string, sourceIds: readonly 
     if (matches.length !== 1 || !object(matches[0]) || !Array.isArray(matches[0].findings)) return { sourceId, findings: [], rejected: [], failureReason: "Missing, duplicate or malformed source record. Explicit Retry required." };
     const result: SinglePassMemorySourceResult = { sourceId, findings: [], findingIndexes: [], rejected: [], diagnostics: [] };
     matches[0].findings.forEach((finding: unknown, index: number) => {
+      if (object(finding) && (finding.storyCardType === "relationship" || finding.relationship !== undefined
+        || adventure?.storyCards.some(card => card.id === finding.targetId && card.type === "relationship"))) {
+        result.rejected.push({ index, reason: "Relationship extraction requires the single-pass loose grammar." });
+        return;
+      }
       const diagnostics: string[] = [];
       const normalized = normalizeSinglePassFinding(finding, sourceId, adventure, diagnostics);
       result.diagnostics!.push(...diagnostics.map(reason => ({ index, reason })));
@@ -365,6 +449,10 @@ export function parseSinglePassMemoryCommands(text: string, aliases: PreparedSin
     if (meta.REVIEW) base.candidateOnly = meta.REVIEW.toLowerCase() === "yes";
     if (kind === "storyCard") {
       base.operation = isNew || recoverCharacterEvent ? "create" : "append";
+      if (card?.type === "relationship" || meta.TYPE?.toLowerCase() === "relationship") {
+        reject(c, "Relationship extraction requires the single-pass loose grammar.");
+        return;
+      }
       base.storyCardType = recoverCharacterEvent ? "lore" : card?.type ?? meta.TYPE?.toLowerCase() ?? "lore";
       if (meta.MODE || (!recoverCharacterEvent && card?.memoryMode)) base.memoryMode = meta.MODE?.toLowerCase() ?? card?.memoryMode;
       if (meta.STATUS) base.eventStatus = meta.STATUS.toLowerCase();

@@ -512,7 +512,7 @@ npm.cmd run test:live   # optional, uses .env.test.local`}</pre>
           <dt>Faction politics</dt>
           <dd>Plot Essentials defines the enduring political framework. Use cards for factions, leaders, alliances, and secrets.</dd>
           <dt>Romance drama</dt>
-          <dd>Relationship pressure stays choice-driven. Character cards hold established relationships; Lore holds their history. Player relationships require user context.</dd>
+          <dd>Relationship pressure stays choice-driven. Relationship Cards hold durable interpersonal history and link existing Character Cards by ID. Lore holds consequential events. Player relationships require user context.</dd>
           <dt>Survival / horror</dt>
           <dd>Story Cards hold threat rules, safe places, recurring dangers, and costs.</dd>
         </dl>
@@ -814,7 +814,7 @@ Model:    llama-3.3-70b-versatile`}</pre>
           <dt>Story Cards</dt>
           <dd>
             Use for facts that are only relevant part of the time — characters, places, secrets, relationships, rules.
-            They stay dormant until their trigger keys appear in the input or output, so they don't waste token budget
+            Ordinary cards can use trigger phrases. Relationship Cards require every linked Character Card in final narration context and must fit in the remaining token budget
             when off-topic.
           </dd>
           <dt>World Blocks (Components)</dt>

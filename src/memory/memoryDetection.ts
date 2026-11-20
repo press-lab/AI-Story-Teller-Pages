@@ -1,3 +1,5 @@
+import { relationshipProposalError, relationshipTitle } from "./relationshipCards";
+import { bindPlacement } from "./storyCardPlacement";
 import { memoryTargetSnapshot } from "./memoryCycleState";
 import { factsCovered, proposalCoverage, relevantProposalCoverage } from "./factCoverage";
 import { makeStoryCardSuggestion, scanStoryCardExchange, relevantStoryCardInventory, STORY_CARD_MEMORY_CHECK } from "./storyCardSuggestions";
@@ -55,6 +57,23 @@ export async function regenerateProposalContent(
       storyCardReview: proposal.storyCardReview ? { ...proposal.storyCardReview, sourceContent: source.content,
         playerContent: adventure.messages.find(m => m.id === proposal.storyCardReview?.playerMessageId)?.content,
         additionalSources: evidence.filter(m => m.id !== source.id).map(({ id, content }) => ({ id, content })), evidenceQuotes: undefined } : undefined };
+    if (proposal.storyCardType === "relationship" && !convertToLore) {
+      const error = relationshipProposalError(adventure, proposal);
+      if (error) throw new Error(error);
+      const ids = proposal.relationship!.characterIds;
+      const target = adventure.storyCards.find(card => card.id === proposal.targetId);
+      const generated = await sendMemoryCompletion(adventure, providerConfig, [
+        { role: "system", content: "Write a concise durable relationship delta supported by the source for the linked characters. Attribute directional facts, preserve history, and avoid inventing private feelings. Return only the factual delta, or NONE." },
+        { role: "user", content: JSON.stringify({ evidence, previousDraft: proposal.content, target,
+          characters: adventure.storyCards.filter(card => ids.includes(card.id)) }) },
+      ]);
+      const content = generated.content.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+      if (!content || /^NONE[.!]?$/i.test(content)) throw new Error("No supported relationship delta was returned.");
+      const draft = { ...proposal, title: target?.title ?? relationshipTitle(adventure.storyCards, ids), content, suggestedTriggers: [],
+        requiresReview: true, evaluationSource: { messages: evidence.map(({ id, content }) => ({ id, content })), target: target && memoryTargetSnapshot(adventure, "storyCard", target.id) } };
+      return bindPlacement(adventure, draft, { kind: target ? "append" : "create", reason: "Author-requested regeneration.", newFact: content }, evidence.map(entry => entry.id));
+    }
+    if (convertToLore) proposal = { ...proposal, relationship: undefined };
     const response = await sendMemoryCompletion(adventure, providerConfig, [
       ...memoryCanonMessages(adventure, proposal.sourceText, proposal.title),
       { role: "system", content: `${STORY_CARD_PLACEMENT_POLICY}
@@ -119,9 +138,9 @@ export async function detectStoryCardProposals(adventure: Adventure, providerCon
     }
   }
   if (options.skipSemantic) { diagnostic("work_skipped", options.skipSemantic); return result; }
-  const considered = adventure.activeState.memoryProposals.filter(p => p.proposedType === "storyCard");
+  const considered = adventure.activeState.memoryProposals.filter(p => p.proposedType === "storyCard" && p.storyCardType !== "relationship");
   const capturedContent = [
-    ...adventure.storyCards.flatMap(c => [c.content, storyCardContextContent(c)]),
+    ...adventure.storyCards.filter(c => c.type !== "relationship").flatMap(c => [c.content, storyCardContextContent(c)]),
     ...considered.flatMap(p => [p.content, p.title + " " + p.content]),
   ];
   // All duplicate checks stay local. Only bounded relevant targets reach the model.

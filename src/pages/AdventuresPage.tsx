@@ -95,7 +95,7 @@ const COMPONENT_TYPE_LABELS: Record<ComponentType, string> = {
   memory: "Lore Block (legacy)",
   custom: "Custom",
 };
-const storyCardTypes = PRIMARY_STORY_CARD_TYPES;
+const storyCardTypes = PRIMARY_STORY_CARD_TYPES.filter(type => type !== "relationship");
 const uniqueComponentTypes = new Set<ComponentType>([
   "narrationRules",
   "aiInstructions",
@@ -447,7 +447,7 @@ export function AdventuresPage({
       return;
     }
     const unreachableCard = [...manualStoryCards, ...jsonStoryCards].find(
-      (card) => !card.pinned && card.keys.length === 0,
+      (card) => card.type !== "relationship" && !card.pinned && card.keys.length === 0,
     );
     if (unreachableCard) {
       setSetupError(`Add at least one trigger to "${unreachableCard.title}", or pin the card so it can enter context.`);

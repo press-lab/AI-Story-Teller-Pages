@@ -8,6 +8,8 @@ import { makeStoryCardSuggestion } from "./storyCardSuggestions";
 /** One correction and a final review of a frozen factual delta. */
 export async function validateStoryCardProposal(a: Adventure, config: ProviderConfig, draft: MemoryProposal,
   accum?: { promptTokens: number; completionTokens: number }, cache?: Record<string, string>): Promise<MemoryValidationResult & { proposal?: MemoryProposal }> {
+  if (draft.storyCardType === "relationship" || draft.relationship !== undefined || a.storyCards.some(card => card.id === draft.targetId && card.type === "relationship"))
+    return { changed: false, error: "Relationship extraction requires the participant-aware single-pass path.", failureCode: "memory_placement_target_invalid" };
   if (proposalCoverage(a, draft)) return { changed: false, failureCode: "memory_fact_covered", error: "Factual delta already recorded or considered." };
   const sourceIndex = a.messages.findIndex(m => m.id === draft.sourceTurnId && m.role === "assistant");
   if (sourceIndex < 0) return { changed: false, error: "Placement requires an existing narrator source.", failureCode: "memory_placement_source_invalid" };
@@ -30,6 +32,7 @@ export async function validateStoryCardProposal(a: Adventure, config: ProviderCo
     const legacyLoreRepair = ["historicalLore", "ongoingLore", "referenceLore"].includes(p.kind);
     const nextTarget = legacyLoreRepair || p.kind === "create" ? undefined : correctedTarget ?? target;
     const type = nextTarget?.type ?? (legacyLoreRepair ? "lore" : p.kind === "create" ? p.cardType ?? "lore" : primaryStoryCardType(current.storyCardType ?? "lore"));
+    if (type === "relationship") return { changed: false, error: "Relationship extraction requires the participant-aware single-pass path.", failureCode: "memory_placement_target_invalid" };
     const suggestion = makeStoryCardSuggestion(snapshot, current.sourceTurnId, snapshot.messages.at(-1)!.content, {
       title: nextTarget?.title ?? p.title, content: pass === 1 ? current.content : p.content, type,
       targetId: nextTarget?.id, evidence: current.sourceText, reason: current.rationale, evidenceReviewed: true,

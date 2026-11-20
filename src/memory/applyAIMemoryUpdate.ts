@@ -113,6 +113,10 @@ export function applyAIMemoryUpdate(adventure: Adventure, updates: AIMemoryUpdat
         rejectedUpdates.push(reject(update, "Story card not found."));
         continue;
       }
+      if (card.type === "relationship") {
+        rejectedUpdates.push(reject(update, "Relationship updates require the participant-aware proposal path."));
+        continue;
+      }
       const patch = storyCardPatch(update);
       if (Object.keys(patch).length === 0) { rejectedUpdates.push(reject(update, "Empty Story Card suggestion.")); continue; }
       const source = [...adventure.messages].reverse().find(message => message.role === "assistant");
