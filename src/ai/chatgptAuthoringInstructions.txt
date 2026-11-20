@@ -172,10 +172,11 @@ The narrator knows the truth. The world reveals evidence. The player discovers t
 
 Story Cards
 
-Story Cards are the parent category. The existing types are character, location, object, lore, and custom. Keep each card concise and self-contained. Include its subject name in the body. All Story Cards use append-based updates; preserve existing content and voice when adding facts.
-Character: Describe who a person is: established name and identity, appearance, background and origin, role or occupation, relevant skills and abilities, durable personality, natural behavior, instincts, recurring reactions, established motivations, speech, Voice Contract, and established relationships when applicable. Character independence is the default.
+Story Cards are the parent category. The existing types are character, location, object, lore, relationship, and custom. Keep each card concise and self-contained. Include its subject name in the body. All Story Cards use append-based updates; preserve existing content and voice when adding facts.
+Character: Describe who a person is: established name and identity, appearance, background and origin, role or occupation, relevant skills and abilities, durable personality, natural behavior, instincts, recurring reactions, established motivations, speech, and Voice Contract. Character independence is the default.
 Location: Describe enduring place information: name, geographic location, layout, architecture, atmosphere, purpose, established ownership or institutional control, persistent magical or physical properties, and distinctive features. Exclude temporary visitors and scene events. Good: Hogwarts is a magical boarding school in Scotland. Bad: Hermione visited Hogwarts after shopping on Saturday.
-Lore: Describe what happened. Use it for meaningful events, agreements, discoveries, major developments, consequential actions, historical relationships and their origins, and significant unresolved situations. Record participants, actions, known location and time, outcomes, consequences, and uncertainty. Use explicit names and preserve chronology. Distinguish completed events from plans, claims, suspicions, and unresolved situations. Do not invent dates or outcomes. Do not assume every character knows every fact. Prefer correcting or extending relevant Lore over duplicate event cards.
+Relationship: Record durable participant-specific facts on a linked Relationship Card. Use the existing Character Card IDs in relationship.characterIds and leave phrase keys empty.
+Lore: Describe what happened. Use it for meaningful events, agreements, discoveries, major developments, consequential actions, and significant unresolved situations. Record participants, actions, known location and time, outcomes, consequences, and uncertainty. Use explicit names and preserve chronology. Distinguish completed events from plans, claims, suspicions, and unresolved situations. Do not invent dates or outcomes. Do not assume every character knows every fact. Prefer correcting or extending relevant Lore over duplicate event cards.
 Custom: Use conditional reference material that does not fit Character, Location, or Lore, such as objects, institutions, factions, systems, or techniques.
 
 ⸻
@@ -202,7 +203,7 @@ Make the contract distinctive and consistent with identity and personality. Desc
 
 Relationship clarity
 
-Do not require a player-engagement section. Describe independent personality, instincts, and reactions. Do not assign player-specific relationships, obligations, tactics, attraction, loyalty, or antagonism by default. Include a pre-existing relationship, attitude, shared history, obligation, or recurring interaction pattern only when the user explicitly supplies or requests it. Importance to the adventure is not permission.
+Do not require a player-engagement section. Describe independent personality, instincts, and reactions. Do not assign player-specific relationships, obligations, tactics, attraction, loyalty, or antagonism by default. Include a pre-existing relationship, attitude, shared history, obligation, or recurring interaction pattern only when the user explicitly supplies or requests it. Importance to the adventure is not permission. Put participant-specific relationship facts on the linked Relationship Card and independent identity on Character Cards. Use Lore for historical events and Brains for private interpretations.
 Include family and relationship facts only when established or supplied. Not every character needs family details. Name each person and the relationship explicitly: Lucius Malfoy is Draco Malfoy's father. Narcissa Malfoy is Draco Malfoy's mother. Lucius Malfoy and Narcissa Malfoy are married. Avoid ambiguous forms such as "his mother" or "they have a son." Do not invent family connections during evidence-based editing.
 
 ⸻
@@ -210,7 +211,7 @@ Include family and relationship facts only when established or supplied. Not eve
 Historical information placement
 
 Character cards describe identity. Lore cards preserve events. Do not automatically add scene summaries, recent conversations, completed adventures, temporary emotions, changing opinions, temporary plans, unstable knowledge, or chronological logs to Character cards.
-An event having lasting consequences does not automatically make it a Character fact. Lore records Lucius confronting Hermione, becoming angry at dinner, or discovering a passage. If an event establishes a durable identity, role, capability, affiliation, or relationship status, a Character card may record that resulting fact. Lore preserves its cause. Lore records a marriage ceremony; Character cards record the established marriage without repeating the ceremony.
+An event having lasting consequences does not automatically make it a Character fact. Lore records Lucius confronting Hermione, becoming angry at dinner, or discovering a passage. If an event establishes a durable identity, role, capability, or affiliation, a Character card may record that resulting fact. Lore preserves its cause. Lore records the marriage ceremony. The Relationship Card records the established marriage and durable interpersonal dynamics.
 For creation, include pre-adventure historical Lore only when the premise establishes relevant history or authorizes creating that backstory. Do not manufacture events solely to populate Lore. During editing, preserve source evidence and never turn plans into completed events.
 
 ⸻
@@ -230,7 +231,7 @@ Broad occasion recall refers to a recognizable group of events, such as Thanksgi
 Create a concise occasion card only when related events benefit from a shared summary. Use a broad key such as "Thanksgiving" for that summary. Use specific keys such as "Thanksgiving bonfire", "Thanksgiving dinner", or "Kori meets Seth's parents" for individual events. Do not put the generic occasion key on every related event card.
 Consider five recall patterns and choose only the ones that fit: conversational recall ("our first date"), person and event ("first date with Kori"), location and event ("Founder's Circle date"), a distinctive detail ("acceptable-plus verdict"), and common alternative phrasing ("date at Founder's Circle"). Keep useful technical terms, memorable names, and distinctive phrases. Avoid mechanical word extraction and artificial permutations such as "Kori Seth first date".
 Use character names, aliases, and distinctive titles primarily on Character cards. Use place names and alternate names primarily on Location cards. Use location-plus-event phrases for historical Lore when useful. Do not use bare participant names as Lore triggers.
-Aim for 3-6 short, useful keys on new cards. Keep keys nonempty and within the existing maximum of eight. A valid existing card with fewer than three keys can stay as it is. Do not pad keys with generic synonyms or arbitrary combinations. Use phrases that can appear in dialogue or narration. Skip capitalization variants for case-insensitive matching. Add punctuation or possessive variants only if they improve matching.
+Leave Relationship Card keys empty. For other new cards, aim for 3-6 short, useful keys. Keep their keys nonempty and within the existing maximum of eight. A valid existing card with fewer than three keys can stay as it is. Do not pad keys with generic synonyms or arbitrary combinations. Use phrases that can appear in dialogue or narration. Skip capitalization variants for case-insensitive matching. Add punctuation or possessive variants only if they improve matching.
 Keep established dates and chronology in Lore. Use stable keys such as "Thanksgiving 2018" or "Cold Spring Harbor Thanksgiving". A phrase such as "Thanksgiving last year" changes meaning with the story clock. Do not assign it permanently to one event. Matching uses stored strings and the card's existing match behavior. The trigger engine does not interpret meaning or relative time. After relevant cards load, the narrator can use story context and the clock to interpret an ambiguous reference.
 Name the broader occasion in a specific event's Lore when the source establishes it. An occasion card can briefly name associated events. Keep each card self-contained and avoid repeating full event descriptions. Keep distinct events separate and keep coherent events together.
 Trigger Quality Test: For each new or changed Lore card, write several natural references. Check which phrases match the intended card under its actual matching rules and which also activate unrelated cards. Test broad occasion and specific event references separately when relevant. Check recurring events, similar names, and nearby dates. For example, try "Remember our first date?", "What happened at Founder's Circle?", "Remember Bigby's first class?", "Remember Thanksgiving?", and "When did Kori meet my parents?" Record literal matches separately from phrases that need narrator interpretation. Claim a match only after checking it.
@@ -255,7 +256,7 @@ CREATE
 
 Create a new adventure or new material from the user’s premise.
 
-Possible outputs are Components, Character, Location, Lore, and Custom Story Cards, and an opening scene when requested.
+Possible outputs are Components, Character, Location, Lore, Relationship, and Custom Story Cards, and an opening scene when requested.
 
 Create fictional details consistent with supplied canon and constraints. Apply all shared standards, including physical descriptions and Voice Contracts.
 
@@ -352,7 +353,7 @@ Retcons: change established events only when the player instructs it. Rewrite th
 
 JSON handling
 
-Keep card ids, sourceTurnIds, createdAt, priority, matchType, inclusionPolicy and all metadata you do not need to change. Set updatedAt on every card you change. For a new card, copy the field set of an existing card of the same type. A Lore card needs a lore object with status and sourceMessageIds, plus occurredAt and knownTo when known. Before output, check that the JSON parses, that card ids are unique, and that every card has 1-8 keys. If you can run code, apply the changes with a script against the source JSON, not by hand.
+Keep card ids, sourceTurnIds, createdAt, priority, matchType, inclusionPolicy and all metadata you do not need to change. Set updatedAt on every card you change. For a new card, copy the field set of an existing card of the same type. A Lore card needs a lore object with status and sourceMessageIds, plus occurredAt and knownTo when known. Before output, check that the JSON parses, that card ids are unique, and that Relationship Cards have empty keys and other cards have 1-8 keys. If you can run code, apply the changes with a script against the source JSON, not by hand.
 
 ⸻
 
