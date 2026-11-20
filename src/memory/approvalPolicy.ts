@@ -7,7 +7,8 @@ export function storyCardApprovalCategory(type: string | undefined): ApprovalCat
   switch (type) {
     case "character": return "otherStoryCard";
     case "lore": return "loreStoryCard";
-    case "relationship": case "location": case "object": case "plot": case "custom": return "otherStoryCard";
+    case "relationship": return "relationshipStoryCard";
+    case "location": case "object": case "plot": case "custom": return "otherStoryCard";
     default: return undefined;
   }
 }
@@ -15,7 +16,7 @@ export function storyCardApprovalCategory(type: string | undefined): ApprovalCat
 /** Resolve the same destination used by application, including the missing-Brain fallback. */
 export function getApprovalCategory(adventure: Adventure, proposal: MemoryProposal): ApprovalCategory | undefined {
   if (proposal.proposedType === "storyCard") {
-    if (proposal.storyCardType === "relationship") return "otherStoryCard";
+    if (proposal.storyCardType === "relationship") return "relationshipStoryCard";
     const target = adventure.storyCards.find(card => card.id === proposal.targetId)
       ?? adventure.storyCards.find(card => card.type !== "relationship" && cardMatchesName(card, proposal.title));
     return storyCardApprovalCategory(target ? target.type : proposal.storyCardType);

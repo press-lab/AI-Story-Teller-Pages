@@ -1033,6 +1033,7 @@ export interface MemoryAutoApproveSettings {
   arcProposal: boolean;
   brainUpdate: boolean;
   loreStoryCard: boolean;
+  relationshipStoryCard: boolean;
   otherStoryCard: boolean;
 }
 

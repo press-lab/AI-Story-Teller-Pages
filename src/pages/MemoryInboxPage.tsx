@@ -214,6 +214,7 @@ function MemorySuggestionsPage({ adventure, dispatch, onCreateDraft, providerCon
             <CheckboxField label="Arc Proposals" checked={autoApprove.arcProposal} onChange={(v) => setAutoApprove({ arcProposal: v })} />
             <CheckboxField label="Character Self" checked={autoApprove.brainUpdate} onChange={(v) => setAutoApprove({ brainUpdate: v })} />
             <CheckboxField label="Story Cards — Lore" checked={autoApprove.loreStoryCard} onChange={(v) => setAutoApprove({ loreStoryCard: v })} />
+            <CheckboxField label="Story Cards — Relationships" checked={autoApprove.relationshipStoryCard} onChange={(v) => setAutoApprove({ relationshipStoryCard: v })} />
             <CheckboxField label="Story Cards — Everything Else" checked={autoApprove.otherStoryCard} onChange={(v) => setAutoApprove({ otherStoryCard: v })} />
           </div>
           <p className="muted">Enabled categories apply valid new suggestions automatically. Existing pending suggestions still need review.</p>

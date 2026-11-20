@@ -6,7 +6,7 @@ import { reviewedProposal } from "../test/memoryPlacement";
 import { makeStoryCardSuggestion, mergeStoryCardSuggestions } from "./storyCardSuggestions";
 import type { StoryCardType } from "../types/adventure";
 
-describe("six adventure approval categories", () => {
+describe("adventure approval categories", () => {
   it.each(approvalCategories.filter(category => category !== "plotPressureUpdate").flatMap(category => [false, true].map(enabled => ({ category, enabled }))))("$category ON=$enabled controls valid new proposals", ({ category, enabled }) => {
     const a = approvalAdventure();
     a.memoryAutoApprove[category] = enabled;
@@ -30,6 +30,19 @@ describe("six adventure approval categories", () => {
   });
   it.each(["character", "location", "plot", "custom"])("routes %s to Everything Else", type => {
     expect(storyCardApprovalCategory(type)).toBe("otherStoryCard");
+  });
+  it.each([false, true])("uses the Relationships switch for new and existing cards (%s)", enabled => {
+    const a = approvalAdventure();
+    a.storyCards = [existingApprovalCard("relationship")];
+    a.memoryAutoApprove.loreStoryCard = !enabled;
+    a.memoryAutoApprove.otherStoryCard = !enabled;
+    a.memoryAutoApprove.relationshipStoryCard = enabled;
+    const create = approvalProposal("otherStoryCard", { storyCardType: "relationship" });
+    const append = { ...create, targetId: a.storyCards[0].id };
+    for (const proposal of [create, append]) {
+      expect(getApprovalCategory(a, proposal)).toBe("relationshipStoryCard");
+      expect(shouldAutoApprove(a, proposal)).toBe(enabled);
+    }
   });
   it.each([undefined, "unknown"])("leaves unknown new card type %s pending", type => {
     const a = approvalAdventure(); for (const category of approvalCategories) a.memoryAutoApprove[category] = true;

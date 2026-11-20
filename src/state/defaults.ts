@@ -94,13 +94,14 @@ export const defaultMemoryAutoApproveSettings: MemoryAutoApproveSettings = {
   arcProposal: false,
   brainUpdate: false,
   loreStoryCard: false,
+  relationshipStoryCard: false,
   otherStoryCard: false,
 };
 
 /** Migrate approval preferences without widening the types the user authorized. */
 export function normalizeMemoryAutoApproveSettings(input: unknown = {}): MemoryAutoApproveSettings {
   const old = input && typeof input === "object" ? input as Record<string, unknown> : {};
-  const current = Object.keys(defaultMemoryAutoApproveSettings).every(key => key in old)
+  const current = Object.keys(defaultMemoryAutoApproveSettings).every(key => key === "relationshipStoryCard" || key in old)
     && !["characterStoryCard", "storyCard", "summaryUpdate", "plotMomentumUpdate"].some(key => key in old);
   const split = "characterStoryCard" in old || "otherStoryCard" in old;
   return {
@@ -110,6 +111,7 @@ export function normalizeMemoryAutoApproveSettings(input: unknown = {}): MemoryA
     arcProposal: old.arcProposal === true,
     brainUpdate: old.brainUpdate === true,
     loreStoryCard: old.loreStoryCard !== undefined ? old.loreStoryCard === true : old.storyCard === true,
+    relationshipStoryCard: old.relationshipStoryCard === true,
     otherStoryCard: current ? old.otherStoryCard === true
       : split ? old.characterStoryCard === true && old.otherStoryCard === true
       : old.storyCard === true,

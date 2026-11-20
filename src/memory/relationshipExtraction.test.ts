@@ -45,9 +45,10 @@ it("rejects malformed grammar and ambiguous or missing identities without Lore f
 
 afterEach(() => vi.restoreAllMocks());
 
-it.each([false, true])("uses one request and honors Other Story Cards approval (%s)", async autoApprove => {
+it.each([false, true])("uses one request and honors independent Relationship Story Cards approval (%s)", async autoApprove => {
   let { a, ids } = looseMemoryFixture();
-  a.memoryAutoApprove.otherStoryCard = autoApprove;
+  a.memoryAutoApprove.relationshipStoryCard = autoApprove;
+  a.memoryAutoApprove.otherStoryCard = !autoApprove;
   a.messages[0].content = "Fred and George agreed to be long-term business partners. Fred promised to keep George's private account records confidential.";
   const batch = await prepareSinglePassMemoryBatch(a, [ids[0]]);
   const send = vi.spyOn(transport, "sendMemoryCompletion").mockResolvedValue({ raw: {}, content: [

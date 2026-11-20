@@ -4,7 +4,7 @@ Character, Location, Object, Lore, Relationship and Custom are the primary Story
 
 A Relationship Card enters narration only when every linked Character Card survives ordinary retrieval, one-hop chaining and baseline budget trimming. It must fit in full. It can use space from droppable older recent entries. It cannot displace any other selected card, Brain or component, or trigger a further recall.
 
-Automatic extraction uses the default single-pass loose grammar and the existing Other Story Cards approval setting. Older JSON, MEM/DONE, narrator tags and the independent legacy evaluator do not write Relationship Cards. The editor and user-requested memory drafts remain available with either evaluator. Restoring a backup retains broken links on inactive cards for repair. Card-only import validates the entire merged collection before applying it.
+Automatic extraction uses the default single-pass loose grammar and the Story Cards — Relationships approval setting, which starts off unless explicitly enabled. Older JSON, MEM/DONE, narrator tags and the independent legacy evaluator do not write Relationship Cards. The editor and user-requested memory drafts remain available with either evaluator. Restoring a backup retains broken links on inactive cards for repair. Card-only import validates the entire merged collection before applying it.
 
 ## Authoring
 * Use the primary Story Card type `relationship` for established, durable interpersonal dynamics between two or more named characters.
