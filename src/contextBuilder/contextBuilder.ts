@@ -35,7 +35,6 @@ CONTEXT SECTIONS (read all, honour their order):
   E. Components — general world-building context (always-on or pinned entries).
   F. Story Cards — World Info entries injected when their trigger keywords appear in recent text.
   G. Brains — internal mental state of named characters. Private to the narrator; never quote directly.
-  D. Author's Note — immediate narrative direction for this turn. Highest-priority steering.
   J. Next Output Bias — one-turn instruction. Apply it, then disregard it.
   M. Continuity Challenge — one-turn verification instruction when active.
   K. Recent Messages — the most recent story turns in chronological order.
@@ -481,18 +480,6 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
     return [next];
   });
 
-  // D. Author's Note — all active components with type === "authorNote"
-  const authorNoteItems = prioritySort(adventure.components).flatMap((component) => {
-    if (component.type !== "authorNote") return [];
-    if (!component.active) {
-      logExcludedOnce(component.id, component.title, "inactive");
-      return [];
-    }
-    const next = item(component.id, "component", component.title, component.content, component.priority, component.protected, component.pinned, component.active, component.inclusionPolicy, "user");
-    pushIncluded(next, `Author's Note loaded; priority=${component.priority}; protected=${component.protected}.`);
-    return [next];
-  });
-
   // E. Components — general always-on or pinned components (not a special typed section above)
   const generalComponentItems = prioritySort(adventure.components).flatMap((component) => {
     if (component.type === "narrationRules" || component.type === "aiInstructions" || component.type === "plotEssentials" || component.type === "currentArc" || component.type === "activePressure" || component.type === "immediateMomentum" || component.type === "authorNote") return [];
@@ -647,8 +634,6 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
     section("components", "E. Components", 3, generalComponentItems),
     section("storyCards", "F. Story Cards", 4, storyCardItems),
     section("brains", "G. Brains", 5, brainItems),
-    // D. Author's Note is placed just before recent messages (AID-style) for maximum recency influence
-    section("authorNote", "D. Author's Note", 8, authorNoteItems),
     section("nextTurnNote", "J. Next Output Bias", 10, nextTurnNoteItems),
     section("challengeMode", "M. Continuity Challenge", 10.5, challengeItems),
     section("recentMessages", "K. Recent Messages", 11, recentMessageItems),

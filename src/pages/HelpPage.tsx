@@ -82,7 +82,7 @@ npm.cmd run test:live   # optional, uses .env.test.local`}</pre>
           New Adventure includes optional setup before play: an opening scene, starter World Blocks, manual
           Story Cards, and Story Cards parsed from uploaded or pasted JSON. Generate with AI drafts the title,
           opening scene, tight Plot Essentials, optional scenario-specific
-          AI Instructions or Author's Note, and recurring Story Cards for review. Native DeepSeek generation uses
+          AI Instructions and recurring Story Cards for review. Native DeepSeek generation uses
           structured JSON output with thinking disabled for this schema-driven setup call.
         </p>
         <p>
@@ -230,7 +230,7 @@ npm.cmd run test:live   # optional, uses .env.test.local`}</pre>
     id: "side-menu-world-blocks",
     title: "World Blocks",
     category: "Side Menu",
-    summary: "Manage Narration Rules, AI Instructions, Plot Essentials, Author's Note, and custom components.",
+    summary: "Manage Narration Rules, AI Instructions, Plot Essentials, Current Story Arc, and custom components.",
     tags: ["world blocks", "components", "plot essentials", "current arc", "author note", "ai instructions"],
     body: (
       <>
@@ -238,7 +238,7 @@ npm.cmd run test:live   # optional, uses .env.test.local`}</pre>
           World Blocks are context components. Narration Rules are the primary per-adventure behavior contract.
           AI Instructions are optional: use them only when you deliberately want scenario-specific rules separated
           from Narration Rules. Both load every turn, so duplicating the same rules wastes context and can create
-          competing wording. AI Instructions, Plot Essentials, and Author's Note are protected by default.
+          competing wording. AI Instructions and Plot Essentials are protected by default.
           Custom components can be active, pinned, protected, prioritized, or manual.
         </p>
         <p>
@@ -396,7 +396,6 @@ npm.cmd run test:live   # optional, uses .env.test.local`}</pre>
           <li>Components</li>
           <li>Story Cards</li>
           <li>Brains</li>
-          <li>Author's Note</li>
           <li>Next Turn Note</li>
           <li>Continuity Challenge</li>
           <li>Recent Messages</li>
@@ -433,7 +432,7 @@ npm.cmd run test:live   # optional, uses .env.test.local`}</pre>
         </dl>
         <p>
           Only the system shell and user-marked protected context are absolutely non-droppable. AI
-          Instructions, Plot Essentials, and Author's Note are protected by default, but the model is
+          Instructions and Plot Essentials are protected by default, but the model is
           intentionally explicit so protection can be inspected and tested.
         </p>
       </>
@@ -500,7 +499,7 @@ npm.cmd run test:live   # optional, uses .env.test.local`}</pre>
         <p>
           Generate with AI asks what kind of story you want, then routes the setup into the right surfaces. You choose
           outcomes; the app decides whether the result belongs in AI Instructions, Plot Essentials,
-          Author's Note, Story Cards, or Brains.
+          Story Cards, or Brains.
         </p>
         <dl>
           <dt>Sandbox</dt>
@@ -775,7 +774,7 @@ Model:    llama-3.3-70b-versatile`}</pre>
     body: (
       <>
         <p>
-          Every item in context — Story Cards, World Blocks, Brains, Author's Note, Next Turn Note, and Recent Messages — has an estimated token cost.
+          Every item in context — Story Cards, World Blocks, Brains, Next Output Bias, and Recent Messages — has an estimated token cost.
           The total is shown in Context Preview and in the header of the Play page.
         </p>
         <dl>
@@ -819,7 +818,7 @@ Model:    llama-3.3-70b-versatile`}</pre>
           </dd>
           <dt>World Blocks (Components)</dt>
           <dd>
-            Use for context that is relevant every turn — your AI Instructions, Plot Essentials, Author's Note, and
+            Use for context that is relevant every turn — your AI Instructions, Plot Essentials, and
             broad world lore that shapes every scene. These load unconditionally and cost tokens every turn.
           </dd>
         </dl>
@@ -852,9 +851,9 @@ Model:    llama-3.3-70b-versatile`}</pre>
   },
   {
     id: "opening-scene-author-note",
-    title: "Opening Scene & Author's Note",
+    title: "Opening Scene and Next Output Bias",
     category: "Playing",
-    summary: "Two special setup fields accessible from the Story Setup panel on the Play page.",
+    summary: "Set the opening scene and steer the next output from Play.",
     tags: ["opening scene", "author's note", "setup", "context"],
     body: (
       <>
@@ -865,17 +864,12 @@ Model:    llama-3.3-70b-versatile`}</pre>
             the story — tone, setting, initial situation. It is included when the context budget allows and falls
             off naturally as the conversation grows long, like any other message.
           </dd>
-          <dt>Author's Note</dt>
+          <dt>Next Output Bias</dt>
           <dd>
-            A short instruction placed near the bottom of the context (close to recent messages) so it influences the
-            AI's next response strongly. Think of it as a running whisper to the narrator: "Keep the tone tense",
-            "This is a political drama, not action", "The protagonist never fully relaxes."
+            Give the narrator immediate tone, pacing, or scene direction. It expires after one successful output by default.
           </dd>
         </dl>
-        <p>
-          Both are accessible from the Story Setup panel at the top of the Play page, collapsed by default so they
-          don't clutter the main view.
-        </p>
+        <p>Old Author’s Notes are disabled. The saved text is available in Plot Components.</p>
       </>
     ),
   },

@@ -59,8 +59,6 @@ const COMPONENT_GEN_PROMPTS: Partial<Record<ComponentType, string>> = {
     "Write a Narration Rules block — the per-adventure behavior contract. Cover POV and tense, prose format, player agency (preserve meaningful choices and respect the selected Strict, Minor Actions, or Cinematic Flow preference), continuity discipline, tone, and a few hard \"never\" rules. Make it behavioral and specific to THIS adventure, not generic boilerplate.",
   aiInstructions:
     "Write an AI Instructions block — scenario-specific genre, drift-prevention, scene-loop, and prose behavior rules that complement, and do not duplicate, the narration rules. Do not store character facts, lore facts, current mission state, backstory, or card-like memory here. Use named ALL-CAPS sections with tight bullets.",
-  authorNote:
-    "Write a single concise Author's Note — near-context steering for the next few responses. Keep characters active and initiating and the scene moving. One or two sentences.",
 };
 
 function componentBestPractices(type: ComponentType): string {
@@ -70,7 +68,7 @@ function componentBestPractices(type: ComponentType): string {
   return "";
 }
 
-/** Generate fresh content for a Narration Rules / AI Instructions / Author's Note component. Returns a string for review. */
+/** Generate fresh content for a Narration Rules / AI Instructions component. Returns a string for review. */
 export async function generateComponentContent(
   adventure: Adventure,
   providerConfig: ProviderConfig,

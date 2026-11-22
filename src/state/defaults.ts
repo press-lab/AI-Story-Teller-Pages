@@ -255,7 +255,7 @@ export function makeComponent(
 ): ComponentEntry {
   const timestamp = nowIso();
   const type = overrides.type ?? "custom";
-  const defaultProtected = type === "narrationRules" || type === "aiInstructions" || type === "plotEssentials" || type === "authorNote";
+  const defaultProtected = type === "narrationRules" || type === "aiInstructions" || type === "plotEssentials";
   const alwaysOn = overrides.alwaysOn ?? false;
   return {
     id: overrides.id ?? createId("component"),
@@ -271,7 +271,7 @@ export function makeComponent(
     arcState: overrides.arcState ?? (type === "currentArc" ? defaultArcState() : undefined),
     priority: overrides.priority ?? 0,
     alwaysOn,
-    active: overrides.active ?? true,
+    active: type === "authorNote" ? false : (overrides.active ?? true),
     pinned: overrides.pinned ?? false,
     protected: overrides.protected ?? defaultProtected,
     inclusionPolicy: overrides.inclusionPolicy ?? (alwaysOn || defaultProtected ? "always" : "manual"),
@@ -611,9 +611,10 @@ export function normalizeAdventure(adventure: Adventure): Adventure {
       const normalized = existing.map((component) => {
         const migrated = normalizeComponentEntry(component);
         const defaultProtected =
-          migrated.type === "narrationRules" || migrated.type === "aiInstructions" || migrated.type === "plotEssentials" || migrated.type === "authorNote";
+          migrated.type === "narrationRules" || migrated.type === "aiInstructions" || migrated.type === "plotEssentials";
         return {
           ...migrated,
+          active: migrated.type === "authorNote" ? false : migrated.active,
           protected: migrated.protected ?? defaultProtected,
           inclusionPolicy: migrated.inclusionPolicy ?? (migrated.alwaysOn || defaultProtected ? "always" : "manual"),
           // Arc Director: every Current Arc carries pacing state so the gate has something to read.
@@ -624,7 +625,7 @@ export function normalizeAdventure(adventure: Adventure): Adventure {
       // Deduplicate singleton types: keep the first occurrence of each singleton type.
       // This fixes adventures that were created with duplicate narrationRules (or other
       // singleton) components due to a bug in createAdventure merging baseline + setup.
-      const singletonTypes = new Set(["narrationRules", "aiInstructions", "plotEssentials", "authorNote", "currentArc"]);
+      const singletonTypes = new Set(["narrationRules", "aiInstructions", "plotEssentials", "currentArc"]);
       const seenSingletons = new Set<string>();
       const deduped = normalized.filter((component) => {
         if (!singletonTypes.has(component.type)) return true;

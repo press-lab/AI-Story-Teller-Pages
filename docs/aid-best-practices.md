@@ -23,18 +23,17 @@ Primary references:
 
 ## Core Setup Shape
 
-A reliable AID scenario pack should usually contain:
+A reliable starter scenario pack should usually contain:
 
 1. Opening prompt / starting prompt.
 2. AI Instructions.
 3. Plot Essentials.
-4. Author's Note.
-5. Story Cards JSON.
+4. Story Cards JSON.
 
 Use Story Summary only when there is a real running plot overview to preserve.
 For a fresh scenario, do not include a Story Summary by default just because it
 exists as an AID surface. A lean setup with custom AI Instructions, tight Plot
-Essentials, a short Author's Note, and Story Cards is usually better.
+Essentials, and Story Cards is usually better.
 
 ## Player Variables / Placeholders
 
@@ -53,7 +52,6 @@ Good places to use placeholders:
 
 - Opening prompt / starting prompt.
 - Plot Essentials, when the customized fact should always matter.
-- Author's Note, only if the variable affects recurring tone or framing.
 - Story Card entries, especially relationship cards, player-role cards, and
   premise cards that need to adapt to the player's answers.
 - Character Creator scenario text and option-connected setup.
@@ -202,28 +200,16 @@ Someone is poisoning Gloamfen's swamp leylines and framing ogres for it.
 The conspiracy uses forged permits, corrupt officials, and staged monster attacks to seize the swamp.
 ```
 
-## Author's Note
+## Tone and scene direction
 
-Author's Note is short near-end steering. AID sends it toward the end of player
-input and formats it as bracketed descriptive guidance. It has strong immediate
-influence, so do not overload it.
+Put enduring tone, genre, and scenario-specific prose guidance in **AI Instructions**.
+Use **Next Output Bias** during play for a short instruction about the next
+output. Turn off **Expires after output** when the direction should persist
+for several turns, then clear it when the scene no longer needs it.
 
-Use Author's Note for:
-
-- Genre tags.
-- Style.
-- Current tone.
-- Short-term scene emphasis.
-- A correction the model keeps missing.
-
-Keep it to roughly 3 or 4 sentences at most. If the note grows into lore,
-move the lore to Plot Essentials or Story Cards.
-
-Example:
-
-```text
-Mature swamp-noir romantic comedy. Keep Grushka bold, funny, sensual, and dangerous; keep the player in control of their own choices. Let the conspiracy create absurd complications without undercutting real stakes or chemistry.
-```
+AI Dungeon supports Author's Note. In AI Story Teller, saved Author's Notes
+are readable in Plot Components and disabled. Copy useful text from an old
+note into the appropriate control.
 
 ## Story Cards
 
@@ -305,7 +291,8 @@ Use each surface for one job:
 
 - AI Instructions: how to write.
 - Plot Essentials: what must always matter.
-- Author's Note: immediate tone and scene steering.
+- Custom plot components: give each optional persistent context block a descriptive name.
+- Next Output Bias: immediate tone and scene steering during play.
 - Story Cards: facts that matter only when triggered.
 - Story Summary: broad plot recap, only when genuinely useful.
 
@@ -318,7 +305,7 @@ Good placement pattern for romance with prior history:
 - Plot Essentials: one line that the attraction/history exists.
 - Relationship Story Card: richer details and placeholders.
 - Character Story Card: the NPC's identity, voice, and behavior.
-- Author's Note: tone and chemistry.
+- AI Instructions: enduring tone and guidance for chemistry.
 
 ## Scenario Quality Rules
 
@@ -335,14 +322,13 @@ For this user's preferred AID/AIST scenario style:
 - Seed the antagonist or conspiracy through recurring people and institutions,
   not a stranger who appears from nowhere.
 
-## AID Pack Deliverable Checklist
+## AI Story Teller Starter Pack Checklist
 
-When asked to make AID content, produce:
+When asked to make an AI Story Teller starter, produce:
 
 - Opening Prompt.
 - AI Instructions.
 - Plot Essentials.
-- Author's Note.
 - Story Cards JSON.
 - Optional Story Summary only if requested or clearly needed.
 - Optional Character Creator fields when structured choices are better than
@@ -355,7 +341,6 @@ Before finalizing, check:
 - Story Card entries are self-contained and repeat the subject name.
 - Story Card triggers are stable and specific.
 - Plot Essentials is lean and always-on.
-- Author's Note is short.
 - AI Instructions do not store lore.
 - The opening starts in-scene.
 - Adult or mature content is opt-in, consensual, and framed around adult

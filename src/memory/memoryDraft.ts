@@ -13,9 +13,9 @@ import { storyCardContextContent } from "./storyCardPolicy";
 
 export const DRAFT_COMPONENT_TYPES: Record<DraftComponentType, string> = {
   narrationRules: "Narration Rules", aiInstructions: "AI Instructions", plotEssentials: "Plot Essentials",
-  currentArc: "Current Story Arc", authorNote: "Author’s Note", custom: "Custom",
+  currentArc: "Current Story Arc", custom: "Custom",
 };
-export const SINGLETON_DRAFT_TYPES = new Set<DraftComponentType>(["narrationRules", "aiInstructions", "plotEssentials", "authorNote"]);
+export const SINGLETON_DRAFT_TYPES = new Set<DraftComponentType>(["narrationRules", "aiInstructions", "plotEssentials"]);
 
 /** Stable across export/import object key order; includes destination controls and body. */
 export function draftTargetFingerprint(target: unknown): string {

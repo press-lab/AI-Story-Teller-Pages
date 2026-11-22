@@ -61,7 +61,6 @@ export interface AdventureGenPreferences {
 const generatedComponentTypes = new Set<ComponentType>([
   "aiInstructions",
   "plotEssentials",
-  "authorNote",
   "custom",
 ]);
 const storyCardTypes = new Set<StoryCardType>(["character", "location", "object", "lore", "custom"]);
@@ -174,7 +173,7 @@ Output ONLY valid JSON — no explanation, no preamble, no markdown prose outsid
   "components": [
     {
       "title": "string",
-      "type": "aiInstructions | plotEssentials | authorNote | custom",
+      "type": "aiInstructions | plotEssentials | custom",
       "content": "string",
       "alwaysOn": true,
       "pinned": true,
@@ -200,7 +199,7 @@ ${ADVENTURE_GENERATION_BEST_PRACTICES}
 Component guidelines:
 - Always include one "plotEssentials" component containing the overarching premise, optional central conflict, and persistent story-wide constraints; do not put transient scene details in Plot Essentials. Use 4-7 tight bullets and keep it under 140 words. Do not turn it into a full backstory or lore encyclopedia.
 - Always include "aiInstructions" to establish the inferred narrative tone required by the shared standards, using a TONE section or clear guidance in PROSE. Add scenario-specific constraints or drift prevention where needed. Keep biographies and event history in Story Cards; an optional hidden narrator-only mechanism belongs in AI Instructions. Structure it with named ALL-CAPS sections (SETTING, PLAYER POWER, STORY BEHAVIOR, PROSE, etc.) relevant to the premise. Keep scenario-specific sections to 2-5 tight bullet points. The app adds the full Character Knowledge and Information Boundaries and NPC Autonomy and Character Fidelity sections to AI Instructions. Leave these standard sections out of the response and apply their principles when designing the setup. Always include a PROSE section with guidance on sentence rhythm, dialogue voice diversity, and sensory vs. expository balance. Include a STORY BEHAVIOR section that specifies what the story should be driven by and what drift patterns to prevent. If the premise involves a powerful or exceptional player character, include a PLAYER POWER section with explicit rules about how NPCs engage without worship or constant nerf attempts. Omit sections that are not relevant to the premise.
-- Add "authorNote" only for concise tone, mood, pacing, or prose influence.
+- Give each custom component a short, descriptive title. Put enduring tone and prose guidance in AI Instructions.
 - Add a "custom" component only for broad world context that is relevant every turn. If it matters only when a character, place, faction, object, or secret appears, use a Story Card instead.
 - Do NOT include narrationRules — those are managed separately.
 
@@ -256,7 +255,6 @@ function setupPreferenceGuidance(preferences: AdventureGenPreferences): string {
 Apply these preferences by routing facts to the correct surfaces:
 - AI Instructions: behavior, player-control contract, prose mode, drift prevention, adult-content policy if opted in.
 - Plot Essentials: 4-7 bullets of overarching premise and persistent story-wide constraints only.
-- Author's Note: brief tone/mood/pacing nudge only.
 - Story Cards: place recurring reference facts according to the shared categories above. This setup does not generate Brains.`;
 }
 

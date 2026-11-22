@@ -60,7 +60,6 @@ describe("development adventure seed", () => {
       "components",
       "storyCards",
       "brains",
-      "authorNote",
       "nextTurnNote",
       "challengeMode",
       "recentMessages",

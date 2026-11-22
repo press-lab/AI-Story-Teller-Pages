@@ -46,12 +46,34 @@ describe("side menu page smoke coverage", () => {
     cleanup();
   });
 
+  it("shows a saved Author’s Note as read-only", async () => {
+    const user = userEvent.setup();
+    const adventure = seedAdventure();
+    const note = makeComponent({ title: "Author's Note", type: "authorNote", content: "Keep the scene quiet." });
+    renderWithAdventure((state, dispatch) => <ComponentsPage adventure={state} dispatch={dispatch} />, {
+      ...adventure,
+      components: [...adventure.components, { ...note, active: true }],
+    });
+    await user.click(screen.getByText("Author's Note", { selector: ".story-card-title" }));
+    const row = screen.getByLabelText("Saved note").closest("details")!;
+    expect(within(row).getByText("Retired")).toBeInTheDocument();
+    expect(within(row).getByLabelText("Saved note")).toHaveValue(note.content);
+    expect(within(row).getByLabelText("Saved note")).toHaveAttribute("readonly");
+    expect(within(row).queryByRole("combobox")).not.toBeInTheDocument();
+  });
+
   it("covers World editor creation flows", async () => {
     const user = userEvent.setup();
 
     renderWithAdventure((adventure, dispatch) => <ComponentsPage adventure={adventure} dispatch={dispatch} />);
     await user.click(screen.getByRole("button", { name: "Add Custom Block" }));
-    expect(screen.getByText("Custom", { selector: ".story-card-title" })).toBeInTheDocument();
+    const name = screen.getByRole("textbox", { name: "Name" });
+    await user.clear(name);
+    await user.type(name, "House Rules for Magic{Enter}");
+    const search = screen.getByRole("searchbox");
+    await user.type(search, "House Rules for Magic");
+    expect(screen.getByText("House Rules for Magic", { selector: ".story-card-title mark" })).toBeInTheDocument();
+    expect(screen.queryByText("Core Story Contract")).not.toBeInTheDocument();
     cleanup();
 
     renderWithAdventure((adventure, dispatch) => <StoryCardsPage adventure={adventure} dispatch={dispatch} />);

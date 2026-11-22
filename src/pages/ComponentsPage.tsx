@@ -246,9 +246,9 @@ function ArcDirector({
   );
 }
 
-const SINGLETON_TYPES = new Set<ComponentType>(["narrationRules", "aiInstructions", "plotEssentials", "currentArc", "authorNote"]);
+const SINGLETON_TYPES = new Set<ComponentType>(["narrationRules", "aiInstructions", "plotEssentials", "currentArc"]);
 
-const activeComponentTypes: ComponentType[] = ["narrationRules", "aiInstructions", "plotEssentials", "currentArc", "authorNote", "custom"];
+const activeComponentTypes: ComponentType[] = ["narrationRules", "aiInstructions", "plotEssentials", "currentArc", "custom"];
 const inclusionPolicies: ContextInclusionPolicy[] = ["always", "triggered", "manual", "systemSuggested"];
 
 const TYPE_LABELS: Record<ComponentType, string> = {
@@ -270,7 +270,7 @@ const TYPE_DESCRIPTIONS: Record<ComponentType, string> = {
   currentArc: "A running log of the active story arc — auto-updated as arc-relevant events occur. Seed it with a one-line Arc Premise that defines what this arc is about. The AI only appends entries when something genuinely advances or complicates that premise. When the arc is complete, graduate it to a Story Card and start fresh.",
   activePressure: "Retired legacy component; inactive and excluded from context and memory updates.",
   immediateMomentum: "Disabled legacy component. Immediate next-beat direction now belongs in Recent Messages or the one-turn Next Output Bias.",
-  authorNote: "Near-context narrative direction — inserted just before Recent Messages for maximum influence on the next response. One per adventure. Most powerful mid-session correction tool: if a character is drifting too passive, too emotional, or too reactive, add a directive here before the next turn. 'Nix should have a project she is actively working on right now' resets the register immediately.",
+  authorNote: "Retired. Saved text is available for reference.",
   memory: "Legacy lore block. Move content to a Story Card with type Lore for triggered inclusion.",
   custom: "A general-purpose context block. Configure inclusion policy, priority, and protection manually.",
 };
@@ -299,13 +299,13 @@ function ComponentSummary({ component, query }: { component: ComponentEntry; que
   const tokenEstimate = approximateTokenCount(componentContextText(component));
   return (
     <span className="story-card-summary">
-      <span className="story-card-title"><Highlight text={TYPE_LABELS[component.type]} query={query} /></span>
+      <span className="story-card-title"><Highlight text={component.type === "custom" ? component.title || TYPE_LABELS.custom : TYPE_LABELS[component.type]} query={query} /></span>
       <span className="story-card-badges">
-        {!component.active && <span className="badge badge-inactive">Inactive</span>}
-        {component.pinned && <span className="badge badge-pinned">Pinned</span>}
-        {component.protected && <span className="badge badge-protected">Protected</span>}
-        {component.priority > 0 && <span className="badge badge-priority">p{component.priority}</span>}
-        <TokenCountBadge count={tokenEstimate} title="Estimated tokens in plot context" />
+        {component.type === "authorNote" ? <span className="badge badge-inactive">Retired</span> : !component.active && <span className="badge badge-inactive">Inactive</span>}
+        {component.type !== "authorNote" && component.pinned && <span className="badge badge-pinned">Pinned</span>}
+        {component.type !== "authorNote" && component.protected && <span className="badge badge-protected">Protected</span>}
+        {component.type !== "authorNote" && component.priority > 0 && <span className="badge badge-priority">p{component.priority}</span>}
+        {component.type !== "authorNote" && <TokenCountBadge count={tokenEstimate} title="Estimated tokens in plot context" />}
         <UpdatedAtBadge value={component.updatedAt} />
         {memoryUpdatedAt && (
           <span className="badge badge-memory-update" title={`Last memory update: ${memoryUpdatedAt}`}>
@@ -323,7 +323,7 @@ interface ComponentsPageProps extends AdventurePageProps {
   onAuditComponents?: (nTurns: number, includeAI: boolean) => Promise<ComponentAuditRecommendation[]>;
   onRegeneratePlotEssentials?: (componentId: string) => Promise<string>;
   onUpdatePEComponentNow?: (componentId: string) => Promise<void>;
-  /** Generate fresh content for Narration Rules / AI Instructions / Author's Note. Returns a string for review. */
+  /** Generate fresh content for Narration Rules / AI Instructions. Returns a string for review. */
   onGenerateComponent?: (componentId: string) => Promise<string>;
   /** Generate an Arc Director setup from a concept and apply it to the Current Arc component. */
   onGenerateArc?: (componentId: string, concept: string) => Promise<void>;
@@ -337,28 +337,8 @@ type ComponentAuditState = {
   errorMessage?: string;
 };
 
-const GENERATABLE_COMPONENT_TYPES = new Set<ComponentType>(["narrationRules", "aiInstructions", "authorNote"]);
+const GENERATABLE_COMPONENT_TYPES = new Set<ComponentType>(["narrationRules", "aiInstructions"]);
 const COMPONENT_AUDIT_TYPES: ComponentType[] = ["plotEssentials", "currentArc", "custom", "memory"];
-
-const PLOT_GROUP_DEFINITIONS: Array<{
-  id: string;
-  title: string;
-  description: string;
-  types: ComponentType[];
-}> = [
-  {
-    id: "contract",
-    title: "Core Story Contract",
-    description: "How the story is written and steered.",
-    types: ["narrationRules", "aiInstructions", "authorNote"],
-  },
-  {
-    id: "current-state",
-    title: "Current Story State",
-    description: "What is true right now and what pressure is active.",
-    types: ["plotEssentials", "currentArc"],
-  },
-];
 
 export function ComponentsPage({ adventure, dispatch, loading, onAuditComponents, onRegeneratePlotEssentials, onUpdatePEComponentNow, onGenerateComponent, onGenerateArc, onProposeArcFromHistory }: ComponentsPageProps) {
   const [search, setSearch] = useState("");
@@ -478,33 +458,15 @@ export function ComponentsPage({ adventure, dispatch, loading, onAuditComponents
     .sort((a, b) => b.priority - a.priority)
     .filter((c) => !searchLower ||
       TYPE_LABELS[c.type].toLowerCase().includes(searchLower) ||
+      (c.type === "custom" && c.title.toLowerCase().includes(searchLower)) ||
       c.content.toLowerCase().includes(searchLower)
     );
-  const activeCount = adventure.components.filter((component) => component.active && component.type !== "activePressure").length;
-  const groupedComponentIds = new Set<string>();
-  const componentGroups = PLOT_GROUP_DEFINITIONS
-    .map((group) => {
-      const components = visibleComponents.filter((component) => group.types.includes(component.type));
-      components.forEach((component) => groupedComponentIds.add(component.id));
-      return { ...group, components };
-    })
-    .filter((group) => group.components.length > 0);
-  const extraComponents = visibleComponents.filter((component) => !groupedComponentIds.has(component.id));
-  if (extraComponents.length > 0) {
-    componentGroups.push({
-      id: "extras",
-      title: "Extra World Blocks",
-      description: "Optional always-on or custom context.",
-      types: [],
-      components: extraComponents,
-    });
-  }
-
+  const activeCount = adventure.components.filter((component) => component.active && component.type !== "activePressure" && component.type !== "authorNote").length;
   return (
     <section className="page editor-surface components-page">
       <div className="editor-page-summary">
         <p className="muted">
-          Always-on plot truth, narration rules, author direction, and custom context blocks.
+          Narration rules, plot context, and custom blocks.
           Use Cards for facts that should only load when relevant.
         </p>
         <div className="editor-stat-row" aria-label="World block counts">
@@ -518,7 +480,7 @@ export function ComponentsPage({ adventure, dispatch, loading, onAuditComponents
         World Blocks are <strong>always-on context</strong> — they load every turn regardless of the story.
         Use them for narration rules, plot state, and author direction.
         For characters, places, and lore that should only load <em>when relevant</em>, use <strong>Story Cards</strong> — they're more token-efficient.
-        <strong> Narration Rules, AI Instructions, Plot Essentials,</strong> and <strong>Author's Note</strong> are singletons.
+        <strong> Narration Rules, AI Instructions, Plot Essentials,</strong> and <strong>Current Story Arc</strong> are singletons.
         AI Instructions are optional; Narration Rules can hold the complete stable behavior contract by themselves.
       </p>
 
@@ -540,7 +502,12 @@ export function ComponentsPage({ adventure, dispatch, loading, onAuditComponents
         ))}
         <button
           type="button"
-          onClick={() => dispatch({ type: "UPSERT_COMPONENT", component: makeComponent({ title: "New Block", content: "", type: "custom" }) })}
+          onClick={() => {
+            const component = makeComponent({ title: "New Block", content: "", type: "custom" });
+            dispatch({ type: "UPSERT_COMPONENT", component });
+            setSearch("");
+            setOpenComponentId(component.id);
+          }}
         >
           Add Custom Block
         </button>
@@ -591,18 +558,8 @@ export function ComponentsPage({ adventure, dispatch, loading, onAuditComponents
         </details>
       )}
 
-      <div className="component-group-list">
-        {componentGroups.map((group) => (
-          <details key={group.id} className="component-group-panel" open>
-            <summary className="component-group-summary">
-              <span>
-                <strong>{group.title}</strong>
-                <span className="muted">{group.description}</span>
-              </span>
-              <span className="badge badge-type">{group.components.length}</span>
-            </summary>
-            <div className="list split-editor-list component-editor-list">
-        {group.components.map((component) => (
+      <div className="list split-editor-list component-editor-list">
+        {visibleComponents.map((component) => (
           <details
             key={component.id}
             className="card story-card-item split-editor-item component-editor-item"
@@ -617,13 +574,21 @@ export function ComponentsPage({ adventure, dispatch, loading, onAuditComponents
               <ComponentSummary component={component} query={searchLower} />
             </summary>
 
+            {component.type === "authorNote" ? (
+              <div className="editor-card item-inspector component-inspector">
+                <p>Author’s Note is disabled. Use AI Instructions for enduring tone and Next Output Bias for immediate direction.</p>
+                <Field label="Saved note">
+                  <textarea rows={6} value={component.content} readOnly />
+                </Field>
+              </div>
+            ) : (
             <div className="editor-card item-inspector component-inspector">
               <div className="panel-heading item-inspector-heading">
                 <div>
                   <p className="eyebrow">
                     {component.active ? "active" : "inactive"} · {component.inclusionPolicy}
                   </p>
-                  <h3>{TYPE_LABELS[component.type]}</h3>
+                  <h3>{component.type === "custom" ? component.title || TYPE_LABELS.custom : TYPE_LABELS[component.type]}</h3>
                   <div className="story-card-badges">
                     {component.type === "currentArc" && (
                       <span className="badge badge-priority">{(component.arcState?.phase ?? "simmer").toUpperCase()}</span>
@@ -685,6 +650,22 @@ export function ComponentsPage({ adventure, dispatch, loading, onAuditComponents
                     ))}
                   </select>
                 </Field>
+                {component.type === "custom" && (
+                  <Field label="Name">
+                    <input
+                      key={component.title}
+                      defaultValue={component.title}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") event.currentTarget.blur();
+                      }}
+                      onBlur={(event) => {
+                        const title = event.target.value.trim() || TYPE_LABELS.custom;
+                        event.currentTarget.value = title;
+                        if (title !== component.title) dispatch({ type: "UPDATE_COMPONENT", componentId: component.id, patch: { title } });
+                      }}
+                    />
+                  </Field>
+                )}
               </div>
               <p className="muted component-type-hint">{TYPE_DESCRIPTIONS[component.type]}</p>
               {component.type === "currentArc" && (
@@ -908,9 +889,7 @@ export function ComponentsPage({ adventure, dispatch, loading, onAuditComponents
               </div>
               </details>
             </div>
-          </details>
-        ))}
-            </div>
+            )}
           </details>
         ))}
       </div>

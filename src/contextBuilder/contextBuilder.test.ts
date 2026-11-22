@@ -142,8 +142,6 @@ describe("buildContext", () => {
 
   it("assembles sections in the required deterministic order (A–M)", () => {
     const result = buildContext(adventureForContext(), { currentInput: "lantern" });
-    // All 13 sections must exist in the correct order
-    // Author's Note is placed just before recent messages (AID-style) for maximum recency influence
     // Continuity Challenge (M) sits between Next Output Bias and Recent Messages when active
     expect(result.sections.map((section) => section.id)).toEqual([
       "system",
@@ -153,7 +151,6 @@ describe("buildContext", () => {
       "components",
       "storyCards",
       "brains",
-      "authorNote",
       "nextTurnNote",
       "challengeMode",
       "recentMessages",
@@ -162,7 +159,6 @@ describe("buildContext", () => {
     // adventureForContext uses generic custom-type components (always + pinned), so they land in "components"
     expect(itemTitles(adventureForContext(), "aiInstructions")).toEqual([]);
     expect(itemTitles(adventureForContext(), "plotEssentials")).toEqual([]);
-    expect(itemTitles(adventureForContext(), "authorNote")).toEqual([]);
     expect(itemTitles(adventureForContext(), "components")).toEqual(["Always", "Pinned"]);
     expect(itemTitles(adventureForContext(), "storyCards")).toEqual(["Keyed Story"]);
     expect(itemTitles(adventureForContext(), "brains")).toEqual(["Mira"]);
@@ -171,7 +167,7 @@ describe("buildContext", () => {
     expect(itemTitles(adventureForContext(), "recentMessages")).toEqual(["assistant message 1", "user message 2"]);
   });
 
-  it("routes aiInstructions, plotEssentials, and authorNote each into their own section before general components", () => {
+  it("routes aiInstructions, plotEssentials, each into their own section before general components", () => {
     const ai = makeComponent({ id: "c-ai", title: "AI", type: "aiInstructions", content: "AI", alwaysOn: true, priority: 50 });
     const plotHigh = makeComponent({ id: "c-plot-high", title: "Plot High", type: "plotEssentials", content: "Plot high", priority: 90 });
     const plotLow = makeComponent({ id: "c-plot-low", title: "Plot Low", type: "plotEssentials", content: "Plot low", priority: 10 });
@@ -187,7 +183,6 @@ describe("buildContext", () => {
     // Each type has its own section
     expect(result.sections.find((section) => section.id === "aiInstructions")?.items.map((item) => item.id)).toEqual(["c-ai"]);
     expect(result.sections.find((section) => section.id === "plotEssentials")?.items.map((item) => item.id)).toEqual(["c-plot-high", "c-plot-low"]);
-    expect(result.sections.find((section) => section.id === "authorNote")?.items).toHaveLength(0);
     // Pinned custom component lands in E. Components
     expect(result.sections.find((section) => section.id === "components")?.items.map((item) => item.id)).toEqual(["c-pinned"]);
     expect(result.excludedItems).toContainEqual(expect.objectContaining({ id: "c-inactive", reason: "inactive" }));
@@ -702,7 +697,7 @@ describe("buildContext", () => {
     // adventureForContext has no aiInstructions/plotEssentials/authorNote/sceneState content
     const result = buildContext(adventureForContext(), { currentInput: "lantern" });
     // All section IDs always present in result.sections
-    expect(result.sections.map((s) => s.id)).toHaveLength(11);
+    expect(result.sections.map((s) => s.id)).toHaveLength(10);
     // Empty typed sections do not appear in the system payload
     const payload = result.messages[0].content;
     expect(payload).not.toContain("# B. AI Instructions");
@@ -727,15 +722,18 @@ describe("buildContext", () => {
       "components",
       "storyCards",
       "brains",
-      "authorNote",
       "nextTurnNote",
       "challengeMode",
       "recentMessages",
     ]);
     expect(result.sections.find((section) => section.id === "aiInstructions")?.items.map((item) => item.id)).toEqual(["component-ai"]);
     expect(result.sections.find((section) => section.id === "plotEssentials")?.items.map((item) => item.id)).toEqual(["component-plot"]);
-    expect(result.sections.find((section) => section.id === "authorNote")?.items.map((item) => item.id)).toEqual(["component-author"]);
     expect(result.sections.find((section) => section.id === "components")?.items.map((item) => item.id)).toEqual(["component-pinned"]);
+    const retiredNote = goldenAdventure().components.find(component => component.type === "authorNote")!;
+    const legacy = { ...goldenAdventure(), components: [{ ...retiredNote, active: true }] };
+    const legacyContext = buildContext(legacy);
+    expect(legacyContext.sections.flatMap(section => section.items).map(item => item.id)).not.toContain(retiredNote.id);
+    expect(legacyContext.messages.map(message => message.content).join("\n")).not.toContain(retiredNote.content);
     expect(result.sections.find((section) => section.id === "storyCards")?.items.map((item) => item.id)).toEqual(["card-joke", "card-beast"]);
     expect(result.sections.find((section) => section.id === "brains")?.items.map((item) => item.id)).toEqual(["brain-margo", "brain-seth"]);
     expect(result.sections.find((section) => section.id === "nextTurnNote")?.items).toEqual([]);
@@ -931,7 +929,7 @@ describe("one-hop chained Story Cards", () => {
     expect(JSON.stringify(adventure)).toBe(before);
   });
 
-  it.each(["narrationRules", "aiInstructions", "plotEssentials", "currentArc", "authorNote", "custom"] as const)("uses included %s rendered content", type => {
+  it.each(["narrationRules", "aiInstructions", "plotEssentials", "currentArc", "custom"] as const)("uses included %s rendered content", type => {
     const adventure = fixture();
     adventure.components = [makeComponent({ id: "source", type, title: "Plot Essentials", content: "Fenchurch is a magical bird.", alwaysOn: true })];
     const result = build(adventure, "Wait.");

@@ -44,7 +44,6 @@ export function componentSuggestionBestPractices(type: DraftComponentType): stri
     aiInstructions: AI_INSTRUCTIONS_BEST_PRACTICES,
     plotEssentials: PLOT_ESSENTIALS_BEST_PRACTICES,
     currentArc: "Current Story Arc: record supported completed arc developments as past events. Preserve the existing Arc Director configuration and phase. Do not turn the arc log into a permanent current-state or open-question checklist.",
-    authorNote: "Author’s Note: write concise requested emphasis on tone, mood, pacing, or prose. Its near-context role may be immediate, but do not use it to freeze factual knowledge, decisions, or unanswered questions.",
     custom: AUTHORING_SECTIONS.find(section => section.id === "components")!.text,
   };
   return `${roles[type]}\n\n${COMPONENT_SUGGESTION_PERSISTENCE_GUIDANCE}`;

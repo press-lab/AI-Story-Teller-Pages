@@ -26,7 +26,7 @@ A scenario is six things working together:
 | **Interior life** | Brains | Hidden agendas that simmer and persist |
 | **The engine** | a custom "missions" component | The repeatable loop that prints scenes |
 | **The spine** | Current Story Arc + **Arc Director** | The conflict that climbs and breaks |
-| **The hook** | Opening Scene + Author's Note | Where it starts, what is pressing now, how it sounds |
+| **The hook** | Opening Scene | Where it starts, what is pressing now, how it sounds |
 
 Build them in that order.
 
@@ -36,7 +36,7 @@ Build them in that order.
 
 The New Adventure generator asks for outcome choices before it drafts the setup.
 Pick the result you want; the app routes the details into AI Instructions, Plot
-Essentials, Author's Note, Custom components, and Story Cards. It does not generate Narration Rules or Brains.
+Essentials, named Custom components, and Story Cards. It does not generate Narration Rules or Brains.
 
 | Want | Choose | What it changes |
 |---|---|---|
@@ -247,10 +247,7 @@ thread. *Heir* opens on the prince out-bending everyone, bantering with Nyxa,
 then a summons about a New Ozai strike — world, power, romance, and hook in one
 beat.
 
-Set an **Author's Note** for tone (it loads near the recent messages, highest
-steering weight): *"Blockbuster-sequel energy… keep the larger story serious, but
-outside danger let the cast be sharp, funny, human."* Use it later as your
-mid-session steering wheel if a character drifts.
+Set enduring tone in **AI Instructions**. Use **Next Output Bias** on the Play page for a short, scene-specific direction.
 
 Set the **response length** to a target (slider on the Play page) — V3.2 writes
 *to* it, so 300–500 gives substantive beats.
@@ -302,7 +299,7 @@ Set the **response length** to a target (slider on the Play page) — V3.2 write
 - [ ] Current Story Arc + Arc Director: baddie threads, simmer + cost
       instructions, sensible pace, **Ask** mode, **starts simmering**.
 - [ ] Opening scene = backdrop + power + relationship + hook.
-- [ ] Author's Note for tone; response length set as a target.
+- [ ] Enduring tone in AI Instructions and a response length target.
 - [ ] Running on DeepSeek V3.2 or better.
 
 ## Tone, cast, and optional discoveries
@@ -325,7 +322,7 @@ changes. Magicians-inspired Brakebills suggests irreverent adult humor, academic
 magic, interpersonal drama, occasional danger, and complicated relationships.
 Gothic horror suggests dread and consequences; a lighthearted magical school may
 favor curiosity, humor, friendships, and discovery. These are examples, not templates.
-AI Instructions establish enduring tone; Author's Note reinforces immediate mood.
+AI Instructions establish enduring tone. Next Output Bias steers immediate mood during play.
 Keep general narrator behavior in Narration Rules.
 
 Optional capability handling can let player-described powers work within

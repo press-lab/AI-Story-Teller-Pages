@@ -190,7 +190,7 @@ describe("runAdventureGen", () => {
     expect(prompt).toContain("Lore cards preserve events");
     expect(request.messages[0].content).not.toContain('"activePressure"');
     expect(request.messages[0].content).not.toContain('"immediateMomentum"');
-    expect(request.messages[0].content).toContain('"authorNote"');
+    expect(request.messages[0].content).not.toContain("authorNote");
     expect(request.messages[0].content).toContain("Do not create cards for current scene position");
   });
 

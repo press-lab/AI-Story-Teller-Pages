@@ -56,7 +56,6 @@ Context sections, in fixed order:
 | `components` | E. Components | General always-on or pinned custom components |
 | `storyCards` | F. Story Cards | Triggered / pinned Story Cards |
 | `brains` | G. Brains | Active Brain entries for triggered characters |
-| `authorNote` | D. Author's Note | Components with `type === "authorNote"`; placed near recent context for AID-style influence |
 | `nextTurnNote` | J. Next Output Bias | User-written short-term steering note for the next generation |
 | `challengeMode` | M. Continuity Challenge | One-turn correction instruction when the player challenges continuity |
 | `recentMessages` | K. Recent Messages | Short-term transcript window |
@@ -100,9 +99,9 @@ The Context Preview page shows:
 - **Immediate Momentum**: disabled legacy component type. It is not generated, imported, auto-updated, or sent to the model.
 - **Narration Rules**: the primary per-adventure behavior contract, copied from defaults but editable during creation and afterward. Loaded with the system shell before other context.
 - **AI Instructions**: optional persistent scenario-specific behavior rules in section B. Use them for genre, drift prevention, scene-loop, and prose contracts, not facts. They are not required when Narration Rules already contain the complete stable contract. Avoid duplicating the same rule across both surfaces. AI must not modify these.
-- **Author's Note**: author-layer mood or tonal constraints. Section D. AI must not modify these.
+- **Author's Note**: retired. Existing notes are readable and disabled in Plot Components.
 - **Memory Inbox / Proposals**: `activeState.memoryProposals`, where AI-suggested durable memories wait for user approval. Pending proposals appear in Context Preview but are not model context. Approving converts them to Story Cards, Brain updates, Plot Essentials edits, Active Pressure edits, or Current Arc updates through reducer actions.
-- **Protected**: non-droppable during token truncation. `aiInstructions`, `plotEssentials`, and `authorNote` components are protected by default.
+- **Protected**: non-droppable during token truncation. `aiInstructions` and `plotEssentials` components are protected by default.
 - **Pinned**: prioritized for inclusion and ordering, but droppable if budget is exhausted and the item is not also protected.
 
 Use `src/memory/classificationPolicy.ts` for deterministic memory routing. Use `src/memory/applyAIMemoryUpdate.ts` for AI-generated memory updates.
@@ -126,7 +125,7 @@ Allowed AI update targets:
 
 Rejected AI update targets:
 
-- AI Instructions and Author's Note components
+- AI Instructions and named Custom components
 - provider/model config
 - trigger rule definitions
 - quest definitions

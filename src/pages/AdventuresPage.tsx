@@ -63,6 +63,7 @@ interface ComponentDraft {
   alwaysOn: boolean;
   pinned: boolean;
   protected: boolean;
+  title?: string;
 }
 
 interface StoryCardDraft {
@@ -81,7 +82,6 @@ const componentTypes: ComponentType[] = [
   "narrationRules",
   "aiInstructions",
   "plotEssentials",
-  "authorNote",
   "custom",
 ];
 
@@ -101,7 +101,6 @@ const uniqueComponentTypes = new Set<ComponentType>([
   "narrationRules",
   "aiInstructions",
   "plotEssentials",
-  "authorNote",
   "currentArc",
 ]);
 
@@ -136,7 +135,7 @@ const adultContentOptions: Array<{ value: AdventureAdultContentMode; label: stri
 ];
 
 function isFixedComponentType(type: ComponentType): boolean {
-  return type === "narrationRules" || type === "aiInstructions" || type === "plotEssentials" || type === "authorNote";
+  return type === "narrationRules" || type === "aiInstructions" || type === "plotEssentials";
 }
 
 function defaultComponentPriority(type: ComponentType): number {
@@ -144,7 +143,6 @@ function defaultComponentPriority(type: ComponentType): number {
   if (type === "aiInstructions") return 90;
   if (type === "plotEssentials") return 80;
   if (type === "activePressure") return 245;
-  if (type === "authorNote") return 70;
   return 0;
 }
 
@@ -180,7 +178,7 @@ function componentFromDraft(draft: ComponentDraft): ComponentEntry | undefined {
   const content = draft.content.trim();
   if (!content) return undefined;
   return makeComponent({
-    title: COMPONENT_TYPE_LABELS[draft.type],
+    title: draft.type === "custom" ? draft.title?.trim() || COMPONENT_TYPE_LABELS.custom : COMPONENT_TYPE_LABELS[draft.type],
     type: draft.type,
     content,
     priority: draft.priority,
@@ -501,6 +499,7 @@ export function AdventuresPage({
             id: createId("componentDraft"),
             source: "generated" as const,
             type,
+            title: component.title,
             content: component.content,
             priority: component.priority ?? defaultComponentPriority(type),
             alwaysOn: fixed || (component.alwaysOn ?? true),
@@ -681,7 +680,7 @@ export function AdventuresPage({
             <summary>Starter Components ({starterComponents.length})</summary>
             <p className="muted">
               Components become World Blocks. Keep Plot Essentials short and factual; use AI Instructions for
-              persistent generation rules and Author's Note for tone.
+              persistent generation rules and tone.
             </p>
             <div className="toolbar">
               {!componentDrafts.some((d) => d.type === "aiInstructions") && (
@@ -692,11 +691,6 @@ export function AdventuresPage({
               {!componentDrafts.some((d) => d.type === "plotEssentials") && (
                 <button type="button" onClick={() => setComponentDrafts((drafts) => [...drafts, blankComponentDraft("plotEssentials")])}>
                   Add Plot Essentials
-                </button>
-              )}
-              {!componentDrafts.some((d) => d.type === "authorNote") && (
-                <button type="button" onClick={() => setComponentDrafts((drafts) => [...drafts, blankComponentDraft("authorNote")])}>
-                  Add Author's Note
                 </button>
               )}
               <button type="button" onClick={() => setComponentDrafts((drafts) => [...drafts, blankComponentDraft("custom")])}>
@@ -722,6 +716,11 @@ export function AdventuresPage({
                           ))}
                         </select>
                       </Field>
+                      {draft.type === "custom" && (
+                        <Field label="Name">
+                          <input value={draft.title ?? ""} onChange={(event) => updateComponentDraft(draft.id, { title: event.target.value })} />
+                        </Field>
+                      )}
                       <Field label="Priority">
                         <NumberInput value={draft.priority} onChange={(priority) => updateComponentDraft(draft.id, { priority })} />
                       </Field>

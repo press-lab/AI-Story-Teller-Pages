@@ -1072,7 +1072,7 @@ Respond with ONLY the new content — no preamble, no labels, no explanation.`;
     return response.content.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
   }
 
-  /** Generate fresh content for a Narration Rules / AI Instructions / Author's Note component. Returns a string for review. */
+  /** Generate fresh content for a Narration Rules / AI Instructions component. Returns a string for review. */
   async function generateComponent(componentId: string): Promise<string> {
     if (!adventure) throw new Error("No adventure loaded.");
     const component = adventure.components.find((c) => c.id === componentId);

@@ -117,7 +117,6 @@ function sectionShortLabel(sectionId: string): string {
     system: "System",
     aiInstructions: "AI Rules",
     plotEssentials: "Plot",
-    authorNote: "Author",
     generalComponents: "Blocks",
     storyCards: "Cards",
     brains: "Chars",

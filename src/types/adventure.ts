@@ -795,7 +795,7 @@ export interface MemoryReconcileRequest {
   includeBrains: boolean;
 }
 
-export type DraftComponentType = "narrationRules" | "aiInstructions" | "plotEssentials" | "currentArc" | "authorNote" | "custom";
+export type DraftComponentType = "narrationRules" | "aiInstructions" | "plotEssentials" | "currentArc" | "custom";
 
 export interface MemoryDraftContext {
   components: "none" | "all" | "selected";
@@ -1080,7 +1080,6 @@ export type ContextSectionKind =
   | "aiInstructions"  // B. AI Instructions components
   | "plotEssentials"  // C. Plot Essentials components
   | "currentArc"      // C2. Current Story Arc — active arc log with premise
-  | "authorNote"      // D. Author's Note components
   | "components"      // E. General always-on / pinned components
   | "storyCards"      // F. Story Cards + Auto-Cards (triggered / pinned)
   | "brains"          // G. Brain entries

@@ -149,7 +149,7 @@ describe("explicit memory drafting context", () => {
     expect(draftPreview(adventure, request).estimatedTokens).toBeGreaterThan(0);
     expect(() => draftMessages(adventure, { ...request, action: "suggest" })).toThrow("Use a written brief");
   });
-  it.each<DraftComponentType>(["narrationRules", "aiInstructions", "plotEssentials", "currentArc", "authorNote", "custom"])("sends repeated-context safeguards to the model for %s suggestions", async componentType => {
+  it.each<DraftComponentType>(["narrationRules", "aiInstructions", "plotEssentials", "currentArc", "custom"])("sends repeated-context safeguards to the model for %s suggestions", async componentType => {
     const { adventure, request } = fixture();
     adventure.components = [];
     request.componentType = componentType;
@@ -195,7 +195,7 @@ describe("explicit memory drafting context", () => {
 });
 
 describe("manual authoring approval", () => {
-  it.each<DraftComponentType>(["narrationRules", "aiInstructions", "plotEssentials", "currentArc", "authorNote", "custom"])("creates and approves %s without automatic permission", async componentType => {
+  it.each<DraftComponentType>(["narrationRules", "aiInstructions", "plotEssentials", "currentArc", "custom"])("creates and approves %s without automatic permission", async componentType => {
     const { adventure, request } = fixture(); adventure.components = [];
     request.componentType = componentType;
     const proposal = await draft(adventure, request);

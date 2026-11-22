@@ -168,6 +168,11 @@ function recordStoryCardMemoryUpdate(
 
 function touchAdventure(state: Adventure, patch: Partial<Adventure>): Adventure {
   const next = { ...state, ...patch, updatedAt: nowIso() };
+  if (patch.components?.some(component => component.type === "authorNote" && component.active)) {
+    next.components = patch.components.map(component => component.type === "authorNote" && component.active
+      ? { ...component, active: false }
+      : component);
+  }
   if (patch.messages && !("storyClock" in patch)) next.storyClock = reconcileStoryClock(state.storyClock, patch.messages);
   return next;
 }
@@ -1705,11 +1710,11 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
       return touchAdventure(state, { components: updateById(state.components, action.componentId, (item) => touch({ ...item, pinned: false })) });
     case "UPDATE_COMPONENT":
       return touchAdventure(state, {
-        components: updateById(state.components, action.componentId, (item) => mergePatch<ComponentEntry>(item, action.patch)),
+        components: updateById(state.components, action.componentId, (item) => item.type === "authorNote" ? item : mergePatch<ComponentEntry>(item, action.patch)),
       });
     case "APPLY_COMPONENT_UPDATE": {
       const target = state.components.find((component) => component.id === action.componentId);
-      if (!target) return state;
+      if (!target || target.type === "authorNote") return state;
       const basePatch: Partial<Adventure> = {
         components: updateById(state.components, action.componentId, (item) =>
           recordComponentMemoryUpdate(item, { ...item, content: action.content }, { source: "aiMemoryUpdate", operation: "replace" }),

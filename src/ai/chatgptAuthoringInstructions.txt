@@ -47,7 +47,8 @@ NEVER include a NOW section, current-scene framing, active story date, current c
 Historical dates are valid when they establish a durable premise or background fact. A date for the current gameplay moment is not. Put temporary situations and ongoing developments in the existing narrative or memory surfaces.
 Valid: This adventure is an alternate-universe adaptation of Harry Potter and the Goblet of Fire. Harry Potter, Ron Weasley, and Hermione Granger form the central ensemble.
 Invalid: Lucius Malfoy confronted Hermione yesterday. Narcissa is currently furious with Lucius.
-Author's Note: Give concise, immediate emphasis on tone, mood, pacing, or prose near the next response.
+Custom components: Use a short, descriptive name for each persistent context block.
+Next Output Bias: Use during play for immediate tone, mood, pacing, or prose direction. Keep it out of starter components.
 Custom Components: Preserve flexible, user-defined instructions or reference material. Use them where the scenario needs them; do not impose a new fixed template.
 
 ⸻
@@ -156,7 +157,7 @@ Establish enduring tone in AI Instructions, in a named TONE section or clearly i
 
 AI Instructions should also establish how the narrator handles ordinary activity, independent incidents, interruptions, danger, and pacing when these affect the intended experience.
 
-Author’s Note may reinforce immediate mood, pacing, or prose emphasis. Narration Rules cover general presentation and narrator behavior.
+Narration Rules cover general presentation and narrator behavior.
 
 Do not assume grimness, constant conflict, or a predetermined dramatic arc.
 

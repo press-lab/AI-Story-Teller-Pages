@@ -62,7 +62,6 @@ Pure function — builds the provider payload each turn. Sections are assembled 
 | 3 | `components` | E. Components | Always-on or pinned non-special-typed components |
 | 4 | `storyCards` | F. Story Cards | Triggered, always, or pinned story cards |
 | 5 | `brains` | G. Brains | Triggered or pinned brain entries (thoughts only) |
-| 8 | `authorNote` | D. Author's Note | `authorNote` components (placed late for recency influence) |
 | 10 | `nextTurnNote` | J. Next Output Bias | Active next-turn note |
 | 10.5 | `challengeMode` | M. Continuity Challenge | Injected instruction when `challengeMode` is active |
 | 11 | `recentMessages` | K. Recent Messages | Last N messages within token budget |
@@ -95,7 +94,7 @@ When total exceeds `maxContextTokens`, items are dropped in priority order:
 | `currentArc` | Yes | C2 | Yes (append) | Running arc log. Requires `arcPremise` for auto-update. Graduate → Story Card when done. |
 | `activePressure` | No* | C | Yes (replace) | One-sentence current external threat or obligation. Auto-updated, pending by default. |
 | `immediateMomentum` | No | — | No | Disabled legacy type. Not generated, auto-updated, or assembled into context. |
-| `authorNote` | Yes | D (near-context) | No | Immediate narrative correction. One per adventure. Most powerful short-term tool. |
+| `authorNote` | Legacy only | Disabled | No | Saved text remains readable in Plot Components. |
 | `memory` | No | — | No | **Legacy.** Migrate content to Story Cards (type: Lore). |
 | `custom` | No | E (if always-on/pinned) | No | General purpose. Configure inclusion policy, priority, protection manually. |
 
@@ -142,7 +141,7 @@ Types: `character`, `location`, `lore`, `custom`. Character/Location are durable
 - The AI compares the description with existing Story Cards and character entries.
 - The result is one or more pending `storyCard` Memory Proposals, never an immediate active-memory write.
 - Native DeepSeek requests use JSON output with thinking disabled for this schema-driven call.
-- **Related generators** (`ai/generators.ts`, user-initiated ✨ buttons): fresh content for Narration Rules / AI Instructions / Author's Note (preview → Apply), a full Arc Director setup from a one-line concept (premise + simmer + break + pace + trigger mode), and a character Brain from just a name (behavioral voice contract, not trait lists). All are grounded in a compact adventure snapshot. See `AGENTS.md` → "AI Generation Buttons".
+- **Related generators** (`ai/generators.ts`, user-initiated ✨ buttons): fresh content for Narration Rules / AI Instructions (preview → Apply), a full Arc Director setup from a one-line concept (premise + simmer + break + pace + trigger mode), and a character Brain from just a name (behavioral voice contract, not trait lists). All are grounded in a compact adventure snapshot. See `AGENTS.md` → "AI Generation Buttons".
 
 ### Auto-update:
 - `autoUpdate: boolean` per card
@@ -319,7 +318,7 @@ Tags are extracted from the response by `extractInlineThoughts()` and turned int
 
 A single-turn directive injected at section J (just before recent messages). Settings: `active`, `pinned`, `protected`, `priority`, `expiresAfterUse`. When `expiresAfterUse: true`, consumed by `CONSUME_NEXT_TURN_NOTE` after the turn runs. Editable in Play page quick-access panel and in Settings.
 
-Best use: steering the next response without polluting the Author's Note permanently. "End this scene at the threshold — don't narrate the arrival."
+Best use: steering the next response. "End this scene at the threshold — don't narrate the arrival."
 
 ---
 
@@ -454,7 +453,6 @@ Player input
         ← activePressure
         ← triggered story cards (phrase/keyword/regex match)
         ← triggered brains (character name match)
-        ← authorNote
         ← nextTurnNote (if active)
         ← challengeMode instruction (if SET_CHALLENGE_MODE was dispatched)
         ← independent memory runs after final story persistence; no narrator appendix
