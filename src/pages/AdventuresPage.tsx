@@ -1,4 +1,5 @@
 import { PRIMARY_STORY_CARD_TYPES } from "../memory/storyCardArchitecture";
+import { includeNpcAuthoringRules } from "../ai/authoringPolicy";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { paintNarrationLoading } from "../hooks/paintNarrationLoading";
 import type {
@@ -478,7 +479,9 @@ export function AdventuresPage({
       if (result.title) setTitle(result.title);
       if (result.openingScene) setOpeningScene(result.openingScene);
       setComponentDrafts((existing) => {
-        const preserved = existing.filter((draft) => draft.source !== "generated");
+        const preserved = existing.filter((draft) => draft.source !== "generated").map((draft) =>
+          draft.type === "aiInstructions" ? { ...draft, content: includeNpcAuthoringRules(draft.content) } : draft,
+        );
         const existingTypes = new Set(preserved.map((draft) => draft.type));
         const generatedTypes = new Set<ComponentType>();
         const generatedContent = new Set<string>();

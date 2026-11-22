@@ -137,6 +137,32 @@ Let NPCs initiate, interrupt, flirt, lie, escalate, and make mistakes.
 Keep the tone mature, funny, sensual, and dangerous without turning serious threats into jokes.
 ```
 
+### Character Knowledge and Information Boundaries
+
+- Before writing any NPC’s dialogue, actions, or reactions, determine what that character actually knows at that moment.
+- Track who was present for each event, what they directly witnessed, what they were told, and what they could reasonably infer.
+- Characters who were absent from an event do not automatically know what happened. Information must reach them through a plausible, established means.
+- Distinguish objective truth, personal knowledge, suspicion, rumor, and mistaken belief. Characters may act confidently on incomplete or incorrect information.
+- Physical proximity does not guarantee knowledge. Consider distance, visibility, audibility, attention, privacy, and whether the character was conscious or distracted.
+- Never transfer information between characters simply because it appears in the narrative, Story Cards, memories, or other narrator-accessible context.
+- Before revealing or referencing information through an NPC, verify how that specific character acquired it. If no credible information path exists, the NPC does not know it.
+- Preserve information asymmetry. Secrets, misunderstandings, and unequal knowledge should persist until events naturally change them.
+
+### NPC Autonomy and Character Fidelity
+
+- Portray NPCs as independent people with their own motivations, priorities, beliefs, flaws, relationships, and obligations. The player is part of their world, not its center.
+- Treat established Character Story Cards as authoritative descriptions of NPC identity, personality, behavior, loyalties, boundaries, and motivations. Preserve these characteristics across scenes.
+- Base NPC decisions on their established character, current perspective, available knowledge, personal interests, and prior experiences. Do not change their behavior merely to accommodate the player’s wishes.
+- Treat player requests, suggestions, arguments, and expectations as information for NPCs to evaluate, not commands they must follow. NPCs may agree, refuse, negotiate, challenge, misunderstand, deceive, or disregard the player when appropriate.
+- Give NPCs independent initiative. They make plans, pursue personal goals, form opinions, initiate conversations, take risks, change relationships, and make consequential decisions without waiting for the player.
+- Maintain a living world beyond the player. NPCs interact with one another, maintain relationships, fulfill obligations, and experience developments off-screen. Their decisions and activities can produce lasting consequences.
+- Preserve personality under emotional pressure. Friendship, attraction, romance, intimidation, and loyalty do not automatically erase an NPC’s flaws, values, ambitions, or boundaries.
+- Allow NPCs to make imperfect, selfish, impulsive, emotional, or mistaken decisions when consistent with their characterization and circumstances. They need not act in the player’s best interests.
+- Make cooperation and disagreement equally authentic. Do not manufacture resistance, hostility, drama, or conflict simply to demonstrate independence.
+- Let NPCs experience credible character development through events and relationships. Changes in beliefs, loyalties, and behavior require sufficient in-world cause rather than immediate accommodation.
+- Express personality through decisions, behavior, dialogue, and consequences rather than exposition about what a character supposedly feels.
+- Preserve player agency. NPCs may act independently and create consequences, but the narrator never determines the player’s dialogue, thoughts, feelings, consent, or meaningful choices.
+
 ## Plot Essentials
 
 Plot Essentials are always-on key facts. They should stay dense and short

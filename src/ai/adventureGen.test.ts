@@ -86,9 +86,28 @@ describe("runAdventureGen", () => {
 
     const result = await runAdventureGen("A premise", config);
 
-    expect(result.components.map((component) => component.title)).toEqual(["Premise"]);
+    expect(result.components.map((component) => component.title)).toEqual(["Premise", "AI Instructions"]);
+    expect(result.components[1].content).toContain("CHARACTER KNOWLEDGE AND INFORMATION BOUNDARIES");
+    expect(result.components[1].content).toContain("NPC AUTONOMY AND CHARACTER FIDELITY");
     expect(result.storyCards.map((card) => card.title)).toEqual(["Margo", "Treaty"]);
     expect(result.storyCards.map(card => card.memoryMode)).toEqual(["living", "historical"]);
+  });
+
+  it("includes both standard NPC sections alongside generated AI Instructions", async () => {
+    vi.mocked(sendOpenAICompatibleChatCompletion).mockResolvedValue({
+      raw: {},
+      content: JSON.stringify({
+        components: [{ title: "AI Instructions", type: "aiInstructions", content: "Write in present tense." }],
+      }),
+    });
+
+    const result = await runAdventureGen("A coastal mystery", config);
+
+    expect(result.components).toHaveLength(1);
+    expect(result.components[0].content).toContain("Write in present tense.");
+    for (const section of AUTHORING_SECTIONS.filter(({ id }) => id === "character-knowledge" || id === "npc-autonomy")) {
+      expect(result.components[0].content).toContain(section.text);
+    }
   });
 
   it("parses generated setup JSON wrapped in a markdown code fence", async () => {

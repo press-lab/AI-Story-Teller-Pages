@@ -24,6 +24,14 @@ describe("written authoring guidance", () => {
     expect(NARRATION_RULES_BEST_PRACTICES).toContain("Strict, Minor Actions, or Cinematic Flow");
   });
 
+  it.each(["character-knowledge", "npc-autonomy"])("shares %s across authoring surfaces", (id) => {
+    const section = AUTHORING_SECTIONS.find(section => section.id === id)!;
+    const bestPractices = readFileSync(new URL("../../docs/aid-best-practices.md", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+    for (const text of [CHATGPT_AUTHORING_INSTRUCTIONS, ADVENTURE_GENERATION_BEST_PRACTICES, bestPractices]) {
+      expect(text).toContain(section.text);
+    }
+  });
+
   it("shares the natural recall rules between authoring surfaces", () => {
     const triggers = AUTHORING_SECTIONS.find(section => section.id === "authoring-triggers")!;
     for (const text of [AUTHORING_STANDARDS, CHATGPT_AUTHORING_INSTRUCTIONS]) {

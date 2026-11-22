@@ -3,7 +3,38 @@ import chatgptAuthoringInstructions from "./chatgptAuthoringInstructions.txt?raw
 /** Shared authoring text only. Runtime memory policy is separate. */
 export const PLOT_ESSENTIALS_FOUNDATIONS_RULE = "NEVER include a NOW section, current-scene framing, active story date, current character positions, or temporary story state in Plot Essentials. Do not use headings such as NOW, CURRENTLY, or CURRENT SITUATION to describe the present moment. Plot Essentials contains enduring scenario foundations only. Put the starting moment in the Opening Scene. The application's story clock and gameplay history handle ongoing time and continuity.";
 
+const NPC_AUTHORING_SECTIONS = [
+  { id: "character-knowledge", title: "Character Knowledge and Information Boundaries", text: `- Before writing any NPC’s dialogue, actions, or reactions, determine what that character actually knows at that moment.
+- Track who was present for each event, what they directly witnessed, what they were told, and what they could reasonably infer.
+- Characters who were absent from an event do not automatically know what happened. Information must reach them through a plausible, established means.
+- Distinguish objective truth, personal knowledge, suspicion, rumor, and mistaken belief. Characters may act confidently on incomplete or incorrect information.
+- Physical proximity does not guarantee knowledge. Consider distance, visibility, audibility, attention, privacy, and whether the character was conscious or distracted.
+- Never transfer information between characters simply because it appears in the narrative, Story Cards, memories, or other narrator-accessible context.
+- Before revealing or referencing information through an NPC, verify how that specific character acquired it. If no credible information path exists, the NPC does not know it.
+- Preserve information asymmetry. Secrets, misunderstandings, and unequal knowledge should persist until events naturally change them.` },
+  { id: "npc-autonomy", title: "NPC Autonomy and Character Fidelity", text: `- Portray NPCs as independent people with their own motivations, priorities, beliefs, flaws, relationships, and obligations. The player is part of their world, not its center.
+- Treat established Character Story Cards as authoritative descriptions of NPC identity, personality, behavior, loyalties, boundaries, and motivations. Preserve these characteristics across scenes.
+- Base NPC decisions on their established character, current perspective, available knowledge, personal interests, and prior experiences. Do not change their behavior merely to accommodate the player’s wishes.
+- Treat player requests, suggestions, arguments, and expectations as information for NPCs to evaluate, not commands they must follow. NPCs may agree, refuse, negotiate, challenge, misunderstand, deceive, or disregard the player when appropriate.
+- Give NPCs independent initiative. They make plans, pursue personal goals, form opinions, initiate conversations, take risks, change relationships, and make consequential decisions without waiting for the player.
+- Maintain a living world beyond the player. NPCs interact with one another, maintain relationships, fulfill obligations, and experience developments off-screen. Their decisions and activities can produce lasting consequences.
+- Preserve personality under emotional pressure. Friendship, attraction, romance, intimidation, and loyalty do not automatically erase an NPC’s flaws, values, ambitions, or boundaries.
+- Allow NPCs to make imperfect, selfish, impulsive, emotional, or mistaken decisions when consistent with their characterization and circumstances. They need not act in the player’s best interests.
+- Make cooperation and disagreement equally authentic. Do not manufacture resistance, hostility, drama, or conflict simply to demonstrate independence.
+- Let NPCs experience credible character development through events and relationships. Changes in beliefs, loyalties, and behavior require sufficient in-world cause rather than immediate accommodation.
+- Express personality through decisions, behavior, dialogue, and consequences rather than exposition about what a character supposedly feels.
+- Preserve player agency. NPCs may act independently and create consequences, but the narrator never determines the player’s dialogue, thoughts, feelings, consent, or meaningful choices.` },
+];
+
+export function includeNpcAuthoringRules(content: string): string {
+  const missingSections = NPC_AUTHORING_SECTIONS
+    .filter(section => !content.includes(section.text))
+    .map(section => `${section.title.toUpperCase()}\n${section.text}`);
+  return [content.trimEnd(), ...missingSections].filter(Boolean).join("\n\n");
+}
+
 export const AUTHORING_SECTIONS = [
+  ...NPC_AUTHORING_SECTIONS,
   { id: "components", title: "Components", text: `Components define how the adventure is narrated and what fundamentally defines its scenario. Character identities, place details, and historical events belong primarily in Story Cards.
 Narration Rules: Define general narrator behavior: perspective and tense, prose and dialogue, player-character agency, NPC autonomy, scene progression, continuity, and output conventions.
 AI Instructions: Define scenario-specific genre, tone, pacing, setting rules, narrative emphasis, gameplay constraints, power handling, and drift prevention. Do not place individual biographies, historical events, or individual Voice Contracts here. Avoid repeating Narration Rules.
@@ -100,4 +131,4 @@ Retcons: change established events only when the player instructs it. Rewrite th
 
 export const AUTHORING_WORKFLOW = AUTHORING_WORKFLOW_SECTIONS.map(section => `${section.title}\n${section.text}`).join("\n\n");
 
-export const CHATGPT_AUTHORING_INSTRUCTIONS = chatgptAuthoringInstructions.replace(/\r\n/g, "\n").trim();
+export const CHATGPT_AUTHORING_INSTRUCTIONS = includeNpcAuthoringRules(chatgptAuthoringInstructions.replace(/\r\n/g, "\n").trim());

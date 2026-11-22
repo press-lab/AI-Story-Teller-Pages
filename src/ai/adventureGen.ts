@@ -1,6 +1,7 @@
 import type { ComponentType, ProviderConfig, StoryCardMemoryMode, StoryCardType } from "../types/adventure";
 import { isNativeDeepSeekProvider, sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
 import { ADVENTURE_GENERATION_BEST_PRACTICES } from "./authoringBestPractices";
+import { includeNpcAuthoringRules } from "./authoringPolicy";
 import { jsonrepair } from "jsonrepair";
 import { generatedStoryCardTriggers } from "../memory/resolveMemoryTarget";
 
@@ -198,7 +199,7 @@ ${ADVENTURE_GENERATION_BEST_PRACTICES}
 
 Component guidelines:
 - Always include one "plotEssentials" component containing the overarching premise, optional central conflict, and persistent story-wide constraints; do not put transient scene details in Plot Essentials. Use 4-7 tight bullets and keep it under 140 words. Do not turn it into a full backstory or lore encyclopedia.
-- Always include "aiInstructions" to establish the inferred narrative tone required by the shared standards, using a TONE section or clear guidance in PROSE. Add scenario-specific constraints or drift prevention where needed. Keep biographies and event history in Story Cards; an optional hidden narrator-only mechanism belongs in AI Instructions. Structure it with named ALL-CAPS sections (SETTING, PLAYER POWER, STORY BEHAVIOR, PROSE, etc.) relevant to the premise. Each section should be 2-5 tight bullet points. Always include a PROSE section with guidance on sentence rhythm, dialogue voice diversity, and sensory vs. expository balance. Include a STORY BEHAVIOR section that specifies what the story should be driven by and what drift patterns to prevent. If the premise involves a powerful or exceptional player character, include a PLAYER POWER section with explicit rules about how NPCs engage without worship or constant nerf attempts. Omit sections that are not relevant to the premise.
+- Always include "aiInstructions" to establish the inferred narrative tone required by the shared standards, using a TONE section or clear guidance in PROSE. Add scenario-specific constraints or drift prevention where needed. Keep biographies and event history in Story Cards; an optional hidden narrator-only mechanism belongs in AI Instructions. Structure it with named ALL-CAPS sections (SETTING, PLAYER POWER, STORY BEHAVIOR, PROSE, etc.) relevant to the premise. Keep scenario-specific sections to 2-5 tight bullet points. The app adds the full Character Knowledge and Information Boundaries and NPC Autonomy and Character Fidelity sections to AI Instructions. Leave these standard sections out of the response and apply their principles when designing the setup. Always include a PROSE section with guidance on sentence rhythm, dialogue voice diversity, and sensory vs. expository balance. Include a STORY BEHAVIOR section that specifies what the story should be driven by and what drift patterns to prevent. If the premise involves a powerful or exceptional player character, include a PLAYER POWER section with explicit rules about how NPCs engage without worship or constant nerf attempts. Omit sections that are not relevant to the premise.
 - Add "authorNote" only for concise tone, mood, pacing, or prose influence.
 - Add a "custom" component only for broad world context that is relevant every turn. If it matters only when a character, place, faction, object, or secret appears, use a Story Card instead.
 - Do NOT include narrationRules — those are managed separately.
@@ -281,13 +282,27 @@ export async function runAdventureGen(
   });
 
   const raw = parseJsonFenced<Partial<AdventureGenResult>>(response.content);
+  const components = Array.isArray(raw.components) ? raw.components.filter(isValidComponent) : [];
+  const aiInstructions = components.find(component => component.type === "aiInstructions");
+  if (aiInstructions) {
+    aiInstructions.content = includeNpcAuthoringRules(aiInstructions.content);
+  } else {
+    components.push({
+      title: "AI Instructions",
+      type: "aiInstructions",
+      content: includeNpcAuthoringRules(""),
+      alwaysOn: true,
+      pinned: true,
+      priority: 90,
+    });
+  }
   const cards = Array.isArray(raw.storyCards) ? raw.storyCards.filter(isValidCard) : [];
   const triggerContext = { storyCards: cards.map((card, index) => ({ ...card, id: `generated:${index}`, keys: card.keys ?? [] })) };
 
   return {
     title: typeof raw.title === "string" ? raw.title : "New Adventure",
     openingScene: typeof raw.openingScene === "string" ? raw.openingScene : "",
-    components: Array.isArray(raw.components) ? raw.components.filter(isValidComponent) : [],
+    components,
     storyCards: cards.map((card, index) => ({ ...card, keys: generatedStoryCardTriggers(triggerContext, card.title, card.content,
       card.keys, `generated:${index}`, card.memoryMode, card.type) })),
   };
