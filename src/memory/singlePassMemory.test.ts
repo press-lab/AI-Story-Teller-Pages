@@ -373,7 +373,7 @@ it("supplies an explicit pooled personality reference for every matched Brain wi
     if (reference.personalityReference.reference !== undefined) expect(batch.payload.references[reference.personalityReference.reference]).toMatchObject({ type: "character" });
     else expect(reference.personalityReference.personality!.length).toBeLessThanOrEqual(500);
   }
-  expect(buildSinglePassMemoryMessages(batch)[0].content).toContain("consider EVERY eligible existing Brain");
+  expect(buildSinglePassMemoryMessages(batch)[0].content).toContain("Consider EVERY eligible existing Brain");
   expect(buildSinglePassMemoryMessages(batch)[0].content).toContain("One ongoing conversation is one development");
   expect(singlePassPersonality("Biography. ".repeat(200) + "Personality: proud and pragmatic.")).toMatch(/^Personality: proud and pragmatic/);
 });
@@ -397,6 +397,19 @@ it("invalidates extraction when a newly supplied linked Character profile change
   expect(personality).toContain("proud");
   a.storyCards.find(c => c.id === "profile-Draconia")!.content = "Personality: open and warm.";
   expect(singlePassReferenceState(a, ids[0])).not.toBe(batch.checkpoints[0].checkpoint.referenceState);
+});
+
+it("allows independent Brain decisions within the narrator evidence boundary", async () => {
+  const { a, ids } = singlePassFixture();
+  const batch = await prepareSinglePassMemoryBatch(a, ids);
+  const policy = buildSinglePassMemoryMessages(batch)[0].content;
+
+  expect(policy).toContain("For Brain thoughts, the narrator source establishes the circumstances and character knowledge.");
+  expect(policy).toContain("the Brain may originate a NEW private decision, intention, or plan that has never appeared in the narration.");
+  expect(policy).toContain("Recent story evidence must establish the circumstances and information available to the character.");
+  expect(policy).toContain("Do not present a proposed plan as an action already completed.");
+  expect(policy).toContain("Do not force a plan into every update.");
+  expect(policy).toContain("Return no Brain update when nothing meaningful changed.");
 });
 
 it("recognizes incremental private changes while preserving authored Brain conditions", async () => {
