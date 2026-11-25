@@ -1,3 +1,4 @@
+import { ARC_INTENSITIES, ARC_INTENSITY_LABELS, ARC_STATE_TEMPLATE, arcStateSections, formatArcState, normalizeArcIntensity } from "../memory/currentArc";
 import { useState } from "react";
 import type { Adventure, AdventureAction, ComponentEntry, ComponentType, ContextInclusionPolicy } from "../types/adventure";
 import type { ComponentAuditRecommendation } from "../memory/componentAudit";
@@ -6,15 +7,17 @@ import { approximateTokenCount } from "../tokenizer/approximateTokenCount";
 import type { AdventurePageProps } from "./pageTypes";
 import { CheckboxField, Field, Highlight, MemoryUpdateHistory, NumberInput, TokenCountBadge, UpdatedAtBadge, contentSnippet, formatCompactTimestamp } from "./shared";
 
-const SINGLETON_TYPES = new Set<ComponentType>(["narrationRules", "aiInstructions", "plotEssentials", "authorNote"]);
+const SINGLETON_TYPES = new Set<ComponentType>(["narrationRules", "aiInstructions", "plotEssentials", "currentArcPlan", "currentArcState"]);
 
-const activeComponentTypes: ComponentType[] = ["narrationRules", "aiInstructions", "plotEssentials", "custom"];
+const activeComponentTypes: ComponentType[] = ["narrationRules", "aiInstructions", "plotEssentials", "currentArcPlan", "currentArcState", "custom"];
 const inclusionPolicies: ContextInclusionPolicy[] = ["always", "triggered", "manual", "systemSuggested"];
 
 const TYPE_LABELS: Record<ComponentType, string> = {
   narrationRules: "Narration Rules",
   aiInstructions: "AI Instructions",
   plotEssentials: "Plot Essentials",
+  currentArcPlan: "Current Arc Plan",
+  currentArcState: "Current Arc State",
   activePressure: "Active Pressure",
   immediateMomentum: "Immediate Momentum",
   authorNote: "Author's Note",
@@ -23,6 +26,8 @@ const TYPE_LABELS: Record<ComponentType, string> = {
 };
 
 const TYPE_DESCRIPTIONS: Record<ComponentType, string> = {
+  currentArcPlan: "Intended conflict and possible progression.",
+  currentArcState: "Active circumstances and completed arc history. Automatic participation requires an active Plan and non-Dormant intensity.",
   narrationRules: "The primary per-adventure behavior contract — POV, format, player agency, continuity, tone, and hard writing rules. Loaded first with the system shell. It is valid to keep all stable generation rules here and use no AI Instructions block.",
   aiInstructions: "Optional scenario-specific rules separated for organization. Use this only when you want a distinct drift-prevention or genre contract outside Narration Rules. Do not duplicate rules already present in Narration Rules; both blocks load every turn.",
   plotEssentials: "Current operating truth — what is happening now, open tensions, obligations, and major constraints that should shape every scene. Keep it compact and replace it when it drifts. Outgoing facts become reviewable historical Story Card proposals.",
@@ -33,8 +38,23 @@ const TYPE_DESCRIPTIONS: Record<ComponentType, string> = {
   custom: "A general-purpose context block. Configure inclusion policy, priority, and protection manually.",
 };
 
+function ArcStateEditor({ component, dispatch }: { component: ComponentEntry; dispatch: ComponentsPageProps["dispatch"] }) {
+  const { current, completed } = arcStateSections(component.content, true) ?? { current: component.content, completed: "" };
+  const update = (currentText: string, completedText: string) => dispatch({
+    type: "UPDATE_COMPONENT", componentId: component.id, patch: { content: formatArcState(currentText, completedText) },
+  });
+  return <>
+    <Field label="Current Developments">
+      <textarea rows={4} value={current} onChange={event => update(event.target.value, completed)} />
+    </Field>
+    <Field label="Completed Developments">
+      <textarea rows={4} value={completed} onChange={event => update(current, event.target.value)} />
+    </Field>
+  </>;
+}
+
 function ComponentSummary({ component, query }: { component: ComponentEntry; query: string }) {
-  const snippet = contentSnippet(component.content, query);
+  const snippet = component.type === "currentArcPlan" ? "" : contentSnippet(component.content, query);
   const memoryUpdatedAt = formatCompactTimestamp(component.lastMemoryUpdatedAt);
   const tokenEstimate = approximateTokenCount(component.content);
   return (
@@ -215,7 +235,7 @@ export function ComponentsPage({ adventure, dispatch, loading, onAuditComponents
           <button
             key={type}
             type="button"
-            onClick={() => dispatch({ type: "UPSERT_COMPONENT", component: makeComponent({ title: TYPE_LABELS[type], content: "", type }) })}
+            onClick={() => dispatch({ type: "UPSERT_COMPONENT", component: makeComponent({ title: TYPE_LABELS[type], content: type === "currentArcState" ? ARC_STATE_TEMPLATE : "", type }) })}
           >
             Add {TYPE_LABELS[type]}
           </button>
@@ -385,21 +405,39 @@ export function ComponentsPage({ adventure, dispatch, loading, onAuditComponents
                 )}
               </div>
               <p className="muted component-type-hint">{TYPE_DESCRIPTIONS[component.type]}</p>
+              {component.type === "currentArcState" && (
+                <>
+                  <Field label="Arc intensity">
+                    <select value={normalizeArcIntensity(component.arcIntensity)} onChange={event =>
+                      dispatch({ type: "UPDATE_COMPONENT", componentId: component.id,
+                        patch: { arcIntensity: normalizeArcIntensity(event.target.value) } })}>
+                      {ARC_INTENSITIES.map((intensity, index) =>
+                        <option key={intensity} value={intensity}>{ARC_INTENSITY_LABELS[index]}</option>)}
+                    </select>
+                  </Field>
+                  <button type="button" disabled={!arcStateSections(component.content)?.completed ||
+                    /^(?:none|no completed developments)[.!]?$/i.test(arcStateSections(component.content)?.completed ?? "")}
+                    onClick={() => dispatch({ type: "CONVERT_ARC_STATE_TO_LORE", componentId: component.id })}>
+                    Convert to Lore
+                  </button>
+                </>
+              )}
               <section className="item-focus-section">
                 <div className="item-section-heading">
                   <div>
                     <p className="eyebrow">context block</p>
-                    <h4>Text sent to the model</h4>
+                    <h4>{component.type === "currentArcPlan" ? "Plan content" : "Component content"}</h4>
                   </div>
                   <span className="muted">{component.content.split("\n").filter((line) => line.trim()).length} line{component.content.split("\n").filter((line) => line.trim()).length === 1 ? "" : "s"}</span>
                 </div>
-              <Field label="Content">
-                <textarea
-                  rows={6}
-                  value={component.content}
-                  onChange={(event) => dispatch({ type: "UPDATE_COMPONENT", componentId: component.id, patch: { content: event.target.value } })}
-                />
-              </Field>
+              {component.type === "currentArcState" ? <ArcStateEditor component={component} dispatch={dispatch} />
+                : <Field label="Content">
+                  <textarea
+                    rows={6}
+                    value={component.content}
+                    onChange={(event) => dispatch({ type: "UPDATE_COMPONENT", componentId: component.id, patch: { content: event.target.value } })}
+                  />
+                </Field>}
               </section>
               <MemoryUpdateHistory history={component.memoryUpdateHistory} />
               {pePreview[component.id] !== undefined && (

@@ -12,6 +12,7 @@ import { MemoryInboxPage } from "./MemoryInboxPage";
 
 const controls = [
   ["Plot Essentials", "plotEssentialsUpdate"],
+  ["Current Arc State", "currentArcStateUpdate"],
   ["Story Cards — Lore", "loreStoryCard"], ["Story Cards — Relationships", "relationshipStoryCard"], ["Story Cards — Everything Else", "otherStoryCard"], ["Character Self", "brainUpdate"],
 ] as const;
 beforeEach(() => {
@@ -59,7 +60,7 @@ it("drops obsolete global approval preferences without changing the background p
   expect(JSON.parse(localStorage.getItem(key)!)).not.toHaveProperty("memoryAutoApprove");
 });
 
-it("keeps five approval controls in a collapsed section when there are no suggestions", async () => {
+it("keeps six approval controls in a collapsed section when there are no suggestions", async () => {
   render(<MemoryInboxPage adventure={approvalAdventure()} dispatch={() => undefined} />);
   const summary = screen.getByText("Auto-approval — This adventure", { selector: "summary" });
   expect(summary.closest("details")).not.toHaveAttribute("open");
@@ -67,7 +68,7 @@ it("keeps five approval controls in a collapsed section when there are no sugges
   await userEvent.setup().click(summary);
   const panel = screen.getByRole("region", { name: "Auto-approval — This adventure" });
   const checkboxes = [...panel.querySelectorAll('input[type="checkbox"]')];
-  expect(checkboxes).toHaveLength(5);
+  expect(checkboxes).toHaveLength(6);
   expect(checkboxes.slice(-3)).toEqual(
     ["Story Cards — Lore", "Story Cards — Relationships", "Story Cards — Everything Else"].map(label => screen.getByLabelText(label)),
   );

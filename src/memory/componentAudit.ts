@@ -29,6 +29,8 @@ const TYPE_LABELS: Record<ComponentType, string> = {
   narrationRules: "Narration Rules",
   aiInstructions: "AI Instructions",
   plotEssentials: "Plot Essentials",
+  currentArcPlan: "Current Arc Plan",
+  currentArcState: "Current Arc State",
   activePressure: "Active Pressure",
   immediateMomentum: "Immediate Momentum",
   authorNote: "Author's Note",

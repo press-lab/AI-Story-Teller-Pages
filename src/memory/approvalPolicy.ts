@@ -1,3 +1,4 @@
+import { eligibleArc } from "./currentArc";
 import type { Adventure, MemoryAutoApproveSettings, MemoryProposal } from "../types/adventure";
 import { cardMatchesName } from "../state/defaults";
 
@@ -29,6 +30,7 @@ export function getApprovalCategory(adventure: Adventure, proposal: MemoryPropos
     return storyCardApprovalCategory(card ? card.type : "character");
   }
   switch (proposal.proposedType) {
+    case "currentArcStateUpdate": return proposal.targetId && eligibleArc(adventure)?.state.id === proposal.targetId ? "currentArcStateUpdate" : undefined;
     case "plotEssentialsUpdate": return "plotEssentialsUpdate";
     default: return undefined;
   }

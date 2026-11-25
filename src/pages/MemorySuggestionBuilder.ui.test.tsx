@@ -29,7 +29,7 @@ it("lives in Memory as a collapsed panel and lists every supported component typ
   expect(summary.closest("details")).not.toHaveAttribute("open");
   await user.click(summary);
   expect(within(screen.getByLabelText("Component type")).getAllByRole("option").map(o => o.textContent)).toEqual([
-    "Narration Rules", "AI Instructions", "Plot Essentials", "Custom",
+    "Narration Rules", "AI Instructions", "Plot Essentials", "Current Arc Plan", "Current Arc State", "Custom",
   ]);
 });
 

@@ -1,4 +1,5 @@
 import { canonicalRelationshipIds, relationshipCardError, relationshipIdError } from "../memory/relationshipCards";
+import { normalizeArcIntensity } from "../memory/currentArc";
 import { compactMemoryGuards } from "../memory/compactMemoryGuards";
 import { stripRetiredAdventureFields, stripRetiredTokenSettings } from "./legacyAdventureInput";
 import { reconcileBrainBatchState } from "../memory/brainBatchRecovery";
@@ -88,6 +89,7 @@ export const defaultMemoryDetectionSettings: MemoryDetectionSettings = {
 
 export const defaultMemoryAutoApproveSettings: MemoryAutoApproveSettings = {
   plotEssentialsUpdate: false,
+  currentArcStateUpdate: false,
   plotPressureUpdate: false,
   brainUpdate: false,
   loreStoryCard: false,
@@ -98,11 +100,12 @@ export const defaultMemoryAutoApproveSettings: MemoryAutoApproveSettings = {
 /** Migrate approval preferences without widening the types the user authorized. */
 export function normalizeMemoryAutoApproveSettings(input: unknown = {}): MemoryAutoApproveSettings {
   const old = input && typeof input === "object" ? input as Record<string, unknown> : {};
-  const current = Object.keys(defaultMemoryAutoApproveSettings).every(key => key === "relationshipStoryCard" || key in old)
+  const current = Object.keys(defaultMemoryAutoApproveSettings).every(key => key === "relationshipStoryCard" || key === "currentArcStateUpdate" || key in old)
     && !["characterStoryCard", "storyCard", "summaryUpdate", "plotMomentumUpdate"].some(key => key in old);
   const split = "characterStoryCard" in old || "otherStoryCard" in old;
   return {
     plotEssentialsUpdate: old.plotEssentialsUpdate === true,
+    currentArcStateUpdate: old.currentArcStateUpdate === true,
     plotPressureUpdate: false, // Legacy field; Active Pressure is retired.
     brainUpdate: old.brainUpdate === true,
     loreStoryCard: old.loreStoryCard !== undefined ? old.loreStoryCard === true : old.storyCard === true,
@@ -257,6 +260,7 @@ export function makeComponent(
     title: overrides.title,
     type,
     content: overrides.content,
+    ...(type === "currentArcState" ? { arcIntensity: normalizeArcIntensity(overrides.arcIntensity) } : {}),
     priority: overrides.priority ?? 0,
     alwaysOn,
     active: type === "authorNote" ? false : (overrides.active ?? true),
@@ -599,6 +603,7 @@ export function normalizeAdventure(adventure: Adventure): Adventure {
         return {
           ...migrated,
           active: migrated.type === "authorNote" ? false : migrated.active,
+          ...(migrated.type === "currentArcState" ? { arcIntensity: normalizeArcIntensity(migrated.arcIntensity) } : {}),
           protected: migrated.protected ?? defaultProtected,
           inclusionPolicy: migrated.inclusionPolicy ?? (migrated.alwaysOn || defaultProtected ? "always" : "manual"),
         };
@@ -606,7 +611,7 @@ export function normalizeAdventure(adventure: Adventure): Adventure {
       // Deduplicate singleton types: keep the first occurrence of each singleton type.
       // This fixes adventures that were created with duplicate narrationRules (or other
       // singleton) components due to a bug in createAdventure merging baseline + setup.
-      const singletonTypes = new Set(["narrationRules", "aiInstructions", "plotEssentials"]);
+      const singletonTypes = new Set(["narrationRules", "aiInstructions", "plotEssentials", "currentArcPlan", "currentArcState"]);
       const seenSingletons = new Set<string>();
       const deduped = normalized.filter((component) => {
         if (!singletonTypes.has(component.type)) return true;

@@ -39,7 +39,9 @@ export const COMPONENT_SUGGESTION_PERSISTENCE_GUIDANCE = `Component suggestion: 
 - Before returning the draft, check each sentence as though it will be repeated after the situation changes. Rewrite or omit any sentence that would reset knowledge, undo a decision, prevent an answer, or restore an earlier status. Return the cleaned component only; do not include this checklist in its body.`;
 
 export function componentSuggestionBestPractices(type: DraftComponentType): string {
-  const roles: Record<DraftComponentType, string> = {
+  if (type === "currentArcPlan") return ARC_PLAN_AUTHORING;
+  if (type === "currentArcState") return ARC_STATE_AUTHORING;
+  const roles: Record<Exclude<DraftComponentType, "currentArcPlan" | "currentArcState">, string> = {
     narrationRules: NARRATION_RULES_BEST_PRACTICES,
     aiInstructions: AI_INSTRUCTIONS_BEST_PRACTICES,
     plotEssentials: PLOT_ESSENTIALS_BEST_PRACTICES,
@@ -80,3 +82,6 @@ export function storyCardCreationGuidance(mode: StoryCardMemoryMode | undefined)
   return `${storyCardModeGuidance(mode)}
 Use concise bullet points, one fact per line. Include the subject name in the body. Do not include temporary scene position, who is currently standing nearby, next-action instructions, or momentary feelings.`;
 }
+
+export const ARC_PLAN_AUTHORING = "Describe the intended conflict, participants, objectives, and possible progression, including private NPC objectives. Future beats are contingent. Actual gameplay takes precedence.";
+export const ARC_STATE_AUTHORING = "Return the complete replacement State with the exact heading CURRENT DEVELOPMENTS first and COMPLETED DEVELOPMENTS second. Use definitive present tense for active circumstances. Activate applicable beats as occurring now. If preparation is the active beat, describe the concrete preparation occurring now. Keep future beats and intended outcomes in the Plan. Preserve uncertainty about outcomes, preserve valid history, and record newly resolved developments in past tense with actual outcomes and consequences. Note genuinely continuing consequences alongside the historical event that caused them. Remove obsolete current developments. Never fabricate completed actions or outcomes. Keep private developments private until discovered through gameplay.";

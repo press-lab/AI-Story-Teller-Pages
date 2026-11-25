@@ -1,3 +1,4 @@
+import { isArcComponent } from "../memory/currentArc";
 import { isActivePressureTriggerAction } from "../state/activePressureRetirement";
 import { reconcileBrainBatchState } from "../memory/brainBatchRecovery";
 import { assessMemory, assessmentInputs, fingerprint, memoryDecisionState } from "../memory/memoryAssessment";
@@ -612,6 +613,7 @@ ${defaultBrainPrompt(brain, adventure.activeState.turn, brainBatch)}`
     if (triggerAction.type === "updateComponent") {
       const component = adventure.components.find((entry) => entry.id === triggerAction.componentId);
       if (!component) return { actions: [], error: `Component not found: ${triggerAction.componentId}` };
+      if (isArcComponent(component.type)) return { actions: [] };
       const content = await targeted(rule?.updatePrompt || componentPrompt(component));
       const validation = validationPolicy === "local" ? localComponentValidation(component, "plotEssentials", content) : await validateMemoryUpdate(adventure, providerConfig, "plotEssentials", component.title, component.content, content, accum, false, false, undefined, memo ? memo.validationCache ??= {} : undefined);
       if (!validation.changed) return { actions: [], error: independent && !validation.retryable ? undefined : validation.error, rejected: validation.error };

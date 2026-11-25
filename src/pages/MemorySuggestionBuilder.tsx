@@ -89,15 +89,15 @@ export function MemorySuggestionBuilder({ adventure, providerConfig, loading, on
     <fieldset disabled={loading || busy}>
     <div className="grid two">
       <Field label="Action"><select value={request.action} onChange={e => patch({ action: e.target.value as MemoryDraftRequest["action"], targetId: undefined,
-        componentType: e.target.value === "suggest" ? "plotEssentials" : request.componentType,
-        ...(e.target.value === "suggest" && request.destination === "component" ? { targetId: adventure.components.find(c => c.type === "plotEssentials")?.id } : {}) })}><option value="draft">Draft from my instructions</option><option value="suggest">Suggest updates from recent play</option></select></Field>
+        componentType: e.target.value === "suggest" && request.componentType !== "currentArcState" ? "plotEssentials" : request.componentType,
+        ...(e.target.value === "suggest" && request.destination === "component" ? { targetId: adventure.components.find(c => c.type === (request.componentType === "currentArcState" ? "currentArcState" : "plotEssentials"))?.id } : {}) })}><option value="draft">Draft from my instructions</option><option value="suggest">Suggest updates from recent play</option></select></Field>
       <Field label="Destination"><select value={request.destination} onChange={e => patch({ destination: e.target.value as MemoryDraftRequest["destination"],
         targetId: e.target.value === "component" && SINGLETON_DRAFT_TYPES.has(request.componentType) ? adventure.components.find(c => c.type === request.componentType)?.id : undefined })}><option value="component">Plot component</option><option value="storyCard">Story Card</option></select></Field>
       {request.destination === "component" ? <>
         <Field label="Component type"><select value={request.componentType} onChange={e => {
           const componentType = e.target.value as MemoryDraftRequest["componentType"];
           patch({ componentType, targetId: SINGLETON_DRAFT_TYPES.has(componentType) ? adventure.components.find(c => c.type === componentType)?.id : undefined });
-        }}>{Object.entries(DRAFT_COMPONENT_TYPES).filter(([type]) => request.action !== "suggest" || type === "plotEssentials").map(([type, label]) => <option key={type} value={type}>{label}</option>)}</select></Field>
+        }}>{Object.entries(DRAFT_COMPONENT_TYPES).filter(([type]) => request.action !== "suggest" || type === "plotEssentials" || type === "currentArcState").map(([type, label]) => <option key={type} value={type}>{label}</option>)}</select></Field>
         <Field label="Component target"><select value={request.targetId ?? ""} onChange={e => patch({ targetId: e.target.value || undefined })}>
           <option value="" disabled={SINGLETON_DRAFT_TYPES.has(request.componentType) && targets.length > 0}>Create new component</option>
           {targets.map(c => <option key={c.id} value={c.id}>Update: {c.title}</option>)}

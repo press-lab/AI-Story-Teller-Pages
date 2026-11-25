@@ -105,6 +105,7 @@ const testedActionTypes = [
   "FAIL_MEMORY_RECOVERY",
   "SET_AUTO_SAVE_SETTINGS",
   "MARK_COMPONENT_UPDATED",
+  "CONVERT_ARC_STATE_TO_LORE",
 ] as const satisfies AdventureAction["type"][];
 
 type MissingActionCoverage = Exclude<AdventureAction["type"], (typeof testedActionTypes)[number]>;

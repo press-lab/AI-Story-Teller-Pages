@@ -131,7 +131,7 @@ describe("retired memory compatibility boundary", () => {
 describe("adventure approval settings", () => {
   it("starts each adventure with an independent approval defaults", () => {
     const a = createDefaultAdventure(), b = createDefaultAdventure();
-    expect(Object.values(a.memoryAutoApprove)).toEqual(Array(6).fill(false));
+    expect(Object.values(a.memoryAutoApprove)).toEqual(Array(7).fill(false));
     expect(a.memoryAutoApprove).not.toBe(b.memoryAutoApprove);
     expect(a.memoryAutoApprove.relationshipStoryCard).toBe(false);
     const { relationshipStoryCard: _relationship, ...previousSettings } = a.memoryAutoApprove;
@@ -154,8 +154,8 @@ describe("adventure approval settings", () => {
   it("preserves valid saved values, ignores retired ones, and rejects invalid values", () => {
     const old = { plotEssentialsUpdate: true, plotPressureUpdate: false, currentArcUpdate: true, arcProposal: true, brainUpdate: "yes", loreStoryCard: false, storyCard: true, summaryUpdate: true, plotMomentumUpdate: true };
     const migrated = normalizeMemoryAutoApproveSettings(old);
-    expect(migrated).toEqual({ plotEssentialsUpdate: true, plotPressureUpdate: false, brainUpdate: false, loreStoryCard: false, relationshipStoryCard: false, otherStoryCard: true });
-    expect(Object.values(normalizeMemoryAutoApproveSettings(null))).toEqual(Array(6).fill(false));
+    expect(migrated).toEqual({ plotEssentialsUpdate: true, currentArcStateUpdate: false, plotPressureUpdate: false, brainUpdate: false, loreStoryCard: false, relationshipStoryCard: false, otherStoryCard: true });
+    expect(Object.values(normalizeMemoryAutoApproveSettings(null))).toEqual(Array(7).fill(false));
     expect(normalizeMemoryAutoApproveSettings({ ...createDefaultAdventure().memoryAutoApprove, otherStoryCard: true, brainUpdate: "invalid" })).toMatchObject({ otherStoryCard: true, brainUpdate: false });
   });
 });

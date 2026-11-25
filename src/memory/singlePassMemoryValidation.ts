@@ -1,3 +1,4 @@
+import { arcReferenceState, eligibleArc } from "./currentArc";
 import { relationshipMatches, relationshipProposalError, validateRelationshipIds } from "./relationshipCards";
 import { originalLoreEvidence, routeDatedLoreProposal } from "./datedLoreRouting";
 import { storyCardMeaningReviewReason } from "./storyCardMeaningReview";
@@ -31,6 +32,12 @@ export function validateSinglePassFinding(a: Adventure, sourceId: string, checkp
   if (!f.evidenceQuotes.some(q => q.messageId === sourceId)) return "Missing establishing narrator evidence.";
   const shapeError = memoryUpdateShapeError(f.kind === "immediateMomentum" ? "plotEssentials" : f.kind, f.content ?? "");
   if (shapeError) return shapeError;
+  if (f.kind === "currentArcState") {
+    const arc = eligibleArc(a);
+    if (!arc || f.targetId !== arc.state.id || f.operation !== "replace"
+      || !checkpoint.arcReference || checkpoint.arcReference !== arcReferenceState(a)) return "Arc destination or reference changed.";
+    return undefined;
+  }
   if (f.kind === "storyCard") {
     if (f.identityChange && f.storyCardType !== "character") return "Character profile corrections require Character placement and author review.";
     const target = a.storyCards.find(c => c.id === f.targetId);
@@ -79,7 +86,7 @@ export function toSinglePassProposal(a: Adventure, sourceId: string, checkpoint:
     meaningReason,
   ].filter((reason): reason is string => Boolean(reason));
   // Preserve the existing conservative component policy; Brain approval is independent.
-  const componentInterpretive = !["brain", "storyCard"].includes(f.kind) && /\b(attempt(?:s|ed|ing)?|kiss(?:es|ed|ing)?|romantic|romance|date|yesterday|last week|previously|completed event|invitation|invited|withdrawn|withdrew|unconfirmed|relationship|privately|secretly|felt|feels?|thought|knew|learned|realized|understood|interprets?|believes?|assumes?|might|perhaps|uncertain|unconfirmed)\b/i.test(`${f.content ?? ""} ${f.reason} ${f.evidenceQuotes.map(q => q.quote).join(" ")}`);
+  const componentInterpretive = !["brain", "storyCard", "currentArcState"].includes(f.kind) && /\b(attempt(?:s|ed|ing)?|kiss(?:es|ed|ing)?|romantic|romance|date|yesterday|last week|previously|completed event|invitation|invited|withdrawn|withdrew|unconfirmed|relationship|privately|secretly|felt|feels?|thought|knew|learned|realized|understood|interprets?|believes?|assumes?|might|perhaps|uncertain|unconfirmed)\b/i.test(`${f.content ?? ""} ${f.reason} ${f.evidenceQuotes.map(q => q.quote).join(" ")}`);
   const review = reviewReasons.length > 0 || f.kind === "immediateMomentum" || componentInterpretive;
   let p: MemoryProposal;
   if (f.kind === "storyCard") {
@@ -102,11 +109,12 @@ export function toSinglePassProposal(a: Adventure, sourceId: string, checkpoint:
     p = bindPlacement(a, p, { kind: p.targetId ? "append" : "create", reason: f.reason, newFact: f.content!, identityChange: f.identityChange,
       ...(original ? { loreOriginalSourceId: original.id } : {}) }, original ? [...ids, original.id] : ids);
   } else {
-    const types = { brain: "brainUpdate", plotEssentials: "plotEssentialsUpdate", activePressure: "plotPressureUpdate", immediateMomentum: "plotMomentumUpdate" } as const;
+    const types = { currentArcState: "currentArcStateUpdate", brain: "brainUpdate", plotEssentials: "plotEssentialsUpdate", activePressure: "plotPressureUpdate", immediateMomentum: "plotMomentumUpdate" } as const;
     p = { id: createId("proposal"), sourceTurnId: sourceId, sourceText: f.evidenceQuotes.map(q => q.quote).join("\n"), proposedType: types[f.kind],
       title: f.title, content: f.kind === "brain" ? JSON.stringify(f.brainPatch) : f.content!, targetId: f.targetId!,
       suggestedTriggers: [], confidence: review ? 0.45 : 0.8, rationale: f.reason, status: "pending", requiresReview: review, createdAt: nowIso(), updatedAt: nowIso() };
   }
+  if (f.kind === "currentArcState") p.arcReference = checkpoint.arcReference;
   p.evaluationSource = { messages: checkpoint.evidence, target: p.proposedType === "storyCard"
     ? p.targetId ? memoryTargetSnapshot(a, "storyCard", p.targetId) : undefined : target };
   if (f.kind === "storyCard" && reviewReasons.length) p.rationale += " Review required: " + reviewReasons.join(" ");
@@ -122,6 +130,10 @@ export function validateSinglePassSource(a: Adventure, result: SinglePassMemoryS
     const index = result.findingIndexes?.[findingIndex] ?? findingIndex;
     if (!sourceError && finding.kind === "activePressure") {
       suppressed.push(index); suppressionReasons[index] = "Active Pressure is retired."; return;
+    }
+    if (!sourceError && finding.kind === "currentArcState" && checkpoint.arcReference
+      && checkpoint.arcReference !== arcReferenceState(a)) {
+      suppressed.push(index); suppressionReasons[index] = "Arc eligibility or reference changed."; return;
     }
     const error = sourceError ?? validateSinglePassFinding(a, result.sourceId, checkpoint, finding);
     if (error) { rejected.push({ index, reason: error }); return; }
@@ -144,7 +156,8 @@ export function validateSinglePassSource(a: Adventure, result: SinglePassMemoryS
     const card = finding.kind === "storyCard" ? a.storyCards.find(c => c.id === finding.targetId) : undefined;
     const covered = proposalCoverage(finding.storyCardType === "relationship" ? { ...a, activeState: { ...a.activeState, memoryProposals: [...a.activeState.memoryProposals, ...proposals.map(entry => entry.proposal)] } } : a, proposal) || (finding.storyCardType !== "lore" && Boolean(card) && facts(finding.content!).every(fact => (" " + factKey(card!.content) + " ").includes(" " + fact + " "))) || (finding.kind === "brain" && brainValues.length > 0
       && brainValues.every(value => factsCovered(thoughtText(value), priorBrain.map(thoughtText))))
-      || (!["brain", "storyCard"].includes(finding.kind) && Boolean(component) && factsCovered(finding.content!, [component!.content]));
+      || (finding.kind === "currentArcState" && component?.content.trim() === finding.content?.trim())
+      || (!["brain", "storyCard", "currentArcState"].includes(finding.kind) && Boolean(component) && factsCovered(finding.content!, [component!.content]));
     if (covered) { suppressed.push(index); suppressionReasons[index] = "Factual delta already recorded or considered."; }
     else proposals.push({ index, findingIndex, proposal });
   });

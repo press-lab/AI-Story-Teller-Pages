@@ -1,3 +1,4 @@
+import { isArcComponent } from "../memory/currentArc";
 import type {
   Adventure,
   AdventureAction,
@@ -92,7 +93,8 @@ export function triggerActionToAdventureActions(
     case "unpinComponent":
       return [{ type: "UNPIN_COMPONENT", componentId: triggerAction.componentId }];
     case "updateComponent":
-      if (!triggerAction.patch) return [];
+      if (!triggerAction.patch || (triggerAction.patch.type && isArcComponent(triggerAction.patch.type))
+        || adventure.components.some(c => c.id === triggerAction.componentId && isArcComponent(c.type))) return [];
       return [{ type: "UPDATE_COMPONENT", componentId: triggerAction.componentId, patch: triggerAction.patch }];
     case "activateStoryCard":
       return [{ type: "ACTIVATE_STORY_CARD", storyCardId: triggerAction.storyCardId }];

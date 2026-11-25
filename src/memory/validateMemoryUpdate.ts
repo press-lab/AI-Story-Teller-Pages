@@ -1,3 +1,4 @@
+import { arcStateSections } from "./currentArc";
 import { fingerprint } from "./memoryAssessment";
 import { PLACEMENT_VERSION, STORY_CARD_PLACEMENT_POLICY, characterProfileChangeError } from "./storyCardPlacement";
 import type { MemoryPlacementKind, MemoryPlacementValidation } from "../types/adventure";
@@ -17,9 +18,11 @@ export interface MemoryValidationResult {
   changed: boolean; error?: string; evidenceMessageIds?: string[]; retryable?: boolean; failureCode?: string;
   providerCode?: string; httpStatus?: number; placement?: StoryCardPlacementVerdict;
 }
-export type ValidatedMemorySurface = "plotEssentials" | "activePressure" | "storyCard" | "brain";
+export type ValidatedMemorySurface = "currentArcState" | "plotEssentials" | "activePressure" | "storyCard" | "brain";
 
 export function memoryUpdateShapeError(surface: ValidatedMemorySurface, content: string): string | undefined {
+  if (surface === "currentArcState") return arcStateSections(content)
+    ? undefined : "Use CURRENT DEVELOPMENTS first and COMPLETED DEVELOPMENTS second.";
   if (surface === "brain") return undefined;
   const words = content.trim().split(/\s+/).length;
   const limit = surface === "activePressure" ? 45 : surface === "plotEssentials" ? 180 : 500;

@@ -27,7 +27,7 @@ type Label = Pick<LooseMemoryOperation, "category" | "subtype">;
 const key = (s: string) => s.toLowerCase().replace(/[\s._-]+/g, "");
 const brains = ["thoughts", "currentState", "relationshipPressure", "emotionalInterpretation", "recentDevelopments", "notes"];
 const cards = ["lore", "character", "location", "object", "relationship", "custom"];
-const components = ["plotEssentials", "activePressure", "immediateMomentum", "narrationRules", "aiInstructions", "authorNote", "memory", "custom"];
+const components = ["currentArcPlan", "currentArcState", "plotEssentials", "activePressure", "immediateMomentum", "narrationRules", "aiInstructions", "authorNote", "memory", "custom"];
 const aliases: Record<string, Label> = Object.create(null);
 function labels(names: string[], category: Label["category"], subtype: string) {
   for (const name of names) aliases[key(name)] = { category, subtype };
@@ -186,7 +186,7 @@ export function parseLooseMemoryOperations(text: string, allowedSourceAliases: r
       line = source[3].trim();
       if (!line) continue;
     }
-    if (/^(?:none|no updates)[.!]?$/i.test(line)) {
+    if (/^(?:none|no updates)[.!]?$/i.test(line) && head(pending[0] ?? "")?.label.subtype !== "currentArcState") {
       flush();
       if (current) evaluated.add(current);
       else result.diagnostics.push({ reason: "Empty evaluation has no recognizable source label." });

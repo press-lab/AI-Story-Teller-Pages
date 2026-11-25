@@ -207,6 +207,7 @@ function MemorySuggestionsPage({ adventure, dispatch, onCreateDraft, providerCon
         <summary>Auto-approval — This adventure</summary>
         <section aria-label="Auto-approval — This adventure">
           <div className="auto-approve-toggles">
+            <CheckboxField label="Current Arc State" checked={autoApprove.currentArcStateUpdate ?? false} onChange={(v) => setAutoApprove({ currentArcStateUpdate: v })} />
             <CheckboxField label="Plot Essentials" checked={autoApprove.plotEssentialsUpdate} onChange={(v) => setAutoApprove({ plotEssentialsUpdate: v })} />
             <CheckboxField label="Character Self" checked={autoApprove.brainUpdate} onChange={(v) => setAutoApprove({ brainUpdate: v })} />
             <CheckboxField label="Story Cards — Lore" checked={autoApprove.loreStoryCard} onChange={(v) => setAutoApprove({ loreStoryCard: v })} />
@@ -358,7 +359,7 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
   const targetCard = proposal.proposedType === "storyCard" ? adventure.storyCards.find(card => card.id === proposal.targetId) : undefined;
   const autoApprovalBlockers = isPending && proposal.proposedType === "storyCard" ? storyCardAutoApprovalBlockers(adventure, proposal) : [];
   const savedReviewReason = proposal.requiresReview
-    ? proposal.rationale.split("Review required:").slice(1).join("Review required:").trim()
+    ? proposal.manualDraft?.componentType === "currentArcPlan" ? "Author approval required." : proposal.rationale.split("Review required:").slice(1).join("Review required:").trim()
       || proposal.rationale.trim() || "Previously marked for manual review."
     : undefined;
   const reviewReasons = isPending ? [...new Set([
@@ -386,6 +387,14 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
     try { setRegenerationError(undefined); await onRegenerate(proposal.id, convertToLore); } catch (error) { setRegenerationError(error instanceof Error ? error.message : "Validation failed."); } finally { setRegenerating(false); }
   }
 
+  const contentEditor = <textarea
+    rows={5}
+    value={proposal.content}
+    onChange={(event) => onUpdate(proposal, { content: event.target.value })}
+    placeholder="Proposed content..."
+    disabled={proposal.status === "approved"}
+  />;
+
   return (
     <details key={proposal.id} className={`card proposal-card proposal-${proposal.status}`} open={isPending}>
       <summary className="proposal-card-summary">
@@ -404,7 +413,8 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
           {!isPending && <span className="badge badge-inactive">{proposal.status}</span>}
           {proposal.suggestedTriggers.length > 0 && <span className="badge">{proposal.suggestedTriggers.length} keys</span>}
         </span>
-        <span className="search-snippet">{proposal.content || proposal.sourceText || "No proposed content yet."}</span>
+        {proposal.manualDraft?.componentType !== "currentArcPlan" &&
+          <span className="search-snippet">{proposal.content || proposal.sourceText || "No proposed content yet."}</span>}
       </summary>
 
       <div className="proposal-card-body">
@@ -462,13 +472,9 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
           <button type="button" onClick={() => setEditingLinks(undefined)}>Cancel</button>
         </> : <button type="button" onClick={() => setEditingLinks(participantIds.filter(id => adventure.storyCards.some(card => card.id === id && card.type === "character")))}>Edit proposal participants</button>}
       </>}
-      <textarea
-        rows={5}
-        value={proposal.content}
-        onChange={(event) => onUpdate(proposal, { content: event.target.value })}
-        placeholder="Proposed content..."
-        disabled={proposal.status === "approved"}
-      />
+      {proposal.manualDraft?.componentType === "currentArcPlan"
+        ? <details><summary>Read or edit the Plan</summary>{contentEditor}</details>
+        : contentEditor}
 
         <div className="row">
           <button
@@ -480,7 +486,7 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
           </button>
           {isPending && (
             <>
-              {onRegenerate && !proposal.manualDraft && (
+              {onRegenerate && !proposal.manualDraft && proposal.proposedType !== "currentArcStateUpdate" && (
                 <button type="button" disabled={regenerating} onClick={() => handleRegenerate()}>
                   {regenerating ? "…" : "Regenerate"}
                 </button>
@@ -558,7 +564,7 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
               onChange={(event) => onUpdate(proposal, { proposedType: event.target.value as MemoryProposalType })}
               disabled={proposal.status === "approved" || Boolean(proposal.manualDraft)}
             >
-              {proposalTypes.map((type) => (
+              {(proposal.proposedType === "currentArcStateUpdate" ? [proposal.proposedType] : proposalTypes).map((type) => (
                 <option key={type} value={type}>
                   {type}
                 </option>

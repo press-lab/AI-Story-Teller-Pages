@@ -1,4 +1,5 @@
 import { relationshipCardError, relationshipCharacterMatches, relationshipIdError, relationshipKey, relationshipNameKey, validateRelationshipIds } from "./relationshipCards";
+import { ARC_EVALUATION, arcReferenceState, eligibleArc } from "./currentArc";
 import { snapshotFingerprint } from "../utils/snapshotFingerprint";
 import type { Adventure, BrainEntry, ChatMessage, ProviderConfig, SinglePassMemoryBatchResult, SinglePassMemoryCheckpoint, SinglePassMemoryFinding, SinglePassMemorySourceResult } from "../types/adventure";
 import { assessmentInputs, assessmentSourceState, memoryDecisionState } from "./memoryAssessment";
@@ -72,7 +73,7 @@ export interface PreparedSinglePassMemoryBatch {
     lore?: Record<string, { id: string; reference: number }>;
     brains: Record<string, { id: string; reference: number; type: "brain" }>;
     plot: Record<string, { id: string; reference: number; type: string }> }>;
-  payload: { references: unknown[]; sources: unknown[] };
+  payload: { references: unknown[]; sources: Array<{ plot: number[]; arcPlan?: number; [key: string]: unknown }> };
 }
 export async function prepareSinglePassMemoryBatch(a: Adventure, ids: readonly string[]): Promise<PreparedSinglePassMemoryBatch> {
   if (ids.length < 1 || ids.length > 3 || new Set(ids).size !== ids.length) throw new Error("Select one to three unique narrator sources.");
@@ -81,6 +82,7 @@ export async function prepareSinglePassMemoryBatch(a: Adventure, ids: readonly s
     || ["complete", "quarantined"].includes(m.memoryEvaluation.status) || !memoryEvidenceWindow(a, m.id).some(e => e.id === m.id))) {
     throw new Error("Single-pass extraction requires saved, unfinished, in-story single-pass sources.");
   }
+  const arc = eligibleArc(a);
   const ordered = a.messages.filter(m => ids.includes(m.id));
   const batchId = createId("memoryBatch");
   const references: unknown[] = [];
@@ -95,7 +97,7 @@ export async function prepareSinglePassMemoryBatch(a: Adventure, ids: readonly s
     return index;
   };
   const checkpoints: PreparedSinglePassMemoryBatch["checkpoints"] = [];
-  const sources: unknown[] = [];
+  const sources: PreparedSinglePassMemoryBatch["payload"]["sources"] = [];
   const outputAliases: PreparedSinglePassMemoryBatch["outputAliases"] = {};
   for (const source of ordered) {
     const snapshot = { ...a, messages: a.messages.slice(0, a.messages.indexOf(source) + 1),
@@ -117,9 +119,12 @@ export async function prepareSinglePassMemoryBatch(a: Adventure, ids: readonly s
     const plot = [...inputs.currentPlot.filter(p => conditions.plot.some(c => c.id.endsWith(":" + p.id))), ...snapshot.components.filter(c => c.type === "immediateMomentum" && c.active && c.autoUpdate !== false)
       .map(c => ({ id: c.id, type: c.type, content: c.content, autoUpdate: c.autoUpdate, protected: c.protected }))];
 
+    if (arc) plot.push({ id: arc.state.id, type: arc.state.type, content: arc.state.content,
+      autoUpdate: true, protected: arc.state.protected });
+
     // Keep source evidence; retain only the digest of the reference/control guard.
     checkpoints.push({ sourceId: source.id, checkpoint: { batchId, sourceContent: source.content, sourceRevision: source.memoryEvaluation?.revision,
-      evidence: inputs.evidence.map(({ id, content }) => ({ id, content })), referenceState: singlePassReferenceState(a, source.id),
+      evidence: inputs.evidence.map(({ id, content }) => ({ id, content })), referenceState: singlePassReferenceState(a, source.id), arcReference: arcReferenceState(a),
       status: "running", findings: [], dispositions: [], acceptedCount: 0, rejectedCount: 0, suppressedCount: 0, reviewCount: 0 } });
     const lore = Object.fromEntries(sameDayLoreCards(a, source.id).map((card, i) => [`L${i + 1}`, {
       id: card.id, reference: pool({ title: card.title, day: card.lore?.occurredAt,
@@ -137,6 +142,7 @@ export async function prepareSinglePassMemoryBatch(a: Adventure, ids: readonly s
     };
     sources.push({ sourceId: source.id, conditions, sameDayLore: lore,
       consideredRelationshipsNotCanon: relationRefs.coverage.map(pool),
+      ...(arc ? { arcPlan: pool({ type: arc.plan.type, content: arc.plan.content, readOnly: true }) } : {}),
       evidence: inputs.evidence.map(pool), canon: inputs.canon.map(entry => {
         const card = inputs.currentCards.find(c => entry.content === "Canon story card: " + c.title + "\n" + c.content);
         if (card) return pool({ role: entry.role, prefix: "Canon story card: " + card.title + "\n", reference: pool(card) });
@@ -237,7 +243,8 @@ A justified existing Character correction:
 
 Keep ordinary card deltas concise; length alone does not require manual review. Record only supported new facts, preserving claims, chronology, uncertainty and private knowledge boundaries. Plans remain plans; proposed agreements are not accepted agreements; future meetings have not occurred; attempts are not completed outcomes. Collaboration is not romance. Do not invent private reactions, permanent traits or facts to fill an empty source. Source attachment proves provenance, not semantic correctness. All extracted findings undergo local validation. Valid findings follow the user's configured auto-approval rules. Story Card protection, length, tentative wording, and supported Character profile changes do not independently require manual approval. Preserve explicit prior review decisions and evidence, placement, and chronology safeguards. Never invent certainty to bypass review.`;
 export function buildSinglePassMemoryMessages(batch: PreparedSinglePassMemoryBatch): ChatMessage[] {
-  return [{ role: "system", content: POLICY }, { role: "user", content: JSON.stringify({ ...batch.payload, outputAliases: batch.outputAliases }) }];
+  const hasArc = Object.values(batch.outputAliases).some(source => Object.values(source.plot).some(p => p.type === "currentArcState"));
+  return [{ role: "system", content: hasArc ? POLICY + "\n\n" + ARC_EVALUATION : POLICY }, { role: "user", content: JSON.stringify({ ...batch.payload, outputAliases: batch.outputAliases }) }];
 }
 const object = (v: unknown): v is Record<string, unknown> => Boolean(v) && typeof v === "object" && !Array.isArray(v);
 const nonempty = (v: unknown): v is string => typeof v === "string" && Boolean(v.trim());
@@ -276,7 +283,7 @@ export function normalizeSinglePassFinding(v: unknown, sourceId: string, adventu
 }
 /** Structural checks only. Exact quotation is not proof of the model's interpretation. */
 export function singlePassFindingSchemaError(v: unknown): string | undefined {
-  if (!object(v) || Object.keys(v).some(key => !["kind", "targetId", "title", "content", "brainPatch", "reason", "evidenceQuotes", "candidateOnly", "storyCardType", "operation", "memoryMode", "eventStatus", "suggestedTriggers", "participants", "identityChange", "destinationCandidates", "loreContinuation", "relationship"].includes(key)) || !["storyCard", "brain", "plotEssentials", "activePressure", "immediateMomentum"].includes(String(v.kind))
+  if (!object(v) || Object.keys(v).some(key => !["kind", "targetId", "title", "content", "brainPatch", "reason", "evidenceQuotes", "candidateOnly", "storyCardType", "operation", "memoryMode", "eventStatus", "suggestedTriggers", "participants", "identityChange", "destinationCandidates", "loreContinuation", "relationship"].includes(key)) || !["storyCard", "brain", "plotEssentials", "activePressure", "immediateMomentum", "currentArcState"].includes(String(v.kind))
     || !(v.targetId === null || nonempty(v.targetId)) || !nonempty(v.title) || !nonempty(v.reason) || typeof v.candidateOnly !== "boolean"
     || !Array.isArray(v.evidenceQuotes) || !v.evidenceQuotes.length || v.evidenceQuotes.some(q => !object(q) || !nonempty(q.messageId) || !nonempty(q.quote))) return "Missing or invalid required finding fields.";
   if (v.loreContinuation !== undefined && v.loreContinuation !== "identified" && v.loreContinuation !== "review") return "Invalid Lore continuation flag.";
@@ -573,6 +580,26 @@ export function parseSinglePassMemoryCommands(text: string, aliases: PreparedSin
 }
 
 export async function runSinglePassMemoryBatch(a: Adventure, provider: ProviderConfig, batch: PreparedSinglePassMemoryBatch): Promise<SinglePassMemoryBatchResult> {
+  // An arc can change between async preparation and the saved claim. Remove stale
+  // material from the request while retaining ordinary references and the claim.
+  if (batch.checkpoints.some(({ checkpoint }) => checkpoint.arcReference && checkpoint.arcReference !== arcReferenceState(a))) {
+    const removed = new Set<number>();
+    const outputAliases = Object.fromEntries(Object.entries(batch.outputAliases).map(([alias, source]) => {
+      const plot = Object.fromEntries(Object.entries(source.plot).filter(([, entry]) => {
+        if (entry.type !== "currentArcState") return true;
+        removed.add(entry.reference);
+        return false;
+      }));
+      return [alias, { ...source, plot }];
+    }));
+    const sources = batch.payload.sources.map(({ arcPlan, ...source }) => {
+      if (arcPlan !== undefined) removed.add(arcPlan);
+      return { ...source, plot: source.plot.filter(reference => !removed.has(reference)) };
+    });
+    batch = { ...batch, outputAliases, payload: {
+      sources, references: batch.payload.references.map((reference, index) => removed.has(index) ? null : reference),
+    } };
+  }
   const config = memoryBatchProvider(provider, batch.checkpoints.map(s => s.sourceId));
   // Bounded extraction output, independent of narration settings. Cancellation guard stays on this exact config.
   config.memoryRequest = { ...config.memoryRequest!, batchId: batch.batchId, attempt: Math.max(1, ...batch.checkpoints.map(c => a.messages.find(m => m.id === c.sourceId)?.memoryEvaluation?.attempts ?? 1)) };

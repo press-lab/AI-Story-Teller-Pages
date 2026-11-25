@@ -1,3 +1,4 @@
+import { arcReferenceState, arcStateSections, eligibleArc, isArcComponent, normalizeArcIntensity } from "../memory/currentArc";
 import { canonicalRelationshipIds, linkedRelationships, relationshipCardError, relationshipIdError, relationshipMatches, relationshipProposalError, relationshipTitle, relationshipWriteError } from "../memory/relationshipCards";
 import { DRAFT_COMPONENT_TYPES, SINGLETON_DRAFT_TYPES, draftTargetFingerprint } from "../memory/memoryDraft";
 import { establishedLoreTime, routeDatedLoreProposal, loreEventDateKey, sameLoreEventDate } from "../memory/datedLoreRouting";
@@ -473,6 +474,12 @@ function updateMemoryProposal(proposal: MemoryProposal, patch: Partial<MemoryPro
   delete sanitizedPatch.updatedAt;
   delete sanitizedPatch.approvalFeedback;
   const next = { ...proposal, ...sanitizedPatch, id: proposal.id, createdAt: proposal.createdAt, updatedAt: nowIso() };
+  if (proposal.proposedType === "currentArcStateUpdate") {
+    next.proposedType = proposal.proposedType;
+    next.targetId = proposal.targetId;
+    next.arcReference = proposal.arcReference;
+    next.evaluationSource = proposal.evaluationSource;
+  }
   if (["sourceTurnId", "sourceText", "storyCardReview", "evaluationSource", "title", "content", "targetId", "cardOperation", "appendContent", "lore", "relationship", "storyCardType"].some(key =>
     JSON.stringify(proposal[key as keyof MemoryProposal]) !== JSON.stringify(next[key as keyof MemoryProposal]))) next.approvalFeedback = undefined;
   if (next.storyCardType !== "relationship" || next.proposedType !== "storyCard") delete next.relationship;
@@ -579,7 +586,7 @@ function normalizedReplacementContent(content: string): string {
 
 function sanitizeProposal(proposal: MemoryProposal): MemoryProposal | null {
   if (isActivePressureProposal(proposal)) return null;
-  if (!["componentDraft", "storyCard", "brainUpdate", "plotEssentialsUpdate", "plotPressureUpdate", "plotMomentumUpdate", "ignore"].includes(proposal.proposedType)) return null;
+  if (!["componentDraft", "currentArcStateUpdate", "storyCard", "brainUpdate", "plotEssentialsUpdate", "plotPressureUpdate", "plotMomentumUpdate", "ignore"].includes(proposal.proposedType)) return null;
   if (proposal.proposedType === "componentDraft" && (!proposal.userInitiated || !proposal.manualDraft?.componentType
     || !(proposal.manualDraft.componentType in DRAFT_COMPONENT_TYPES))) return null;
   const rawContent = stripThink(proposal.content ?? "").trim();
@@ -918,6 +925,14 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal,
     return { brains: upsertById(state.brains, brain) };
   }
 
+  if (proposal.proposedType === "currentArcStateUpdate") {
+    const arc = eligibleArc(state);
+    if (!arc || arc.state.id !== proposal.targetId || !proposal.arcReference || proposal.arcReference !== arcReferenceState(state)
+      || !proposal.evaluationSource?.target || !suggestionSourceValid(state, { ...proposal, status: "pending" })
+      || !arcStateSections(proposal.content)) return {};
+    return { components: upsertById(state.components, recordComponentMemoryUpdate(arc.state,
+      { ...arc.state, content: proposal.content }, { source: "aiMemoryUpdate", operation: "replace" })) };
+  }
   if (proposal.proposedType === "plotEssentialsUpdate") {
     if (!proposal.content.trim()) return {};
     const target =
@@ -1210,7 +1225,12 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
         for (const index of validation.suppressed) dispositions.push({ index, status: "suppressed", reason: validation.suppressionReasons[index] ?? "Factual delta already recorded or considered." });
         for (const { index, findingIndex } of validation.proposals) {
           // Rebind only after all external author edits were ruled out above. Existing reducer handles duplicate/approval policy.
-          const proposal = toSinglePassProposal(next, result.sourceId, checkpoint, result.findings[findingIndex]);
+          const finding = result.findings[findingIndex];
+          if (finding.kind === "currentArcState" && checkpoint.arcReference !== arcReferenceState(next)) {
+            dispositions.push({ index, status: "suppressed", reason: "A newer arc replacement has already changed this destination." });
+            continue;
+          }
+          const proposal = toSinglePassProposal(next, result.sourceId, checkpoint, finding);
           next = adventureReducer(next, { type: "ADD_MEMORY_PROPOSAL", proposal });
           const stored = next.activeState.memoryProposals.find(p => p.id === proposal.id);
           dispositions.push({ index, status: !stored ? "suppressed" : stored.status === "approved" ? "accepted" : "review", proposalId: stored?.id });
@@ -1482,8 +1502,24 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
       return touchAdventure(state, {
         activeState: { ...state.activeState, lastSemanticEvalTurn: action.turn },
       });
+    case "CONVERT_ARC_STATE_TO_LORE": {
+      const arcState = state.components.find(c => c.type === "currentArcState" && c.id === action.componentId);
+      if (!arcState) return state;
+      const history = arcStateSections(arcState.content)?.completed;
+      if (!history || /^(?:none|no completed developments)[.!]?$/i.test(history)) return state;
+      const title = uniqueStoryCardTitle(state, arcState.title + " History", "lore");
+      const keys = generatedStoryCardTriggers(state, title, history, undefined, undefined, "historical", "lore");
+      return touchAdventure(state, {
+        storyCards: [...state.storyCards, makeStoryCard({ type: "lore", title, content: history, keys, memoryMode: "historical" })],
+        components: deleteById(state.components, arcState.id),
+      });
+    }
     case "UPSERT_COMPONENT":
-      return touchAdventure(state, { components: upsertById(state.components, touch(action.component)) });
+      if (isArcComponent(action.component.type) && state.components.some(c => c.type === action.component.type && c.id !== action.component.id)) return state;
+      return touchAdventure(state, { components: upsertById(state.components, touch({
+        ...action.component,
+        arcIntensity: action.component.type === "currentArcState" ? normalizeArcIntensity(action.component.arcIntensity) : undefined,
+      })) });
     case "DELETE_COMPONENT":
       return touchAdventure(state, { components: deleteById(state.components, action.componentId) });
     case "ACTIVATE_COMPONENT":
@@ -1495,12 +1531,19 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
     case "UNPIN_COMPONENT":
       return touchAdventure(state, { components: updateById(state.components, action.componentId, (item) => touch({ ...item, pinned: false })) });
     case "UPDATE_COMPONENT":
+      if (action.patch.type && isArcComponent(action.patch.type)
+        && state.components.some(c => c.type === action.patch.type && c.id !== action.componentId)) return state;
       return touchAdventure(state, {
-        components: updateById(state.components, action.componentId, (item) => item.type === "authorNote" ? item : mergePatch<ComponentEntry>(item, action.patch)),
+        components: updateById(state.components, action.componentId, item => {
+          if (item.type === "authorNote") return item;
+          const patch = mergePatch<ComponentEntry>(item, action.patch);
+          if (!isArcComponent(item.type) && !isArcComponent(patch.type)) return patch;
+          return { ...patch, arcIntensity: patch.type === "currentArcState" ? normalizeArcIntensity(patch.arcIntensity) : undefined };
+        }),
       });
     case "APPLY_COMPONENT_UPDATE": {
       const target = state.components.find((component) => component.id === action.componentId);
-      if (!target || target.type === "authorNote") return state;
+      if (!target || target.type === "authorNote" || isArcComponent(target.type)) return state;
       const basePatch: Partial<Adventure> = {
         components: updateById(state.components, action.componentId, (item) =>
           recordComponentMemoryUpdate(item, { ...item, content: action.content }, { source: "aiMemoryUpdate", operation: "replace" }),
@@ -1944,6 +1987,15 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
       }
       let proposal = sanitizeProposal(draft);
       if (!proposal) return action.automatic ? state : fail("invalid structured memory content or unsupported memory type.");
+      if (proposal.proposedType === "currentArcStateUpdate") {
+        const arc = eligibleArc(state);
+        if (!arc || arc.state.id !== proposal.targetId || !existing.arcReference || existing.arcReference !== arcReferenceState(state)
+          || !existing.evaluationSource?.target || !suggestionSourceValid(state, existing))
+          return action.automatic ? state : fail("Current Arc State, its Plan, or the story evidence changed.");
+      }
+      if ((proposal.proposedType === "currentArcStateUpdate" || proposal.manualDraft?.componentType === "currentArcState") && !arcStateSections(proposal.content)) {
+        return action.automatic ? state : fail("use CURRENT DEVELOPMENTS first and COMPLETED DEVELOPMENTS second.");
+      }
       if (action.automatic && proposal.evaluationSource && proposal.placementValidation && !placementValidationError(state, proposal)) {
         proposal = routeDatedLoreProposal(state, proposal);
         const validation = proposal.placementValidation!;

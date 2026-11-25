@@ -119,7 +119,7 @@ export interface MemoryGroupWork {
 }
 export type MemoryPipelineMode = "singlePass" | "legacy";
 export interface SinglePassMemoryFinding {
-  kind: "storyCard" | "brain" | "plotEssentials" | "activePressure" | "immediateMomentum";
+  kind: "storyCard" | "brain" | "currentArcState" | "plotEssentials" | "activePressure" | "immediateMomentum";
   targetId: string | null;
   title: string;
   content?: string;
@@ -161,6 +161,7 @@ export interface SinglePassMemoryCheckpoint {
   evidence: Array<{ id: string; content: string }>;
   /** Versioned SHA-256 guard; legacy saves may contain the serialized inputs. */
   referenceState: string;
+  arcReference?: string;
   status: "running" | "complete" | "failed";
   findings: SinglePassMemoryFinding[];
   dispositions: Array<{ index: number; status: "accepted" | "suppressed" | "rejected" | "review"; reason?: string; proposalId?: string }>;
@@ -229,7 +230,11 @@ export interface Message {
   createdAt: ISODateString;
 }
 
+export type ArcIntensity = "dormant" | "background" | "foreground" | "dominant" | "executeNow";
+
 export type ComponentType =
+  | "currentArcPlan"
+  | "currentArcState"
   | "narrationRules"
   | "aiInstructions"
   | "plotEssentials"
@@ -277,6 +282,7 @@ export interface ComponentEntry {
   id: string;
   title: string;
   type: ComponentType;
+  arcIntensity?: ArcIntensity;
   content: string;
   priority: number;
   alwaysOn: boolean;
@@ -647,6 +653,7 @@ export type MemoryProposalType =
   | "componentDraft"
   | "storyCard"
   | "brainUpdate"
+  | "currentArcStateUpdate"
   | "plotEssentialsUpdate"
   | "plotPressureUpdate"
   | "plotMomentumUpdate"
@@ -701,6 +708,7 @@ export interface MemoryProposal {
   /** Generated card memory only appends a factual delta or creates a new card. */
   cardOperation?: "append" | "create";
   placementValidation?: MemoryPlacementValidation;
+  arcReference?: string;
   /** Independent evaluation evidence and destination at generation time. */
   evaluationSource?: { messages: Array<{ id: string; content: string }>; target?: MemoryTargetSnapshot };
   storyCardReview?: StoryCardSuggestionReview;
@@ -739,7 +747,7 @@ export interface MemoryReconcileRequest {
   includeBrains: boolean;
 }
 
-export type DraftComponentType = "narrationRules" | "aiInstructions" | "plotEssentials" | "custom";
+export type DraftComponentType = "currentArcPlan" | "currentArcState" | "narrationRules" | "aiInstructions" | "plotEssentials" | "custom";
 
 export interface MemoryDraftContext {
   components: "none" | "all" | "selected";
@@ -972,6 +980,7 @@ export interface Adventure {
 
 export interface MemoryAutoApproveSettings {
   plotEssentialsUpdate: boolean;
+  currentArcStateUpdate?: boolean;
   plotPressureUpdate: boolean;
   brainUpdate: boolean;
   loreStoryCard: boolean;
@@ -1142,6 +1151,7 @@ export type AdventureAction =
   | { type: "UNDO_STORY_EDIT" }
   | { type: "REDO_STORY_EDIT" }
   | { type: "INCREMENT_TURN" }
+  | { type: "CONVERT_ARC_STATE_TO_LORE"; componentId: string }
   | { type: "UPSERT_COMPONENT"; component: ComponentEntry }
   | { type: "DELETE_COMPONENT"; componentId: string }
   | { type: "ACTIVATE_COMPONENT"; componentId: string }

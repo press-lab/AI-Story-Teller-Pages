@@ -1,3 +1,4 @@
+import { eligibleArc } from "./currentArc";
 import type { CharacterIdentity } from "./relationshipCards";
 import { canonicalRelationshipIds, relationshipCharacterMatches, relationshipMatches, relationshipTitle, validateRelationshipIds } from "./relationshipCards";
 import type { RelationshipMetadata, Adventure, ComponentType, SinglePassMemoryBatchResult, SinglePassMemoryFinding, StoryCardType } from "../types/adventure";
@@ -14,7 +15,7 @@ import { factsCovered, loreSubjectKey } from "./factCoverage";
 const normalize = (s: string) => s.normalize("NFKC").toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 const brainFields = ["thoughts", "currentState", "relationshipPressure", "emotionalInterpretation", "recentDevelopments", "notes"];
 const cardTypes: StoryCardType[] = ["lore", "character", "location", "object", "relationship", "custom"];
-const componentTypes: ComponentType[] = ["plotEssentials", "activePressure", "immediateMomentum", "narrationRules", "aiInstructions", "authorNote", "memory", "custom"];
+const componentTypes: ComponentType[] = ["currentArcPlan", "currentArcState", "plotEssentials", "activePressure", "immediateMomentum", "narrationRules", "aiInstructions", "authorNote", "memory", "custom"];
 type Source = Omit<PreparedSinglePassMemoryBatch["outputAliases"][string], "characters"> & { characters?: CharacterIdentity[] };
 export type LooseCategory = { category: "brain" | "storyCard" | "component"; subtype: string };
 export interface LooseDestination {
@@ -47,7 +48,7 @@ export function resolveLooseCategory(op: LooseMemoryOperation): Resolution<Loose
   const subtype = op.subtype ?? (op.category === "brain" ? "thoughts" : op.category === "storyCard" ? "lore" : "");
   const allowed = op.category === "brain" ? brainFields : op.category === "storyCard" ? cardTypes : componentTypes;
   if (!allowed.some(t => t === subtype)) return { error: "Unknown " + op.category + " subtype: " + subtype + "." };
-  if (op.category === "component" && !["plotEssentials", "activePressure", "immediateMomentum"].includes(subtype)) {
+  if (op.category === "component" && !["plotEssentials", "activePressure", "immediateMomentum", "currentArcState"].includes(subtype)) {
     return { error: "Recognized component subtype; automatic memory routing is not permitted." };
   }
   return { value: { category: op.category, subtype } };
@@ -72,6 +73,12 @@ export function resolveLooseDestination(a: Adventure, source: Source, op: LooseM
   }
   if (category.category === "component") {
     if (op.explicitCreation) return { error: "New Components cannot be created by memory extraction." };
+    if (category.subtype === "currentArcState") {
+      const arc = eligibleArc(a);
+      if (!arc || !Object.values(source.plot).some(entry => entry.id === arc.state.id && entry.type === "currentArcState")
+        || ![normalize(arc.state.title), "current arc state"].includes(subject)) return { error: "No eligible Current Arc State destination." };
+      return { value: { category, targetId: arc.state.id, operation: "replace" } };
+    }
     const typed = a.components.filter(c => c.type === category.subtype && normalize(c.title) === subject);
     const matches = typed.filter(c => c.active && (c.type === "plotEssentials" ? c.autoUpdate === true : c.autoUpdate !== false)
       && Object.values(source.plot).some(entry => entry.id === c.id && entry.type === category.subtype));
@@ -152,7 +159,7 @@ export function buildLooseFinding(a: Adventure, source: Source, op: LooseMemoryO
   const kind = destination.category.category === "component" ? destination.category.subtype as SinglePassMemoryFinding["kind"] : destination.category.category;
   const base: SinglePassMemoryFinding = { kind, targetId: destination.targetId, title: op.subject, candidateOnly: kind === "storyCard"
     ? op.category === "unclassified" || destination.category.subtype === "character" || Boolean(destination.diagnostic)
-    : kind !== "brain",
+    : kind !== "brain" && kind !== "currentArcState",
     reason: (destination.targetId ? op.loreAppend?.reason : undefined) ?? destination.diagnostic ?? (destination.loreContinuation === "review" && destination.targetId
       ? "The subject and story day match an existing Lore card. Confirm that this continues the same event." : undefined) ?? (op.category === "unclassified" ? "Unclassified assignment recovered as focused Lore." : "Extracted factual candidate; narrator provenance attached locally."),
     evidenceQuotes, operation: destination.operation };

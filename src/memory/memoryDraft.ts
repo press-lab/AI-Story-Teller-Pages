@@ -1,3 +1,4 @@
+import { arcStateSections, isArcComponent } from "./currentArc";
 import { canonicalRelationshipIds, relationshipCardError, relationshipKey, relationshipMatches, relationshipTitle, validateRelationshipIds } from "./relationshipCards";
 import { PRIMARY_STORY_CARD_TYPES } from "./storyCardArchitecture";
 import type { StoryCard, Adventure, ChatMessage, ContextItem, DraftComponentType, MemoryDraftRequest, MemoryProposal, ProviderConfig } from "../types/adventure";
@@ -13,9 +14,10 @@ import { storyCardContextContent } from "./storyCardPolicy";
 
 export const DRAFT_COMPONENT_TYPES: Record<DraftComponentType, string> = {
   narrationRules: "Narration Rules", aiInstructions: "AI Instructions", plotEssentials: "Plot Essentials",
+  currentArcPlan: "Current Arc Plan", currentArcState: "Current Arc State",
   custom: "Custom",
 };
-export const SINGLETON_DRAFT_TYPES = new Set<DraftComponentType>(["narrationRules", "aiInstructions", "plotEssentials"]);
+export const SINGLETON_DRAFT_TYPES = new Set<DraftComponentType>(["narrationRules", "aiInstructions", "plotEssentials", "currentArcPlan", "currentArcState"]);
 
 /** Stable across export/import object key order; includes destination controls and body. */
 export function draftTargetFingerprint(target: unknown): string {
@@ -34,7 +36,7 @@ export function draftTarget(adventure: Adventure, request: MemoryDraftRequest) {
 export function resolveDraftContext(adventure: Adventure, request: MemoryDraftRequest) {
   const activeTypes = Object.keys(DRAFT_COMPONENT_TYPES);
   const components = adventure.components.filter(c => activeTypes.includes(c.type) &&
-    (request.context.components === "all" || request.context.components === "selected" && request.context.componentIds.includes(c.id)));
+    (request.context.components === "all" && c.type !== "currentArcPlan" || request.context.components === "selected" && request.context.componentIds.includes(c.id)));
   const cards = adventure.storyCards.filter(c => request.context.storyCardIds.includes(c.id));
   if (request.context.components === "selected" && request.context.componentIds.some(id => !components.some(c => c.id === id)))
     throw new Error("A selected component is missing or unsupported. Update your context selection.");
@@ -111,8 +113,8 @@ function draftMessagesWithContext(adventure: Adventure, request: MemoryDraftRequ
     throw new Error("Review selected cards requires recent-play Story Card suggestions without a single target.");
   if (request.reviewSelectedCards && !context.cards.some(c => c.type === request.storyCardType))
     throw new Error("Select reference cards of the chosen type to review as update targets.");
-  if (request.action === "suggest" && request.destination === "component" && request.componentType !== "plotEssentials")
-    throw new Error("Recent-play suggestions support Plot Essentials and Story Cards. Use a written brief for other components.");
+  if (request.action === "suggest" && request.destination === "component" && !["plotEssentials", "currentArcState"].includes(request.componentType))
+    throw new Error("Recent-play suggestions support Plot Essentials, Current Arc State, and Story Cards. Use a written brief for other components.");
   if (!allowEmptyBrief && request.action === "draft" && !request.description.trim()) throw new Error("Describe what you want to draft.");
   if (request.action === "suggest" && context.entries.length === 0) throw new Error("Include previous entries to suggest updates from recent play.");
   if (request.destination === "component" && !request.targetId && SINGLETON_DRAFT_TYPES.has(request.componentType)
@@ -181,13 +183,16 @@ function proposalFromResponse(request: MemoryDraftRequest, preview: ReturnType<t
   if (typeof result.title !== "string" || !result.title.trim() || typeof result.content !== "string" || !result.content.trim()
     || result.keys !== undefined && (!Array.isArray(result.keys) || result.keys.some(k => typeof k !== "string")))
     throw new Error("The AI draft is missing a valid title, body, or trigger list. No suggestion was saved.");
+  if (request.destination === "component" && request.componentType === "currentArcState" && !arcStateSections(result.content))
+    throw new Error("The State draft needs CURRENT DEVELOPMENTS followed by COMPLETED DEVELOPMENTS.");
   if (preview.relationship && (result.relationship !== undefined || result.characterIds !== undefined
     || result.participants !== undefined || (Array.isArray(result.keys) && result.keys.length)))
     throw new Error("Linked characters are selected by the author and Relationship Cards have no phrase keys.");
   const now = nowIso();
   return {
     id: createId("proposal"), proposedType: request.destination === "component" ? "componentDraft" : "storyCard",
-    title: preview.canonicalTitle ?? preview.target?.title ?? result.title.trim(), content: result.content.trim(),
+    title: preview.canonicalTitle ?? preview.target?.title ?? (request.destination === "component" && isArcComponent(request.componentType)
+      ? DRAFT_COMPONENT_TYPES[request.componentType] : result.title.trim()), content: result.content.trim(),
     sourceTurnId: preview.entries.at(-1)?.id ?? "manual", sourceText: request.description + "\n\n" + preview.text,
     suggestedTriggers: (result.keys as string[] | undefined) ?? [], confidence: 1,
     rationale: typeof result.rationale === "string" ? result.rationale : "Requested AI draft; explicit approval required.",

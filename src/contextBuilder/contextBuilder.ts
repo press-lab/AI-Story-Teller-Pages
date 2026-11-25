@@ -1,4 +1,5 @@
 import { resolveRelationshipCardTriggers } from "./relationshipCardTriggers";
+import { arcNarrationGuidance, eligibleArc } from "../memory/currentArc";
 import { resolveChainedStoryCardTriggers } from "./chainedStoryCardTriggers";
 import { isHistoricalLore, loreExcerpt } from "../memory/storyCardArchitecture";
 import { formatStoryTimeWithWeekday } from "../memory/storyTime";
@@ -454,7 +455,23 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
   });
 
   // E. Components — general always-on or pinned components (not a special typed section above)
+  const arc = eligibleArc(adventure);
   const generalComponentItems = prioritySort(adventure.components).flatMap((component) => {
+    if (component.type === "currentArcPlan") {
+      logExcludedOnce(component.id, component.title, "not_triggered", "Current Arc Plan is reserved for arc evaluation and explicit authoring.");
+      return [];
+    }
+    if (component.type === "currentArcState") {
+      if (arc?.state.id !== component.id) {
+        logExcludedOnce(component.id, component.title, "inactive", "Requires an active Plan and State with non-Dormant intensity.");
+        return [];
+      }
+      const next = item(component.id, "component", component.title,
+        arcNarrationGuidance(arc.intensity) + "\n\n" + component.content, component.priority,
+        component.protected, component.pinned, component.active, component.inclusionPolicy, "user");
+      pushIncluded(next, "Eligible Current Arc State with " + arc.intensity + " intensity.");
+      return [next];
+    }
     if (component.type === "narrationRules" || component.type === "aiInstructions" || component.type === "plotEssentials" || component.type === "activePressure" || component.type === "immediateMomentum" || component.type === "authorNote") return [];
     if (!component.active) {
       logExcludedOnce(component.id, component.title, "inactive");
