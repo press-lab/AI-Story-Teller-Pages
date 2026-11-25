@@ -215,7 +215,7 @@ export function TriggersPage({ adventure, dispatch }: AdventurePageProps) {
                     <JsonTextarea value={rule.actions} onValidChange={(actions) => dispatch({ type: "UPDATE_TRIGGER_RULE", triggerRuleId: rule.id, patch: { actions } })} rows={8} />
                   </Field>
                   {(rule.evaluationMode === undefined || rule.evaluationMode === "semantic")
-                    && rule.actions.some(action => ["updateComponent", "updateComponentPressure", "updateComponentArc"].includes(action.type)) && (
+                    && rule.actions.some(action => ["updateComponent", "updateComponentPressure"].includes(action.type)) && (
                     <p className="notice" role="alert">This semantic rule cannot write Plot Components . AIST skips these actions. Use automatic memory evaluation or a manual update tool.</p>
                   )}
                   <p className="muted">Last fired turn: {rule.lastFiredTurn ?? "never"}</p>

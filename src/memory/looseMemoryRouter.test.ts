@@ -150,13 +150,13 @@ describe("Story Card routing", () => {
   });
 });
 describe("Component routing", () => {
-  const proposals = { plotEssentials: "plotEssentialsUpdate", currentArc: "currentArcUpdate", immediateMomentum: "plotMomentumUpdate" };
+  const proposals = { plotEssentials: "plotEssentialsUpdate", immediateMomentum: "plotMomentumUpdate" };
   it.each(Object.entries(proposals))("routes supported %s and preserves operation", async (type, proposalType) => {
     const r = await routed("(component." + type + ": Target = The Ministry expects the research report tomorrow.)", a => {
-      a.components = [makeComponent({ id: "target", title: "Target", type: type as ComponentType, active: true, autoUpdate: true, content: "An existing different constraint.", arcPremise: type === "currentArc" ? "Investigate the Ministry report." : undefined })];
+      a.components = [makeComponent({ id: "target", title: "Target", type: type as ComponentType, active: true, autoUpdate: true, content: "An existing different constraint." })];
     });
-    expectFinding(r, type, type, "target", type === "currentArc" ? "append" : "replace", proposalType);
-    expect(r.checked.proposals[0].proposal.appendContent).toBe(type === "currentArc" ? true : undefined);
+    expectFinding(r, type, type, "target", "replace", proposalType);
+    expect(r.checked.proposals[0].proposal.appendContent).toBe(undefined);
   });
   it.each(["narrationRules", "aiInstructions", "authorNote", "memory", "custom"])("recognizes unsupported %s without Lore fallback", async type => {
     const r = await routed("(component." + type + ": Target = New instruction.)");
@@ -168,7 +168,7 @@ describe("Component routing", () => {
       if (mode === "duplicate") a.components.push({ ...a.components[0], id: "second" });
       if (mode === "inactive") a.components[0].active = false;
       if (mode === "optOut") a.components[0].autoUpdate = false;
-      if (mode === "wrongSubtype") a.components[0].type = "currentArc";
+      if (mode === "wrongSubtype") a.components[0].type = "custom";
       if (mode === "plotEssentialsPermission") { a.components[0].type = "plotEssentials"; a.components[0].autoUpdate = undefined; }
     });
     expect(r.checked.proposals).toEqual([]); expect(r.result.rejected[0].reason).toMatch(/component destination/);
@@ -178,7 +178,7 @@ describe("Component routing", () => {
     expectFinding(r, "plotEssentials", "plotEssentials", "pressure", "replace", "plotEssentialsUpdate");
   });
   it("rejects explicit Component creation", async () => {
-    const r = await routed("(component.currentArc.create: New Arc = A new investigation began.)");
+    const r = await routed("(component.plotEssentials.create: New Premise = The city was founded on reclaimed land.)");
     expect(r.result.rejected[0].reason).toContain("cannot be created");
   });
   it("applies Immediate Momentum only after manual approval to its exact existing target", async () => {

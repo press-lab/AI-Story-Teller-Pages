@@ -49,7 +49,7 @@ not remain in the batch. A failed regeneration restores the original narrative.
 
 The prompt contains pending final exchanges, adjacent context for reference
 resolution, relevant character/Story Card/Brain canon, and Plot Essentials,
-Active Pressure, and Current Arc context. It excludes general scenario
+Active Pressure context. It excludes general scenario
 instructions, narration rules, and unrelated pinned card content. Whole selected
 canon items are used; there is no new character-profile truncation for cost.
 Existing context-builder budget and inclusion policies still apply.

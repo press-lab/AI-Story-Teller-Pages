@@ -230,8 +230,8 @@ npm.cmd run test:live   # optional, uses .env.test.local`}</pre>
     id: "side-menu-world-blocks",
     title: "World Blocks",
     category: "Side Menu",
-    summary: "Manage Narration Rules, AI Instructions, Plot Essentials, Current Story Arc, and custom components.",
-    tags: ["world blocks", "components", "plot essentials", "current arc", "author note", "ai instructions"],
+    summary: "Manage Narration Rules, AI Instructions, Plot Essentials, and custom components.",
+    tags: ["world blocks", "components", "plot essentials", "author note", "ai instructions"],
     body: (
       <>
         <p>

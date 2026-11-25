@@ -158,29 +158,13 @@ ${current || "(empty)"}
 
 Compare each existing fact with the most recent story events and explicit player corrections: identify changed facts, obsolete claims, and still-valid constraints. Hearing an explanation but doubting it means informed but unconvinced, not unaware. Arrival supersedes travel. Claims stay attributed; plans stay uncompleted. Decide whether this block is stale or incomplete as the story's CURRENT OPERATING TRUTH. If it is still accurate, respond with an empty string.
 
-If it needs updating, rewrite the FULL replacement Plot Essentials block. Keep it compact (about 80-140 words or 4-7 tight bullets). Preserve the overarching premise, central long-term conflict, and persistent story-wide constraints. Ongoing storyline progress belongs in Current Arc. Immediate scene details do not belong in Plot Essentials.
+If it needs updating, rewrite the FULL replacement Plot Essentials block. Keep it compact (about 80-140 words or 4-7 tight bullets). Preserve the overarching premise, central long-term conflict, and persistent story-wide constraints. Immediate scene details do not belong in Plot Essentials.
 
 Do NOT append. Do NOT preserve stale facts just because they used to be true. Do NOT include temporary room position, momentary action, character emotions, or throwaway scene details.
 
 Return ONLY the replacement Plot Essentials content (at most 180 words), or NONE if no meaningful update is needed. Never continue the scene or write dialogue.`;
   }
   return `You are updating a context component titled "${component.title}". Current content: "${component.content}". Based on what just happened, update this component. Return ONLY the new content as a plain string.`;
-}
-
-function arcUpdatePrompt(component: ComponentEntry): string {
-  const premise = component.arcPremise?.trim();
-  const existing = component.content?.trim();
-  const premiseNote = premise ? `\nArc Premise: "${premise}"\n` : "";
-  const existingNote = existing ? `\nExisting arc log (do NOT repeat entries already here):\n${existing}\n` : "";
-  return `You are appending to a running log of an active story arc.${premiseNote}${existingNote}
-Your job: write 1–3 sentences capturing the specific development that just occurred and how it advances or complicates this arc. Be concrete — name what happened, not how characters felt about it.
-
-Write every entry as a COMPLETED PAST-TENSE record of what happened ("Setu confirmed Renzan's involvement," "Nyxa chose to witness the arrest"). This is a historical log, not a live scene — never present tense, never second person ("you"), so it reads as settled past events when referenced later.
-
-Do NOT restate anything already in the existing log. Do NOT summarize the whole story. Append only what is new and arc-relevant.
-
-If no new completed arc development is supported, return exactly NONE. Do not turn routine dialogue or speculation into a breakthrough.
-Return ONLY the new sentences as plain text, or NONE.`;
 }
 
 function isBrainOnCooldown(adventure: Adventure, brain: BrainEntry): boolean {
@@ -192,7 +176,7 @@ function isBrainOnCooldown(adventure: Adventure, brain: BrainEntry): boolean {
 function isPEComponentOnCooldown(adventure: Adventure, component: ComponentEntry): boolean {
   const last = component.lastAutoUpdateTurn;
   if (last === undefined) return false;
-  return adventure.activeState.turn - last < (component.autoUpdateCooldownTurns ?? (component.type === "activePressure" ? 0 : component.type === "currentArc" ? 4 : 3));
+  return adventure.activeState.turn - last < (component.autoUpdateCooldownTurns ?? (component.type === "activePressure" ? 0 : 3));
 }
 
 function activeSemanticRules(adventure: Adventure): SemanticCondition[] {
@@ -238,31 +222,15 @@ function plotEssentialsDriftConditions(adventure: Adventure): SemanticCondition[
     .map((component) => ({
       id: `plotEssentialsDrift:${component.id}`,
       label: `Plot Essentials Drift: ${component.title}`,
-      condition: `when the current Plot Essentials block is stale, incomplete, or no longer describes the story's overarching premise and persistent story-wide constraints after recent events. Do NOT fire for minor scene motion, temporary room state, or changes that only belong in Current Arc or a Story Card.`,
+      condition: `when the current Plot Essentials block is stale, incomplete, or no longer describes the story's overarching premise and persistent story-wide constraints after recent events. Do NOT fire for minor scene motion, temporary room state, or changes that only belong in a Story Card.`,
       sourceType: "component" as const,
       actionFactory: () => [{ type: "updateComponent" as const, componentId: component.id }],
     }));
 }
 
-function currentArcConditions(adventure: Adventure): SemanticCondition[] {
-  return adventure.components
-    .filter((c) => c.type === "currentArc" && c.active && c.autoUpdate !== false && !isPEComponentOnCooldown(adventure, c) && Boolean(c.arcPremise?.trim()))
-    .map((component) => {
-      const premise = component.arcPremise!.trim();
-      return {
-        id: `currentArc:${component.id}`,
-        label: `Current Arc: ${component.title}`,
-        condition: `when an event in the recent story meaningfully advances or complicates the arc described as: "${premise}". Do NOT fire for routine scene beats, minor dialogue, or character moments that don't shift the arc's trajectory.`,
-        sourceType: "component" as const,
-        actionFactory: () => [{ type: "updateComponentArc" as const, componentId: component.id }],
-      };
-    });
-}
-
 function buildPlotMemoryConditions(adventure: Adventure): SemanticCondition[] {
   return [
     ...plotEssentialsDriftConditions(adventure),
-    ...currentArcConditions(adventure),
   ];
 }
 
@@ -317,7 +285,7 @@ async function evaluateConditionIds(
             {
               storyExcerpt: recentExcerpt(adventure),
               latestTurn: latestMemoryTurn(adventure),
-              currentPlot: adventure.components.filter(c => c.active && ["plotEssentials", "currentArc"].includes(c.type)).map(c => ({ id: c.id, type: c.type, content: c.content, premise: c.arcPremise })),
+              currentPlot: adventure.components.filter(c => c.active && ["plotEssentials"].includes(c.type)).map(c => ({ id: c.id, type: c.type, content: c.content })),
               currentCards: adventure.storyCards.filter(c => conditions.some(condition => condition.id === `storyCard:${c.id}`)).map(c => ({ id: c.id, title: c.title, type: c.type, content: storyCardContextContent(c) })),
               currentBrains: adventure.brains.filter(b => conditions.some(condition => condition.id === `brain:${b.id}`)).map(b => ({ id: b.id, name: b.characterName, thoughts: b.thoughts, currentState: b.currentState, relationshipPressure: b.relationshipPressure })),
               conditions: conditions.map(({ id, condition }) => ({ id, condition })),
@@ -436,7 +404,7 @@ function makeProposal(
     rationale: fields.rationale ?? "Auto-generated by semantic evaluation.",
     status: "pending",
     targetId: fields.targetId,
-    appendContent: fields.appendContent ?? fields.proposedType === "currentArcUpdate",
+    appendContent: fields.appendContent,
     memoryMode: fields.memoryMode,
     brainUpdateMode: fields.brainUpdateMode,
     requiresReview: fields.requiresReview,
@@ -445,7 +413,7 @@ function makeProposal(
   };
 }
 
-function localComponentValidation(component: Adventure["components"][number] | undefined, kind: "plotEssentials" | "activePressure" | "currentArc", content: string) {
+function localComponentValidation(component: Adventure["components"][number] | undefined, kind: "plotEssentials" | "activePressure", content: string) {
   if (!component || component.type !== kind || !component.active) return { changed: false, error: "No eligible existing component.", retryable: false };
   if (!content.trim() || /^(NONE|NO_CHANGE)$/i.test(content.trim()) || factsCovered(content, [component.content])) return { changed: false, retryable: false };
   const error = memoryUpdateShapeError(kind, content);
@@ -659,26 +627,6 @@ ${defaultBrainPrompt(brain, adventure.activeState.turn, brainBatch)}`
 
     if (triggerAction.type === "updateComponentPressure") return { actions: [] };
 
-    if (triggerAction.type === "updateComponentArc") {
-      const arcComp = adventure.components.find((c) => c.id === triggerAction.componentId && c.type === "currentArc");
-      if (!arcComp) return { actions: [], error: `Current Arc component not found: ${triggerAction.componentId}` };
-      const content = await targeted(arcUpdatePrompt(arcComp));
-      if (!content.trim() || content.trim() === "NONE") return { actions: [] };
-      if (independent || validationPolicy === "local") {
-        const validation = validationPolicy === "local" ? localComponentValidation(arcComp, "currentArc", content) : await validateMemoryUpdate(adventure, providerConfig, "currentArc", arcComp.title, arcComp.content, content, accum, false, false, undefined, memo ? memo.validationCache ??= {} : undefined);
-        if (!validation.changed) return { actions: [], error: validation.retryable ? validation.error : undefined, rejected: validation.error };
-      }
-      const proposal = makeProposal(
-        { proposedType: "currentArcUpdate", title: arcComp.title, content, targetId: arcComp.id, rationale: "Arc event logged." },
-        adventure,
-      );
-      const actions: AdventureAction[] = [{ type: "ADD_MEMORY_PROPOSAL", proposal: bindLocalProposal(proposal) }];
-      actions.push({ type: "MARK_COMPONENT_UPDATED", componentId: arcComp.id, turn: adventure.activeState.turn });
-      return {
-        actions,
-        generated: { targetType: "component", targetId: arcComp.id, title: arcComp.title, preview: preview(content) },
-      };
-    }
 
     return { actions: [] };
   } catch (error) {
@@ -736,7 +684,7 @@ export async function runSemanticPostTurnEvaluation(
         : undefined;
     const triggerActions = condition.actionFactory(adventure);
     for (const triggerAction of triggerActions) {
-      if (["updateComponent", "updateComponentPressure", "updateComponentArc"].includes(triggerAction.type)) {
+      if (["updateComponent", "updateComponentPressure"].includes(triggerAction.type)) {
         actionsExecuted.push(`${condition.label}: automatic Plot Component memory updates are disabled`);
         continue;
       }
@@ -1437,7 +1385,7 @@ function discoverReconcileTargets(adventure: Adventure, request: MemoryReconcile
 
   for (const component of adventure.components) {
     if (!component.active) continue;
-    if (!["plotEssentials", "currentArc"].includes(component.type)) continue;
+    if (!["plotEssentials"].includes(component.type)) continue;
     const matched = matchedReconcileTerms(`${component.title}\n${component.content}`, strongTerms);
     const alwaysCurrent = component.type === "plotEssentials";
     if (!matched.length && !alwaysCurrent) continue;
@@ -1515,7 +1463,6 @@ function proposedTypeForReconcileTarget(target: ReconcileTarget): MemoryProposal
   if (target.targetType === "storyCard") return "storyCard";
   if (target.targetType === "brain") return "brainUpdate";
   if (target.subtype === "plotEssentials") return "plotEssentialsUpdate";
-  if (target.subtype === "currentArc") return "currentArcUpdate";
   return undefined;
 }
 
@@ -1695,7 +1642,7 @@ ${recent}`;
         rationale: update.rationale ?? parsed.rationale ?? `Reconciled ${target.title} from recent entries and directive.`,
         status: "pending",
         targetId: separateLore ? undefined : target.id,
-        appendContent: proposedType === "currentArcUpdate" || proposedType === "storyCard" ? true : false,
+        appendContent: proposedType === "storyCard" ? true : false,
         memoryMode: validMemoryMode(update.memoryMode),
         storyCardType,
         storyCardPatch: !separateLore && storyCardPatch && Object.keys(storyCardPatch).length > 0 ? storyCardPatch : undefined,
@@ -1908,13 +1855,12 @@ export async function runManualPEComponentUpdate(
     errors: [],
   };
 
-  if (!component || (component.type !== "plotEssentials" && component.type !== "currentArc")) {
+  if (!component || component.type !== "plotEssentials") {
     const errorLog = { ...emptyLog, errors: [`Component not found or wrong type: ${componentId}`] };
     return { actions: [{ type: "LOG_EVALUATION_RESULT", entry: errorLog }], logEntry: errorLog };
   }
 
-  const triggerAction = component.type === "currentArc" ? { type: "updateComponentArc" as const, componentId }
-    : { type: "updateComponent" as const, componentId };
+  const triggerAction = { type: "updateComponent" as const, componentId };
 
   const forcePropose = {
     ...adventure,

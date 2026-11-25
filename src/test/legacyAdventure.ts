@@ -13,7 +13,7 @@ export function legacyAdventure(): LegacyAdventureInput {
       { id: "source", role: "assistant", content: "The observatory opened. Mira promised to guard it.", createdAt: a.createdAt },
       { id: "reply", role: "user", content: "I enter the observatory.", createdAt: a.createdAt },
     ],
-    components: [makeComponent({ id: "arc", type: "currentArc", title: "Current Arc", content: "The observatory opened." })],
+    components: [makeComponent({ id: "arc", type: "plotEssentials", title: "Plot Essentials", content: "The observatory opened." })],
     storyCards: [makeStoryCard({ id: "lore", type: "lore", title: "The Observatory", content: "The observatory stands on a hill.", keys: ["observatory"] })],
     brains: [makeBrain({ id: "mira", characterName: "Mira", currentState: "I will guard the observatory.", updateMode: "append" })],
     memoryAutoApprove: { storyCard: true, characterStoryCard: false, otherStoryCard: true, loreStoryCard: true, brainUpdate: true, currentArcUpdate: false, summaryUpdate: true },

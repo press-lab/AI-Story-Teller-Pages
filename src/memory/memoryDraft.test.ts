@@ -149,7 +149,7 @@ describe("explicit memory drafting context", () => {
     expect(draftPreview(adventure, request).estimatedTokens).toBeGreaterThan(0);
     expect(() => draftMessages(adventure, { ...request, action: "suggest" })).toThrow("Use a written brief");
   });
-  it.each<DraftComponentType>(["narrationRules", "aiInstructions", "plotEssentials", "currentArc", "custom"])("sends repeated-context safeguards to the model for %s suggestions", async componentType => {
+  it.each<DraftComponentType>(["narrationRules", "aiInstructions", "plotEssentials", "custom"])("sends repeated-context safeguards to the model for %s suggestions", async componentType => {
     const { adventure, request } = fixture();
     adventure.components = [];
     request.componentType = componentType;
@@ -166,7 +166,6 @@ describe("explicit memory drafting context", () => {
     if (componentType === "plotEssentials") expect(system).toContain(PLOT_ESSENTIALS_BEST_PRACTICES);
     if (componentType === "aiInstructions") expect(system).toContain(AI_INSTRUCTIONS_BEST_PRACTICES);
     if (componentType === "narrationRules") expect(system).toContain(NARRATION_RULES_BEST_PRACTICES);
-    if (componentType === "currentArc") expect(system).toContain("Preserve the existing Arc Director configuration and phase");
   });
   it("keeps component-specific repeated-context restrictions out of Story Card drafting", () => {
     const { adventure, request } = fixture();
@@ -195,7 +194,7 @@ describe("explicit memory drafting context", () => {
 });
 
 describe("manual authoring approval", () => {
-  it.each<DraftComponentType>(["narrationRules", "aiInstructions", "plotEssentials", "currentArc", "custom"])("creates and approves %s without automatic permission", async componentType => {
+  it.each<DraftComponentType>(["narrationRules", "aiInstructions", "plotEssentials", "custom"])("creates and approves %s without automatic permission", async componentType => {
     const { adventure, request } = fixture(); adventure.components = [];
     request.componentType = componentType;
     const proposal = await draft(adventure, request);
@@ -237,17 +236,6 @@ describe("manual authoring approval", () => {
     expect(result.activeState.memoryProposals[0].approvalFeedback).toContain("destination changed");
     result.components = result.components.filter(c => c.id !== component.id);
     expect(adventureReducer(result, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id }).components).toEqual(result.components);
-  });
-  it("preserves Current Arc phase, authored controls and source history on replacement", async () => {
-    const { adventure, request } = fixture();
-    const arc = makeComponent({ type: "currentArc", title: "Research", content: "Old arc text", arcPremise: "Study wards", protected: true,
-      arcBreakInstruction: "The lab is lost", arcState: { phase: "break", tier: 2, threadEngagement: {}, pendingBreak: false } });
-    adventure.components.push(arc); request.componentType = "currentArc"; request.targetId = arc.id;
-    const proposal = await draft(adventure, request);
-    const approved = adventureReducer(insert(adventure, proposal), { type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id });
-    expect(approved.components.find(c => c.id === arc.id)).toMatchObject({ arcState: arc.arcState, arcPremise: arc.arcPremise, protected: true, arcBreakInstruction: arc.arcBreakInstruction });
-    expect(approved.components.find(c => c.id === arc.id)?.lastMemoryUpdatedAt).toBeTruthy();
-    expect(approved.components.find(c => c.id === arc.id)?.content).toBe(proposal.content);
   });
   it("survives JSON save normalization and guards destination selection", async () => {
     const { adventure, request } = fixture();

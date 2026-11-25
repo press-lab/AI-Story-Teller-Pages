@@ -147,7 +147,6 @@ describe("buildContext", () => {
       "system",
       "aiInstructions",
       "plotEssentials",
-      "currentArc",
       "components",
       "storyCards",
       "brains",
@@ -162,7 +161,6 @@ describe("buildContext", () => {
     expect(itemTitles(adventureForContext(), "components")).toEqual(["Always", "Pinned"]);
     expect(itemTitles(adventureForContext(), "storyCards")).toEqual(["Keyed Story"]);
     expect(itemTitles(adventureForContext(), "brains")).toEqual(["Mira"]);
-    expect(itemTitles(adventureForContext(), "currentArc")).toEqual([]);
     expect(itemTitles(adventureForContext(), "nextTurnNote")).toEqual([]);
     expect(itemTitles(adventureForContext(), "recentMessages")).toEqual(["assistant message 1", "user message 2"]);
   });
@@ -697,7 +695,7 @@ describe("buildContext", () => {
     // adventureForContext has no aiInstructions/plotEssentials/authorNote/sceneState content
     const result = buildContext(adventureForContext(), { currentInput: "lantern" });
     // All section IDs always present in result.sections
-    expect(result.sections.map((s) => s.id)).toHaveLength(10);
+    expect(result.sections.map((s) => s.id)).toHaveLength(9);
     // Empty typed sections do not appear in the system payload
     const payload = result.messages[0].content;
     expect(payload).not.toContain("# B. AI Instructions");
@@ -718,7 +716,6 @@ describe("buildContext", () => {
       "system",
       "aiInstructions",
       "plotEssentials",
-      "currentArc",
       "components",
       "storyCards",
       "brains",
@@ -773,29 +770,6 @@ describe("buildContext", () => {
     // Single-item sections render content directly under the section header (no ## sub-header)
     expect(result.messages[0].content).toContain("# E. Components");
     expect(result.messages[0].content).toContain("Rain makes the city smell like iron.");
-  });
-
-  it("withholds the arc break instruction from context until the phase reaches break", () => {
-    const arc = {
-      ...makeComponent({ title: "Current Story Arc", type: "currentArc", content: "The Red Ring tightens its grip.", active: true, priority: 50 }),
-      arcThreadKeys: ["baddie"],
-      arcSimmerInstruction: "Shroud stays off-screen, glimpses only.",
-      arcBreakInstruction: "Shroud forces the confrontation; allies can die.",
-      arcState: { phase: "simmer" as const, tier: 0, threadEngagement: {}, pendingBreak: false },
-    };
-    const adventure: Adventure = { ...createDefaultAdventure("Arc Gate"), components: [arc] };
-    const arcText = (a: Adventure) =>
-      buildContext(a, {}).sections.find((section) => section.id === "currentArc")?.items.map((item) => item.content).join("\n") ?? "";
-
-    // Simmering: the simmer instruction is present and the break (cost) instruction is absent.
-    const simmering = arcText(adventure);
-    expect(simmering).toContain("stays off-screen");
-    expect(simmering).not.toContain("forces the confrontation");
-
-    // Broken: the break instruction is now injected; the simmer instruction is gone.
-    const broken = arcText({ ...adventure, components: [{ ...arc, arcState: { ...arc.arcState, phase: "break" } }] });
-    expect(broken).toContain("forces the confrontation");
-    expect(broken).not.toContain("stays off-screen");
   });
 
   it("injects a brain's thought log only — never the legacy unbounded state fields", () => {
@@ -929,7 +903,7 @@ describe("one-hop chained Story Cards", () => {
     expect(JSON.stringify(adventure)).toBe(before);
   });
 
-  it.each(["narrationRules", "aiInstructions", "plotEssentials", "currentArc", "custom"] as const)("uses included %s rendered content", type => {
+  it.each(["narrationRules", "aiInstructions", "plotEssentials", "custom"] as const)("uses included %s rendered content", type => {
     const adventure = fixture();
     adventure.components = [makeComponent({ id: "source", type, title: "Plot Essentials", content: "Fenchurch is a magical bird.", alwaysOn: true })];
     const result = build(adventure, "Wait.");
@@ -960,7 +934,6 @@ describe("one-hop chained Story Cards", () => {
       makeComponent({ title: "Fenchurch", content: "Nothing relevant", alwaysOn: true }),
     ];
     adventure.activeState.nextTurnNote = { ...adventure.activeState.nextTurnNote, active: true, content: "Fenchurch" };
-    expect(cards(build(adventure, "Wait."))).toEqual([]);
   });
 
   it.each([
@@ -1073,10 +1046,8 @@ describe("one-hop chained Story Cards", () => {
     }
   });
 
-  it("scans gated arc content and bounded Lore excerpts rather than hidden saved content", () => {
+  it("scans bounded Lore excerpts rather than hidden saved content", () => {
     const adventure = fixture();
-    adventure.components = [makeComponent({ title: "Arc", type: "currentArc", content: "Wait.", arcSimmerInstruction: "Stay quiet.", arcBreakInstruction: "Fenchurch" })];
-    expect(cards(build(adventure, "Wait."))).toEqual([]);
     adventure.components = [];
     adventure.storyCards[0].type = "lore";
     adventure.storyCards[0].tokenBudget = 15;

@@ -25,25 +25,6 @@ describe("development adventure seed", () => {
     );
   });
 
-  it("ships a configured Arc Director on the Current Story Arc", () => {
-    const adventure = createDevelopmentAdventure();
-    const arc = adventure.components.find((component) => component.type === "currentArc");
-
-    expect(arc).toBeDefined();
-    expect(arc?.arcThreadKeys?.length).toBeGreaterThan(0);
-    expect(arc?.arcPace).toBe("epic");
-    expect(arc?.arcTriggerMode).toBe("ask");
-    expect(arc?.arcSimmerInstruction).toBeTruthy();
-    expect(arc?.arcBreakInstruction).toBeTruthy();
-    // Starts simmering (slow burn). The break (cost) instruction stays withheld from
-    // context until the phase actually reaches break.
-    expect(arc?.arcState?.phase).toBe("simmer");
-    const result = buildContext(adventure, { currentInput: "Setu reports to the palace." });
-    const arcText = result.sections.find((section) => section.id === "currentArc")?.items.map((item) => item.content).join("\n") ?? "";
-    expect(arcText).not.toContain(arc?.arcBreakInstruction ?? "NO BREAK");
-    expect(arcText).toContain(arc?.arcSimmerInstruction ?? "NO SIMMER");
-  });
-
   it("builds inspectable context with triggered cards, brains, and summary", () => {
     const adventure = createDevelopmentAdventure();
     const result = buildContext(adventure, {
@@ -56,7 +37,6 @@ describe("development adventure seed", () => {
       "system",
       "aiInstructions",
       "plotEssentials",
-      "currentArc",
       "components",
       "storyCards",
       "brains",

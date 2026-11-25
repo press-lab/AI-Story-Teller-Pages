@@ -119,7 +119,7 @@ export interface MemoryGroupWork {
 }
 export type MemoryPipelineMode = "singlePass" | "legacy";
 export interface SinglePassMemoryFinding {
-  kind: "storyCard" | "brain" | "plotEssentials" | "activePressure" | "currentArc" | "immediateMomentum";
+  kind: "storyCard" | "brain" | "plotEssentials" | "activePressure" | "immediateMomentum";
   targetId: string | null;
   title: string;
   content?: string;
@@ -233,7 +233,7 @@ export type ComponentType =
   | "narrationRules"
   | "aiInstructions"
   | "plotEssentials"
-  | "currentArc"
+
   | "activePressure"
   | "immediateMomentum"
   | "authorNote"
@@ -242,36 +242,6 @@ export type ComponentType =
 
 export type MemoryUpdateOperation = "create" | "replace" | "append" | "patch";
 export type MemoryUpdateSource = "aiMemoryUpdate" | "memoryProposal";
-
-/** Arc Director runtime state — lives on a `currentArc` component. Deterministic; never set by an LLM. */
-export type ArcPhase = "simmer" | "escalate" | "break" | "aftermath";
-
-export interface ArcPacingState {
-  phase: ArcPhase;
-  /** Display tier 0–5, derived from total engagement vs the break threshold. */
-  tier: number;
-  /** Per-thread engagement counts, keyed by Story Card / Brain id. Incremented when a thread triggers in-scene. */
-  threadEngagement: Record<string, number>;
-  /** Ask-mode: the break gate has opened and is awaiting the player's confirmation. */
-  pendingBreak: boolean;
-  /** Turn the arc entered the break phase, used to time the transition to aftermath. */
-  brokeAtTurn?: number;
-}
-
-export type ArcPace = "short" | "medium" | "long" | "epic";
-export type ArcTriggerMode = "auto" | "ask";
-
-/** A generated "where the story goes next" direction, offered when an arc resolves. */
-export interface ArcContinuationOption {
-  /** Short button label, e.g. "Azula takes the Society". */
-  label: string;
-  premise: string;
-  /** Story Card / Brain ids carried forward as the next arc's threads. */
-  threadKeys: string[];
-  simmerInstruction: string;
-  breakInstruction: string;
-  pace: ArcPace;
-}
 
 export interface MemoryUpdateSnapshot {
   title: string;
@@ -290,11 +260,6 @@ export interface MemoryUpdateSnapshot {
   recentDevelopments?: string[];
   sourceTurnIds?: string[];
   archivedFacts?: string;
-  arcPremise?: string;
-  arcThreadKeys?: string[];
-  arcSimmerInstruction?: string;
-  arcBreakInstruction?: string;
-  arcPhase?: ArcPhase;
 }
 
 export interface MemoryUpdateHistoryEntry {
@@ -313,24 +278,6 @@ export interface ComponentEntry {
   title: string;
   type: ComponentType;
   content: string;
-  /** Current Story Arc only — the one-line premise seeding this arc's auto-update filter. */
-  arcPremise?: string;
-  /** Arc Director (currentArc only) — Story Card / Brain ids that are this arc's "baddie" threads. */
-  arcThreadKeys?: string[];
-  /** Arc Director — how long the arc simmers before it can break. */
-  arcPace?: ArcPace;
-  /** Arc Director — who springs the break: the AI (auto) or the player via a prompt (ask). */
-  arcTriggerMode?: ArcTriggerMode;
-  /** Arc Director — instruction injected while simmering/escalating (recur, hint, stay off-screen). */
-  arcSimmerInstruction?: string;
-  /** Arc Director — the cost policy, injected only once the arc reaches the break phase. */
-  arcBreakInstruction?: string;
-  /** Arc Director — deterministic pacing state. */
-  arcState?: ArcPacingState;
-  /** Arc Director — generated next-arc directions, offered once this arc reaches aftermath. */
-  arcContinuationOptions?: ArcContinuationOption[];
-  /** Arc Director — when true, the Director silently picks and seeds the next arc at aftermath (no chooser, no spoiler). */
-  arcAutoContinue?: boolean;
   priority: number;
   alwaysOn: boolean;
   active: boolean;
@@ -507,7 +454,6 @@ export type TriggerAction =
   | { type: "updateComponent"; componentId: string; patch?: Partial<ComponentEntry> }
   | { type: "updateComponentPressure"; componentId: string }
   | { type: "updateComponentMomentum"; componentId: string }
-  | { type: "updateComponentArc"; componentId: string }
   | { type: "activateStoryCard"; storyCardId: string }
   | { type: "deactivateStoryCard"; storyCardId: string }
   | { type: "pinStoryCard"; storyCardId: string }
@@ -702,8 +648,6 @@ export type MemoryProposalType =
   | "storyCard"
   | "brainUpdate"
   | "plotEssentialsUpdate"
-  | "currentArcUpdate"
-  | "arcProposal"
   | "plotPressureUpdate"
   | "plotMomentumUpdate"
   | "ignore";
@@ -795,7 +739,7 @@ export interface MemoryReconcileRequest {
   includeBrains: boolean;
 }
 
-export type DraftComponentType = "narrationRules" | "aiInstructions" | "plotEssentials" | "currentArc" | "custom";
+export type DraftComponentType = "narrationRules" | "aiInstructions" | "plotEssentials" | "custom";
 
 export interface MemoryDraftContext {
   components: "none" | "all" | "selected";
@@ -1029,8 +973,6 @@ export interface Adventure {
 export interface MemoryAutoApproveSettings {
   plotEssentialsUpdate: boolean;
   plotPressureUpdate: boolean;
-  currentArcUpdate: boolean;
-  arcProposal: boolean;
   brainUpdate: boolean;
   loreStoryCard: boolean;
   relationshipStoryCard: boolean;
@@ -1079,7 +1021,6 @@ export type ContextSectionKind =
   | "system"          // A. System Shell
   | "aiInstructions"  // B. AI Instructions components
   | "plotEssentials"  // C. Plot Essentials components
-  | "currentArc"      // C2. Current Story Arc — active arc log with premise
   | "components"      // E. General always-on / pinned components
   | "storyCards"      // F. Story Cards + Auto-Cards (triggered / pinned)
   | "brains"          // G. Brain entries
@@ -1147,7 +1088,7 @@ export interface ContextBuildResult {
   totalEstimatedTokens: number;
   excludedItems: ExcludedContextItem[];
   decisions: ContextBuildDecision[];
-  /** Story Card / Brain ids whose trigger patterns matched current turn text. Used for deterministic arc pacing. */
+  /** Story Card / Brain ids whose trigger patterns matched current turn text. */
   triggeredThreadIds: string[];
   /** Pending Memory Proposals — not in model context; shown in preview for user review. */
   pendingProposals: MemoryProposal[];
@@ -1221,11 +1162,6 @@ export type AdventureAction =
   | { type: "APPLY_STORY_CARD_UPDATE"; storyCardId: string; content?: string; patch?: Partial<Pick<StoryCard, "keys" | "state">> }
   | { type: "MARK_STORY_CARD_UPDATED"; storyCardId: string; turn: number; proposalId?: string }
   | { type: "MARK_COMPONENT_UPDATED"; componentId: string; turn: number }
-  | { type: "ADVANCE_ARC_PACING"; triggeredIds: string[]; turn: number }
-  | { type: "SET_ARC_PHASE"; componentId: string; phase: ArcPhase; turn?: number }
-  | { type: "SET_ARC_CONTINUATIONS"; componentId: string; options: ArcContinuationOption[] }
-  | { type: "COMPLETE_ARC_TO_STORY_CARD"; componentId: string }
-  | { type: "APPLY_ARC_CONTINUATION"; componentId: string; option: ArcContinuationOption }
   | { type: "REORDER_STORY_CARD"; storyCardId: string; direction: "up" | "down" }
   | { type: "UPSERT_BRAIN"; brain: BrainEntry }
   | { type: "REORDER_BRAIN"; brainId: string; direction: "up" | "down"; neighborId?: string }

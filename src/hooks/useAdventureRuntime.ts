@@ -19,7 +19,7 @@ import { saveAdventure } from "../db/adventureDb";
 import { scanEventMemories } from "../memory/eventMemoryScan";
 import { regenerateProposalContent } from "../memory/memoryDetection";
 import { memoryCycleSources, singlePassCycleSources } from "../memory/memoryCycleState";
-import { generateArcContinuations, generateArcDirector, generateArcFromHistory, generateBrainFromName as generateBrainEntry, generateComponentContent, pickConvergentContinuation } from "../ai/generators";
+import { generateBrainFromName as generateBrainEntry, generateComponentContent } from "../ai/generators";
 import { PLOT_ESSENTIALS_BEST_PRACTICES } from "../ai/authoringBestPractices";
 import { runStoryCardAudit, type AuditRecommendation } from "../memory/storyCardAudit";
 import { runComponentAudit, type ComponentAuditRecommendation } from "../memory/componentAudit";
@@ -190,7 +190,6 @@ export function useAdventureRuntime(
   const memorySessionDemandRef = useRef(new Set<string>());
   const isSubmittingRef = useRef(false);
   const semanticInFlight = useRef(new Set<string>());
-  const arcInFlight = useRef(new Set<string>());
   const apiActionsRef = useRef<AdventureAction[]>([]);
   const queuedUpdatesRef = useRef<PendingAdventureUpdate[]>([]);
   const wasHiddenRef = useRef(false);
@@ -627,7 +626,7 @@ export function useAdventureRuntime(
     if (ids.length) await evaluateMemorySources(ids.slice(0, 10));
   }
 
-  async function startPostTurnWork(snapshot: Adventure, includeArcContinuation = true) {
+  async function startPostTurnWork(snapshot: Adventure) {
     clearTimeout(assessmentIdleTimerRef.current);
     assessmentIdleTimerRef.current = undefined;
     const epoch = memoryEpochRef.current;
@@ -636,7 +635,6 @@ export function useAdventureRuntime(
     if (epoch !== memoryEpochRef.current || adventureRef.current?.id !== snapshot.id) return;
     const latest = adventureRef.current;
     void startSemanticEvaluation(latest);
-    if (includeArcContinuation) void checkArcContinuation(latest);
   }
 
   async function startSemanticEvaluation(snapshot: Adventure) {
@@ -677,37 +675,6 @@ export function useAdventureRuntime(
     } catch (error) { setError(error instanceof Error ? error.message : "Correct the model context settings."); }
   }, [adventure, providerSettings, globalMemorySettings, setContextResult]);
 
-  // When an arc reaches aftermath, draft next-arc directions once so the player can pick
-  // where the story goes next without architecting it. Gated by arcContinuationOptions
-  // being undefined so it runs a single time per resolution.
-  async function checkArcContinuation(snapshot: Adventure) {
-    const arc = snapshot.components.find(
-      (c) =>
-        c.type === "currentArc" &&
-        c.arcState?.phase === "aftermath" &&
-        c.arcContinuationOptions === undefined &&
-        (c.arcThreadKeys?.length ?? 0) > 0,
-    );
-    if (!arc || arcInFlight.current.has(snapshot.id)) return;
-    arcInFlight.current.add(snapshot.id);
-    try {
-      const options = await generateArcContinuations(snapshot, activeProviderConfig, arc);
-      if (adventureRef.current?.id !== snapshot.id) return;
-      if (arc.arcAutoContinue) {
-        // Silent auto-continue: the Director picks the most convergent direction and seeds it
-        // itself — no chooser, no spoiler. The new threat surfaces through play.
-        const pick = pickConvergentContinuation(options, arc.arcState?.threadEngagement ?? {});
-        if (pick) applyActionsAndPersist([{ type: "APPLY_ARC_CONTINUATION", componentId: arc.id, option: pick }]);
-        else applyActionsAndPersist([{ type: "SET_ARC_CONTINUATIONS", componentId: arc.id, options: [] }]);
-      } else {
-        applyActionsAndPersist([{ type: "SET_ARC_CONTINUATIONS", componentId: arc.id, options }]);
-      }
-    } catch {
-      // non-fatal — options stay ungenerated and we retry next turn
-    } finally {
-      arcInFlight.current.delete(snapshot.id);
-    }
-  }
 
   async function submitTurn(text: string, mode: InputMode = "story"): Promise<boolean> {
     if (!adventure || loading || isSubmittingRef.current) return false;
@@ -885,7 +852,6 @@ export function useAdventureRuntime(
         providerConfig: regenConfig,
         preProviderContext: context,
         incrementTurn: false,
-        advanceArcPacing: false,
       });
       next = applied.adventure;
       next = mergeQueuedUpdates(next, historyBaseline);
@@ -895,7 +861,7 @@ export function useAdventureRuntime(
       setSaveStatus("saved");
       isNarratingRef.current = false;
       adventureRef.current = next;
-      void startPostTurnWork(next, false);
+      void startPostTurnWork(next);
     } catch (providerError) {
       setError(providerError instanceof Error ? providerError.message : "Regeneration failed.");
       const failed = publishHistorySnapshot(mergeQueuedUpdates(adventure));
@@ -1080,71 +1046,6 @@ Respond with ONLY the new content — no preamble, no labels, no explanation.`;
     return generateComponentContent(adventure, activeProviderConfig, component);
   }
 
-  /** Generate an Arc Director setup from a concept and apply it to the Current Arc component. */
-  async function generateArc(componentId: string, concept: string): Promise<void> {
-    if (!adventure || loading) return;
-    setLoading(true);
-    setError(undefined);
-    try {
-      const arc = await generateArcDirector(adventure, activeProviderConfig, concept);
-      applyActionsAndPersist([{ type: "UPDATE_COMPONENT", componentId, patch: arc }]);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Arc generation failed.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  /**
-   * Read recent play and draft an arc, dropping it into the Memory Inbox for approval (does not
-   * apply it). For a story that's gone stale in aftermath and wants a new direction.
-   */
-  async function proposeArcFromHistory(componentId: string): Promise<void> {
-    if (!adventure || loading) return;
-    setLoading(true);
-    setError(undefined);
-    try {
-      const arc = await generateArcFromHistory(adventure, activeProviderConfig);
-      const timestamp = nowIso();
-      applyActionsAndPersist([
-        {
-          type: "ADD_MEMORY_PROPOSAL",
-          proposal: {
-            id: createId("proposal"),
-            sourceTurnId: adventure.messages.at(-1)?.id ?? "manual",
-            sourceText: "Arc suggested from recent play.",
-            proposedType: "arcProposal",
-            title: arc.label,
-            content: JSON.stringify(
-              {
-                arcPremise: arc.arcPremise,
-                arcSimmerInstruction: arc.arcSimmerInstruction,
-                arcBreakInstruction: arc.arcBreakInstruction,
-                arcPace: arc.arcPace,
-                arcTriggerMode: arc.arcTriggerMode,
-                arcThreadKeys: arc.arcThreadKeys,
-              },
-              null,
-              2,
-            ),
-            suggestedTriggers: [],
-            confidence: 0.7,
-            rationale: arc.rationale,
-            status: "pending",
-            targetId: componentId,
-            createdAt: timestamp,
-            updatedAt: timestamp,
-          },
-        },
-      ]);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Arc suggestion failed.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  /** Generate a character Brain from just a name and add it to the adventure. */
   async function generateBrainFromName(name: string): Promise<void> {
     if (!adventure || loading) return;
     setLoading(true);
@@ -1187,8 +1088,6 @@ Respond with ONLY the new content — no preamble, no labels, no explanation.`;
     evaluateMemorySources,
     regeneratePlotEssentials,
     generateComponent,
-    generateArc,
-    proposeArcFromHistory,
     generateBrainFromName,
     applyActionsAndPersist,
   };

@@ -12,7 +12,6 @@ import { MemoryInboxPage } from "./MemoryInboxPage";
 
 const controls = [
   ["Plot Essentials", "plotEssentialsUpdate"],
-  ["Current Arc", "currentArcUpdate"], ["Arc Proposals", "arcProposal"],
   ["Story Cards — Lore", "loreStoryCard"], ["Story Cards — Relationships", "relationshipStoryCard"], ["Story Cards — Everything Else", "otherStoryCard"], ["Character Self", "brainUpdate"],
 ] as const;
 beforeEach(() => {
@@ -60,7 +59,7 @@ it("drops obsolete global approval preferences without changing the background p
   expect(JSON.parse(localStorage.getItem(key)!)).not.toHaveProperty("memoryAutoApprove");
 });
 
-it("keeps seven approval controls in a collapsed section when there are no suggestions", async () => {
+it("keeps five approval controls in a collapsed section when there are no suggestions", async () => {
   render(<MemoryInboxPage adventure={approvalAdventure()} dispatch={() => undefined} />);
   const summary = screen.getByText("Auto-approval — This adventure", { selector: "summary" });
   expect(summary.closest("details")).not.toHaveAttribute("open");
@@ -68,7 +67,7 @@ it("keeps seven approval controls in a collapsed section when there are no sugge
   await userEvent.setup().click(summary);
   const panel = screen.getByRole("region", { name: "Auto-approval — This adventure" });
   const checkboxes = [...panel.querySelectorAll('input[type="checkbox"]')];
-  expect(checkboxes).toHaveLength(7);
+  expect(checkboxes).toHaveLength(5);
   expect(checkboxes.slice(-3)).toEqual(
     ["Story Cards — Lore", "Story Cards — Relationships", "Story Cards — Everything Else"].map(label => screen.getByLabelText(label)),
   );
@@ -156,7 +155,7 @@ it("offers a missing destination fallback and blocks Lore CREATE with a duplicat
 });
 
 it("reports structural errors without changing memory", async () => {
-  const a = approvalAdventure(); a.activeState.memoryProposals = [approvalProposal("arcProposal", { content: '{"arcPremise": 3}' })];
+  const a = approvalAdventure(); a.activeState.memoryProposals = [approvalProposal("brainUpdate", { content: '{"unknownField": true}' })];
   render(<ManualReview initial={a} />);
   await userEvent.setup().click(screen.getByRole("button", { name: "Approve" }));
   expect(screen.getByText(/Unable to apply — invalid structured memory content/, { selector: "p" })).toBeVisible();

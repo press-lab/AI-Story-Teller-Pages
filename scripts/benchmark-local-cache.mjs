@@ -5,8 +5,8 @@ const model = process.argv[3] ?? 'aist-qwen';
 const endpoint = base.toString().replace(/\/+$/, '') + '/chat/completions';
 const headers = { 'Content-Type': 'application/json', ...(process.env.AIST_LOCAL_API_KEY ? { Authorization: `Bearer ${process.env.AIST_LOCAL_API_KEY}` } : {}) };
 const rules = Array.from({ length: 96 }, (_, i) => `Rule ${i + 1}: retain established facts and preserve the exact order of supplied evidence.`).join('\n');
-function prompt({ clock = '2001-01-01', arc = 'Find the bridge.', card = 'The gate is blue.', history = ['I arrive.', 'The guard waits.'] } = {}) {
-  return [{ role: 'system', content: `Synthetic cache benchmark. Current story date: ${clock}.\n# AI Instructions\n${rules}\n# Plot Essentials\nExplore the town.\n# Current Arc\n${arc}\n# Story Cards\n${card}\n# Author Note\nReply with only OK.` },
+function prompt({ clock = '2001-01-01', card = 'The gate is blue.', history = ['I arrive.', 'The guard waits.'] } = {}) {
+  return [{ role: 'system', content: `Synthetic cache benchmark. Current story date: ${clock}.\n# AI Instructions\n${rules}\n# Plot Essentials\nExplore the town.\n# Story Cards\n${card}\n# Author Note\nReply with only OK.` },
     ...history.map((content, index) => ({ role: index % 2 ? 'assistant' : 'user', content })), { role: 'user', content: 'Reply with only OK.' }];
 }
 const rows = [];
@@ -36,8 +36,8 @@ const history = ['I arrive.', 'The guard waits.', 'I ask about the bridge.', 'Th
 await run('appended exchange', prompt({ history }), true);
 await run('oldest exchange removed', prompt({ history: history.slice(2) }), true);
 await run('card changed', prompt({ history: history.slice(2), card: 'The gate is green.' }), true);
-await run('arc changed', prompt({ history: history.slice(2), arc: 'Cross the bridge.', card: 'The gate is green.' }), true);
-const final = prompt({ clock: '2001-01-02', history: history.slice(2), arc: 'Cross the bridge.', card: 'The gate is green.' });
+await run('card changed', prompt({ history: history.slice(2), card: 'The gate is green.' }), true);
+const final = prompt({ clock: '2001-01-02', history: history.slice(2), card: 'The gate is green.' });
 await run('clock changed', final, true);
 await run('background task', [{ role: 'system', content: 'Synthetic memory test. No facts. Reply OK.' }, { role: 'user', content: 'Reply OK.' }], true);
 await run('narration after background', final, true);

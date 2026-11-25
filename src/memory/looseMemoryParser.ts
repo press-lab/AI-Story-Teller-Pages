@@ -27,7 +27,7 @@ type Label = Pick<LooseMemoryOperation, "category" | "subtype">;
 const key = (s: string) => s.toLowerCase().replace(/[\s._-]+/g, "");
 const brains = ["thoughts", "currentState", "relationshipPressure", "emotionalInterpretation", "recentDevelopments", "notes"];
 const cards = ["lore", "character", "location", "object", "relationship", "custom"];
-const components = ["plotEssentials", "currentArc", "activePressure", "immediateMomentum", "narrationRules", "aiInstructions", "authorNote", "memory", "custom"];
+const components = ["plotEssentials", "activePressure", "immediateMomentum", "narrationRules", "aiInstructions", "authorNote", "memory", "custom"];
 const aliases: Record<string, Label> = Object.create(null);
 function labels(names: string[], category: Label["category"], subtype: string) {
   for (const name of names) aliases[key(name)] = { category, subtype };

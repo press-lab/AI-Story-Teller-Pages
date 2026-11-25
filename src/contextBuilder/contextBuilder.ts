@@ -31,7 +31,6 @@ const SYSTEM_SHELL = `You are the story engine for AI Story Teller. The context 
 CONTEXT SECTIONS (read all, honour their order):
   B. AI Instructions — narrative rules and style for this adventure.
   C. Plot Essentials — overarching premise, long-term conflict, and persistent story-wide constraints.
-  C2. Current Story Arc — active arc log and any gated Arc Director phase instruction.
   E. Components — general world-building context (always-on or pinned entries).
   F. Story Cards — World Info entries injected when their trigger keywords appear in recent text.
   G. Brains — internal mental state of named characters. Private to the narrator; never quote directly.
@@ -454,35 +453,9 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
     return [next];
   });
 
-  // C2. Current Story Arc — active arc log, always included when active and has content
-  const currentArcItems = prioritySort(adventure.components).flatMap((component) => {
-    if (component.type !== "currentArc") return [];
-    if (!component.active) {
-      logExcludedOnce(component.id, component.title, "inactive");
-      return [];
-    }
-    // Arc Director phase gate: the simmer instruction is injected while building;
-    // the break (cost) instruction is withheld from context entirely until the phase
-    // reaches "break", so the model cannot land the climax early on something it never sees.
-    const phase = component.arcState?.phase ?? "simmer";
-    const phaseDirection =
-      phase === "break"
-        ? component.arcBreakInstruction?.trim()
-        : phase === "simmer" || phase === "escalate"
-          ? component.arcSimmerInstruction?.trim()
-          : undefined;
-    if (!component.content.trim() && !component.arcPremise?.trim() && !phaseDirection) return [];
-    const premiseHeader = component.arcPremise?.trim() ? `[Arc Premise: ${component.arcPremise.trim()}]\n` : "";
-    const directionBlock = phaseDirection ? `\n\n[ARC DIRECTION — ${phase.toUpperCase()}]\n${phaseDirection}` : "";
-    const arcContent = premiseHeader + (component.content.trim() || "(no entries yet)") + directionBlock;
-    const next = item(component.id, "component", component.title, arcContent, component.priority, component.protected, component.pinned, component.active, component.inclusionPolicy, "user");
-    pushIncluded(next, `Current Story Arc loaded; priority=${component.priority}; arcPhase=${phase}.`);
-    return [next];
-  });
-
   // E. Components — general always-on or pinned components (not a special typed section above)
   const generalComponentItems = prioritySort(adventure.components).flatMap((component) => {
-    if (component.type === "narrationRules" || component.type === "aiInstructions" || component.type === "plotEssentials" || component.type === "currentArc" || component.type === "activePressure" || component.type === "immediateMomentum" || component.type === "authorNote") return [];
+    if (component.type === "narrationRules" || component.type === "aiInstructions" || component.type === "plotEssentials" || component.type === "activePressure" || component.type === "immediateMomentum" || component.type === "authorNote") return [];
     if (!component.active) {
       logExcludedOnce(component.id, component.title, "inactive");
       return [];
@@ -542,7 +515,7 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
     // thoughts are always the current, size-capped snapshot. The legacy currentState /
     // relationshipPressure / recentDevelopments fields are NOT injected: they have no editor field,
     // append unbounded, and ballooned context (a high-frequency character hit ~9KB). History lives
-    // in the thought archive and in arc-graduated story cards, not in an ever-growing state blob.
+    // in the thought archive, not in an ever-growing state blob.
     const thoughtsForContext = dedupeThoughtRecord(brain.thoughts);
     if (Object.keys(thoughtsForContext).length === 0) {
       pushExcluded("brain", brain.id, brain.characterName, "not_triggered", "Brain triggered but has no thoughts yet — nothing to inject.");
@@ -630,7 +603,6 @@ export function buildContext(adventure: Adventure, options: BuildOptions = {}): 
     systemSection,
     section("aiInstructions", "B. AI Instructions", 1, aiInstructionItems),
     section("plotEssentials", "C. Plot Essentials", 2, plotEssentialItems),
-    section("currentArc", "C2. Current Story Arc", 2.5, currentArcItems),
     section("components", "E. Components", 3, generalComponentItems),
     section("storyCards", "F. Story Cards", 4, storyCardItems),
     section("brains", "G. Brains", 5, brainItems),

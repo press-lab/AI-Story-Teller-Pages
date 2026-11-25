@@ -14,7 +14,7 @@ import { factsCovered, loreSubjectKey } from "./factCoverage";
 const normalize = (s: string) => s.normalize("NFKC").toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 const brainFields = ["thoughts", "currentState", "relationshipPressure", "emotionalInterpretation", "recentDevelopments", "notes"];
 const cardTypes: StoryCardType[] = ["lore", "character", "location", "object", "relationship", "custom"];
-const componentTypes: ComponentType[] = ["plotEssentials", "currentArc", "activePressure", "immediateMomentum", "narrationRules", "aiInstructions", "authorNote", "memory", "custom"];
+const componentTypes: ComponentType[] = ["plotEssentials", "activePressure", "immediateMomentum", "narrationRules", "aiInstructions", "authorNote", "memory", "custom"];
 type Source = Omit<PreparedSinglePassMemoryBatch["outputAliases"][string], "characters"> & { characters?: CharacterIdentity[] };
 export type LooseCategory = { category: "brain" | "storyCard" | "component"; subtype: string };
 export interface LooseDestination {
@@ -47,7 +47,7 @@ export function resolveLooseCategory(op: LooseMemoryOperation): Resolution<Loose
   const subtype = op.subtype ?? (op.category === "brain" ? "thoughts" : op.category === "storyCard" ? "lore" : "");
   const allowed = op.category === "brain" ? brainFields : op.category === "storyCard" ? cardTypes : componentTypes;
   if (!allowed.some(t => t === subtype)) return { error: "Unknown " + op.category + " subtype: " + subtype + "." };
-  if (op.category === "component" && !["plotEssentials", "currentArc", "activePressure", "immediateMomentum"].includes(subtype)) {
+  if (op.category === "component" && !["plotEssentials", "activePressure", "immediateMomentum"].includes(subtype)) {
     return { error: "Recognized component subtype; automatic memory routing is not permitted." };
   }
   return { value: { category: op.category, subtype } };
@@ -77,7 +77,7 @@ export function resolveLooseDestination(a: Adventure, source: Source, op: LooseM
       && Object.values(source.plot).some(entry => entry.id === c.id && entry.type === category.subtype));
     if (matches.length > 1) return { error: "Ambiguous component destination: multiple eligible titles and subtypes match." };
     if (!matches.length) return { error: "Ineligible component destination: missing, inactive, opted out, wrong subtype or outside source eligibility." };
-    return { value: { category, targetId: matches[0].id, operation: category.subtype === "currentArc" ? "append" : "replace" } };
+    return { value: { category, targetId: matches[0].id, operation: "replace" } };
   }
   if (category.subtype === "relationship") {
     const ids: string[] = [];

@@ -1,6 +1,6 @@
 # Active Pressure retirement and Library latency
 
-Active Pressure is retired across defaults, reload, context, both memory pipelines, manual tools, imports, audits, approvals, and built-in scenarios. Existing text remains in inactive legacy components with auto-update disabled. Pending old pressure proposals become ignored. Legacy type names remain readable. Story text, Story Cards, Brains, Plot Essentials, and Arc Director phases are not migrated into a replacement feature. Brain relationshipPressure remains supported.
+Active Pressure is retired across defaults, reload, context, both memory pipelines, manual tools, imports, audits, approvals, and built-in scenarios. Existing text remains in inactive legacy components with auto-update disabled. Pending old pressure proposals become ignored. Legacy type names remain readable. Story text, Story Cards, Brains, Plot Essentials, are not migrated into a replacement feature. Brain relationshipPressure remains supported.
 
 Library selection now paints Loading before opening an adventure and prevents duplicate selections. Event recall caches normalization and character-alias lookups within each call, preserving first-match order. The caches never survive the call.
 

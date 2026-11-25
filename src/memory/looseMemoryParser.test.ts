@@ -39,10 +39,9 @@ describe("loose operation grammar (no Adventure or provider)", () => {
     ["location", "storyCard", "location"], ["place", "storyCard", "location"],
     ["custom story card", "storyCard", "custom"], ["storyCard.custom", "storyCard", "custom"],
     ["plot essentials", "component", "plotEssentials"], ["plotEssentials", "component", "plotEssentials"],
-    ["current arc", "component", "currentArc"], ["currentArc", "component", "currentArc"],
     ["active pressure", "component", "activePressure"], ["activePressure", "component", "activePressure"],
     ["immediate momentum", "component", "immediateMomentum"], ["immediateMomentum", "component", "immediateMomentum"],
-    ...["plotEssentials", "currentArc", "activePressure", "immediateMomentum", "narrationRules", "aiInstructions", "authorNote", "memory", "custom"]
+    ...["plotEssentials", "activePressure", "immediateMomentum", "narrationRules", "aiInstructions", "authorNote", "memory", "custom"]
       .map(type => ["component." + type, "component", type]),
   ])("canonicalizes %s", (label, category, subtype) => {
     expect(parse(label + ": George Weasley = " + thought, ["S1"]).operations).toEqual([

@@ -8,6 +8,55 @@ import { adventureReducer } from "../state/adventureReducer";
 import type { MemoryProposal } from "../types/adventure";
 
 describe("retired memory compatibility boundary", () => {
+  it("round-trips old arc text without restoring the feature or discarding valid queued work", () => {
+    const old = legacyAdventure();
+    const arc = {
+      id: "legacy-arc", type: "currentArc", title: "The Observatory", active: true, autoUpdate: true,
+      content: "LEGACY ARC LOG", arcPremise: "LEGACY ARC PREMISE",
+      arcSimmerInstruction: "LEGACY SIMMER", arcBreakInstruction: "LEGACY BREAK",
+      arcState: { phase: "aftermath" }, arcAutoContinue: true,
+    };
+    const arcAction = { type: "updateComponentArc", componentId: arc.id };
+    const liveAction = { type: "activateComponent", componentId: old.components[0].id };
+    const arcProposal = { id: "legacy-arc-proposal", proposedType: "currentArcUpdate", status: "pending" };
+    const arcDraft = { id: "legacy-arc-draft", proposedType: "componentDraft", status: "pending",
+      manualDraft: { componentType: "currentArc" } };
+    const validUpdate = { type: "UPDATE_MESSAGE", messageId: "reply", content: "I look up." };
+    const load = () => importAdventureJson(JSON.stringify({
+      ...old, components: [...old.components, arc],
+      triggerRules: [
+        { id: "mixed-rule", enabled: true, actions: [arcAction, liveAction] },
+        { id: "arc-rule", enabled: true, actions: [arcAction] },
+      ],
+      activeState: {
+        ...old.activeState,
+        memoryProposals: [...old.activeState.memoryProposals, arcProposal, arcDraft],
+        pendingUpdates: [{ id: "mixed-update", source: "manual", actions: [
+          { type: "SET_ARC_PHASE", componentId: arc.id, phase: "break" },
+          { type: "UPSERT_COMPONENT", component: arc },
+          { type: "APPROVE_MEMORY_PROPOSAL", proposalId: arcProposal.id },
+          validUpdate,
+        ] }],
+      },
+    }));
+    const imported = load();
+    const reopened = importAdventureJson(exportAdventureJson(imported));
+    expect(reopened.metadata.retiredArcText).toEqual([{
+      id: arc.id, title: arc.title, content: arc.content, premise: arc.arcPremise,
+      simmerInstruction: arc.arcSimmerInstruction, breakInstruction: arc.arcBreakInstruction,
+    }]);
+    expect(reopened.components.map(component => component.id)).not.toContain(arc.id);
+    expect(reopened.activeState.memoryProposals.map(proposal => proposal.id)).toEqual(["valid-proposal"]);
+    expect(reopened.activeState.pendingUpdates[0].actions).toEqual([validUpdate]);
+    expect(reopened.triggerRules).toMatchObject([
+      { enabled: true, actions: [liveAction] },
+      { enabled: false, actions: [] },
+    ]);
+    expect(reopened.messages).toEqual(old.messages);
+    expect(reopened.storyCards[0].content).toEqual(old.storyCards[0].content);
+    expect(JSON.stringify(buildContext(reopened).messages)).not.toMatch(/LEGACY (ARC|SIMMER|BREAK)/);
+  });
+
   it.each([importAdventureJson, (text: string) => normalizeAdventure(JSON.parse(text)), (text: string) => sanitizeAdventureForPersistence(JSON.parse(text))])("preserves story and live memory through input or direct persistence", load => {
     const old = legacyAdventure();
     const a = load(JSON.stringify(old));
@@ -82,7 +131,7 @@ describe("retired memory compatibility boundary", () => {
 describe("adventure approval settings", () => {
   it("starts each adventure with an independent approval defaults", () => {
     const a = createDefaultAdventure(), b = createDefaultAdventure();
-    expect(Object.values(a.memoryAutoApprove)).toEqual(Array(8).fill(false));
+    expect(Object.values(a.memoryAutoApprove)).toEqual(Array(6).fill(false));
     expect(a.memoryAutoApprove).not.toBe(b.memoryAutoApprove);
     expect(a.memoryAutoApprove.relationshipStoryCard).toBe(false);
     const { relationshipStoryCard: _relationship, ...previousSettings } = a.memoryAutoApprove;
@@ -105,8 +154,8 @@ describe("adventure approval settings", () => {
   it("preserves valid saved values, ignores retired ones, and rejects invalid values", () => {
     const old = { plotEssentialsUpdate: true, plotPressureUpdate: false, currentArcUpdate: true, arcProposal: true, brainUpdate: "yes", loreStoryCard: false, storyCard: true, summaryUpdate: true, plotMomentumUpdate: true };
     const migrated = normalizeMemoryAutoApproveSettings(old);
-    expect(migrated).toEqual({ plotEssentialsUpdate: true, plotPressureUpdate: false, currentArcUpdate: true, arcProposal: true, brainUpdate: false, loreStoryCard: false, relationshipStoryCard: false, otherStoryCard: true });
-    expect(Object.values(normalizeMemoryAutoApproveSettings(null))).toEqual(Array(8).fill(false));
+    expect(migrated).toEqual({ plotEssentialsUpdate: true, plotPressureUpdate: false, brainUpdate: false, loreStoryCard: false, relationshipStoryCard: false, otherStoryCard: true });
+    expect(Object.values(normalizeMemoryAutoApproveSettings(null))).toEqual(Array(6).fill(false));
     expect(normalizeMemoryAutoApproveSettings({ ...createDefaultAdventure().memoryAutoApprove, otherStoryCard: true, brainUpdate: "invalid" })).toMatchObject({ otherStoryCard: true, brainUpdate: false });
   });
 });

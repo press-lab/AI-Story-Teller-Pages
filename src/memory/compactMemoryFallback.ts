@@ -51,7 +51,7 @@ export async function runCompactMemoryFallback(
     && [...(card.lore?.sourceMessageIds ?? []), ...(card.sourceTurnIds ?? [])].some(id => evidenceIds.has(id))).slice(0, 8)) relevantIds.add(card.id);
   const targeted = {
     ...adventure,
-    components: adventure.components.filter(component => ["plotEssentials", "currentArc"].includes(component.type)),
+    components: adventure.components.filter(component => ["plotEssentials"].includes(component.type)),
     storyCards: adventure.storyCards.filter(card => relevantIds.has(card.id)),
     brains: adventure.brains.filter(brain => relevant([brain.characterName, ...brain.triggers])),
   };
@@ -61,7 +61,7 @@ export async function runCompactMemoryFallback(
   const instruction = onePassMemoryInstruction(options.storyCardsOnly ? [] : eligibleBrains, enabledMemoryCategories(adventure));
   // No scenario instructions, narration rules, or unrelated pinned cards. Whole canon items
   // only: never allow a replacement based on a truncated foundation or character profile.
-  const referenceSections = new Set(["plotEssentials", "currentArc", "storyCards", "brains"]);
+  const referenceSections = new Set(["plotEssentials", "storyCards", "brains"]);
   context.sections = context.sections.map(section => ({ ...section, items: section.items.filter(item => {
     if (item.id === ONE_PASS_MEMORY_ID) return true;
     if (!referenceSections.has(section.id)) return false;

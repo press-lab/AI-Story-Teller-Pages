@@ -19,7 +19,6 @@ const ids = {
     author: "disp-component-author-note",
     loop: "disp-component-mission-loop",
     doctrine: "disp-component-power-doctrine",
-    arc: "disp-component-current-arc",
   },
   cards: {
     seth: "disp-card-seth",
@@ -133,32 +132,6 @@ export function createDispatchAdventure(): Adventure {
       pinned: true,
       protected: false,
       inclusionPolicy: "always",
-    }),
-    makeComponent({
-      id: ids.components.arc,
-      title: "Current Story Arc",
-      type: "currentArc",
-      content:
-        "Arc seed: Seth's failed solo fight against Shroud cost him his standing and put him under SDN supervision. Shroud — the man who killed Seth's father — is moving again, and the Red Ring's escalating probes all seem to bend toward Nix's tech and the people Seth can't make unkillable.",
-      arcPremise:
-        "Shroud and the Red Ring are closing on Z-Team, and Shroud — the man who killed Seth's father — is building toward something far bigger than another heist, with Nix's tech and the people around Seth as the real targets.",
-      arcThreadKeys: [ids.cards.shroud, ids.cards.redRing, ids.cards.coupe],
-      // Epic pace (escalate 30 / break 60) — a slow burn. Red Ring stays a recurring background
-      // pressure while the SDN loop and the romantic tangle run; it climbs toward the break only
-      // as the player keeps pulling the Shroud / Red Ring thread. Starts simmering.
-      arcPace: "epic",
-      arcTriggerMode: "ask",
-      arcSimmerInstruction:
-        "Keep Shroud almost entirely off-screen — surveillance, masked footage, aftermath clues, a Red Ring op that's clearly a probe, one precise line over comms before he vanishes. The Red Ring recurs through traps, experimental tech, convoy hits, hostage plays, and targeted SDN pressure; favor operations tied to Nix's tech, prior experiments, stolen Red Ring devices, or named Red Ring threats, and connect every move to Shroud's larger plan. Use Coupé as a recurring assassin-grade blade. Do not let Shroud monologue or confront Seth head-on yet — hint, recur, and tighten.",
-      arcBreakInstruction:
-        "Shroud forces a confrontation that cannot be deferred — a strike at SDN, at Z-Team, or at the people Seth loves, built specifically around the one variable Absolute Adaptation can't fix: the people around him, Nix most of all. It is allowed to cost the cast — a teammate or love interest can be taken, hurt, or killed; the Knox sisters forced to choose a side; a brutal call forced on Seth; ground and trust lost. Titan stays standing; the win is just expensive. No clean victory.",
-      priority: 88,
-      active: true,
-      pinned: true,
-      protected: true,
-      inclusionPolicy: "always",
-      autoUpdate: true,
-      autoUpdateCooldownTurns: 4,
     }),
   ];
 
@@ -589,7 +562,7 @@ export function createDispatchAdventure(): Adventure {
     metadata: {
       developmentScenario: true,
       scenario: "Dispatch — SDN superhero dispatch",
-      note: "Seth/Titan (Absolute Adaptation), Z-Team + X-Team, a Nix-centered romantic tangle, mission loop + configured Arc Director; character cards carry voice contracts; Breach (Nix's estranged sister) and Sightline on X-Team; all main characters adults.",
+      note: "Seth/Titan (Absolute Adaptation), Z-Team + X-Team, a Nix-centered romantic tangle, mission loop; character cards carry voice contracts; Breach (Nix's estranged sister) and Sightline on X-Team; all main characters adults.",
     },
     components,
     storyCards,

@@ -36,9 +36,6 @@ ${PLOT_ESSENTIALS_BEST_PRACTICES}`;
   if (proposal.proposedType === "plotPressureUpdate") {
     return "Format: exactly one sentence naming the current external threat, obligation, or pressure. Replace the old pressure entirely.";
   }
-  if (proposal.proposedType === "currentArcUpdate") {
-    return "Format: 1-3 concrete past-tense sentences recording the new completed arc development. Do not summarize the whole arc.";
-  }
   return "Format: 1-2 tight bullet points capturing only the durable new constraint or development.";
 }
 

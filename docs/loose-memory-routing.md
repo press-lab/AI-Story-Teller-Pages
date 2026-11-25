@@ -50,7 +50,6 @@ Accepted forms include:
 - brain George Weasley: I think this could become a real business.
 - story card lore: Tattoo Business = The first batch ships tomorrow.
 - lore: Tattoo Business = The first batch ships tomorrow.
-- component.currentArc: Main Arc = The investigation has entered its final phase.
 
 Case and label separators normalize locally. Canonical aliases cover
 thought/private thought, Brain state/relationship/emotion/developments, all real
@@ -111,7 +110,6 @@ and requires review.
 | Custom durable subject | Unique exact normalized Custom title/key | Append; no match creates reviewed Custom; ambiguity rejects |
 | Unclassified assignment | Valid source and nonempty subject/fact with assignment boundary, no conflicting explicit category | Review-only Lore using normal Lore resolution |
 | Component.plotEssentials | Exact title, correct subtype, source eligibility, active, autoUpdate=true | Replacement / plotEssentialsUpdate |
-| Component.currentArc | Exact title and correct existing active eligible arc, no opt-out | Append delta / currentArcUpdate; no Director phase change |
 | Component.activePressure | Exact title, subtype and active eligible target, no opt-out | Replacement / plotPressureUpdate |
 | Component.immediateMomentum | Exact title and correct active existing subtype, no opt-out | Replacement / plotMomentumUpdate; always review, only explicit manual approval applies to matching source/target snapshot |
 | Component.narrationRules | Recognized but unsupported | Explicit unsupported-destination rejection |
@@ -162,7 +160,7 @@ and src/memory/memoryPipeline.regression.test.ts (provider through reducer).
 
 The fixture contains existing Fred/George/Draconia Character cards and eligible
 Brains, business Lore, Great Hall Location, Rune Tattoo System Custom card,
-Active Pressure, Current Arc, and three saved narrator sources.
+Active Pressure, and three saved narrator sources.
 
 | Input | Asserted activeState.memoryProposals outcome |
 | --- | --- |

@@ -360,7 +360,7 @@ export default function App() {
       case "context":
         return <ContextPreviewPage {...common} contextResult={contextResult} onBuildContext={runtime.buildPreview} providerConfig={runtime.activeProviderConfig} />;
       case "components":
-        return <ComponentsPage {...common} loading={runtime.loading} onAuditComponents={runtime.auditComponents} onRegeneratePlotEssentials={runtime.regeneratePlotEssentials} onUpdatePEComponentNow={runtime.updatePEComponentNow} onGenerateComponent={runtime.generateComponent} onGenerateArc={runtime.generateArc} onProposeArcFromHistory={runtime.proposeArcFromHistory} />;
+        return <ComponentsPage {...common} loading={runtime.loading} onAuditComponents={runtime.auditComponents} onRegeneratePlotEssentials={runtime.regeneratePlotEssentials} onUpdatePEComponentNow={runtime.updatePEComponentNow} onGenerateComponent={runtime.generateComponent} />;
       case "storyCards":
         return <StoryCardsPage {...common} providerConfig={runtime.activeProviderConfig} loading={runtime.loading} onAuditStoryCards={runtime.auditStoryCards} />;
       case "brains":

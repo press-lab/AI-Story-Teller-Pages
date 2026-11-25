@@ -482,63 +482,6 @@ describe("full turn smoke path", () => {
     expect(result.responseContent).toBe("Margo sees the ward answer Seth first.");
   });
 
-  it("does not advance Arc Director pacing from pinned context unless the thread actually matched", async () => {
-    let adventure = createDefaultAdventure("Pinned Arc");
-    adventure = dispatch(adventure, {
-      type: "UPSERT_STORY_CARD",
-      storyCard: makeStoryCard({
-        id: "card-shroud",
-        title: "Shroud",
-        keys: ["Shroud"],
-        content: "Shroud is the hidden antagonist.",
-        active: true,
-        pinned: true,
-      }),
-    });
-    adventure = dispatch(adventure, {
-      type: "UPSERT_COMPONENT",
-      component: {
-        ...makeComponent({
-          id: "component-arc",
-          title: "Current Arc",
-          type: "currentArc",
-          content: "Shroud tightens the net.",
-          active: true,
-        }),
-        arcThreadKeys: ["card-shroud"],
-        arcPace: "short",
-        arcTriggerMode: "auto",
-      },
-    });
-
-    const quiet = await runTurnPipeline({
-      adventure,
-      text: "I study the ceiling.",
-      userMessageId: "quiet-user",
-      assistantMessageId: "quiet-assistant",
-      createdAt: timestamp,
-      sendChatCompletion: vi.fn(async () => ({ content: "Dust moves in the light." })),
-    });
-
-    expect(sectionItemIds(quiet.preProviderContext, "storyCards")).toContain("card-shroud");
-    expect(quiet.preProviderContext.triggeredThreadIds).not.toContain("card-shroud");
-    let arc = quiet.adventure.components.find((component) => component.id === "component-arc");
-    expect(arc?.arcState?.threadEngagement["card-shroud"] ?? 0).toBe(0);
-
-    const matched = await runTurnPipeline({
-      adventure: quiet.adventure,
-      text: "Shroud steps out of the smoke.",
-      userMessageId: "match-user",
-      assistantMessageId: "match-assistant",
-      createdAt: timestamp,
-      sendChatCompletion: vi.fn(async () => ({ content: "The net pulls tight." })),
-    });
-
-    expect(matched.preProviderContext.triggeredThreadIds).toContain("card-shroud");
-    arc = matched.adventure.components.find((component) => component.id === "component-arc");
-    expect(arc?.arcState?.threadEngagement["card-shroud"]).toBe(1);
-  });
-
   it("supports a silent continue cue while still processing one-pass memory updates", async () => {
     let adventure = createDefaultAdventure("Silent Continue");
     adventure = dispatch(adventure, {

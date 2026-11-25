@@ -191,22 +191,16 @@ describe("original independent foundation", () => {
     expect(result.state.messages.at(-1)?.memoryEvaluation?.status).toBe("complete");
     expect(result.state.activeState.memoryDiagnostics).toContainEqual(expect.objectContaining({ outcome: "validation_rejected" }));
   });
-  it("keeps Plot Essentials and Current Arc conditions while retiring pressure, respects opt-outs, and leaves Director phases unchanged", async () => {
+  it("keeps Plot Essentials conditions while retiring pressure and respects opt-outs", async () => {
     const a = seed(); a.brains = [];
     a.components = [makeComponent({ id: "pe", title: "Plot Essentials", type: "plotEssentials", autoUpdate: true, content: "The regime governs." }),
-      makeComponent({ id: "arc", title: "Current Arc", type: "currentArc", arcPremise: "Open the sealed ward", content: "The ward was found." }),
       makeComponent({ id: "pressure", title: "Active Pressure", type: "activePressure", content: "The regime threatens the city." })];
-    fired = ["plotEssentialsDrift:pe", "currentArc:arc"];
+    fired = ["plotEssentialsDrift:pe"];
     const result = await evaluate(a);
     expect(result.logEntry.conditionsFired).toEqual(expect.arrayContaining(fired));
-    expect(result.state.activeState.memoryProposals.map(proposal => proposal.proposedType)).toEqual(expect.arrayContaining(["plotEssentialsUpdate", "currentArcUpdate"]));
+    expect(result.state.activeState.memoryProposals.map(proposal => proposal.proposedType)).toEqual(expect.arrayContaining(["plotEssentialsUpdate"]));
     expect(result.logEntry.conditionsEvaluated.some(c => c.id.startsWith("plotEssentialsPressure:"))).toBe(false);
     expect(result.state.components).toEqual(a.components);
-    let approved = result.state;
-    for (const proposal of result.state.activeState.memoryProposals) approved = adventureReducer(approved, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id });
-    expect(approved.components[1].content).toContain("The ward was found.");
-    expect(approved.components[1].content).toContain("Mira confirmed");
-    expect(approved.components[1].arcState).toEqual(a.components[1].arcState);
     const optedOut = seed(); optedOut.components = a.components.map(component => ({ ...component, autoUpdate: false }));
     expect((await evaluate(optedOut)).logEntry.conditionsEvaluated.some(condition => condition.sourceType === "component")).toBe(false);
   });

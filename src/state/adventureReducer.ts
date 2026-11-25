@@ -28,10 +28,6 @@ import { sameEventMemory } from "../memory/eventMemory";
 import type {
   Adventure,
   AdventureAction,
-  ArcPace,
-  ArcPacingState,
-  ArcPhase,
-  ArcTriggerMode,
   BrainEntry,
   BrainPatch,
   BrainStateField,
@@ -49,7 +45,7 @@ import type {
   StoryCard,
   TriggerRule,
 } from "../types/adventure";
-import { cardMatchesName, defaultArcState, defaultNextTurnNote, makeComponent, makeStoryCard } from "./defaults";
+import { cardMatchesName, defaultNextTurnNote, makeComponent, makeStoryCard } from "./defaults";
 import { createId, nowIso } from "../utils/id";
 import { generatedStoryCardTriggers, resolveMemoryTarget, sanitizeStoryCardTriggers } from "../memory/resolveMemoryTarget";
 import {
@@ -75,11 +71,6 @@ function componentMemorySnapshot(component: ComponentEntry): MemoryUpdateSnapsho
     content: component.content,
     state: component.state,
     type: component.type,
-    arcPremise: component.arcPremise,
-    arcThreadKeys: component.arcThreadKeys ? [...component.arcThreadKeys] : undefined,
-    arcSimmerInstruction: component.arcSimmerInstruction,
-    arcBreakInstruction: component.arcBreakInstruction,
-    arcPhase: component.arcState?.phase,
   };
 }
 
@@ -217,120 +208,6 @@ function mergePatch<T extends { updatedAt: string }>(item: T, patch: Partial<T>)
   const sanitizedPatch = { ...patch };
   delete sanitizedPatch.updatedAt;
   return touch({ ...item, ...sanitizedPatch });
-}
-
-// ---- Arc Director: deterministic story pacing ----
-// Tier/phase advance purely on counted player engagement with an arc's threads —
-// never on an LLM verdict. The code owns *timing* (when the break instruction is
-// allowed into context); it never owns *outcome* (that is the break card's text).
-
-const ARC_PACE_THRESHOLDS: Record<ArcPace, { escalate: number; break: number }> = {
-  short: { escalate: 4, break: 8 },
-  medium: { escalate: 8, break: 16 },
-  long: { escalate: 16, break: 32 },
-  epic: { escalate: 30, break: 60 },
-};
-
-/** Turns the arc holds in the break phase before settling into aftermath. */
-const ARC_BREAK_DURATION = 6;
-
-function emptyArcState(): ArcPacingState {
-  return { phase: "simmer", tier: 0, threadEngagement: {}, pendingBreak: false };
-}
-
-function arcTier(total: number, breakThreshold: number): number {
-  if (breakThreshold <= 0) return 0;
-  return Math.max(0, Math.min(5, Math.floor((total / breakThreshold) * 5)));
-}
-
-/**
- * Advance one Current Arc after a turn: count engagement from the threads that were
- * active in-scene, derive the display tier, and move the phase forward one-way.
- * In "ask" mode the break gate opens a pending prompt instead of firing.
- */
-function advanceArcComponent(component: ComponentEntry, triggeredIds: string[], turn: number): ComponentEntry {
-  const threadKeys = component.arcThreadKeys ?? [];
-  if (component.type !== "currentArc" || threadKeys.length === 0) return component;
-  const state = component.arcState ?? emptyArcState();
-
-  // 1. Count engagement for any of this arc's threads triggered this turn.
-  const triggered = new Set(triggeredIds);
-  const nextEngagement = { ...state.threadEngagement };
-  let changed = false;
-  for (const key of threadKeys) {
-    if (triggered.has(key)) {
-      nextEngagement[key] = (nextEngagement[key] ?? 0) + 1;
-      changed = true;
-    }
-  }
-
-  const { escalate, break: breakAt } = ARC_PACE_THRESHOLDS[component.arcPace ?? "medium"];
-  const total = threadKeys.reduce((sum, key) => sum + (nextEngagement[key] ?? 0), 0);
-  const tier = arcTier(total, breakAt);
-
-  let phase = state.phase;
-  let pendingBreak = state.pendingBreak;
-  let brokeAtTurn = state.brokeAtTurn;
-
-  // 2. One-way phase transitions.
-  if (phase === "simmer" && total >= escalate) phase = "escalate";
-  if (phase === "escalate" && total >= breakAt) {
-    if ((component.arcTriggerMode ?? "ask") === "auto") {
-      phase = "break";
-      brokeAtTurn = turn;
-      pendingBreak = false;
-    } else {
-      pendingBreak = true; // leash: hold at escalate, surface the "let it break?" prompt
-    }
-  }
-  // 3. The break settles into aftermath so the arc resolves and the next can seed.
-  if (phase === "break" && brokeAtTurn !== undefined && turn - brokeAtTurn >= ARC_BREAK_DURATION) {
-    phase = "aftermath";
-  }
-
-  const unchanged =
-    !changed && phase === state.phase && pendingBreak === state.pendingBreak && brokeAtTurn === state.brokeAtTurn && tier === state.tier;
-  if (unchanged) return component;
-  return touch({ ...component, arcState: { phase, tier, threadEngagement: nextEngagement, pendingBreak, brokeAtTurn } });
-}
-
-/** Manual phase override (UI: "Spring it now", confirm a pending break, "Resolve arc", "Reset"). */
-function setArcPhase(component: ComponentEntry, phase: ArcPhase, turn: number | undefined): ComponentEntry {
-  const state = component.arcState ?? emptyArcState();
-  const brokeAtTurn = phase === "break" ? (turn ?? state.brokeAtTurn ?? 0) : state.brokeAtTurn;
-  // Resetting to simmer clears the counters so the next arc climbs fresh.
-  const threadEngagement = phase === "simmer" ? {} : state.threadEngagement;
-  const tier = phase === "simmer" ? 0 : state.tier;
-  return touch({ ...component, arcState: { ...state, phase, pendingBreak: false, brokeAtTurn, threadEngagement, tier } });
-}
-
-function arcArchiveCard(component: ComponentEntry): StoryCard | undefined {
-  const cardTitle = component.arcPremise?.trim() || component.title;
-  const cardBody = [component.arcPremise?.trim() ? `Arc: ${component.arcPremise.trim()}` : "", component.content.trim()]
-    .filter(Boolean)
-    .join("\n");
-  if (!cardBody.trim()) return undefined;
-  return makeStoryCard({
-    title: cardTitle,
-    content: cardBody,
-    type: "lore",
-    memoryMode: "historical",
-    active: true,
-    state: "archivedArc",
-  });
-}
-
-function clearCompletedArc(component: ComponentEntry): ComponentEntry {
-  return touch({
-    ...component,
-    arcPremise: "",
-    content: "",
-    arcThreadKeys: [],
-    arcSimmerInstruction: "",
-    arcBreakInstruction: "",
-    arcContinuationOptions: undefined,
-    arcState: defaultArcState(),
-  });
 }
 
 function updateBrainField(brain: BrainEntry, field: BrainStateField | undefined, text: string, mode: "append" | "replace"): BrainEntry {
@@ -702,7 +579,7 @@ function normalizedReplacementContent(content: string): string {
 
 function sanitizeProposal(proposal: MemoryProposal): MemoryProposal | null {
   if (isActivePressureProposal(proposal)) return null;
-  if (!["componentDraft", "storyCard", "brainUpdate", "plotEssentialsUpdate", "plotPressureUpdate", "currentArcUpdate", "arcProposal", "plotMomentumUpdate", "ignore"].includes(proposal.proposedType)) return null;
+  if (!["componentDraft", "storyCard", "brainUpdate", "plotEssentialsUpdate", "plotPressureUpdate", "plotMomentumUpdate", "ignore"].includes(proposal.proposedType)) return null;
   if (proposal.proposedType === "componentDraft" && (!proposal.userInitiated || !proposal.manualDraft?.componentType
     || !(proposal.manualDraft.componentType in DRAFT_COMPONENT_TYPES))) return null;
   const rawContent = stripThink(proposal.content ?? "").trim();
@@ -713,15 +590,6 @@ function sanitizeProposal(proposal: MemoryProposal): MemoryProposal | null {
     : undefined;
 
 
-  // arcProposal: content must be JSON carrying a non-empty premise, or the seed is meaningless
-  if (proposal.proposedType === "arcProposal") {
-    try {
-      const parsed = JSON.parse(content) as Record<string, unknown>;
-      if (typeof parsed.arcPremise !== "string" || !(parsed.arcPremise as string).trim()) return null;
-    } catch {
-      return null;
-    }
-  }
 
   // brainUpdate: if the content looks like JSON, validate it has at least one recognised field
   if (proposal.proposedType === "brainUpdate" && content.startsWith("{")) {
@@ -1093,88 +961,6 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal,
   }
 
 
-  if (proposal.proposedType === "currentArcUpdate") {
-    if (!proposal.content.trim()) return {};
-    const arcComp =
-      (proposal.targetId ? state.components.find((c) => c.id === proposal.targetId && c.type === "currentArc") : undefined) ??
-      state.components.find((c) => c.type === "currentArc");
-    if (!arcComp) return {};
-    const existing = arcComp.content.trim();
-    const newContent = existing ? `${existing}\n\n${proposal.content}` : proposal.content;
-    return {
-      components: upsertById(
-        state.components,
-        recordComponentMemoryUpdate(
-          arcComp,
-          { ...arcComp, content: newContent, lastAutoUpdateTurn: state.activeState.turn, ...proposal.componentPatch },
-          proposalMemoryMeta(existing ? "append" : "replace"),
-        ),
-      ),
-    };
-  }
-
-  if (proposal.proposedType === "arcProposal") {
-    // Approving an AI-drafted arc seeds the Current Arc and starts it simmering. Any stale/finished
-    // arc that was sitting in the component is banked as a Story Card first, so previous arcs are
-    // preserved — same as the aftermath continuation flow.
-    let seed: Record<string, unknown>;
-    try {
-      seed = JSON.parse(proposal.content) as Record<string, unknown>;
-    } catch {
-      return {};
-    }
-    const premise = typeof seed.arcPremise === "string" ? seed.arcPremise.trim() : "";
-    if (!premise) return {};
-    const arcComp =
-      (proposal.targetId ? state.components.find((c) => c.id === proposal.targetId && c.type === "currentArc") : undefined) ??
-      state.components.find((c) => c.type === "currentArc");
-    if (!arcComp) return {};
-
-    const pace = (["short", "medium", "long", "epic"] as const).includes(seed.arcPace as ArcPace)
-      ? (seed.arcPace as ArcPace)
-      : "long";
-    const triggerMode: ArcTriggerMode = seed.arcTriggerMode === "auto" ? "auto" : "ask";
-    const threadKeys = Array.isArray(seed.arcThreadKeys)
-      ? (seed.arcThreadKeys as unknown[]).filter((k): k is string => typeof k === "string")
-      : [];
-
-    // Bank the old arc if it built up any content worth keeping.
-    const oldBody = [arcComp.arcPremise?.trim() ? `Arc: ${arcComp.arcPremise.trim()}` : "", arcComp.content.trim()]
-      .filter(Boolean)
-      .join("\n");
-    const storyCards = oldBody.trim()
-      ? upsertById(
-          state.storyCards,
-          makeStoryCard({
-            title: arcComp.arcPremise?.trim() || arcComp.title,
-            content: oldBody,
-            type: "custom",
-            memoryMode: "historical",
-            active: true,
-            state: "archivedArc",
-          }),
-        )
-      : state.storyCards;
-
-    const seededArc = recordComponentMemoryUpdate(
-      arcComp,
-      {
-        ...arcComp,
-        arcPremise: premise,
-        content: "",
-        arcThreadKeys: threadKeys,
-        arcSimmerInstruction: typeof seed.arcSimmerInstruction === "string" ? seed.arcSimmerInstruction : "",
-        arcBreakInstruction: typeof seed.arcBreakInstruction === "string" ? seed.arcBreakInstruction : "",
-        arcPace: pace,
-        arcTriggerMode: triggerMode,
-        arcState: defaultArcState(),
-        arcContinuationOptions: undefined,
-        lastAutoUpdateTurn: state.activeState.turn,
-      },
-      proposalMemoryMeta("replace"),
-    );
-    return { components: upsertById(state.components, seededArc), storyCards };
-  }
 
 
   return {};
@@ -1802,54 +1588,6 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
       return touchAdventure(state, {
         components: updateById(state.components, action.componentId, (item) => touch({ ...item, lastAutoUpdateTurn: action.turn })),
       });
-    case "ADVANCE_ARC_PACING":
-      return touchAdventure(state, {
-        components: state.components.map((component) =>
-          component.type === "currentArc" ? advanceArcComponent(component, action.triggeredIds, action.turn) : component,
-        ),
-      });
-    case "SET_ARC_PHASE":
-      return touchAdventure(state, {
-        components: updateById(state.components, action.componentId, (item) => setArcPhase(item, action.phase, action.turn)),
-      });
-    case "SET_ARC_CONTINUATIONS":
-      return touchAdventure(state, {
-        components: updateById(state.components, action.componentId, (item) => touch({ ...item, arcContinuationOptions: action.options })),
-      });
-    case "COMPLETE_ARC_TO_STORY_CARD": {
-      const comp = state.components.find((c) => c.id === action.componentId);
-      if (!comp) return state;
-      const archived = arcArchiveCard(comp);
-      if (!archived) return state;
-      return touchAdventure(state, {
-        storyCards: [...state.storyCards, archived],
-        components: updateById(state.components, action.componentId, clearCompletedArc),
-      });
-    }
-    case "APPLY_ARC_CONTINUATION": {
-      const comp = state.components.find((c) => c.id === action.componentId);
-      if (!comp) return state;
-      const opt = action.option;
-      // Bank the resolved arc as a Story Card so previous arcs are preserved, then reseed
-      // this component as the next arc and start its climb fresh.
-      const archived = arcArchiveCard(comp);
-      return touchAdventure(state, {
-        storyCards: archived ? [...state.storyCards, archived] : state.storyCards,
-        components: updateById(state.components, action.componentId, (item) =>
-          touch({
-            ...item,
-            arcPremise: opt.premise,
-            content: "",
-            arcThreadKeys: opt.threadKeys,
-            arcSimmerInstruction: opt.simmerInstruction,
-            arcBreakInstruction: opt.breakInstruction,
-            arcPace: opt.pace,
-            arcContinuationOptions: undefined,
-            arcState: { phase: "simmer", tier: 0, threadEngagement: {}, pendingBreak: false },
-          }),
-        ),
-      });
-    }
     case "REORDER_STORY_CARD":
       return touchAdventure(state, { storyCards: moveByPriority(state.storyCards, action.storyCardId, action.direction) });
     case "UPSERT_BRAIN":
@@ -2204,8 +1942,6 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
             return fail(`invalid ${key} in memory patch.`);
         }
       }
-      if ((draft.proposedType === "currentArcUpdate" || draft.proposedType === "arcProposal")
-        && !state.components.some(c => c.type === "currentArc")) return fail("Current Arc destination is missing. Create a Current Arc component first.");
       let proposal = sanitizeProposal(draft);
       if (!proposal) return action.automatic ? state : fail("invalid structured memory content or unsupported memory type.");
       if (action.automatic && proposal.evaluationSource && proposal.placementValidation && !placementValidationError(state, proposal)) {

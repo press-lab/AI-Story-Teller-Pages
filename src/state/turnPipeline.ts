@@ -42,7 +42,6 @@ export interface RunTurnPipelineOptions {
   providerCue?: string;
   currentInputForContext?: string;
   incrementTurn?: boolean;
-  advanceArcPacing?: boolean;
 }
 
 export interface RunTurnPipelineResult {
@@ -76,7 +75,6 @@ interface ApplyProviderResponseOptions {
   assistantMessageId?: string;
   createdAt?: string;
   incrementTurn?: boolean;
-  advanceArcPacing?: boolean;
 }
 
 export async function applyProviderResponse({
@@ -88,7 +86,6 @@ export async function applyProviderResponse({
   assistantMessageId,
   createdAt,
   incrementTurn = true,
-  advanceArcPacing = true,
 }: ApplyProviderResponseOptions): Promise<{ adventure: Adventure; responseContent: string; continuityCorrected: boolean }> {
   let next = adventure;
 
@@ -163,13 +160,6 @@ export async function applyProviderResponse({
 
   next = applyRuntimeEngines(next, { source: "output", text: finalContent });
 
-  // Arc Director: count only Story Card / Brain ids whose trigger patterns matched turn text.
-  // Pinned or always-on context can be included without counting as engagement.
-  const triggeredIds = preProviderContext.triggeredThreadIds;
-  if (advanceArcPacing && triggeredIds.length > 0) {
-    next = adventureReducer(next, { type: "ADVANCE_ARC_PACING", triggeredIds, turn: next.activeState.turn });
-  }
-
   if (incrementTurn) {
     next = adventureReducer(next, { type: "INCREMENT_TURN" });
   }
@@ -190,7 +180,6 @@ export async function runTurnPipeline({
   providerCue,
   currentInputForContext,
   incrementTurn = true,
-  advanceArcPacing = true,
 }: RunTurnPipelineOptions): Promise<RunTurnPipelineResult> {
   let next = adventure;
   if (recordUserInput) {
@@ -225,7 +214,6 @@ export async function runTurnPipeline({
     assistantMessageId,
     createdAt,
     incrementTurn,
-    advanceArcPacing,
   });
   next = applied.adventure;
 

@@ -301,7 +301,7 @@ export const premadeAdventures: PremadeAdventureDefinition[] = [
     id: "dragon-throne",
     title: developmentAdventureTitle,
     eyebrow: "Avatar AU",
-    summary: "Adult Fire Nation palace missions, Setu/Nyxa chemistry, New Ozai conspiracy, and a configured Arc Director.",
+    summary: "Adult Fire Nation palace missions, Setu/Nyxa chemistry, and the New Ozai conspiracy.",
     tags: ["ATLA", "court", "romance", "slow-burn arc"],
     createAdventure: createDragonThronePremadeAdventure,
     createAdventureJson: createDragonThronePremadeAdventureJson,

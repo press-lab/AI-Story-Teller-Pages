@@ -64,7 +64,7 @@ a relevant latest change; an absent mention does not establish knowledge. This
 is a semantic contract, not a claim that application code guarantees model recall.
 
 Plot Essentials retains premise/constraints, Active Pressure external threat or
-obligation, Current Arc established arc progress with Director controls preserved,
+obligation established arc progress with Director controls preserved,
 Character cards enduring profiles, Lore observable events/shared developments and
 Brains supported private interpretations. Private Brain text is not supplied to
 public generation/discovery as canon. Shared assessment sees each eligible Brain

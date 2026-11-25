@@ -25,24 +25,6 @@ describe("dispatch adventure seed", () => {
     );
   });
 
-  it("ships a configured Arc Director that starts simmering with the break withheld", () => {
-    const adventure = createDispatchAdventure();
-    const arc = adventure.components.find((component) => component.type === "currentArc");
-
-    expect(arc).toBeDefined();
-    expect(arc?.arcThreadKeys?.length).toBeGreaterThan(0);
-    expect(arc?.arcPace).toBe("epic");
-    expect(arc?.arcTriggerMode).toBe("ask");
-    expect(arc?.arcSimmerInstruction).toBeTruthy();
-    expect(arc?.arcBreakInstruction).toBeTruthy();
-    expect(arc?.arcState?.phase).toBe("simmer");
-
-    const result = buildContext(adventure, { currentInput: "Seth reports to SDN." });
-    const arcText = result.sections.find((section) => section.id === "currentArc")?.items.map((item) => item.content).join("\n") ?? "";
-    expect(arcText).not.toContain(arc?.arcBreakInstruction ?? "NO BREAK");
-    expect(arcText).toContain(arc?.arcSimmerInstruction ?? "NO SIMMER");
-  });
-
   it("gives every non-player character card a VOICE CONTRACT", () => {
     const adventure = createDispatchAdventure();
     const characterCards = adventure.storyCards.filter((card) => card.type === "character" && card.id !== "disp-card-seth");

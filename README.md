@@ -52,7 +52,6 @@ Context sections, in fixed order:
 | `system` | A. System Shell | Global generation rules — always protected |
 | `aiInstructions` | B. AI Instructions | Components with `type === "aiInstructions"` |
 | `plotEssentials` | C. Plot Essentials | `plotEssentials` and one-sentence `activePressure` components |
-| `currentArc` | C2. Current Story Arc | Active arc log and gated Arc Director phase instruction |
 | `components` | E. Components | General always-on or pinned custom components |
 | `storyCards` | F. Story Cards | Triggered / pinned Story Cards |
 | `brains` | G. Brains | Active Brain entries for triggered characters |
@@ -100,7 +99,7 @@ The Context Preview page shows:
 - **Narration Rules**: the primary per-adventure behavior contract, copied from defaults but editable during creation and afterward. Loaded with the system shell before other context.
 - **AI Instructions**: optional persistent scenario-specific behavior rules in section B. Use them for genre, drift prevention, scene-loop, and prose contracts, not facts. They are not required when Narration Rules already contain the complete stable contract. Avoid duplicating the same rule across both surfaces. AI must not modify these.
 - **Author's Note**: retired. Existing notes are readable and disabled in Plot Components.
-- **Memory Inbox / Proposals**: `activeState.memoryProposals`, where AI-suggested durable memories wait for user approval. Pending proposals appear in Context Preview but are not model context. Approving converts them to Story Cards, Brain updates, Plot Essentials edits, Active Pressure edits, or Current Arc updates through reducer actions.
+- **Memory Inbox / Proposals**: `activeState.memoryProposals`, where AI-suggested durable memories wait for user approval. Pending proposals appear in Context Preview but are not model context. Approving converts them to Story Cards, Brain updates, Plot Essentials edits, Active Pressure edits,s through reducer actions.
 - **Protected**: non-droppable during token truncation. `aiInstructions` and `plotEssentials` components are protected by default.
 - **Pinned**: prioritized for inclusion and ordering, but droppable if budget is exhausted and the item is not also protected.
 
@@ -108,7 +107,7 @@ Use `src/memory/classificationPolicy.ts` for deterministic memory routing. Use `
 
 ### Deferred Memory Bank Idea
 
-An optional Inspectable Memory Bank may be useful later, but it is intentionally not part of the MVP. Story Cards, Brains, Memory Inbox, Plot Essentials, Active Pressure, Current Arc, Next Output Bias, and Recent Messages already cover the current context roles without an additional retrieval layer.
+An optional Inspectable Memory Bank may be useful later, but it is intentionally not part of the MVP. Story Cards, Brains, Memory Inbox, Plot Essentials, Active Pressure, Next Output Bias, and Recent Messages already cover the current context roles without an additional retrieval layer.
 
 If added later, Memory Bank entries must be their own visible context section with item-level source turns, token cost, relevance reason, usage count, last-used timestamp, and approve/edit/archive/delete controls. They must never enter the model as an opaque retrieved-memory bucket.
 
@@ -154,7 +153,7 @@ The context builder in `src/contextBuilder/contextBuilder.ts` follows the requir
 - Components, Story Cards, Brains, Triggers, Memory Inbox, Chronicle, Context Preview, Settings, Saves, and Import/Export tabs.
 - Chronicle and Memory Inbox tabs for inspecting transcript history and proposed durable memories.
 - Trigger matching for keyword, phrase, and regex; deterministic priority order; cooldowns; trigger log.
-- LLM semantic trigger evaluation with generated updates for brains, story cards, Plot Essentials, Current Arc, and Active Pressure.
+- LLM semantic trigger evaluation with generated updates for brains, story cards, Plot Essentials, and Active Pressure.
 - Full trigger action suite wired through the reducer.
 - Legacy quest and Auto-Card fields preserved for older saves, but not part of default runtime context.
 - AIST adventure JSON backup/restore for full playable saves.
@@ -208,7 +207,7 @@ The live suite verifies the OpenAI-compatible Groq provider call, semantic trigg
 
 ## Adventure approval
 
-Auto-approval belongs to each adventure. New adventures start with all seven switches OFF: Plot Essentials, Current Arc, Arc Proposals, Character Self, Story Cards — Lore, Story Cards — Relationships, and Story Cards — Everything Else. The permanent panel appears at the top of Memory Suggestions, including when its queue is empty. Settings has no approval controls, and global localStorage approval properties are discarded.
+Auto-approval belongs to each adventure. New adventures start with all five switches OFF: Plot Essentials, Character Self, Story Cards — Lore, Story Cards — Relationships, and Story Cards — Everything Else. The permanent panel appears at the top of Memory Suggestions, including when its queue is empty. Settings has no approval controls, and global localStorage approval properties are discarded.
 
 The shared policy reads only `adventure.memoryAutoApprove`. Existing cards use their stored type. Lore uses `loreStoryCard`, Relationship uses `relationshipStoryCard`, and other supported Story Card types use `otherStoryCard`. Existing saves default the Relationship switch to off unless it was explicitly enabled. Unknown new card types wait for classification. Missing-Brain card fallbacks use the card category. Existing pending proposals are never replayed when a switch changes. Evidence, duplicate, destination, protection, chronology, and companion-proposal checks remain in the reducer pipeline.
 

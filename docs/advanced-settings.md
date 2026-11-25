@@ -24,7 +24,7 @@ Hard ceiling on total tokens sent per turn. Set it ~1–2k below your model's ac
 
 ### Max Recent Messages
 
-How many recent chat turns to keep verbatim in the context. Beyond this cap, older turns are not sent verbatim; preserve important facts through Story Cards, Brains, Plot Essentials, Current Arc, or Active Pressure instead. 40 is the balanced default; if your turns are long, 20–25 avoids crowding out story cards and components.
+How many recent chat turns to keep verbatim in the context. Beyond this cap, older turns are not sent verbatim; preserve important facts through Story Cards, Brains, Plot Essentials, or Active Pressure instead. 40 is the balanced default; if your turns are long, 20–25 avoids crowding out story cards and components.
 
 ### Memory Priority Mode
 
@@ -61,7 +61,7 @@ Per-section hard token caps. Expert setting. Lets you constrain a specific secti
 
 ## LLM Evaluation
 
-Controls the semantic engine — the background AI that reads your story after each turn and fires Automations such as brain updates, story card updates, Plot Essentials updates, Current Arc updates, and one-sentence Active Pressure updates.
+Controls the semantic engine — the background AI that reads your story after each turn and fires Automations such as brain updates, story card updates, Plot Essentials updates, and one-sentence Active Pressure updates.
 
 ### Evaluation Model Override
 
@@ -73,7 +73,7 @@ How many recent messages the evaluator reads. More messages = more context for a
 
 ### Enable semantic triggers
 
-Master switch for all Automations. Must be on for brain updates, story card updates, Plot Essentials tracking, Current Arc tracking, and Active Pressure updates to fire automatically after each turn.
+Master switch for all Automations. Must be on for brain updates, story card updates, Plot Essentials tracking, and Active Pressure updates to fire automatically after each turn.
 
 ### Show evaluation log on Automations page
 
@@ -89,7 +89,7 @@ When on, all AI-generated Automation updates (brain updates, plot essentials, et
 
 ### Background Provider
 
-Route background tasks (evaluation, brain updates, story card updates, Plot Essentials/Current Arc/Active Pressure updates, and memory detection) through a separate provider endpoint. Leave blank to use your main preset for everything.
+Route background tasks (evaluation, brain updates, story card updates, Plot Essentials/Active Pressure updates, and memory detection) through a separate provider endpoint. Leave blank to use your main preset for everything.
 
 Useful if you have a fast/cheap API (e.g., Groq + Llama 3.3 70B) for background work and a better model for story generation. The model field here overrides the evaluation model override above.
 
@@ -143,7 +143,7 @@ Use the Character Self switch in the permanent Memory Suggestions panel. Valid n
 
 ## Adventure approval
 
-Auto-approval belongs to each adventure. New adventures start with all seven switches OFF: Plot Essentials, Active Pressure, Current Arc, Arc Proposals, Character Self, Story Cards — Lore, and Story Cards — Everything Else. The permanent panel appears at the top of Memory Suggestions, including when its queue is empty. Settings has no approval controls, and global localStorage approval properties are discarded.
+Auto-approval belongs to each adventure. New adventures start with all five switches OFF: Plot Essentials, Character Self, Story Cards — Lore, Story Cards — Relationships, and Story Cards — Everything Else. The permanent panel appears at the top of Memory Suggestions, including when its queue is empty. Settings has no approval controls, and global localStorage approval properties are discarded.
 
 The shared policy reads only `adventure.memoryAutoApprove`. Existing cards use their stored type. Lore uses `loreStoryCard`; character, location, legacy plot, and custom use `otherStoryCard`. Unknown new card types wait for classification. Missing-Brain card fallbacks use the card category. Existing pending proposals are never replayed when a switch changes. Evidence, duplicate, destination, protection, chronology, and companion-proposal checks remain in the reducer pipeline.
 

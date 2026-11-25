@@ -29,8 +29,7 @@ export function getApprovalCategory(adventure: Adventure, proposal: MemoryPropos
     return storyCardApprovalCategory(card ? card.type : "character");
   }
   switch (proposal.proposedType) {
-    case "plotEssentialsUpdate":
-    case "currentArcUpdate": case "arcProposal": return proposal.proposedType;
+    case "plotEssentialsUpdate": return "plotEssentialsUpdate";
     default: return undefined;
   }
 }

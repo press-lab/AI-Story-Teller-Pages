@@ -154,8 +154,6 @@ function snapshotMeta(snapshot: MemoryUpdateSnapshot | null): string {
     snapshot.memoryMode,
     snapshot.keys && snapshot.keys.length > 0 ? `${snapshot.keys.length} trigger${snapshot.keys.length === 1 ? "" : "s"}` : "",
     snapshot.state ? `state: ${snapshot.state}` : "",
-    snapshot.arcPremise ? `arc: ${snapshot.arcPremise}` : "",
-    snapshot.arcPhase ? `phase: ${snapshot.arcPhase}` : "",
   ].filter(Boolean);
   return values.join(" | ");
 }

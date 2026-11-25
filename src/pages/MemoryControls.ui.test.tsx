@@ -20,7 +20,6 @@ it("shows component eligibility defaults and dispatches each component's own coo
   initial.components = [
     makeComponent({ id: "pe", type: "plotEssentials", title: "Plot Essentials", content: "Premise" }),
     makeComponent({ id: "pressure", type: "activePressure", title: "Active Pressure", content: "Threat" }),
-    makeComponent({ id: "arc", type: "currentArc", title: "Current Arc", content: "Progress", lastAutoUpdateTurn: 9 }),
   ];
   const dispatchSpy = vi.fn();
   function Fixture() {
@@ -34,7 +33,6 @@ it("shows component eligibility defaults and dispatches each component's own coo
   expect(screen.queryByLabelText("Allow automatic Active Pressure updates")).not.toBeInTheDocument();
   const rows = [
     { id: "pe", title: "Plot Essentials", cooldown: 3, enabled: false },
-    { id: "arc", title: "Current Arc", cooldown: 4, enabled: true },
   ];
   for (const row of rows) {
     const item = screen.getByLabelText(`Allow automatic ${row.title} updates`).closest(".component-editor-item") as HTMLElement;
@@ -53,10 +51,6 @@ it("shows component eligibility defaults and dispatches each component's own coo
     expect(dispatchSpy).toHaveBeenLastCalledWith({ type: "UPDATE_COMPONENT", componentId: row.id, patch: { autoUpdateCooldownTurns: row.cooldown + 2 } });
     expect(cooldown).toHaveValue(row.cooldown + 2);
     expect(ui.getByLabelText("Recorded memory update turn")).toHaveAttribute("readonly");
-    if (row.id === "arc") {
-      expect(ui.getByLabelText("Recorded memory update turn")).toHaveValue("9");
-      expect(ui.getByText("Automatic arc evaluation requires an active component and an Arc Premise.")).toBeVisible();
-    }
   }
   for (const row of rows) {
     const item = screen.getByLabelText(`Allow automatic ${row.title} updates`).closest(".component-editor-item") as HTMLElement;
@@ -68,7 +62,6 @@ const warning = "This semantic rule cannot write Plot Components . AIST skips th
 const blockedActions: TriggerAction[] = [
   { type: "updateComponent", componentId: "pe", patch: { content: "Saved instruction" } },
   { type: "updateComponentPressure", componentId: "pressure" },
-  { type: "updateComponentArc", componentId: "arc" },
 ];
 
 it.each(blockedActions)("warns for a semantic $type action without changing stored actions", async action => {
@@ -133,7 +126,7 @@ it("preserves current and legacy memory settings through save and reload after a
   const a = createDefaultAdventure();
   a.memoryDetectionSettings = { ...a.memoryDetectionSettings, enabled: false, everyNTurns: 0 };
   a.semanticEvaluationSettings = { ...a.semanticEvaluationSettings, semanticEvalEveryNTurns: 7, };
-  a.memoryAutoApprove = { ...a.memoryAutoApprove, loreStoryCard: true, otherStoryCard: true, currentArcUpdate: true };
+  a.memoryAutoApprove = { ...a.memoryAutoApprove, loreStoryCard: true, otherStoryCard: true };
   a.systemTriggers = { ...a.systemTriggers, enabled: false };
   a.tokenBudgetSettings = { ...a.tokenBudgetSettings };
   a.storyCards = [makeStoryCard({ title: "Legacy settings", content: "Facts", autoUpdate: false, autoUpdateCooldownTurns: 19 })];

@@ -749,7 +749,7 @@ export function SettingsPage({
                 <h3>{dispatchAdventureTitle}</h3>
                 <p className="muted">
                   Loads the SDN superhero dispatch scenario: Seth / Titan (Absolute Adaptation), Z-Team, a
-                  five-way romantic tangle, a mission loop, preloaded brains, and a configured Arc Director
+                  five-way romantic tangle, a mission loop, and preloaded brains
                   pointed at Shroud and the Red Ring.
                 </p>
               </div>

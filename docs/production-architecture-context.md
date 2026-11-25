@@ -65,7 +65,6 @@ The following current app invariants should survive the backend migration.
 - AI-generated memory writes must remain bounded by explicit mutation paths.
 - Pending Memory Proposals are reviewable state, not hidden context.
 - API keys and runtime provider secrets are never written into adventure saves.
-- The Arc Director cost/break instruction remains gated until the deterministic phase reaches `break`.
 - The server may own policy and persistence, but it should not turn inspectable story surfaces into hidden prompt magic.
 
 ## Recommended Stack
@@ -1179,7 +1178,6 @@ The backend should not replace the app's strongest ideas. It should enforce them
 - Typed reducer actions.
 - Inspectable context sections.
 - Memory proposal boundaries.
-- Deterministic Arc Director pacing.
 - Explicit provenance.
 - Provider payload transparency.
 

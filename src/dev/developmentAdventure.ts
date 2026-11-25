@@ -18,7 +18,6 @@ const ids = {
     author: "dev-component-author-note",
     loop: "dev-component-mission-loop",
     doctrine: "dev-component-dragon-fire",
-    arc: "dev-component-current-arc",
   },
   cards: {
     // Main cast
@@ -133,32 +132,6 @@ export function createDevelopmentAdventure(): Adventure {
       pinned: true,
       protected: false,
       inclusionPolicy: "always",
-    }),
-    makeComponent({
-      id: ids.components.arc,
-      title: "Current Story Arc",
-      type: "currentArc",
-      content:
-        "Arc seed: The New Ozai Society hit the harbor armory before dawn. The crown wants it handled quietly. Somewhere behind the loyalists is a steadier hand — and the first thread leads uncomfortably close to House Renzan.",
-      arcPremise:
-        "A restorationist conspiracy wants the old empire back and the Dragon's Heir dead — and the hand behind it runs closer to the throne, and closer to Nyxa, than Setu wants to believe.",
-      arcThreadKeys: [ids.cards.renzan, ids.cards.newOzai, ids.cards.azula, ids.cards.houseRenzan],
-      // Epic pace (escalate at 30, break at 60) — a slow burn. The conspiracy stays a
-      // background simmer while the mission loop and the Setu/Nyxa dynamic run; it builds
-      // toward the break only as the player keeps engaging the New Ozai / House Renzan thread.
-      arcPace: "epic",
-      arcTriggerMode: "ask",
-      arcSimmerInstruction:
-        "Keep the New Ozai Society and Lord Renzan mostly off-screen. Surface them through sabotage, propaganda, intercepted orders, a masked agent who slips away, bribed officials, and near-misses on otherwise unrelated missions. Always tie their moves to a larger plan and, increasingly, to House Renzan. Do not let the antagonists monologue or confront Setu head-on yet — hint, recur, and tighten the noose. Use Azula as a chaotic wildcard who may be using the conspiracy or being used by it.",
-      arcBreakInstruction:
-        "Lord Renzan and the New Ozai Society force a confrontation that cannot be deferred — a strike at Zuko, at the throne, or at the crown prince himself. It is allowed to cost the cast: a named ally can die, Nyxa's loyalty is put to a real and painful test, ground and secrets are lost. Setu remains the strongest firebender in the room — the win is just expensive. No clean victory; the peace pays for it.",
-      priority: 88,
-      active: true,
-      pinned: true,
-      protected: true,
-      inclusionPolicy: "always",
-      autoUpdate: true,
-      autoUpdateCooldownTurns: 4,
     }),
   ];
 
@@ -590,7 +563,7 @@ export function createDevelopmentAdventure(): Adventure {
     metadata: {
       developmentScenario: true,
       scenario: "Post-canon Avatar — Heir of the Dragon Throne",
-      note: "Crown prince son of Zuko; mission loop + configured Arc Director; character cards carry voice contracts; all main characters adults.",
+      note: "Crown prince son of Zuko; mission loop; character cards carry voice contracts; all main characters adults.",
     },
     components,
     storyCards,

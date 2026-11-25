@@ -81,13 +81,13 @@ it("compares actual mocked HTTP calls on identical stored sources with a declare
   expect(legacyRecords.length).toBeGreaterThan(1);
 });
 
-it.each(["brain", "card", "plotEssentials", "activePressure", "currentArc"] as const)("uses one HTTP attempt for supported manual %s, and none for retired pressure", async kind => {
+it.each(["brain", "card", "plotEssentials", "activePressure"] as const)("uses one HTTP attempt for supported manual %s, and none for retired pressure", async kind => {
   const a = createDefaultAdventure(); a.semanticEvaluationSettings.memoryEvaluationApi = "chat";
   a.memoryAutoApprove.brainUpdate = true;
   a.messages = [{ id: "source", role: "assistant", content: "Mira finds the sealed harbor gate. The watch orders her to leave before dusk.", createdAt: "2026-10-26" }];
   a.brains = [makeBrain({ id: "brain", characterName: "Mira", active: true, thoughts: {} })];
   a.storyCards = [makeStoryCard({ id: "card", type: "lore", title: "Harbor gate", content: "The gate stands at the harbor." })];
-  a.components = [makeComponent({ id: "component", title: "Test component", type: kind === "plotEssentials" || kind === "activePressure" || kind === "currentArc" ? kind : "plotEssentials", active: true, content: "Old constraints." })];
+  a.components = [makeComponent({ id: "component", title: "Test component", type: kind === "plotEssentials" || kind === "activePressure" ? kind : "plotEssentials", active: true, content: "Old constraints." })];
   const raw = kind === "brain" ? JSON.stringify({ thoughts: { harbor_order: "1 â†’ I must leave the harbor before dusk." } })
     : kind === "card" ? JSON.stringify({ content: "The watch ordered Mira to leave before dusk.", title: "Harbor gate", storyCardType: "lore", targetId: "card" })
     : kind === "activePressure" ? "The watch requires Mira to leave the harbor before dusk." : "Mira discovered the harbor gate was sealed by the watch.";

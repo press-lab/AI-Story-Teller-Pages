@@ -27,7 +27,6 @@ describe("memory canon grounding", () => {
     a.components = [
       makeComponent({ title: "Identity", type: "plotEssentials", content: "You are Seth Press, Westlake's lawyer." }),
       makeComponent({ title: "Gift rules", type: "custom", alwaysOn: true, content: "Seth is immune to psychic intrusion." }),
-      makeComponent({ title: "Cross Bid", type: "currentArc", content: "Unverified old log", arcBreakInstruction: "SECRET CLIMAX" }),
       makeComponent({ title: "Disabled rules", type: "aiInstructions", active: false, content: "OBSOLETE RULE" }),
     ];
     a.storyCards = [
@@ -38,9 +37,9 @@ describe("memory canon grounding", () => {
       makeStoryCard({ title: "Disabled character", type: "character", active: false, content: "DISABLED CHARACTER" }),
     ];
     a.brains = [makeBrain({ characterName: "Edythe", thoughts: { secret: "PRIVATE PLAN" } })];
-    const text = memoryCanonMessages(a, "Edythe asks you about the deal.", "Append an arc event").map(m => m.content).join("\n");
+    const text = memoryCanonMessages(a, "Edythe asks you about the deal.", "Review a development").map(m => m.content).join("\n");
     for (const included of ["You are Seth Press", "Seth is the player character", "Seth is immune", "Vampires reflect normally"]) expect(text).toContain(included);
-    for (const excluded of ["SECRET CLIMAX", "Unverified old log", "PRIVATE PLAN", "OBSOLETE RULE", "UNRELATED LORE", "DISABLED CHARACTER", "Julian is a rival bidder"]) expect(text).not.toContain(excluded);
+    for (const excluded of ["PRIVATE PLAN", "OBSOLETE RULE", "UNRELATED LORE", "DISABLED CHARACTER", "Julian is a rival bidder"]) expect(text).not.toContain(excluded);
   });
   it("keeps discovery cards local to evidence while retaining protected facts and authored rules", () => {
     const a = createDefaultAdventure();
@@ -59,11 +58,5 @@ describe("memory canon grounding", () => {
     expect(text).toContain("Seattle vampires are secret");
     expect(text).toContain("CUSTOM PROSE RULE");
     expect(text).not.toContain("Edythe knows Lucian");
-  });
-  it("defaults arc updates to review while preserving saved explicit choices", () => {
-    const a = createDefaultAdventure();
-    expect(a.memoryAutoApprove.currentArcUpdate).toBe(false);
-    a.memoryAutoApprove.currentArcUpdate = true;
-    expect(normalizeAdventure(a).memoryAutoApprove.currentArcUpdate).toBe(true);
   });
 });

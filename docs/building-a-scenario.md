@@ -25,7 +25,6 @@ A scenario is six things working together:
 | **The cast** | Story Cards (`character`) **+ Voice Contracts** | Who's fun in a room |
 | **Interior life** | Brains | Hidden agendas that simmer and persist |
 | **The engine** | a custom "missions" component | The repeatable loop that prints scenes |
-| **The spine** | Current Story Arc + **Arc Director** | The conflict that climbs and breaks |
 | **The hook** | Opening Scene | Where it starts, what is pressing now, how it sounds |
 
 Build them in that order.
@@ -81,7 +80,7 @@ enduring premise and persistent scenario-wide constraints. NEVER include NOW,
 CURRENTLY, CURRENT SITUATION, active story dates, current positions, or temporary
 state. Put the starting moment in the Opening Scene. The story clock and gameplay
 history handle ongoing time and continuity. Historical dates may establish durable
-background. Put ongoing developments in Current Arc or appropriate memory surfaces.
+background. Record durable developments in Lore when appropriate.
 
 Two rules from experience:
 - **Let the player be OP.** State it in AI Instructions: *"NPCs respect, fear,
@@ -184,8 +183,7 @@ for the voice contract).
 
 Active Pressure is retired. Use the Opening Scene for the starting moment,
 Recent Messages for unfolding scenes, and Next Output Bias for one-turn steering.
-Keep durable foundations in Plot Essentials and ongoing storyline progress in
-Current Arc when used.
+Keep durable foundations in Plot Essentials.
 
 ---
 
@@ -207,39 +205,7 @@ so the loop has an in-world source.
 
 ---
 
-## Step 5 — The spine: the Arc Director
-
-On a **Current Story Arc** component, open the Arc Director and set:
-
-- **The Baddie** — the Story Cards / Brains that are this arc's threads (the
-  antagonist + their faction; optionally a wildcard). *Heir:* the New Ozai
-  Society, House Renzan, Lord Renzan, Azula.
-- **The Cost (break instruction)** — what the climax costs. *"The antagonist
-  forces a confrontation that can't be deferred. Allowed to cost the cast — a
-  named ally can die, loyalties tested. The player stays the strongest; the win
-  is just expensive. No clean victory."* This is withheld from the model until
-  the break phase.
-- **The simmer instruction** — how the threat behaves while building: *"Stay
-  off-screen. Surface through sabotage, intercepted orders, a masked agent who
-  slips away, near-misses. Connect every move to a larger plan. Do not confront
-  head-on yet — hint, recur, tighten."*
-- **The Timer (pace)** and **Who springs it (trigger mode).**
-
-**Pace reality check.** "Engagement" counts only the turns a thread actually
-surfaces, not every turn — but the buckets are still tuned for normal sessions
-(`epic` = break at 60 engagement). If you play thousands of turns per arc, that's
-small. On **Ask** mode it barely matters: you ignore the meter and hit **"Spring
-it now"** when the story is ripe. Use **Ask** for anything you're savouring;
-**Auto** only if you want it to fire itself.
-
-**Start it simmering.** Default the arc to the `simmer` phase with no preloaded
-engagement so the conspiracy stays background and the loop runs in front. (The
-dev scenario was briefly preloaded mid-climb *for feature testing* — that made it
-race; the shipped version starts simmering. Don't ship a preloaded climb.)
-
----
-
-## Step 6 — The hook: opening scene + author's note
+## Step 5 — The hook: opening scene + author's note
 
 Write an **Opening Scene** that does four jobs at once: establishes the backdrop,
 shows the OP fantasy, introduces the central relationship, and drops the inciting
@@ -254,31 +220,12 @@ Set the **response length** to a target (slider on the Play page) — V3.2 write
 
 ---
 
-## Step 7 — Run it
-
-- The arc **climbs on what you keep touching** — lean into the conspiracy thread
-  and it builds; ignore it and it stays background.
-- When you reach the real confrontation, **Arc Director → "Spring it now."** The
-  cost instruction enters context and the model lands the climax with stakes.
-  ("Reset to simmer" pulls it back if you sprang early.)
-- After the break resolves (aftermath), the Director **drafts next-arc directions
-  and offers them in the Arc Director.** Pick one → the finished arc is **banked
-  as a Story Card** and the next arc seeds, simmering. That's how the story
-  self-continues — a stranger never becomes the next villain; a surviving thread
-  is promoted (e.g. *Azula takes the leaderless Society*).
-- Bank completed arcs with **"Complete Arc → Story Card"** (the next-arc chooser
-  does this for you automatically).
-
----
-
 ## Anti-patterns (don't)
 
 - **The coffin.** Forty inert lore/location cards. Keep the cast tight; latent
   background is fine but it isn't structure.
 - **Adjectival characters.** "Reckless and funny" instead of a voice contract.
 - **PC voice contract.** Tempts the model to write the player.
-- **Shipping a preloaded climb.** Start simmering.
-- **Tiny pace for a long player.** Bump it, or spring manually on Ask.
 - **A stranger as the next big bad.** Promote a seeded, surviving thread —
   convergence, not novelty.
 - **Flash-tier model.** It will fake the climax and ignore the rules.
@@ -296,8 +243,6 @@ Set the **response length** to a target (slider on the Play page) — V3.2 write
 - [ ] Brains for the inner circle + antagonist; behavioral; **hidden agendas
       preloaded** so the story reads from turn one; PC brain light.
 - [ ] A mission-loop component whose phases feed each other; a dispatcher figure.
-- [ ] Current Story Arc + Arc Director: baddie threads, simmer + cost
-      instructions, sensible pace, **Ask** mode, **starts simmering**.
 - [ ] Opening scene = backdrop + power + relationship + hook.
 - [ ] Enduring tone in AI Instructions and a response length target.
 - [ ] Running on DeepSeek V3.2 or better.

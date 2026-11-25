@@ -309,7 +309,6 @@ Acceptance tests:
 - Same adventure input produces same ordered context sections locally and on the server.
 - Empty sections remain present in build result but absent from provider payload.
 - `generatedBy` metadata remains correct.
-- Arc Director break instruction remains hidden before break phase.
 
 Exit criteria:
 

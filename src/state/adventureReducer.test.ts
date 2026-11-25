@@ -105,11 +105,6 @@ const testedActionTypes = [
   "FAIL_MEMORY_RECOVERY",
   "SET_AUTO_SAVE_SETTINGS",
   "MARK_COMPONENT_UPDATED",
-  "ADVANCE_ARC_PACING",
-  "SET_ARC_PHASE",
-  "SET_ARC_CONTINUATIONS",
-  "COMPLETE_ARC_TO_STORY_CARD",
-  "APPLY_ARC_CONTINUATION",
 ] as const satisfies AdventureAction["type"][];
 
 type MissingActionCoverage = Exclude<AdventureAction["type"], (typeof testedActionTypes)[number]>;
@@ -1086,95 +1081,6 @@ describe("adventureReducer", () => {
     expect(tophCards[0].keys).toContain("Beifong"); // a sparse update must not strip existing aliases
   });
 
-  it("approving an arcProposal seeds the Current Arc simmering and banks the old arc", () => {
-    const arcComp = makeComponent({
-      id: "component-arc",
-      title: "Current Arc",
-      type: "currentArc",
-      content: "The Renzan conspiracy was broken and its heads arrested.",
-      arcPremise: "Break the Renzan conspiracy",
-      arcState: { phase: "aftermath", tier: 5, threadEngagement: { x: 10 }, pendingBreak: false },
-    });
-    let state = { ...baseAdventure(), components: [arcComp] };
-
-    const arcProposal = makeMemoryProposal({
-      id: "proposal-arc",
-      proposedType: "arcProposal",
-      title: "A Pact of Flame",
-      targetId: "component-arc",
-      content: JSON.stringify({
-        arcPremise: "Azula moves against the throne from the shadows",
-        arcSimmerInstruction: "She stays off-screen, working through proxies.",
-        arcBreakInstruction: "The confrontation lands and costs an ally.",
-        arcPace: "epic",
-        arcTriggerMode: "ask",
-        arcThreadKeys: ["card-azula"],
-      }),
-    });
-
-    state = reduce(state, { type: "ADD_MEMORY_PROPOSAL", proposal: arcProposal });
-    expect(state.activeState.memoryProposals.find((p) => p.id === "proposal-arc")?.status).toBe("pending");
-
-    state = reduce(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: "proposal-arc" });
-
-    const seeded = state.components.find((c) => c.id === "component-arc");
-    expect(seeded?.arcPremise).toBe("Azula moves against the throne from the shadows");
-    expect(seeded?.arcPace).toBe("epic");
-    expect(seeded?.arcThreadKeys).toEqual(["card-azula"]);
-    expect(seeded?.arcState?.phase).toBe("simmer");
-    expect(seeded?.arcState?.tier).toBe(0);
-    expect(seeded?.content).toBe("");
-    // Old arc banked as a Story Card so prior arcs are preserved.
-    expect(state.storyCards.some((card) => card.content.includes("Renzan conspiracy was broken"))).toBe(true);
-  });
-
-  it("auto-approves arcProposal when enabled", () => {
-    const arcComp = makeComponent({
-      id: "component-arc",
-      title: "Current Arc",
-      type: "currentArc",
-      content: "",
-    });
-    let state = {
-      ...baseAdventure(),
-      components: [arcComp],
-      memoryAutoApprove: { ...baseAdventure().memoryAutoApprove, arcProposal: true },
-    };
-
-    state = reduce(state, {
-      type: "ADD_MEMORY_PROPOSAL",
-      proposal: makeMemoryProposal({
-        id: "proposal-arc-auto",
-        proposedType: "arcProposal",
-        title: "A Pact of Flame",
-        targetId: "component-arc",
-        content: JSON.stringify({
-          arcPremise: "Azula moves against the throne from the shadows",
-          arcSimmerInstruction: "She stays off-screen, working through proxies.",
-          arcBreakInstruction: "The confrontation lands and costs an ally.",
-          arcPace: "epic",
-          arcTriggerMode: "ask",
-          arcThreadKeys: ["card-azula"],
-        }),
-      }),
-    });
-
-    expect(state.components.find((component) => component.id === "component-arc")?.arcPremise).toBe(
-      "Azula moves against the throne from the shadows",
-    );
-    expect(state.activeState.memoryProposals.find((proposal) => proposal.id === "proposal-arc-auto")?.status).toBe("approved");
-    expect(state.activeState.memoryProposals.some((proposal) => proposal.id === "proposal-arc-auto" && proposal.status === "pending")).toBe(false);
-  });
-
-  it("drops an arcProposal whose content is not valid arc JSON", () => {
-    let state = { ...baseAdventure(), components: [makeComponent({ id: "component-arc", type: "currentArc", title: "Current Arc", content: "" })] };
-    state = reduce(state, {
-      type: "ADD_MEMORY_PROPOSAL",
-      proposal: makeMemoryProposal({ id: "bad-arc", proposedType: "arcProposal", title: "Bad", content: "not json" }),
-    });
-    expect(state.activeState.memoryProposals.some((p) => p.id === "bad-arc")).toBe(false);
-  });
-
   it("living-card update: facts stay in content without auto-protecting the card", () => {
     const card = makeStoryCard({
       id: "card-living",
@@ -1525,85 +1431,6 @@ describe("adventureReducer", () => {
     expect(state.activeState.memoryProposals.some((p) => p.id === "p4")).toBe(true);
   });
 
-  it("stores arc continuations, then applies one — banking the old arc and reseeding the next", () => {
-    let state = baseAdventure();
-    const arc = makeComponent({
-      title: "Current Story Arc",
-      type: "currentArc",
-      content: "Renzan fell; the Society survived.",
-      arcPremise: "Take down Lord Renzan.",
-      arcThreadKeys: ["thread-renzan"],
-      arcPace: "short",
-      arcTriggerMode: "ask",
-    });
-    state = reduce(state, { type: "UPSERT_COMPONENT", component: arc });
-    const get = () => state.components.find((component) => component.id === arc.id)!;
-
-    const option = {
-      label: "Azula takes the Society",
-      premise: "With Renzan gone, Azula seizes the New Ozai Society.",
-      threadKeys: ["thread-azula"],
-      simmerInstruction: "Azula moves through proxies.",
-      breakInstruction: "Azula forces a reckoning; it costs the cast.",
-      pace: "epic" as const,
-    };
-
-    state = reduce(state, { type: "SET_ARC_CONTINUATIONS", componentId: arc.id, options: [option] });
-    expect(get().arcContinuationOptions).toHaveLength(1);
-
-    const cardsBefore = state.storyCards.length;
-    state = reduce(state, { type: "APPLY_ARC_CONTINUATION", componentId: arc.id, option });
-
-    // The finished arc is banked as a Story Card.
-    expect(state.storyCards.length).toBe(cardsBefore + 1);
-    expect(state.storyCards.some((card) => card.content.includes("Renzan fell"))).toBe(true);
-
-    // The component is reseeded as the next arc, simmering and fresh.
-    expect(get().arcPremise).toBe(option.premise);
-    expect(get().arcThreadKeys).toEqual(["thread-azula"]);
-    expect(get().arcPace).toBe("epic");
-    expect(get().content).toBe("");
-    expect(get().arcState?.phase).toBe("simmer");
-    expect(get().arcContinuationOptions).toBeUndefined();
-  });
-
-  it("completes the current arc directly into a historical Story Card", () => {
-    let state = baseAdventure();
-    const arc = makeComponent({
-      title: "Current Story Arc",
-      type: "currentArc",
-      content: "Renzan fell; the Society survived.",
-      arcPremise: "Take down Lord Renzan.",
-      arcThreadKeys: ["thread-renzan"],
-      arcSimmerInstruction: "Renzan moves through proxies.",
-      arcBreakInstruction: "Renzan forces the confrontation.",
-      arcState: { phase: "aftermath", tier: 5, threadEngagement: { "thread-renzan": 8 }, pendingBreak: false },
-    });
-    state = reduce(state, { type: "UPSERT_COMPONENT", component: arc });
-
-    const cardsBefore = state.storyCards.length;
-    state = reduce(state, { type: "COMPLETE_ARC_TO_STORY_CARD", componentId: arc.id });
-
-    expect(state.storyCards.length).toBe(cardsBefore + 1);
-    const archived = state.storyCards.at(-1);
-    expect(archived).toMatchObject({
-      title: "Take down Lord Renzan.",
-      type: "lore",
-      memoryMode: "historical",
-      active: true,
-      state: "archivedArc",
-    });
-    expect(archived?.content).toContain("Arc: Take down Lord Renzan.");
-    expect(archived?.content).toContain("Renzan fell; the Society survived.");
-
-    const resetArc = state.components.find((component) => component.id === arc.id);
-    expect(resetArc?.arcPremise).toBe("");
-    expect(resetArc?.content).toBe("");
-    expect(resetArc?.arcThreadKeys).toEqual([]);
-    expect(resetArc?.arcState?.phase).toBe("simmer");
-    expect(resetArc?.arcContinuationOptions).toBeUndefined();
-  });
-
   it("tracks story text undo and redo for adds, edits, erases, and opening scene edits", () => {
     let state = baseAdventure();
 
@@ -1635,83 +1462,6 @@ describe("adventureReducer", () => {
   });
 
 
-  it("advances arc pacing from engagement, auto-fires the break, then settles into aftermath", () => {
-    let state = baseAdventure();
-    const arc = makeComponent({
-      title: "Current Story Arc",
-      type: "currentArc",
-      content: "",
-      arcThreadKeys: ["baddie"],
-      arcPace: "short", // escalate at 4, break at 8
-      arcTriggerMode: "auto",
-      arcBreakInstruction: "force the confrontation",
-    });
-    state = reduce(state, { type: "UPSERT_COMPONENT", component: arc });
-    const get = () => state.components.find((component) => component.id === arc.id)!;
-
-    for (let turn = 1; turn <= 3; turn++) state = reduce(state, { type: "ADVANCE_ARC_PACING", triggeredIds: ["baddie"], turn });
-    expect(get().arcState?.phase).toBe("simmer");
-
-    state = reduce(state, { type: "ADVANCE_ARC_PACING", triggeredIds: ["baddie"], turn: 4 });
-    expect(get().arcState?.phase).toBe("escalate");
-
-    for (let turn = 5; turn <= 8; turn++) state = reduce(state, { type: "ADVANCE_ARC_PACING", triggeredIds: ["baddie"], turn });
-    expect(get().arcState?.phase).toBe("break");
-    expect(get().arcState?.brokeAtTurn).toBe(8);
-
-    // break settles into aftermath after ARC_BREAK_DURATION (6) turns
-    state = reduce(state, { type: "ADVANCE_ARC_PACING", triggeredIds: [], turn: 14 });
-    expect(get().arcState?.phase).toBe("aftermath");
-  });
-
-  it("holds the break in ask mode until the player confirms it", () => {
-    let state = baseAdventure();
-    const arc = makeComponent({
-      title: "Current Story Arc",
-      type: "currentArc",
-      content: "",
-      arcThreadKeys: ["baddie"],
-      arcPace: "short",
-      arcTriggerMode: "ask",
-    });
-    state = reduce(state, { type: "UPSERT_COMPONENT", component: arc });
-    const get = () => state.components.find((component) => component.id === arc.id)!;
-
-    for (let turn = 1; turn <= 8; turn++) state = reduce(state, { type: "ADVANCE_ARC_PACING", triggeredIds: ["baddie"], turn });
-    // gate is open but the break has NOT fired — it waits on the player (the leash)
-    expect(get().arcState?.phase).toBe("escalate");
-    expect(get().arcState?.pendingBreak).toBe(true);
-
-    state = reduce(state, { type: "SET_ARC_PHASE", componentId: arc.id, phase: "break", turn: 9 });
-    expect(get().arcState?.phase).toBe("break");
-    expect(get().arcState?.pendingBreak).toBe(false);
-  });
-
-  it("counts only configured threads and resets engagement when returned to simmer", () => {
-    let state = baseAdventure();
-    const arc = makeComponent({
-      title: "Current Story Arc",
-      type: "currentArc",
-      content: "",
-      arcThreadKeys: ["baddie"],
-      arcPace: "short",
-      arcTriggerMode: "auto",
-    });
-    state = reduce(state, { type: "UPSERT_COMPONENT", component: arc });
-    const get = () => state.components.find((component) => component.id === arc.id)!;
-
-    // unrelated triggers never move the arc
-    for (let turn = 1; turn <= 10; turn++) state = reduce(state, { type: "ADVANCE_ARC_PACING", triggeredIds: ["someone-else"], turn });
-    expect(get().arcState?.phase).toBe("simmer");
-    expect(get().arcState?.threadEngagement.baddie ?? 0).toBe(0);
-
-    for (let turn = 11; turn <= 14; turn++) state = reduce(state, { type: "ADVANCE_ARC_PACING", triggeredIds: ["baddie"], turn });
-    expect(get().arcState?.threadEngagement.baddie).toBe(4);
-
-    state = reduce(state, { type: "SET_ARC_PHASE", componentId: arc.id, phase: "simmer", turn: 15 });
-    expect(get().arcState?.threadEngagement).toEqual({});
-    expect(get().arcState?.tier).toBe(0);
-  });
 });
 
 it("normalizes interrupted single-pass requests as explicit-retry failures while preserving legacy exports", async () => {

@@ -25,7 +25,6 @@ const ids = {
     pressure: "arcane-after-component-pressure",
     loop: "arcane-after-component-loop",
     author: "arcane-after-component-author",
-    arc: "arcane-after-component-current-arc",
   },
   cards: {
     seth: "arcane-after-card-seth",
@@ -186,29 +185,6 @@ Do not turn the loop into paperwork, slow surveillance, or ledger-following. Evi
       protected: true,
       inclusionPolicy: "always",
       priority: 230,
-    }),
-    makeComponent({
-      id: ids.components.arc,
-      title: "Current Story Arc",
-      type: "currentArc",
-      content: "Arc seed: Jinx's rocket has broken Piltover's illusion of control. Salo and Ambessa push Piltover toward retaliation, Mel opposes Hextech weaponry, Caitlyn wants Jinx, Viktor is no longer merely ill, and Zaun is entering the vacuum left by Silco's death.",
-      arcPremise:
-        "Piltover's answer to Jinx's rocket will decide whether Seth becomes a bridge, a weapon, or proof that even proven mages are only tolerated until fear needs a target.",
-      arcThreadKeys: [ids.cards.jinx, ids.cards.ambessa, ids.cards.hexcore, ids.cards.strikeTeams],
-      arcPace: "epic",
-      arcTriggerMode: "ask",
-      arcSimmerInstruction:
-        "Keep the war arc building through urgent aftermath scenes: damaged Council survivors, Caitlyn's hardening grief, Jayce's guilt, Ambessa applying pressure, Mel resisting Hextech weaponization, Zaunite retaliation, Jinx sightings, Firelight warnings, and Viktor's Hexcore changes. Avoid abstract politics; make every escalation visible in a room, street, lab, bridge, clinic, or raid.",
-      arcBreakInstruction:
-        "Force Piltover's response into a choice that cannot stay clean: a strike-team action, Hextech escalation, Zaunite civilian cost, Jinx confrontation, or Hexcore disaster that makes Seth choose what he will amplify, shield, or refuse. Seth remains competent and powerful; the cost lands on trust, casualties, public fear, and the future of Piltover and Zaun. No clean victory.",
-      alwaysOn: true,
-      active: true,
-      pinned: true,
-      protected: true,
-      inclusionPolicy: "always",
-      autoUpdate: true,
-      autoUpdateCooldownTurns: 4,
-      priority: 220,
     }),
   ];
 

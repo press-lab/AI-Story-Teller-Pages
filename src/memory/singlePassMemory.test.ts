@@ -136,7 +136,7 @@ const commandAliases = {
   S1: { sourceId: "Narrator-One", sourceTurn: 12, evidence: { E1: { id: "player", reference: 0 }, E2: { id: "Narrator-One", reference: 1 } },
     cards: { C1: { id: "lore", type: "lore", memoryMode: "historical" as const, reference: 2 }, C2: { id: "person", type: "character", memoryMode: "static" as const, reference: 3 } },
     brains: { B1: { id: "brain", type: "brain" as const, reference: 4 } },
-    plot: { P1: { id: "premise", type: "plotEssentials", reference: 5 }, P2: { id: "pressure", type: "activePressure", reference: 6 }, P3: { id: "arc", type: "currentArc", reference: 7 } } },
+    plot: { P1: { id: "premise", type: "plotEssentials", reference: 5 }, P2: { id: "pressure", type: "activePressure", reference: 6 } } },
   S2: { sourceId: "two", sourceTurn: 13, evidence: { E2: { id: "two", reference: 8 } }, cards: {}, brains: {}, plot: {} },
   S3: { sourceId: "three", sourceTurn: 14, evidence: { E2: { id: "three", reference: 9 } }, cards: {}, brains: {}, plot: {} },
 };
@@ -165,7 +165,7 @@ describe("simple memory command protocol", () => {
     expect(result.sources[0].findings).toEqual([{ kind: "brain", targetId: "brain", title: "Suspicion", reason: "Extracted from narrator source Narrator-One.", candidateOnly: true,
       evidenceQuotes: [{ messageId: "Narrator-One", quote: '\"The spell held.\"' }], brainPatch: field === "thought" ? { thoughts: { memory_narrator_one_1: "12 \u2192 I suspect a secret." } } : { [field]: "I suspect a secret." } }]);
   });
-  it.each([["plotEssentials", "P1", "premise"], ["activePressure", "P2", "pressure"], ["currentArc", "P3", "arc"]])("constructs %s content", (kind, target, id) => {
+  it.each([["plotEssentials", "P1", "premise"], ["activePressure", "P2", "pressure"]])("constructs %s content", (kind, target, id) => {
     expect(complete(memoryCommand(`S1 ${kind} ${target}`)).sources[0].findings[0]).toEqual({ kind, targetId: id, title: "The spell", content: "The spell held.", reason: "Extracted from narrator source Narrator-One.", candidateOnly: true, evidenceQuotes: [{ messageId: "Narrator-One", quote: '\"The spell held.\"' }] });
   });
   it("retains two independent memories and source-scoped evidence", () => {
@@ -294,7 +294,7 @@ describe("command header compatibility", () => {
       });
     }
   });
-  it.each([["BRAIN", "b1", "brain"], ["PLOTESSENTIALS", "p1", "plotEssentials"], ["ACTIVEPRESSURE", "p2", "activePressure"], ["CURRENTARC", "p3", "currentArc"]])("normalizes %s and manifest target case", (label, target, kind) => {
+  it.each([["BRAIN", "b1", "brain"], ["PLOTESSENTIALS", "p1", "plotEssentials"], ["ACTIVEPRESSURE", "p2", "activePressure"]])("normalizes %s and manifest target case", (label, target, kind) => {
     expect(complete(memoryCommand(`s1\t${label}\t${target}`, kind === "brain" ? "FIELD thought" : "")).sources[0].findings[0].kind).toBe(kind);
   });
   it("normalizes lowercase DONE source aliases", () => {

@@ -64,7 +64,7 @@ Brain-derived Story Card notes no longer call `validateMemoryUpdate`. A linked c
 
 Normal Story Card updates no longer call `validateStoryCardProposal`. They keep the generated delta, bind local placement, and require review. An ambiguous Character event becomes a new Lore proposal. Manual reconciliation also uses local placement and review instead of paid Story Card validation.
 
-Normal Plot, Active Pressure, and Current Arc updates no longer call `validateMemoryUpdate`. Local code checks the existing component, its type, its format, its size, and duplicate coverage. Invalid output does not produce an update marker. Plot Essentials and Active Pressure remain replacements. Current Arc remains an append.
+Normal Plot and Active Pressure updates no longer call `validateMemoryUpdate`. Local code checks the existing component, its type, its format, its size, and duplicate coverage. Invalid output does not produce an update marker. Plot Essentials and Active Pressure remain replacements.
 
 The paid implementations in `validateMemoryUpdate.ts` and `validateStoryCardProposal.ts` remain unchanged. The existing legacy cycle explicitly selects `legacy`. Their legacy tests remain.
 
@@ -78,8 +78,6 @@ The before counts below come from baseline code paths. They are not measured pro
 | Manual Brain generation | 2 | 1 |
 | Manual Story Card generation | At least 2; a corrected placement could need more | 1 per selected card |
 | Manual Plot or Active Pressure generation | 2 | 1 per selected component |
-| Manual Current Arc through `runManualPEComponentUpdate` | This operation did not accept Current Arc | 1 |
-| Ordinary targeted Current Arc action | 1, or 2 for an independently validated legacy action | 1 for local processing |
 | Local validation | 0 HTTP attempts | 0 |
 | Local JSON recovery | 0 HTTP attempts | 0 |
 | Local duplicate suppression | 0 HTTP attempts | 0 |

@@ -73,7 +73,6 @@ describe("premade adventure library", () => {
     const arcane = premadeAdventures.find((premade) => premade.id === "arcane-after-rocket")!;
     const adventure = arcane.createAdventure();
     const pe = adventure.components.find((component) => component.type === "plotEssentials")?.content ?? "";
-    const currentArc = adventure.components.find((component) => component.type === "currentArc")?.content ?? "";
     const mel = adventure.storyCards.find((card) => card.title === "Mel Medarda");
     const sethMagic = adventure.storyCards.find((card) => card.title === "Seth's Magic");
     const brainNames = adventure.brains.map((brain) => brain.characterName);
@@ -96,8 +95,6 @@ describe("premade adventure library", () => {
     expect(pe).toContain("Irius Bolbok");
     expect(pe).toContain("Salo crippled");
     expect(pe).not.toContain("leaderless");
-    expect(currentArc).toContain("Mel opposes Hextech weaponry");
-    expect(currentArc).not.toContain("surviving city leadership wants blood");
     expect(pe).not.toContain("VOICE CONTRACT");
     expect(sethMagic?.content).toContain("basic physical wards are always up");
     expect(mel?.content).toContain("No romance with Seth");

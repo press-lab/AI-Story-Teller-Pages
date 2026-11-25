@@ -37,7 +37,6 @@ export function looseMemoryFixture(withSources = true) {
   }));
   a.components = [
     makeComponent({ id: "pressure", title: "Ministry Deadline", type: "plotEssentials", protected: false, active: true, autoUpdate: true, content: "No deadline has been imposed." }),
-    makeComponent({ id: "arc", title: "Research Arc", type: "currentArc", active: true, autoUpdate: true, arcPremise: "Investigate magical research.", content: "The investigation began." }),
   ];
   a.messages = withSources ? looseNarrations.map((content, index): Message => ({ id: "narrator-" + (index + 1), role: "assistant", content,
     createdAt: "2000-01-01", storyTime: index === 0 ? businessDay : undefined, inputMode: "story", memoryEvaluation: { pipeline: "singlePass", status: "pending", attempts: 0, turn: index + 1,

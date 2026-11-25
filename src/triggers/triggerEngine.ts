@@ -118,7 +118,6 @@ export function triggerActionToAdventureActions(
       return [{ type: "REPLACE_BRAIN_STATE", brainId: triggerAction.brainId, field: triggerAction.field, text: triggerAction.text }];
     case "updateComponentPressure":
     case "updateComponentMomentum":
-    case "updateComponentArc":
       return [];
     case "forceIncludeNextTurn":
       return [{ type: "FORCE_INCLUDE_NEXT_TURN", targetType: triggerAction.targetType, targetId: triggerAction.targetId }];

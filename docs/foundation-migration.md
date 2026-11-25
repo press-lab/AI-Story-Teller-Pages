@@ -22,7 +22,7 @@ No narrator generation rule, model setting, cadence or context budget changed.
 | --- | --- | --- |
 | `semanticEngine.runMemoryCycle`, independent plot/card/character condition evaluation and targeted generation | ORIGINAL FOUNDATION | Restore as the normal post-story call chain. Reuse the existing descendant implementation and original conditions/prompts instead of introducing another engine. |
 | `brainConditions`, first-person thought patches, cooldowns, archival and condensation | ORIGINAL FOUNDATION | Retain; evaluate a bounded continuing exchange, not only literal names in the final response. More than one character can have a meaningful reaction. |
-| Plot Essentials drift, Current Arc event log, external Active Pressure | ORIGINAL FOUNDATION | Restore distinct conditions, respecting explicit component auto-update permissions. Never change Arc Director phases with model verdicts. |
+| Plot Essentials drift and external Active Pressure | ORIGINAL FOUNDATION | Restore distinct conditions, respecting explicit component auto-update permissions. |
 | Original first-card-only and single-winner selection | REQUIRES ADAPTATION | Consider eligible existing cards and characters independently; one changed destination must not suppress another. |
 | Original unconditional successful-cycle stamp, silent runtime failure | REQUIRES ADAPTATION | Replace with source-bound, independently completed evaluation groups, bounded retries and inspectable errors. |
 | Pages append/create matching, deduplication, chronology and review | PAGES IMPROVEMENT | All four card types accept factual appends. Legacy modes and per-card opt-in no longer gate writes. Keep exact evidence and destination review. |
@@ -31,7 +31,7 @@ No narrator generation rule, model setting, cadence or context budget changed.
 | Deterministic entity scanner | PAGES IMPROVEMENT | Supplemental review-only identity nominations, merged into the same inbox. It does not decide private reactions or plot developments. |
 | Provider adapters, Responses transport, endpoint validation, GLM bounded reasoning, API accounting | PAGES IMPROVEMENT | Targeted evaluation/generation/validation use the current memory provider transport, never narrator-only settings. No required JSON mode on unsupported chat endpoints. |
 | `useAdventureRuntime`, pending reducer updates, turn pipeline | REQUIRES ADAPTATION | Save final narration before independent work. Commit only results whose source evidence and destination snapshots still match. No background history replay on load. |
-| Context builder and Context Preview, budget selection, player agency/response guard, story clock | PAGES IMPROVEMENT | Keep deterministic provider payload, canonical memory selection, gated arc cost and recent transcript ordering. Pending proposals remain outside narration canon. |
+| Context builder and Context Preview, budget selection, player agency/response guard, story clock | PAGES IMPROVEMENT | Keep deterministic provider payload, canonical memory selection, and recent transcript ordering. Pending proposals remain outside narration canon. |
 | IndexedDB, imports/exports, save normalization, provider-secret stripping | PAGES IMPROVEMENT | Retain browser-only persistence and existing schema. Add only optional evaluation/provenance metadata. Never rewrite saved adventures during migration tests. |
 | Original Auto-Cards/quests, rolling summary and scene state compatibility | REQUIRES ADAPTATION | Original Auto-Cards module is already removed. Do not revive it or emit legacy summary/scene buckets into prompts. Retain compatibility fields. |
 | Backend/accounts/PostgreSQL | SUPERSEDED | None imported. The selected source and destination are browser-only. |
@@ -107,16 +107,14 @@ use `evaluator: "independent"`.
 - **Review all automatic updates** (`requireApprovalForAutoUpdates`) forces
   review. With it off, saved per-type auto-approval preferences apply; protected,
   uncertain and ambiguous destinations still require review.
-- Plot Essentials requires `autoUpdate === true`. Current Arc/Active Pressure
-  honor explicit opt-outs. Per-target and global card cooldowns remain effective;
-  pressure defaults to no cooldown, while arc updates default to four turns.
+- Plot Essentials requires `autoUpdate === true`. Per-target and global card cooldowns remain effective.
 - Failed source groups back off between attempts and quarantine after three
   automatic attempts. Explicit retries are bounded to selected sources and can
   retry quarantined work. Loading an adventure never issues memory requests.
 - Legacy pending recovery is retained for explicit Chronicle/Decisions review.
   It is not silently replayed or reinterpreted as current story action.
 
-The existing deterministic Arc Director phase gate, player-agency/length guards,
+The existing player-agency/length guards,
 continuity checks, author tools, static hosting, context budgets and exact Context
 Preview/provider payload agreement remain covered by the existing regressions.
 No backend, account infrastructure or new dependencies were added.

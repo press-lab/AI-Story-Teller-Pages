@@ -6,7 +6,6 @@ import { initialStoryClock } from "../memory/storyTime";
 import { migrateStoryCard, primaryStoryCardType } from "../memory/storyCardArchitecture";
 import type {
   Adventure,
-  ArcPacingState,
   BackgroundProviderConfig,
   BrainEntry,
   ComponentEntry,
@@ -90,8 +89,6 @@ export const defaultMemoryDetectionSettings: MemoryDetectionSettings = {
 export const defaultMemoryAutoApproveSettings: MemoryAutoApproveSettings = {
   plotEssentialsUpdate: false,
   plotPressureUpdate: false,
-  currentArcUpdate: false,
-  arcProposal: false,
   brainUpdate: false,
   loreStoryCard: false,
   relationshipStoryCard: false,
@@ -107,8 +104,6 @@ export function normalizeMemoryAutoApproveSettings(input: unknown = {}): MemoryA
   return {
     plotEssentialsUpdate: old.plotEssentialsUpdate === true,
     plotPressureUpdate: false, // Legacy field; Active Pressure is retired.
-    currentArcUpdate: old.currentArcUpdate === true,
-    arcProposal: old.arcProposal === true,
     brainUpdate: old.brainUpdate === true,
     loreStoryCard: old.loreStoryCard !== undefined ? old.loreStoryCard === true : old.storyCard === true,
     relationshipStoryCard: old.relationshipStoryCard === true,
@@ -182,7 +177,7 @@ PLAYER INPUT MODES:
 - Plain narrative messages are story direction from the author. Incorporate and continue.
 - [Out of Character: ...] messages are author notes. Step out of the story, respond briefly as a collaborator, then stop. Do not write story prose in this mode.
 
-CONTINUITY: All context sections (plot essentials, story cards, character brains, current arc) are established canon. Never contradict them. When details are absent, invent consistently with what is established. Even if this adventure uses names, places, factions, or concepts from a published setting or fandom, the adventure context is the only canon. Do not import outside biography, relationships, motives, powers, locations, or events unless they are established in the active context.
+CONTINUITY: All context sections (plot essentials, story cards, character brains) are established canon. Never contradict them. When details are absent, invent consistently with what is established. Even if this adventure uses names, places, factions, or concepts from a published setting or fandom, the adventure context is the only canon. Do not import outside biography, relationships, motives, powers, locations, or events unless they are established in the active context.
 
 TONE: Match the tone the adventure has established. Do not break the fourth wall, moralize, or editorialize unless in [Out of Character] mode.
 
@@ -262,13 +257,6 @@ export function makeComponent(
     title: overrides.title,
     type,
     content: overrides.content,
-    arcPremise: overrides.arcPremise,
-    arcThreadKeys: overrides.arcThreadKeys,
-    arcPace: overrides.arcPace,
-    arcTriggerMode: overrides.arcTriggerMode,
-    arcSimmerInstruction: overrides.arcSimmerInstruction,
-    arcBreakInstruction: overrides.arcBreakInstruction,
-    arcState: overrides.arcState ?? (type === "currentArc" ? defaultArcState() : undefined),
     priority: overrides.priority ?? 0,
     alwaysOn,
     active: type === "authorNote" ? false : (overrides.active ?? true),
@@ -285,10 +273,6 @@ export function makeComponent(
     createdAt: overrides.createdAt ?? timestamp,
     updatedAt: overrides.updatedAt ?? timestamp,
   };
-}
-
-export function defaultArcState(): ArcPacingState {
-  return { phase: "simmer", tier: 0, threadEngagement: {}, pendingBreak: false };
 }
 
 export function makeStoryCard(overrides: Omit<Partial<StoryCard>, "type"> & { type?: StoryCard["type"] | import("../types/adventure").LegacyStoryCardType } & Pick<StoryCard, "title" | "content">): StoryCard {
@@ -617,15 +601,12 @@ export function normalizeAdventure(adventure: Adventure): Adventure {
           active: migrated.type === "authorNote" ? false : migrated.active,
           protected: migrated.protected ?? defaultProtected,
           inclusionPolicy: migrated.inclusionPolicy ?? (migrated.alwaysOn || defaultProtected ? "always" : "manual"),
-          // Arc Director: every Current Arc carries pacing state so the gate has something to read.
-          // No behavior change until the user actually configures threads + a break instruction.
-          arcState: migrated.type === "currentArc" ? (migrated.arcState ?? defaultArcState()) : migrated.arcState,
         };
       });
       // Deduplicate singleton types: keep the first occurrence of each singleton type.
       // This fixes adventures that were created with duplicate narrationRules (or other
       // singleton) components due to a bug in createAdventure merging baseline + setup.
-      const singletonTypes = new Set(["narrationRules", "aiInstructions", "plotEssentials", "currentArc"]);
+      const singletonTypes = new Set(["narrationRules", "aiInstructions", "plotEssentials"]);
       const seenSingletons = new Set<string>();
       const deduped = normalized.filter((component) => {
         if (!singletonTypes.has(component.type)) return true;

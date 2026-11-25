@@ -52,7 +52,7 @@ Lore keeps occurrence precision, latest-change date, status and supporting sourc
 
 Normal play scans the finalized entry and consumes its existing memory envelope. Missing/malformed envelopes keep the current batched recovery cadence and output allowance. Chronicle's **Evaluate Story Card Updates** evaluates one to ten narrator entries with the same scanner, compact assessment, matching, merge and review records using at most one explicitly requested background call. It never rewrites narration or changes Brains. Model failure retains local candidates; reevaluation is idempotent.
 
-Older catch-up/event-search tools retain their compatibility response envelope while using the same semantic instruction, local scanner, suggestion constructor, matching, deduplication and source protections. Automatic memory never targets Plot Essentials, Current Arc, Active Pressure or other components. Explicit manual component tools and deterministic Arc Director pacing remain available.
+Older catch-up/event-search tools retain their compatibility response envelope while using the same semantic instruction, local scanner, suggestion constructor, matching, deduplication and source protections. Automatic memory never targets Plot Essentials, Active Pressure or other components. Explicit manual component tools remain available.
 
 Brain parser/first-person thought format, accumulation, archival, perspective validation, triggers, cooldowns, cadence, manual tools, context injection and approvals remain unchanged. Imported Brain update instructions are preserved exactly.
 

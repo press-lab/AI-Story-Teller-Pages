@@ -49,7 +49,7 @@ The short version for arc-driven play:
    plot you administer; an arc that grows *out of* the loop and eventually
    comes to a head.
 
-Active Pressure is retired. Use Current Arc for ongoing storyline progress, recent messages for immediate events, and Next Output Bias for one-turn steering. Plot Essentials contains enduring foundations.
+Active Pressure is retired. Use recent messages for immediate events and Next Output Bias for one-turn steering. Plot Essentials contains enduring foundations.
 
 Power fantasy is **not** a separate pillar and it is **not** subordinate to
 social friction. If your taste is being OP and having NPCs largely accept it,
@@ -193,124 +193,6 @@ construction and convergent by nature.
 
 ---
 
-## Pacing belongs in code, not in the prose
+### Memory accuracy
 
-A break instruction written as plain standing text is fragile: it sits in
-context *every turn*, the model re-evaluates it against a fuzzy condition every
-turn, and — having no persistent sense of arc-time — it fires the first turn it
-can rationalize. You'd get the climax at turn 30.
-
-The fix is **not** to teach the model pacing (it can't perceive the sequence).
-The fix is to **gate the context by phase**: the model literally never sees a
-"break" instruction until external, deterministic state opens the gate. It can't
-fire early on what isn't in context — the same reason a pure-simmer setup is
-stable.
-
-Design constraints for the pacing layer:
-
-- **It owns timing, never outcome.** What the break costs (bloodless ↔ lethal)
-  is authored in the break card's text. The pacing code only decides *when* that
-  card enters context.
-- **It advances on a countable signal, never an LLM verdict.** Tier climbs on
-  measurable player *engagement* with a thread (how often its cards trigger),
-  not on the model judging "is this dramatic yet." The moment pacing depends on
-  model judgment, you've rebuilt the ledger you were trying to delete.
-- **Fidelity to the cost policy is the model, not the code.** A capable model
-  (DeepSeek V3.2 / `deepseek-chat`) spends the authored cost where it hurts. A
-  weaker model honors the *letter* — kills a redshirt, gives a heroic wound —
-  and the climax feels fake. Use V3.2 or better for any adventure that has a
-  break. Flash-tier models skim long rule blocks and revert to helpfulness
-  defaults; they are not suitable here.
-
-This is what the **Arc Director** (on a Current Arc component) implements:
-phases **Simmer → Escalate → Break → Aftermath**, a thread set (the "baddie"),
-a pace (the "timer"), a cost (the break instruction), and a trigger mode.
-
----
-
-## The two orthogonal knobs
-
-These get conflated; keep them separate.
-
-- **Cost policy** — *what* the break costs. Bloodless ↔ real/lethal. Authored in
-  the break card. "Everyone lives" → it's so. "Heavy, real costs" → it's so.
-- **Trigger control** — *who* says it fires now. **Auto** (the AI springs it
-  when the gate opens) ↔ **Ask** (the app asks you first — one yes/no, not a
-  ledger). The leash.
-
-All four combinations are valid. Note **Ask + lethal** — *you* decide when the
-hammer falls, but when it does, it's real — is the configuration most long
-character-driven arcs actually want.
-
----
-
-## After the break: the next arc
-
-When an arc resolves (Break → Aftermath), the next arc should grow from the
-**highest-engagement unresolved thread** and *connect to what just happened*
-(convergence). In Auto mode the Director can promote it itself; in Ask mode it
-proposes the next arc to the Memory Inbox for you to accept, edit, or reject.
-You are never handed a ledger — at most a single decision.
-
----
-
-## Setup checklist
-
-For a new or existing adventure that should have a climbing arc:
-
-- [ ] **Backdrop** you actually like inhabiting.
-- [ ] **Cast as Brains**, behavioral not adjectival, relationships on the Brains.
-- [ ] A **loop** where each phase manufactures the next.
-- [ ] **Active Pressure** as one sentence naming the external force pressing now.
-- [ ] One **Current Arc** with an Arc Director:
-  - [ ] **The Baddie** — which Story Cards / Brains are this arc's threads.
-  - [ ] **The Timer** — pace (Short / Medium / Long / Epic).
-  - [ ] **How it simmers** — recur, hint, stay off-screen, stay connected to the
-        larger plan.
-  - [ ] **How it breaks** — the cost policy. OP in the loop, costly in the
-        climax.
-  - [ ] **Who springs it** — Auto or Ask.
-- [ ] Running on **DeepSeek V3.2 (`deepseek-chat`)** or better, so the break
-      actually lands.
-- [ ] Pure-loop adventures: skip the arc entirely. Infinite silliness is a valid
-      choice — only add pressure if you want a lead-up.
-
----
-
-## Where this lives in code (for contributors)
-
-The theory above maps onto the **Arc Director**:
-
-- `ArcPacingState` and the `arc*` fields (`arcThreadKeys`, `arcPace`,
-  `arcTriggerMode`, `arcSimmerInstruction`, `arcBreakInstruction`, `arcState`)
-  on `ComponentEntry` — `src/types/adventure.ts`.
-- The phase gate that withholds the break instruction until `phase === "break"`
-  — the `currentArc` block in `src/contextBuilder/contextBuilder.ts`.
-- `ADVANCE_ARC_PACING` (counts engagement, advances phase) and `SET_ARC_PHASE`
-  (manual override / confirm a pending break), plus the pace→threshold table —
-  `src/state/adventureReducer.ts`.
-- The engagement signal (which threads were active in-scene this turn) —
-  `src/state/turnPipeline.ts`.
-- The setup panel — the `ArcDirector` component in `src/pages/ComponentsPage.tsx`.
-- Concept ↔ contract for reviewers: see `AGENTS.md` → "Arc Director" for the
-  invariants.
-
-```ts
-interface ArcPacingState {
-  phase: "simmer" | "escalate" | "break" | "aftermath";
-  tier: number;                              // 0–5, derived from engagement
-  threadEngagement: Record<string, number>;  // counted, never LLM-judged
-  pendingBreak: boolean;                      // ask-mode: gate open, awaiting the player
-  brokeAtTurn?: number;
-}
-```
-
-The non-negotiable: **code owns timing, the break card's text owns outcome, and
-a capable model (V3.2-class) owns whether the cost actually lands.**
-
-
-### Memory accuracy and pacing setup
-
-Background memory updates receive named active narration rules, AI Instructions, Plot Essentials, always-on custom rules, character cards, and relevant lore alongside recent story evidence. Private brains, pending proposals, and gated arc instructions are excluded from these references. Generated entries retain their source excerpt for review. New adventures require approval for Current Arc updates by default; saved explicit auto-approval choices are preserved. Review remains important: grounding reduces ambiguity but cannot guarantee model factual accuracy.
-
-Arc pacing counts each selected card/brain match, not verified breakthroughs. Multiple selected matches in one turn add multiple engagements. Select specific threats or evidence rather than ever-present companions or broad topic cards; selecting nothing leaves pacing manual. Per-thread counts are visible in the Arc Director. The climax instruction remains gated until the break phase.
+Background memory updates receive named active narration rules, AI Instructions, Plot Essentials, always-on custom rules, character cards, and relevant lore alongside recent story evidence. Private brains, pending proposals are excluded from these references. Generated entries retain their source excerpt for review. Review remains important: grounding reduces ambiguity but cannot guarantee model factual accuracy.

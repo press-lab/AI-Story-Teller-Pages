@@ -29,7 +29,7 @@ export function validateSinglePassFinding(a: Adventure, sourceId: string, checkp
   const evidence = memoryEvidenceWindow(a, sourceId);
   if (f.evidenceQuotes.some(q => !evidence.some(m => m.id === q.messageId && m.content.includes(q.quote)))) return "Quote is not verbatim in the permitted historical evidence.";
   if (!f.evidenceQuotes.some(q => q.messageId === sourceId)) return "Missing establishing narrator evidence.";
-  const shapeError = memoryUpdateShapeError(f.kind === "immediateMomentum" ? "currentArc" : f.kind, f.content ?? "");
+  const shapeError = memoryUpdateShapeError(f.kind === "immediateMomentum" ? "plotEssentials" : f.kind, f.content ?? "");
   if (shapeError) return shapeError;
   if (f.kind === "storyCard") {
     if (f.identityChange && f.storyCardType !== "character") return "Character profile corrections require Character placement and author review.";
@@ -102,10 +102,9 @@ export function toSinglePassProposal(a: Adventure, sourceId: string, checkpoint:
     p = bindPlacement(a, p, { kind: p.targetId ? "append" : "create", reason: f.reason, newFact: f.content!, identityChange: f.identityChange,
       ...(original ? { loreOriginalSourceId: original.id } : {}) }, original ? [...ids, original.id] : ids);
   } else {
-    const types = { brain: "brainUpdate", plotEssentials: "plotEssentialsUpdate", activePressure: "plotPressureUpdate", currentArc: "currentArcUpdate", immediateMomentum: "plotMomentumUpdate" } as const;
+    const types = { brain: "brainUpdate", plotEssentials: "plotEssentialsUpdate", activePressure: "plotPressureUpdate", immediateMomentum: "plotMomentumUpdate" } as const;
     p = { id: createId("proposal"), sourceTurnId: sourceId, sourceText: f.evidenceQuotes.map(q => q.quote).join("\n"), proposedType: types[f.kind],
       title: f.title, content: f.kind === "brain" ? JSON.stringify(f.brainPatch) : f.content!, targetId: f.targetId!,
-      appendContent: f.kind === "currentArc" ? true : undefined,
       suggestedTriggers: [], confidence: review ? 0.45 : 0.8, rationale: f.reason, status: "pending", requiresReview: review, createdAt: nowIso(), updatedAt: nowIso() };
   }
   p.evaluationSource = { messages: checkpoint.evidence, target: p.proposedType === "storyCard"

@@ -115,7 +115,7 @@ export async function prepareSinglePassMemoryBatch(a: Adventure, ids: readonly s
     });
     // Single-pass-only, review-required legacy Momentum support.
     const plot = [...inputs.currentPlot.filter(p => conditions.plot.some(c => c.id.endsWith(":" + p.id))), ...snapshot.components.filter(c => c.type === "immediateMomentum" && c.active && c.autoUpdate !== false)
-      .map(c => ({ id: c.id, type: c.type, content: c.content, premise: c.arcPremise, autoUpdate: c.autoUpdate, protected: c.protected }))];
+      .map(c => ({ id: c.id, type: c.type, content: c.content, autoUpdate: c.autoUpdate, protected: c.protected }))];
 
     // Keep source evidence; retain only the digest of the reference/control guard.
     checkpoints.push({ sourceId: source.id, checkpoint: { batchId, sourceContent: source.content, sourceRevision: source.memoryEvaluation?.revision,
@@ -208,7 +208,6 @@ or invent card IDs for a relationship.
 
 storyCard.custom: enduring properties of an established non-person subject, not a catch-all for events.
 component.plotEssentials: replacement premise, central conflict and persistent constraints; preserve still-valid foundations (180 words).
-component.currentArc: append a new development within an existing active arc; never change Director phases.
 component.immediateMomentum: replacement for an existing eligible immediate-momentum component; review required.
 Components must use the existing title and correct subtype. Never create components or edit narrationRules, aiInstructions, authorNote, memory or custom components.
 
@@ -277,7 +276,7 @@ export function normalizeSinglePassFinding(v: unknown, sourceId: string, adventu
 }
 /** Structural checks only. Exact quotation is not proof of the model's interpretation. */
 export function singlePassFindingSchemaError(v: unknown): string | undefined {
-  if (!object(v) || Object.keys(v).some(key => !["kind", "targetId", "title", "content", "brainPatch", "reason", "evidenceQuotes", "candidateOnly", "storyCardType", "operation", "memoryMode", "eventStatus", "suggestedTriggers", "participants", "identityChange", "destinationCandidates", "loreContinuation", "relationship"].includes(key)) || !["storyCard", "brain", "plotEssentials", "activePressure", "currentArc", "immediateMomentum"].includes(String(v.kind))
+  if (!object(v) || Object.keys(v).some(key => !["kind", "targetId", "title", "content", "brainPatch", "reason", "evidenceQuotes", "candidateOnly", "storyCardType", "operation", "memoryMode", "eventStatus", "suggestedTriggers", "participants", "identityChange", "destinationCandidates", "loreContinuation", "relationship"].includes(key)) || !["storyCard", "brain", "plotEssentials", "activePressure", "immediateMomentum"].includes(String(v.kind))
     || !(v.targetId === null || nonempty(v.targetId)) || !nonempty(v.title) || !nonempty(v.reason) || typeof v.candidateOnly !== "boolean"
     || !Array.isArray(v.evidenceQuotes) || !v.evidenceQuotes.length || v.evidenceQuotes.some(q => !object(q) || !nonempty(q.messageId) || !nonempty(q.quote))) return "Missing or invalid required finding fields.";
   if (v.loreContinuation !== undefined && v.loreContinuation !== "identified" && v.loreContinuation !== "review") return "Invalid Lore continuation flag.";
@@ -433,7 +432,7 @@ export function parseSinglePassMemoryCommands(text: string, aliases: PreparedSin
     if (!c.state) { reject(c, "Unknown source alias; no attribution inferred."); return; }
     const { manifest, result } = c.state;
     const content = c.lines.join("\n").trim(), meta = c.metadata;
-    const kinds = ["storyCard", "brain", "plotEssentials", "activePressure", "currentArc"] as const;
+    const kinds = ["storyCard", "brain", "plotEssentials", "activePressure"] as const;
     const label = c.kind.toLowerCase().replace(/\s+/g, " ");
     const cardAlias = Object.hasOwn(manifest.cards, c.target) ? c.target : c.target.toUpperCase();
     const kind = label === "story card" || (label === "lore" && (c.target === "NEW" || Object.hasOwn(manifest.cards, cardAlias)))

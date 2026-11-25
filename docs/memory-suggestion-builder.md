@@ -2,7 +2,7 @@
 
 Open **Memory → Suggestions → Create suggestion with AI**. The panel is collapsed by default. The former Plot and Story Card draft forms and recent-play suggestion buttons have been removed from those editors.
 
-Draft from a written brief for Narration Rules, AI Instructions, Plot Essentials, Current Story Arc, Author’s Note, Custom components, or Character, Location, Lore and Custom Story Cards. Choose a new item or an existing destination. Existing singleton components must be updated rather than duplicated. Card updates append; component drafts replace the body while preserving their other controls and Current Arc configuration. Component inclusion is explicit and starts from the existing destination’s value when updating.
+Draft from a written brief for Narration Rules, AI Instructions, Plot Essentials, Custom components, or Character, Location, Lore and Custom Story Cards. Choose a new item or an existing destination. Existing singleton components must be updated rather than duplicated. Card updates append; component drafts replace the body while preserving their other controls. Component inclusion is explicit and starts from the existing destination’s value when updating.
 
 For recent-play review, choose Plot Essentials or a Story Card type. Review one destination, or explicitly review relevant selected reference cards of that type. A card review returns separate pending drafts for supported updates. An empty result reports that no supported update was found.
 
@@ -24,4 +24,4 @@ Always-included Custom components make information available under the existing 
 
 Component suggestions also receive type-specific best practices and a repeated-context check. They may keep initial facts, supported stakes, and possible interested parties. Initial facts are anchored to past events. They must not turn current knowledge rosters, unanswered questions, pending offers, or dormancy into permanent assertions that override later play. The prompt asks the model to check every sentence against later disclosure, decisions, discovery, and resolution. This is generation guidance, not a guarantee of model compliance or an automatic rewrite of existing components.
 
-The autonomous memory evaluator receives no new permission to change Narration Rules, AI Instructions, Author’s Note, or other authoring controls. No new Arc Director phases or pacing behavior are introduced.
+The autonomous memory evaluator receives no new permission to change Narration Rules, AI Instructions, Author’s Note, or other authoring controls.

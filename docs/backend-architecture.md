@@ -138,7 +138,6 @@ Invariants:
 - Context Preview is produced from the same build result as the provider payload.
 - AI-generated memory writes stay inside approved mutation paths.
 - Pending proposals never become hidden prompt context.
-- Arc Director break instructions remain gated until the deterministic phase reaches `break`.
 
 ## Auth And Invite-Gated Signup
 

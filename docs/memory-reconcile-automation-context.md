@@ -16,7 +16,7 @@ The save audit showed that auto-approval was not the core issue. The issue was s
 The Memory page now includes **Check Recent Entries**:
 
 - The user supplies an entry count and may optionally add a directive.
-- Code deterministically scans the selected recent entries, plus the optional directive when present, for related Plot Essentials, Active Pressure, Current Arc, Story Cards, and optionally Brains.
+- Code deterministically scans the selected recent entries, plus the optional directive when present, for related Plot Essentials, Active Pressure, Story Cards, and optionally Brains.
 - The deterministic target list is fixed before the AI call. The AI may generate replacement/update content only for those targets.
 - Resolved/removal wording applies deterministic patches such as unpinning, unprotecting, changing compact status to `resolved` or `superseded`, or deactivating removal targets.
 - The generated changes become normal Memory Suggestions. They are applied only through reducer approval/auto-approval behavior.

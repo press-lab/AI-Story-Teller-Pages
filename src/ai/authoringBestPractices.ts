@@ -18,7 +18,7 @@ ${AUTHORING_SECTIONS.find((section) => section.id === "participation-pacing")!.t
 - Per-character voice belongs on that character's Story Card, not in AI Instructions.`;
 
 export const PLOT_ESSENTIALS_BEST_PRACTICES = `Plot Essentials best practices:
-- Plot Essentials hold the overarching premise, optional central long-term conflict, and persistent story-wide constraints. The ongoing storyline and pacing belong in Current Arc. Immediate scene details do not belong in Plot Essentials.
+- Plot Essentials hold the overarching premise, optional central long-term conflict, and persistent story-wide constraints. Immediate scene details do not belong in Plot Essentials.
 - ${PLOT_ESSENTIALS_FOUNDATIONS_RULE}
 - Historical dates may establish durable background; active gameplay dates do not belong here.
 - They are always-on context, so keep them short and non-redundant.
@@ -43,7 +43,6 @@ export function componentSuggestionBestPractices(type: DraftComponentType): stri
     narrationRules: NARRATION_RULES_BEST_PRACTICES,
     aiInstructions: AI_INSTRUCTIONS_BEST_PRACTICES,
     plotEssentials: PLOT_ESSENTIALS_BEST_PRACTICES,
-    currentArc: "Current Story Arc: record supported completed arc developments as past events. Preserve the existing Arc Director configuration and phase. Do not turn the arc log into a permanent current-state or open-question checklist.",
     custom: AUTHORING_SECTIONS.find(section => section.id === "components")!.text,
   };
   return `${roles[type]}\n\n${COMPONENT_SUGGESTION_PERSISTENCE_GUIDANCE}`;

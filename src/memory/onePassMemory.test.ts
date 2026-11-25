@@ -82,7 +82,6 @@ describe("one-pass memory quality boundary", () => {
   it.each([
     { ...update, evidence: "Mira is immortal and rules the world." },
     { ...update, target: "Missing person" },
-    { ...update, kind: "currentArc" },
     { ...update, kind: "providerConfig" },
     { ...update, kind: "thought", target: "Absent NPC" },
     { ...update, content: "fact ".repeat(71) },
@@ -245,22 +244,6 @@ describe("one-pass memory quality boundary", () => {
     const adventure = fixture();
     await expect(runTurnPipeline({ adventure, text: "Mira listens.", sendChatCompletion: async () => ({ content: '<memory_updates>{"updates":[]}</memory_updates>' }) })).rejects.toThrow("no visible story");
     expect(adventure.activeState.turn).toBe(0);
-  });
-
-  it("logs an arc development without changing the authored premise or phase", async () => {
-    const adventure = fixture();
-    adventure.memoryAutoApprove.currentArcUpdate = true;
-    const arc = makeComponent({ id: "arc", title: "Tribute", type: "currentArc", active: true, arcPremise: "End the duke's tribute.", arcSimmerInstruction: "Let the tax dispute develop.", arcBreakInstruction: "SECRET CLIMAX", content: "The duke sent a demand." });
-    adventure.components.push(arc);
-    const arcUpdate = { kind: "arc", target: "Tribute", content: "The duke ended the tribute demand.", evidence: "The duke has ended the tribute demand.", reason: "Completed development of this arc", arcState: { phase: "break" } };
-    const result = await runTurnPipeline({ adventure, text: "Mira listens.", sendChatCompletion: async () => ({ content: envelope([arcUpdate]) }) });
-    expect(result.adventure.activeState.evaluationLog[0].errors.join(" ")).toContain("only Story Cards and Brains");
-    const nextArc = result.adventure.components.find(c => c.id === "arc")!;
-    expect(nextArc.content).toContain(arc.content);
-    expect(nextArc.content).toBe(arc.content);
-    expect(nextArc.arcPremise).toBe(arc.arcPremise);
-    expect(nextArc.arcState).toEqual(arc.arcState);
-    expect(result.preProviderContext.messages.map(m => m.content).join("\n")).not.toContain("SECRET CLIMAX");
   });
 
   it("honors component opt-out, protected-card review, and brain cooldowns", () => {

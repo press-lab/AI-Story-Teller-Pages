@@ -24,8 +24,6 @@ const proposalTypes: MemoryProposalType[] = [
   "storyCard",
   "brainUpdate",
   "plotEssentialsUpdate",
-  "currentArcUpdate",
-  "arcProposal",
   "plotMomentumUpdate",
   "ignore",
 ];
@@ -210,8 +208,6 @@ function MemorySuggestionsPage({ adventure, dispatch, onCreateDraft, providerCon
         <section aria-label="Auto-approval — This adventure">
           <div className="auto-approve-toggles">
             <CheckboxField label="Plot Essentials" checked={autoApprove.plotEssentialsUpdate} onChange={(v) => setAutoApprove({ plotEssentialsUpdate: v })} />
-            <CheckboxField label="Current Arc" checked={autoApprove.currentArcUpdate} onChange={(v) => setAutoApprove({ currentArcUpdate: v })} />
-            <CheckboxField label="Arc Proposals" checked={autoApprove.arcProposal} onChange={(v) => setAutoApprove({ arcProposal: v })} />
             <CheckboxField label="Character Self" checked={autoApprove.brainUpdate} onChange={(v) => setAutoApprove({ brainUpdate: v })} />
             <CheckboxField label="Story Cards — Lore" checked={autoApprove.loreStoryCard} onChange={(v) => setAutoApprove({ loreStoryCard: v })} />
             <CheckboxField label="Story Cards — Relationships" checked={autoApprove.relationshipStoryCard} onChange={(v) => setAutoApprove({ relationshipStoryCard: v })} />
