@@ -1,4 +1,4 @@
-import { AUTHORING_SECTIONS, AUTHORING_STANDARDS, PLOT_ESSENTIALS_FOUNDATIONS_RULE } from "./authoringPolicy";
+import { AUTHORING_SECTIONS, AUTHORING_STANDARDS, includeNpcAuthoringRules, NPC_CHARACTER_AMBITION_RULE, PLOT_ESSENTIALS_FOUNDATIONS_RULE } from "./authoringPolicy";
 import type { DraftComponentType, StoryCardMemoryMode } from "../types/adventure";
 
 export const betterRepositoryGuideSources = [
@@ -9,13 +9,14 @@ export const betterRepositoryGuideSources = [
 
 export const NARRATION_RULES_BEST_PRACTICES = AUTHORING_SECTIONS.filter((section) => ["narration-behavior", "scene-control"].includes(section.id)).map((section) => `${section.title}:\n${section.text}`).join("\n\n");
 
-export const AI_INSTRUCTIONS_BEST_PRACTICES = `AI Instructions best practices:
+export const AI_INSTRUCTIONS_BEST_PRACTICES = includeNpcAuthoringRules(`AI Instructions best practices:
 ${AUTHORING_SECTIONS.find((section) => section.id === "participation-pacing")!.text}
 - Use AI Instructions for enduring scenario tone, genre, drift prevention, an optional scene loop, and scenario-specific prose rules. Keep general narrator behavior in Narration Rules.
 - Keep character and location profiles, relationship facts, current mission state, and backstory in their proper surfaces. An optional hidden narrator-only mechanism belongs here; its observed events belong in Lore.
 - Keep them scenario-specific and non-redundant with Narration Rules.
 - Prefer named sections with a few concrete bullets over one large lore paragraph.
-- Per-character voice belongs on that character's Story Card, not in AI Instructions.`;
+- Per-character voice belongs on that character's Story Card, not in AI Instructions.
+- Include the following standard NPC sections in the block.`);
 
 export const PLOT_ESSENTIALS_BEST_PRACTICES = `Plot Essentials best practices:
 - Plot Essentials hold the overarching premise, optional central long-term conflict, and persistent story-wide constraints. Immediate scene details do not belong in Plot Essentials.
@@ -80,6 +81,7 @@ export function storyCardModeGuidance(mode: StoryCardMemoryMode | undefined): st
 
 export function storyCardCreationGuidance(mode: StoryCardMemoryMode | undefined): string {
   return `${storyCardModeGuidance(mode)}
+${NPC_CHARACTER_AMBITION_RULE}
 Use concise bullet points, one fact per line. Include the subject name in the body. Do not include temporary scene position, who is currently standing nearby, next-action instructions, or momentary feelings.`;
 }
 

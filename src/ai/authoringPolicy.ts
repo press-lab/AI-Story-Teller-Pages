@@ -3,6 +3,8 @@ import chatgptAuthoringInstructions from "./chatgptAuthoringInstructions.txt?raw
 /** Shared authoring text only. Runtime memory policy is separate. */
 export const PLOT_ESSENTIALS_FOUNDATIONS_RULE = "NEVER include a NOW section, current-scene framing, active story date, current character positions, or temporary story state in Plot Essentials. Do not use headings such as NOW, CURRENTLY, or CURRENT SITUATION to describe the present moment. Plot Essentials contains enduring scenario foundations only. Put the starting moment in the Opening Scene. The application's story clock and gameplay history handle ongoing time and continuity.";
 
+export const NPC_CHARACTER_AMBITION_RULE = "When creating an NPC Character Card, state a personal ambition in the card content. Describe what the NPC wants to achieve independently of the player. Ground it in the NPC’s identity, circumstances, personality, and beliefs. Keep it distinct from personality traits, temporary objectives, and relationship status. Use it to guide independent decisions, activities, and character development.";
+
 const NPC_AUTHORING_SECTIONS = [
   { id: "character-knowledge", title: "Character Knowledge and Information Boundaries", text: `- Before writing any NPC’s dialogue, actions, or reactions, determine what that character actually knows at that moment.
 - Track who was present for each event, what they directly witnessed, what they were told, and what they could reasonably infer.
@@ -13,11 +15,13 @@ const NPC_AUTHORING_SECTIONS = [
 - Before revealing or referencing information through an NPC, verify how that specific character acquired it. If no credible information path exists, the NPC does not know it.
 - Preserve information asymmetry. Secrets, misunderstandings, and unequal knowledge should persist until events naturally change them.` },
   { id: "npc-autonomy", title: "NPC Autonomy and Character Fidelity", text: `- Portray NPCs as independent people with their own motivations, priorities, beliefs, flaws, relationships, and obligations. The player is part of their world, not its center.
-- Treat established Character Story Cards as authoritative descriptions of NPC identity, personality, behavior, loyalties, boundaries, and motivations. Preserve these characteristics across scenes.
+- Treat established Character Story Cards as authoritative descriptions of NPC identity, personality, behavior, loyalties, boundaries, motivations, and ambitions. Preserve these characteristics across scenes.
 - Base NPC decisions on their established character, current perspective, available knowledge, personal interests, and prior experiences. Do not change their behavior merely to accommodate the player’s wishes.
 - Treat player requests, suggestions, arguments, and expectations as information for NPCs to evaluate, not commands they must follow. NPCs may agree, refuse, negotiate, challenge, misunderstand, deceive, or disregard the player when appropriate.
-- Give NPCs independent initiative. They make plans, pursue personal goals, form opinions, initiate conversations, take risks, change relationships, and make consequential decisions without waiting for the player.
-- Maintain a living world beyond the player. NPCs interact with one another, maintain relationships, fulfill obligations, and experience developments off-screen. Their decisions and activities can produce lasting consequences.
+- Give NPCs independent initiative. They make plans, pursue personal goals, form opinions, initiate conversations, take risks, and make consequential decisions without waiting for the player.
+- Let NPCs form and change friendships, rivalries, romantic relationships, loyalties, and disagreements independently of the player. Let these changes follow from credible interactions and events.
+- Let NPCs, factions, institutions, and communities act independently off-screen. Reveal developments through plausible conversations, news, rumors, encounters, and observable consequences.
+- Background developments can stay in the background. They do not need to involve the player, move the main story forward, or become objectives. Let relationships and world events develop at a pace that fits the story.
 - Preserve personality under emotional pressure. Friendship, attraction, romance, intimidation, and loyalty do not automatically erase an NPC’s flaws, values, ambitions, or boundaries.
 - Allow NPCs to make imperfect, selfish, impulsive, emotional, or mistaken decisions when consistent with their characterization and circumstances. They need not act in the player’s best interests.
 - Make cooperation and disagreement equally authentic. Do not manufacture resistance, hostility, drama, or conflict simply to demonstrate independence.
@@ -76,6 +80,7 @@ Define the hidden truth explicitly in AI Instructions and mark it HIDDEN RULE �
 The narrator knows the truth. The world reveals evidence. The player discovers the answer.` },
   { id: "story-cards", title: "Story Cards", text: `Story Cards are the parent category. The existing types are character, location, object, lore, relationship, and custom. Keep each card concise and self-contained. Include its subject name in the body. All Story Cards use append-based updates; preserve existing content and voice when adding facts.
 Character: Describe who a person is: established name and identity, appearance, background and origin, role or occupation, relevant skills and abilities, durable personality, natural behavior, instincts, recurring reactions, established motivations, speech, and Voice Contract. Character independence is the default.
+${NPC_CHARACTER_AMBITION_RULE}
 Location: Describe enduring place information: name, geographic location, layout, architecture, atmosphere, purpose, established ownership or institutional control, persistent magical or physical properties, and distinctive features. Exclude temporary visitors and scene events. Good: Hogwarts is a magical boarding school in Scotland. Bad: Hermione visited Hogwarts after shopping on Saturday.
 Relationship: Link at least two existing Character Card IDs in relationship.characterIds. Use one card per exact unordered set and no phrase keys. Record durable shared history, commitments, boundaries, and attributed changes. A wedding belongs in Lore and the established marriage belongs in the linked Relationship Card.
 Lore: Describe what happened. Use it for meaningful events, agreements, discoveries, major developments, consequential actions, and significant unresolved situations. Record participants, actions, known location and time, outcomes, consequences, and uncertainty. Use explicit names and preserve chronology. Distinguish completed events from plans, claims, suspicions, and unresolved situations. Do not invent dates or outcomes. Do not assume every character knows every fact. Prefer correcting or extending relevant Lore over duplicate event cards.
@@ -132,4 +137,7 @@ Retcons: change established events only when the player instructs it. Rewrite th
 
 export const AUTHORING_WORKFLOW = AUTHORING_WORKFLOW_SECTIONS.map(section => `${section.title}\n${section.text}`).join("\n\n");
 
-export const CHATGPT_AUTHORING_INSTRUCTIONS = includeNpcAuthoringRules(chatgptAuthoringInstructions.replace(/\r\n/g, "\n").trim());
+export const CHATGPT_AUTHORING_INSTRUCTIONS = includeNpcAuthoringRules(chatgptAuthoringInstructions
+  .replace(/\r\n/g, "\n")
+  .replace("{{NPC_CHARACTER_AMBITION_RULE}}", NPC_CHARACTER_AMBITION_RULE)
+  .trim());

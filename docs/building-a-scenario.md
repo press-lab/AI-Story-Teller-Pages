@@ -92,7 +92,16 @@ Two rules from experience:
 
 ---
 
+Use AI Instructions to let NPC relationships change through credible interactions
+and events, independently of the player. NPCs, factions, institutions, and
+communities also act off-screen. Reveal developments through conversations,
+news, rumors, encounters, or observable consequences. These developments can
+stay in the background without becoming player objectives or advancing the main
+story. Let their timing follow the story.
+
 ## Step 2 — The cast: Story Cards + Voice Contracts
+
+When creating an NPC Character Card, state a personal ambition in the card content. Describe what the NPC wants to achieve independently of the player. Ground it in the NPC’s identity, circumstances, personality, and beliefs. Keep it distinct from personality traits, temporary objectives, and relationship status. Use it to guide independent decisions, activities, and character development.
 
 One `character` Story Card per named figure who recurs. Bullet the durable facts
 (role, appearance, allegiance, what they want), then **append a VOICE CONTRACT to

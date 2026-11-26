@@ -1,11 +1,12 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { ADVENTURE_GENERATION_BEST_PRACTICES, AI_INSTRUCTIONS_BEST_PRACTICES, NARRATION_RULES_BEST_PRACTICES, PLOT_ESSENTIALS_BEST_PRACTICES } from "./authoringBestPractices";
+import { ADVENTURE_GENERATION_BEST_PRACTICES, AI_INSTRUCTIONS_BEST_PRACTICES, NARRATION_RULES_BEST_PRACTICES, PLOT_ESSENTIALS_BEST_PRACTICES, storyCardCreationGuidance } from "./authoringBestPractices";
 import {
   AUTHORING_SECTIONS,
   AUTHORING_STANDARDS,
   AUTHORING_WORKFLOW_SECTIONS,
   CHATGPT_AUTHORING_INSTRUCTIONS,
+  NPC_CHARACTER_AMBITION_RULE,
   PLOT_ESSENTIALS_FOUNDATIONS_RULE,
 } from "./authoringPolicy";
 
@@ -27,8 +28,18 @@ describe("written authoring guidance", () => {
   it.each(["character-knowledge", "npc-autonomy"])("shares %s across authoring surfaces", (id) => {
     const section = AUTHORING_SECTIONS.find(section => section.id === id)!;
     const bestPractices = readFileSync(new URL("../../docs/aid-best-practices.md", import.meta.url), "utf8").replace(/\r\n/g, "\n");
-    for (const text of [CHATGPT_AUTHORING_INSTRUCTIONS, ADVENTURE_GENERATION_BEST_PRACTICES, bestPractices]) {
+    for (const text of [CHATGPT_AUTHORING_INSTRUCTIONS, ADVENTURE_GENERATION_BEST_PRACTICES, AI_INSTRUCTIONS_BEST_PRACTICES, bestPractices]) {
       expect(text).toContain(section.text);
+    }
+  });
+
+  it("shares the Character Card ambition rule across authoring surfaces", () => {
+    const cards = AUTHORING_SECTIONS.find(section => section.id === "story-cards")!.text;
+    const docs = ["aid-best-practices.md", "building-a-scenario.md", "adventure-design.md"].map(file =>
+      readFileSync(new URL(`../../docs/${file}`, import.meta.url), "utf8"),
+    );
+    for (const text of [cards, CHATGPT_AUTHORING_INSTRUCTIONS, ADVENTURE_GENERATION_BEST_PRACTICES, storyCardCreationGuidance(undefined), ...docs]) {
+      expect(text).toContain(NPC_CHARACTER_AMBITION_RULE);
     }
   });
 

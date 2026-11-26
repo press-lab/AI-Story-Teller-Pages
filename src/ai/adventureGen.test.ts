@@ -1,4 +1,4 @@
-import { PLOT_ESSENTIALS_FOUNDATIONS_RULE, AUTHORING_SECTIONS, AUTHORING_WORKFLOW_SECTIONS, AUTHORING_STANDARDS, CHATGPT_AUTHORING_INSTRUCTIONS } from "./authoringPolicy";
+import { NPC_CHARACTER_AMBITION_RULE, PLOT_ESSENTIALS_FOUNDATIONS_RULE, AUTHORING_SECTIONS, AUTHORING_WORKFLOW_SECTIONS, AUTHORING_STANDARDS, CHATGPT_AUTHORING_INSTRUCTIONS } from "./authoringPolicy";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { sendOpenAICompatibleChatCompletion } from "../providers/openAICompatible";
 import { matchPatterns } from "../triggers/matching";
@@ -105,8 +105,11 @@ describe("runAdventureGen", () => {
 
     expect(result.components).toHaveLength(1);
     expect(result.components[0].content).toContain("Write in present tense.");
+    const prompt = vi.mocked(sendOpenAICompatibleChatCompletion).mock.calls[0][0].messages[0].content;
+    expect(prompt).toContain(NPC_CHARACTER_AMBITION_RULE);
     for (const section of AUTHORING_SECTIONS.filter(({ id }) => id === "character-knowledge" || id === "npc-autonomy")) {
       expect(result.components[0].content).toContain(section.text);
+      expect(prompt).toContain(section.text);
     }
   });
 

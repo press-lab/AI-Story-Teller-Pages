@@ -81,6 +81,15 @@ across the loop instead of resetting every scene.
 > characters' Brains**, never as their own standalone Story Cards. A card title
 > is always the proper name of a single entity, never "Dynamic between X and Y."
 
+Use AI Instructions to let NPC relationships change through credible interactions
+and events, independently of the player. NPCs, factions, institutions, and
+communities also act off-screen. Reveal developments through conversations,
+news, rumors, encounters, or observable consequences. These developments can
+stay in the background without becoming player objectives or advancing the main
+story. Let their timing follow the story.
+
+When creating an NPC Character Card, state a personal ambition in the card content. Describe what the NPC wants to achieve independently of the player. Ground it in the NPC’s identity, circumstances, personality, and beliefs. Keep it distinct from personality traits, temporary objectives, and relationship status. Use it to guide independent decisions, activities, and character development.
+
 ### The Voice Contract
 
 Trait lists ("sarcastic, loyal, brave") *describe* a character but don't

@@ -1,3 +1,4 @@
+import { NPC_CHARACTER_AMBITION_RULE } from "../ai/authoringPolicy";
 import { mockPlacementVerdict } from "../test/memoryPlacement";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import {
@@ -486,6 +487,32 @@ describe("AI memory builders", () => {
         autoUpdateCooldownTurns: 2,
         suggestedTriggers: ["ward-room jokes", "private trust signal"],
       },
+    });
+  });
+
+  it("asks for an ambition in new NPC Character Card content", async () => {
+    const content = "Mira wants to restore the mountain observatory.";
+    mockProvider.mockResolvedValueOnce({
+      raw: {},
+      content: JSON.stringify({ proposals: [{
+        action: "create",
+        title: "Mira",
+        storyCardType: "character",
+        content,
+        keys: ["Mira"],
+      }] }),
+    });
+
+    const result = await runStoryCardAIBuilder(baseAdventure(), providerConfig, {
+      description: content,
+      intent: "character",
+      recentMessageCount: 0,
+      autoUpdate: false,
+    });
+
+    expect(mockProvider.mock.calls[0][0].messages[0].content).toContain(NPC_CHARACTER_AMBITION_RULE);
+    expect(result.actions.find(action => action.type === "ADD_MEMORY_PROPOSAL")).toMatchObject({
+      proposal: { storyCardType: "character", content },
     });
   });
 
