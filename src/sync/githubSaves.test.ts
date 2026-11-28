@@ -407,3 +407,25 @@ it("round-trips existing compressed archives through GitHub save wrappers", asyn
   expect(loaded.activeState.compressedMemoryHistory).toStrictEqual(archived.activeState.compressedMemoryHistory);
   expect(await decompressHistory(Object.values(loaded.activeState.compressedMemoryHistory!.blocks)[0])).toStrictEqual(record);
 });
+
+it("round-trips autonomous configuration and provenance through GitHub saves", async () => {
+  const { a, proposal, sourceId, checkpoint } = await (await import("../test/autonomousLore")).autonomousPersistenceFixture();
+  let saved = "";
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (url, init) => {
+    if (!String(url).includes("/contents")) return response(200, {});
+    if (init?.method === "PUT") {
+      const body = JSON.parse(init.body as string);
+      if (body.message.startsWith("Save ")) saved = body.content;
+      return response(200, { content: { sha: "sha" } });
+    }
+    return saved && !String(url).includes("index.json")
+      ? response(200, { content: saved, encoding: "base64", sha: "sha" }) : response(404, { message: "Not Found" });
+  });
+  const slot = await saveToGitHub(cloudSettings, saveSettings, a, "manual");
+  const loaded = await loadGitHubSave(cloudSettings, saveSettings, slot);
+  expect(loaded.memoryAutoApprove.autonomousLoreStoryCard).toBe(true);
+  expect(loaded.storyCards.find(card => card.id === "custom")?.autonomousDevelopment).toBe(true);
+  expect(loaded.storyCards.find(card => card.id === "recorded-development")?.lore?.autonomous).toEqual(proposal.lore?.autonomous);
+  expect(loaded.activeState.memoryProposals[0].lore?.autonomous).toEqual(proposal.lore?.autonomous);
+  expect(loaded.messages.find(message => message.id === sourceId)?.memoryEvaluation?.singlePass?.autonomousSubjects).toEqual(checkpoint.autonomousSubjects);
+});

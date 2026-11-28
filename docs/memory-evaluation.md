@@ -16,6 +16,10 @@ Only the supplied bounded exchanges, adjacent evidence, relevant complete canon,
 
 API attempts and reported usage, including reasoning/output and cached-input usage, use existing accounting. Keys remain in existing runtime configuration and are removed from persisted/exported adventures by the existing sanitizer.
 
+## Autonomous World Development
+
+The existing automatic single-pass request can consider active, explicitly enabled Story Cards when its newest source is the latest finalized in-story narration. Autonomous and ordinary findings can share the same response. Earlier batch sources and explicit historical retries remain extraction-only. See [Autonomous World Development](autonomous-world-development.md).
+
 ## Verified defects and limits
 
 Both supplied Hogwarts exports name DeepSeek in saved model configuration, but their recorded narration, correction and recovery API calls name `z-ai/glm-5.3-flash`. The Blackfriars export shows the same runtime-model mismatch. Saved configuration alone does not prove DeepSeek produced those replies. Invalid background URL `1` falls back through the existing resolver.

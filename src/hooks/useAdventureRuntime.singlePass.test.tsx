@@ -14,13 +14,13 @@ vi.mock("../db/adventureDb", () => ({ saveAdventure: vi.fn(async () => undefined
 const nativeTimeout = globalThis.setTimeout;
 const settle = () => new Promise<void>(resolve => nativeTimeout(resolve, 30));
 afterEach(() => { debugLogging.MEMORY_DEBUG_LOGGING = true; cleanup(); vi.restoreAllMocks(); vi.useRealTimers(); });
-function setup(initial = createDefaultAdventure()) {
+function setup(initial = createDefaultAdventure(), memoryEnabled = true) {
   initial.semanticEvaluationSettings.backgroundProviderConfig = { baseUrl: "https://example.test/v1", model: "evaluator", memoryReasoningControl: "omit" };
   return renderHook(() => {
     const [adventure, setAdventure] = useState<Adventure | undefined>(initial);
     return { adventure, runtime: useAdventureRuntime(adventure, setAdventure,
       { ...defaultModelConfig, model: "narrator", baseUrl: "https://example.test/v1", apiKey: "offline" }, vi.fn(), vi.fn(), vi.fn(), async () => undefined,
-      { pipeline: "singlePass", enabled: true, everyNTurns: 1, generateContent: true }) };
+      { pipeline: "singlePass", enabled: memoryEnabled, everyNTurns: 1, generateContent: true }) };
   });
 }
 describe.each(["json", "commands"].flatMap(format => [false, true].map(enabled => ({ format, enabled }))))("runtime $format logging $enabled response compatibility", ({ format, enabled }) => {
@@ -393,4 +393,62 @@ it("Story Card auto-approval changes only local outcomes across a realistic mult
   expect(off.activeState.memoryProposals.find(p => p.title === "Archive access")).toMatchObject({ status: "pending", requiresReview: false });
   expect(on.activeState.memoryProposals.find(p => p.title === "Archive access")).toMatchObject({ status: "approved", requiresReview: false });
   expect(off.storyCards).toEqual([]); expect(on.storyCards[0].content).toBe(fact);
+});
+
+it.each([false, true])("uses the same provider request count with autonomous authorization %s", async enabled => {
+  const { looseMemoryFixture } = await import("../test/looseMemory");
+  const { autonomousEvent } = await import("../test/autonomousLore");
+  const { a } = looseMemoryFixture(false);
+  a.storyCards[5].autonomousDevelopment = enabled;
+  const subject = a.storyCards[5];
+  let memoryCalls = 0, narrationCalls = 0;
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+    const body = JSON.parse(init!.body as string);
+    let content = "George studies the tattoo orders. He marked the gate as a sanctuary.";
+    if (body.model === "evaluator") {
+      memoryCalls++;
+      const payload = JSON.parse(body.messages.at(-1).content);
+      expect(Boolean(payload.outputAliases.S3.autonomousSubjects)).toBe(enabled);
+      expect(payload.outputAliases.S1.autonomousSubjects).toBeUndefined();
+      content = "S1\nNONE\nS2\nNONE\nS3\n(storyCard.lore.create: Gate sanctuary = George marked the gate as a sanctuary.)"
+        + "\n(brain.thoughts: George = I suspect the tattoo orders may fund a second workshop.)"
+        + (enabled ? "\n" + autonomousEvent : "");
+    } else narrationCalls++;
+    return new Response(JSON.stringify({ choices: [{ message: { content } }] }));
+  });
+  const hook = setup(a);
+  for (let i = 0; i < 3; i++) await act(async () => { await hook.result.current.runtime.continueTurn(); await settle(); });
+  await waitFor(() => expect(hook.result.current.adventure!.messages.at(-1)!.memoryEvaluation?.status).toBe("complete"));
+  const saved = hook.result.current.adventure!;
+  expect([narrationCalls, memoryCalls]).toEqual([3, 1]);
+  expect(saved.activeState.memoryProposals).toContainEqual(expect.objectContaining({ title: "Gate sanctuary", status: "approved" }));
+  expect(saved.activeState.memoryProposals).toContainEqual(expect.objectContaining({ proposedType: "brainUpdate" }));
+  expect(saved.activeState.memoryProposals.filter(proposal => proposal.lore?.autonomous)).toHaveLength(enabled ? 1 : 0);
+  if (enabled) expect(saved.activeState.memoryProposals.find(proposal => proposal.lore?.autonomous)?.status).toBe("pending");
+  expect(saved.storyCards.find(card => card.id === subject.id)).toEqual(subject);
+});
+it("disables automatic autonomous generation and keeps explicit historical extraction authorized only for ordinary memory", async () => {
+  const { looseMemoryFixture } = await import("../test/looseMemory");
+  const { a, ids } = looseMemoryFixture();
+  a.storyCards[5].autonomousDevelopment = true;
+  a.messages[0].memoryEvaluation!.status = "failed";
+  let memoryCalls = 0;
+  let authorization: unknown;
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+    const body = JSON.parse(init!.body as string);
+    if (body.model === "evaluator") {
+      memoryCalls++;
+      authorization = JSON.parse(body.messages.at(-1).content).outputAliases.S1.autonomousSubjects;
+    }
+    const content = body.model === "evaluator" ? "S1\nNONE" : "The room remains quiet.";
+    return new Response(JSON.stringify({ choices: [{ message: { content } }] }));
+  });
+  let hook = setup(a, false);
+  for (let i = 0; i < 3; i++) await act(async () => { await hook.result.current.runtime.continueTurn(); await settle(); });
+  expect(memoryCalls).toBe(0);
+  hook.unmount();
+  hook = setup(a);
+  await act(async () => { await hook.result.current.runtime.evaluateMemorySources([ids[0]]); await settle(); });
+  expect(memoryCalls).toBe(1);
+  expect(authorization).toBeUndefined();
 });

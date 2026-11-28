@@ -1,3 +1,4 @@
+import { autonomousSubjectNames, isAutonomousLore } from "../memory/autonomousLore";
 import { RelationshipParticipants } from "./RelationshipParticipants";
 import { canonicalRelationshipIds, relationshipTitle, validateRelationshipIds, relationshipIdError, relationshipKey, relationshipMatches, relationshipProposalError } from "../memory/relationshipCards";
 import { PRIMARY_STORY_CARD_TYPES } from "../memory/storyCardArchitecture";
@@ -211,6 +212,10 @@ function MemorySuggestionsPage({ adventure, dispatch, onCreateDraft, providerCon
             <CheckboxField label="Plot Essentials" checked={autoApprove.plotEssentialsUpdate} onChange={(v) => setAutoApprove({ plotEssentialsUpdate: v })} />
             <CheckboxField label="Character Self" checked={autoApprove.brainUpdate} onChange={(v) => setAutoApprove({ brainUpdate: v })} />
             <CheckboxField label="Story Cards — Lore" checked={autoApprove.loreStoryCard} onChange={(v) => setAutoApprove({ loreStoryCard: v })} />
+            <div>
+              <CheckboxField label="Story Cards — Autonomous Lore" checked={autoApprove.autonomousLoreStoryCard === true} onChange={(v) => setAutoApprove({ autonomousLoreStoryCard: v })} />
+              <p className="muted">Automatically approve newly generated off-screen world developments. Independent of ordinary Lore auto-approval.</p>
+            </div>
             <CheckboxField label="Story Cards — Relationships" checked={autoApprove.relationshipStoryCard} onChange={(v) => setAutoApprove({ relationshipStoryCard: v })} />
             <CheckboxField label="Story Cards — Everything Else" checked={autoApprove.otherStoryCard} onChange={(v) => setAutoApprove({ otherStoryCard: v })} />
           </div>
@@ -377,6 +382,7 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
   const destinationLabel = proposalDestinationLabel(adventure, proposal);
   const [regenerationError, setRegenerationError] = useState<string>();
   const [regenerating, setRegenerating] = useState(false);
+  const autonomous = isAutonomousLore(proposal.lore?.autonomous) ? proposal.lore.autonomous : undefined;
   const isLore = proposal.proposedType === "storyCard" && (proposal.storyCardType === "lore" || adventure.storyCards.some(card => card.id === proposal.targetId && card.type === "lore"));
   const chronology = validateLoreChronology(adventure, proposal);
   const dateConflict = chronology.status === "conflict";
@@ -408,6 +414,7 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
           </span>
         </span>
         <span className="story-card-badges">
+          {autonomous && <span className="badge">Autonomous Lore</span>}
           <span className="badge badge-type">{Math.round(proposal.confidence * 100)}%</span>
             {isPending && proposal.requiresReview && <span className="badge">Review required</span>}
           {!isPending && <span className="badge badge-inactive">{proposal.status}</span>}
@@ -431,7 +438,8 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
           />
         </div>
         </div>
-      {proposal.storyCardReview && <>
+      {autonomous && <p>Originating subjects: {autonomousSubjectNames(adventure, autonomous).join(", ")}</p>}
+      {!autonomous && proposal.storyCardReview && <>
         <Field label="Story Card destination"><select value={proposal.targetId ?? ""} disabled={proposal.status === "approved"}
           onChange={event => {
             const card = adventure.storyCards.find(card => card.id === event.target.value);
@@ -447,7 +455,7 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
           {destinations.map(card => <option key={card.id} value={card.id}>APPEND — {card.title}{proposal.storyCardReview!.targetCandidates.includes(card.id) ? " (suggested)" : ""}</option>)}
         </select></Field>
       </>}
-      {proposal.proposedType === "storyCard" && !proposal.storyCardReview && <Field label="Story Card destination">
+      {!autonomous && proposal.proposedType === "storyCard" && !proposal.storyCardReview && <Field label="Story Card destination">
         <select value={proposal.targetId ?? ""} disabled={proposal.status === "approved" || Boolean(proposal.manualDraft)} onChange={event => {
           const card = adventure.storyCards.find(card => card.id === event.target.value);
           onUpdate(proposal, { targetId: card?.id, cardOperation: card ? "append" : "create", storyCardType: card?.type ?? proposal.storyCardType });
@@ -486,7 +494,7 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
           </button>
           {isPending && (
             <>
-              {onRegenerate && !proposal.manualDraft && proposal.proposedType !== "currentArcStateUpdate" && (
+              {onRegenerate && !autonomous && !proposal.manualDraft && proposal.proposedType !== "currentArcStateUpdate" && (
                 <button type="button" disabled={regenerating} onClick={() => handleRegenerate()}>
                   {regenerating ? "…" : "Regenerate"}
                 </button>
@@ -516,11 +524,11 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
       {isPending && placementError && <p role="status">{placementError} You can still approve this draft manually.</p>}
       {isPending && !sourceValid && <p role="status">The source evidence or destination changed. Review the current draft; you can still approve it.</p>}
       {proposal.placementValidation && <p>{proposal.placementValidation.reason}</p>}
-      {proposal.evaluationSource && <details><summary>Independent evaluation evidence</summary>
+      {!autonomous && proposal.evaluationSource && <details><summary>Independent evaluation evidence</summary>
         <p>Destination: {proposal.targetId ?? "new Story Card"}</p>
         {proposal.evaluationSource.messages.map(source => <div key={source.id}><code>{source.id}</code><blockquote>{source.content}</blockquote></div>)}
       </details>}
-      {proposal.storyCardReview && <div className="panel">
+      {!autonomous && proposal.storyCardReview && <div className="panel">
         <p>{proposal.storyCardReview.candidateOnly ? "Unconfirmed candidate — verify the interpretation against the source." : "Evidence-based suggestion — review before applying."} Detection: {proposal.storyCardReview.origin}.</p>
         {Boolean(proposal.storyCardReview.evidenceQuotes?.length) && <details><summary>Supporting source quotes</summary>
           <ul>{proposal.storyCardReview.evidenceQuotes!.map((item, index) => <li key={`${item.messageId}-${index}`}><code>{item.messageId}</code><blockquote>{item.quote}</blockquote></li>)}</ul>
@@ -539,16 +547,19 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
       </details>
 
       <details className="editor-tools-panel">
-        <summary>Source &amp; details</summary>
+        <summary>{autonomous ? "Generation context" : "Source & details"}</summary>
         {proposal.eventMemory && <p>Historical Lore · {proposal.eventMemory.kind} · Participants: {proposal.eventMemory.participants.join(", ")} · Recall cues: {proposal.eventMemory.recallCues.join(", ")} · Source messages: {proposal.eventMemory.sourceMessageIds.join(", ")}</p>}
         <div className="grid two">
-          <Field label="Source">
+          {autonomous ? <section aria-label="Generation context">
+            <p>This event was generated independently of foreground narration. The source entry provides context, not direct evidence that the event occurred.</p>
+            <blockquote>{proposal.sourceText}</blockquote>
+          </section> : <Field label="Source">
             <textarea
               rows={2}
               value={proposal.sourceText}
               onChange={(event) => onUpdate(proposal, { sourceText: event.target.value })}
             />
-          </Field>
+          </Field>}
           <Field label="Rationale">
             <textarea
               rows={2}
@@ -562,7 +573,7 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
             <select
               value={proposal.proposedType}
               onChange={(event) => onUpdate(proposal, { proposedType: event.target.value as MemoryProposalType })}
-              disabled={proposal.status === "approved" || Boolean(proposal.manualDraft)}
+              disabled={proposal.status === "approved" || Boolean(proposal.manualDraft) || Boolean(autonomous)}
             >
               {(proposal.proposedType === "currentArcStateUpdate" ? [proposal.proposedType] : proposalTypes).map((type) => (
                 <option key={type} value={type}>
@@ -577,7 +588,7 @@ function ProposalCard({ adventure, proposal, dispatch, onUpdate, onRegenerate }:
                 <select
                   value={targetCard?.type ?? proposal.storyCardType ?? ""}
                   onChange={(event) => onUpdate(proposal, { storyCardType: event.target.value as StoryCardType, targetId: undefined, appendContent: undefined, placementValidation: undefined })}
-                  disabled={proposal.status === "approved" || Boolean(targetCard) || Boolean(proposal.manualDraft) || relationship}
+                  disabled={proposal.status === "approved" || Boolean(targetCard) || Boolean(proposal.manualDraft) || relationship || Boolean(autonomous)}
                 >
                   <option value="">Select a card type</option>
                   {storyCardTypes.filter(type => type !== "relationship" || relationship).map((type) => <option key={type} value={type}>{type}</option>)}

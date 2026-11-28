@@ -4,7 +4,8 @@ import { snapshotFingerprint } from "../utils/snapshotFingerprint";
 import type { Adventure, BrainEntry, ChatMessage, ProviderConfig, SinglePassMemoryBatchResult, SinglePassMemoryCheckpoint, SinglePassMemoryFinding, SinglePassMemorySourceResult } from "../types/adventure";
 import { assessmentInputs, assessmentSourceState, memoryDecisionState } from "./memoryAssessment";
 import { buildMemoryAssessmentConditions } from "../triggers/semanticEngine";
-import { memoryEvidenceWindow } from "./memoryEvidenceWindow";
+import { autonomousReferences, isAutonomousLore } from "./autonomousLore";
+import { memoryEvidenceWindow, storyMemoryMessages } from "./memoryEvidenceWindow";
 import { memoryBatchProvider, sendMemoryCompletion } from "../providers/memoryCompletion";
 import { generatedStoryCardTriggers } from "./resolveMemoryTarget";
 import { storyCardContextContent } from "./storyCardPolicy";
@@ -48,7 +49,7 @@ function relationshipReferences(a: Adventure, sourceId: string) {
 }
 
 /** Exact reference/control guard. Worker bookkeeping and request records are not evidence. */
-export function singlePassReferenceState(a: Adventure, sourceId: string): string {
+export function singlePassReferenceState(a: Adventure, sourceId: string, withAutonomousAuthorization = false): string {
   const snapshot = { ...a, messages: a.messages.slice(0, a.messages.findIndex(m => m.id === sourceId) + 1),
     activeState: { ...a.activeState, turn: a.messages.find(m => m.id === sourceId)?.memoryEvaluation?.turn ?? a.activeState.turn },
     semanticEvaluationSettings: { ...a.semanticEvaluationSettings, messagesIncluded: memoryEvidenceWindow(a, sourceId).length } };
@@ -60,7 +61,7 @@ export function singlePassReferenceState(a: Adventure, sourceId: string): string
     snapshot.brains.filter(b => conditions.brains.some(c => c.id === `brain:${b.id}`)).map(b => {
       const card = singlePassCharacterCard(snapshot, b);
       return card ? { brainId: b.id, id: card.id, title: card.title, keys: card.keys, content: card.content } : { brainId: b.id };
-    })]));
+    }), ...(withAutonomousAuthorization ? [autonomousReferences(a, sourceId), a.memoryAutoApprove.autonomousLoreStoryCard === true] : [])]));
 }
 export interface PreparedSinglePassMemoryBatch {
   batchId: string;
@@ -71,11 +72,12 @@ export interface PreparedSinglePassMemoryBatch {
     characters?: Record<string, { id: string; reference: number }>;
     relationships?: Record<string, { id: string; reference: number }>;
     lore?: Record<string, { id: string; reference: number }>;
+    autonomousSubjects?: Record<string, { id: string; reference: number }>;
     brains: Record<string, { id: string; reference: number; type: "brain" }>;
     plot: Record<string, { id: string; reference: number; type: string }> }>;
   payload: { references: unknown[]; sources: Array<{ plot: number[]; arcPlan?: number; [key: string]: unknown }> };
 }
-export async function prepareSinglePassMemoryBatch(a: Adventure, ids: readonly string[]): Promise<PreparedSinglePassMemoryBatch> {
+export async function prepareSinglePassMemoryBatch(a: Adventure, ids: readonly string[], options?: { allowAutonomousDevelopment?: boolean }): Promise<PreparedSinglePassMemoryBatch> {
   if (ids.length < 1 || ids.length > 3 || new Set(ids).size !== ids.length) throw new Error("Select one to three unique narrator sources.");
   const selected = ids.map(id => a.messages.find(m => m.id === id));
   if (selected.some(m => !m || m.role !== "assistant" || m.inputMode === "comms" || m.memoryEvaluation?.pipeline !== "singlePass"
@@ -84,6 +86,9 @@ export async function prepareSinglePassMemoryBatch(a: Adventure, ids: readonly s
   }
   const arc = eligibleArc(a);
   const ordered = a.messages.filter(m => ids.includes(m.id));
+  const latest = options?.allowAutonomousDevelopment ? storyMemoryMessages(a).reverse().find(message => message.role === "assistant") : undefined;
+  const autonomousSource = latest?.id === ordered.at(-1)?.id
+    && latest?.memoryEvaluation?.status === "pending" && latest.memoryEvaluation.attempts === 0 ? latest.id : undefined;
   const batchId = createId("memoryBatch");
   const references: unknown[] = [];
   const referenceIndexes = new Map<string | undefined, number>();
@@ -122,9 +127,14 @@ export async function prepareSinglePassMemoryBatch(a: Adventure, ids: readonly s
     if (arc) plot.push({ id: arc.state.id, type: arc.state.type, content: arc.state.content,
       autoUpdate: true, protected: arc.state.protected });
 
+    const autonomous = source.id === autonomousSource ? autonomousReferences(a, source.id) : [];
+    const autonomousSubjects = autonomous.length ? Object.fromEntries(autonomous.map(({ authorization, reference }) =>
+      [authorization.alias, { id: authorization.cardId, reference: pool(reference) }])) : undefined;
+
     // Keep source evidence; retain only the digest of the reference/control guard.
     checkpoints.push({ sourceId: source.id, checkpoint: { batchId, sourceContent: source.content, sourceRevision: source.memoryEvaluation?.revision,
-      evidence: inputs.evidence.map(({ id, content }) => ({ id, content })), referenceState: singlePassReferenceState(a, source.id), arcReference: arcReferenceState(a),
+      evidence: inputs.evidence.map(({ id, content }) => ({ id, content })), referenceState: singlePassReferenceState(a, source.id, Boolean(autonomousSubjects)),
+      ...(autonomousSubjects ? { autonomousSubjects: autonomous.map(({ authorization }) => authorization) } : {}), arcReference: arcReferenceState(a),
       status: "running", findings: [], dispositions: [], acceptedCount: 0, rejectedCount: 0, suppressedCount: 0, reviewCount: 0 } });
     const lore = Object.fromEntries(sameDayLoreCards(a, source.id).map((card, i) => [`L${i + 1}`, {
       id: card.id, reference: pool({ title: card.title, day: card.lore?.occurredAt,
@@ -135,12 +145,14 @@ export async function prepareSinglePassMemoryBatch(a: Adventure, ids: readonly s
     const relationships = Object.fromEntries(relationRefs.relationships.map((card, index) => ["R" + (index + 1), { id: card.id, reference: pool(card) }]));
     outputAliases[`S${sources.length + 1}`] = {
       sourceId: source.id, sourceTurn: source.memoryEvaluation!.turn, lore, characters, relationships,
+      ...(autonomousSubjects ? { autonomousSubjects } : {}),
       evidence: Object.fromEntries(inputs.evidence.map((e, i) => [`E${i + 1}`, { id: e.id, reference: pool(e) }])),
       cards: Object.fromEntries(inputs.currentCards.map((c, i) => [`C${i + 1}`, { id: c.id, reference: pool(c), type: c.type, memoryMode: c.memoryMode }])),
       brains: Object.fromEntries(brains.map((b, i) => [`B${i + 1}`, { id: b.id, reference: pool(b), type: "brain" as const }])),
       plot: Object.fromEntries(plot.map((p, i) => [`P${i + 1}`, { id: p.id, reference: pool({ ...p, title: snapshot.components.find(c => c.id === p.id)?.title }), type: p.type }])),
     };
     sources.push({ sourceId: source.id, conditions, sameDayLore: lore,
+      ...(autonomousSubjects ? { autonomousSubjects } : {}),
       consideredRelationshipsNotCanon: relationRefs.coverage.map(pool),
       ...(arc ? { arcPlan: pool({ type: arc.plan.type, content: arc.plan.content, readOnly: true }) } : {}),
       evidence: inputs.evidence.map(pool), canon: inputs.canon.map(entry => {
@@ -242,16 +254,80 @@ A justified existing Character correction:
 (storyCard.character.update: Eleanor Vale = Eleanor permanently lost her fire magic. || The experiment established this lasting loss.)
 
 Keep ordinary card deltas concise; length alone does not require manual review. Record only supported new facts, preserving claims, chronology, uncertainty and private knowledge boundaries. Plans remain plans; proposed agreements are not accepted agreements; future meetings have not occurred; attempts are not completed outcomes. Collaboration is not romance. Do not invent private reactions, permanent traits or facts to fill an empty source. Source attachment proves provenance, not semantic correctness. All extracted findings undergo local validation. Valid findings follow the user's configured auto-approval rules. Story Card protection, length, tentative wording, and supported Character profile changes do not independently require manual approval. Preserve explicit prior review decisions and evidence, placement, and chronology safeguards. Never invent certainty to bypass review.`;
+const AUTONOMOUS_DEVELOPMENT_POLICY = `AUTONOMOUS WORLD DEVELOPMENT
+
+This section authorizes a separate kind of Lore generation. Ordinary memory extraction records established events. Autonomous development may establish new events outside the current foreground scene.
+
+Only consider autonomous subjects explicitly supplied in the current source’s autonomous subject manifest.
+
+Evaluate each authorized subject independently. Determine whether established events, elapsed story time, objectives, capabilities, resources, obligations, available knowledge, or existing circumstances justify a meaningful off-screen development.
+
+A development may respond to recent gameplay. A development may also occur independently of recent gameplay. A subject does not need to appear in the foreground scene to develop.
+
+Return no autonomous development when nothing meaningful is justified. An authorized subject is an available possibility, not a requirement to generate an event.
+
+Do not force developments to escalate, advance an overarching plot, involve the player, or create an immediate player objective.
+
+Generate concrete developments that occurred outside the player’s current foreground interaction. Preserve established identity, personality, capabilities, relationships, geography, chronology, resources, and world rules.
+
+Only assign knowledge to characters or groups that could reasonably obtain that knowledge. Distinguish observations, reports, rumors, suspicions, conclusions, intentions, attempted actions, and completed actions.
+
+An autonomous subject may form plans and perform actions independently. Do not grant the subject information from narrator-accessible context unless the subject has a credible way to know it.
+
+Do not invent the player’s dialogue, thoughts, feelings, decisions, consent, participation, or actions. Do not resolve the player’s current interaction off-screen. Do not dictate the outcome of a pending player decision.
+
+Do not rewrite established events, introduce retroactive contradictions, or generate major irreversible outcomes solely to create drama.
+
+Develop existing world circumstances. Do not invent arbitrary new central conflicts or unrelated mysteries simply because autonomous development is enabled.
+
+Compare proposed developments with the subject’s approved autonomous history. Continue established circumstances without repeating earlier events.
+
+Pending, rejected, and ignored suggestions are not world history. Do not build subsequent events on them.
+
+Use one concise standalone Lore operation per meaningful new event. Use no more than one operation per autonomous subject in the current evaluation. A single event may involve multiple authorized subjects.
+
+An autonomous development is a new Lore event. Do not use it to update a Character, Relationship, Location, Object, Custom Story Card, Brain, Component, or Current Arc.
+
+Return autonomous developments using this exact format:
+
+(storyCard.lore.autonomous: Specific event title = Event content || A1 || Knowledge holders)
+
+For an event involving multiple authorized subjects:
+
+(storyCard.lore.autonomous: Specific event title = Event content || A1 + A2 || Knowledge holders)
+
+Use only aliases from the current source’s autonomous subject manifest.
+
+Knowledge holders are semicolon-separated character names, groups, or established roles. Use NONE if no character knowledge has been established.
+
+Knowledge holder example:
+
+House Green's remaining command; surviving camp sentries
+
+The event content must be self-contained. State what occurred and preserve relevant uncertainty and information boundaries. Do not describe narrator instructions or future plot requirements.
+
+Do not output autonomous operations under sources that have no autonomous subject manifest.
+
+Continue ordinary memory extraction under the existing instructions. Ordinary Lore must not invent off-screen events.
+
+If no meaningful ordinary or autonomous findings exist, return NONE.`;
+
 export function buildSinglePassMemoryMessages(batch: PreparedSinglePassMemoryBatch): ChatMessage[] {
   const hasArc = Object.values(batch.outputAliases).some(source => Object.values(source.plot).some(p => p.type === "currentArcState"));
-  return [{ role: "system", content: hasArc ? POLICY + "\n\n" + ARC_EVALUATION : POLICY }, { role: "user", content: JSON.stringify({ ...batch.payload, outputAliases: batch.outputAliases }) }];
+  const hasAutonomous = Object.values(batch.outputAliases).some(source => Object.keys(source.autonomousSubjects ?? {}).length);
+  const policy = [POLICY, ...(hasArc ? [ARC_EVALUATION] : []), ...(hasAutonomous ? [AUTONOMOUS_DEVELOPMENT_POLICY] : [])].join("\n\n");
+  return [{ role: "system", content: policy }, { role: "user", content: JSON.stringify({ ...batch.payload, outputAliases: batch.outputAliases }) }];
 }
 const object = (v: unknown): v is Record<string, unknown> => Boolean(v) && typeof v === "object" && !Array.isArray(v);
 const nonempty = (v: unknown): v is string => typeof v === "string" && Boolean(v.trim());
-const findingKeys = ["kind", "targetId", "title", "content", "brainPatch", "reason", "evidenceQuotes", "candidateOnly", "storyCardType", "operation", "memoryMode", "eventStatus", "suggestedTriggers", "participants", "identityChange", "destinationCandidates", "loreContinuation", "relationship"];
+const findingKeys = ["kind", "targetId", "title", "content", "brainPatch", "reason", "evidenceQuotes", "candidateOnly", "storyCardType", "operation", "memoryMode", "eventStatus", "suggestedTriggers", "participants", "identityChange", "destinationCandidates", "loreContinuation", "relationship", "autonomous"];
 /** Recover metadata only. Never create facts, evidence, patches, or target IDs. */
 export function normalizeSinglePassFinding(v: unknown, sourceId: string, adventure?: Adventure, diagnostics: string[] = []): SinglePassMemoryFinding | undefined {
   if (!object(v)) return undefined;
+  if (Object.hasOwn(v, "autonomous")) {
+    diagnostics.push("Autonomous Lore requires an authorized loose operation.");
+    return undefined;
+  }
   const f: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(v)) {
     if (findingKeys.includes(key)) f[key] = value;
@@ -283,9 +359,14 @@ export function normalizeSinglePassFinding(v: unknown, sourceId: string, adventu
 }
 /** Structural checks only. Exact quotation is not proof of the model's interpretation. */
 export function singlePassFindingSchemaError(v: unknown): string | undefined {
-  if (!object(v) || Object.keys(v).some(key => !["kind", "targetId", "title", "content", "brainPatch", "reason", "evidenceQuotes", "candidateOnly", "storyCardType", "operation", "memoryMode", "eventStatus", "suggestedTriggers", "participants", "identityChange", "destinationCandidates", "loreContinuation", "relationship"].includes(key)) || !["storyCard", "brain", "plotEssentials", "activePressure", "immediateMomentum", "currentArcState"].includes(String(v.kind))
+  if (!object(v) || Object.keys(v).some(key => !["kind", "targetId", "title", "content", "brainPatch", "reason", "evidenceQuotes", "candidateOnly", "storyCardType", "operation", "memoryMode", "eventStatus", "suggestedTriggers", "participants", "identityChange", "destinationCandidates", "loreContinuation", "relationship", "autonomous"].includes(key)) || !["storyCard", "brain", "plotEssentials", "activePressure", "immediateMomentum", "currentArcState"].includes(String(v.kind))
     || !(v.targetId === null || nonempty(v.targetId)) || !nonempty(v.title) || !nonempty(v.reason) || typeof v.candidateOnly !== "boolean"
-    || !Array.isArray(v.evidenceQuotes) || !v.evidenceQuotes.length || v.evidenceQuotes.some(q => !object(q) || !nonempty(q.messageId) || !nonempty(q.quote))) return "Missing or invalid required finding fields.";
+    || !Array.isArray(v.evidenceQuotes) || (!v.evidenceQuotes.length && v.autonomous === undefined) || v.evidenceQuotes.some(q => !object(q) || !nonempty(q.messageId) || !nonempty(q.quote))) return "Missing or invalid required finding fields.";
+  if (v.autonomous !== undefined && (!object(v.autonomous) || Object.keys(v.autonomous).length !== 2
+    || !isAutonomousLore(v.autonomous.provenance) || !Array.isArray(v.autonomous.knownTo) || !v.autonomous.knownTo.every(nonempty)
+    || v.kind !== "storyCard" || v.storyCardType !== "lore" || v.operation !== "create" || v.targetId !== null
+    || v.evidenceQuotes.length !== 0 || v.loreContinuation !== undefined || v.identityChange !== undefined))
+    return "Invalid autonomous Lore finding.";
   if (v.loreContinuation !== undefined && v.loreContinuation !== "identified" && v.loreContinuation !== "review") return "Invalid Lore continuation flag.";
   if (v.destinationCandidates !== undefined && (!Array.isArray(v.destinationCandidates) || v.destinationCandidates.some(id => !nonempty(id)))) return "Invalid destination candidates.";
   if (v.kind === "brain") {

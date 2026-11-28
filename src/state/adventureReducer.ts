@@ -12,6 +12,7 @@ import { storyCardAutoApprovalBlockers } from "../memory/storyCardAutoApproval";
 import { isLoreProposal } from "../memory/validateLoreChronology";
 import { MEMORY_DEBUG_LOGGING } from "../config/debugLogging";
 import { compactCompletedEvaluationWithoutDebug, pruneDebugHistory, compactHistoricalEvaluation, compactHistoricalProposal, eligibleHistory } from "../memory/memoryHistory";
+import { autonomousProposalError } from "../memory/autonomousLore";
 import { singlePassReferenceState } from "../memory/singlePassMemory";
 import { singlePassSourceError, validateSinglePassSource, toSinglePassProposal } from "../memory/singlePassMemoryValidation";
 import { reconcileBrainBatchState } from "../memory/brainBatchRecovery";
@@ -584,7 +585,17 @@ function normalizedReplacementContent(content: string): string {
     .trim();
 }
 
+function autonomousEditChangesOrigin(proposal: MemoryProposal, patch?: Partial<MemoryProposal>): boolean {
+  if (!patch) return false;
+  if (!proposal.lore?.autonomous) return patch.lore?.autonomous !== undefined;
+  return ["proposedType", "storyCardType", "cardOperation", "targetId", "appendContent", "sourceTurnId", "sourceText",
+    "evaluationSource", "userInitiated", "manualDraft", "eventMemory"].some(key =>
+    Object.hasOwn(patch, key) && JSON.stringify(patch[key as keyof MemoryProposal]) !== JSON.stringify(proposal[key as keyof MemoryProposal]))
+    || Object.hasOwn(patch, "lore") && JSON.stringify(patch.lore) !== JSON.stringify(proposal.lore);
+}
+
 function sanitizeProposal(proposal: MemoryProposal): MemoryProposal | null {
+  if (autonomousProposalError(proposal) || (proposal.storyCardPatch && Object.hasOwn(proposal.storyCardPatch, "autonomousDevelopment"))) return null;
   if (isActivePressureProposal(proposal)) return null;
   if (!["componentDraft", "currentArcStateUpdate", "storyCard", "brainUpdate", "plotEssentialsUpdate", "plotPressureUpdate", "plotMomentumUpdate", "ignore"].includes(proposal.proposedType)) return null;
   if (proposal.proposedType === "componentDraft" && (!proposal.userInitiated || !proposal.manualDraft?.componentType
@@ -638,6 +649,7 @@ function loreCreateTitleConflict(state: Adventure, proposal: MemoryProposal): bo
   return state.storyCards.some(card => loreSubjectKey(card) === title
     && (!loreEventDateKey(proposal) || card.type !== "lore" || sameLoreEventDate(card, proposal)))
     || state.activeState.memoryProposals.some(other => other.id !== proposal.id
+      && !(other.lore?.autonomous && other.status === "pending")
       && (other.status === "pending" || other.status === "approved")
       && other.proposedType === "storyCard" && !other.targetId
       && other.cardOperation !== "append" && !other.appendContent
@@ -646,7 +658,7 @@ function loreCreateTitleConflict(state: Adventure, proposal: MemoryProposal): bo
 }
 
 function routedProposal(state: Adventure, proposal: MemoryProposal): MemoryProposal {
-  if (proposal.storyCardType === "relationship" || (proposal.userInitiated && proposal.manualDraft)) return proposal;
+  if (proposal.lore?.autonomous !== undefined || proposal.storyCardType === "relationship" || (proposal.userInitiated && proposal.manualDraft)) return proposal;
   const originalCardType = proposal.storyCardType;
   if (proposal.proposedType === "storyCard") {
     const target = state.storyCards.find(c => c.type !== "relationship" && (proposal.targetId ? c.id === proposal.targetId : c.title.toLocaleLowerCase() === proposal.title.toLocaleLowerCase() || (c.type === "location" && !proposal.storyCardType && cardMatchesName(c, proposal.title))));
@@ -811,16 +823,17 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal,
     const safeContent = stripLeadingCardTitle(cardTitle, proposal.content);
     if (!safeContent.trim()) return {};
     const existing = state.storyCards.find(
-      (card) => card.type !== "relationship" && (proposal.targetId ? card.id === proposal.targetId : !manualApproval && !proposal.storyCardReview && normalizeProposalTitle(card.title) === normalizeProposalTitle(proposal.title)),
+      (card) => !proposal.lore?.autonomous && card.type !== "relationship" && (proposal.targetId ? card.id === proposal.targetId : !manualApproval && !proposal.storyCardReview && normalizeProposalTitle(card.title) === normalizeProposalTitle(proposal.title)),
     );
     // A manual approval updates the chosen card without undoing a later type change.
     if (existing) proposal = { ...proposal, storyCardType: existing.type };
     proposal = { ...proposal, suggestedTriggers: generatedStoryCardTriggers(state, cardTitle, safeContent, proposal.suggestedTriggers,
       existing?.id, proposal.memoryMode ?? existing?.memoryMode, proposal.storyCardType ? primaryStoryCardType(proposal.storyCardType) : existing?.type) };
-    if (!manualApproval) {
-      if (existing && proposal.storyCardType && existing.type !== primaryStoryCardType(proposal.storyCardType)) return {};
-    }
-    const changeTime = proposal.storyCardType === "lore" && !manualApproval ? establishedLoreTime(state, proposal) : state.storyClock?.origin === "established" ? state.storyClock.current : undefined;
+    if (!manualApproval && existing && (existing.lore?.autonomous
+      || proposal.storyCardType && existing.type !== primaryStoryCardType(proposal.storyCardType))) return {};
+    const changeTime = proposal.lore?.autonomous ? proposal.lore.occurredAt
+      : proposal.storyCardType === "lore" && !manualApproval ? establishedLoreTime(state, proposal)
+      : state.storyClock?.origin === "established" ? state.storyClock.current : undefined;
     if (proposal.storyCardType === "lore" || existing?.type === "lore") {
       proposal = { ...proposal, lore: { ...proposalLore(state, proposal),
         occurredAt: existing ? existing.lore?.occurredAt : changeTime, lastChangedAt: changeTime } };
@@ -828,7 +841,7 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal,
     const hasDatePrefix = /^\s*\[?\d{4}-\d{2}-\d{2}\]?/.test(safeContent)
       || /^\s*\[?(?:\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)|(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2})\b/i.test(safeContent);
     const labelDate = isLoreProposal(state, proposal) ? changeTime?.date && !hasDatePrefix : changeTime?.text;
-    const datedContent = labelDate && changeTime && !safeContent.includes(changeTime.text)
+    const datedContent = !proposal.lore?.autonomous && labelDate && changeTime && !safeContent.includes(changeTime.text)
       ? `[${formatStoryTime(changeTime)}] ${safeContent}` : safeContent;
     let storyCard: StoryCard;
     if (existing) {
@@ -862,9 +875,10 @@ function applyApprovedMemoryProposal(state: Adventure, proposal: MemoryProposal,
           pinned: false,
           autoUpdate: proposal.autoUpdate ?? false,
           autoUpdateCooldownTurns: proposal.autoUpdateCooldownTurns ?? 3,
-          sourceTurnIds: appendSourceTurnIds(undefined, proposal.sourceTurnId),
+          sourceTurnIds: proposal.lore?.autonomous ? [] : appendSourceTurnIds(undefined, proposal.sourceTurnId),
           state: "memoryProposal",
           ...proposal.storyCardPatch,
+          autonomousDevelopment: false,
           type: proposal.storyCardType ?? "custom",
           lore: proposal.lore,
         })),
@@ -1182,8 +1196,8 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
         const source = state.messages.find(m => m.id === sourceId);
         const e = source?.memoryEvaluation;
         return source?.role === "assistant" && e?.pipeline === "singlePass" && e.status !== "complete" && e.status !== "running"
-          && (action.manual || e.status === "pending" && e.attempts === 0)
-          && !singlePassSourceError(state, sourceId, checkpoint) && snapshotFingerprint(checkpoint.referenceState) === singlePassReferenceState(state, sourceId);
+          && (action.manual ? !checkpoint.autonomousSubjects?.length : e.status === "pending" && e.attempts === 0)
+          && !singlePassSourceError(state, sourceId, checkpoint) && snapshotFingerprint(checkpoint.referenceState) === singlePassReferenceState(state, sourceId, Boolean(checkpoint.autonomousSubjects?.length));
       });
       if (valid.length !== action.checkpoints.length) return state;
       return touchAdventure(state, { messages: state.messages.map(message => {
@@ -1211,7 +1225,8 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
         if (e?.status !== "running" || e.singlePass?.batchId !== action.batchId || checkpoint.batchId !== action.batchId
           || JSON.stringify(e.singlePass) !== JSON.stringify(checkpoint)) return undefined;
         const stale = singlePassSourceError(state, result.sourceId, checkpoint)
-          ?? (snapshotFingerprint(checkpoint.referenceState) !== singlePassReferenceState(state, result.sourceId) ? "Memory references or author controls changed during extraction." : undefined);
+          ?? (snapshotFingerprint(checkpoint.referenceState) !== singlePassReferenceState(state, result.sourceId, Boolean(checkpoint.autonomousSubjects?.length))
+            ? checkpoint.autonomousSubjects?.length ? "Stale autonomous subject or memory reference." : "Memory references or author controls changed during extraction." : undefined);
         return { result, checkpoint, validation: stale ? undefined : validateSinglePassSource(state, result, checkpoint), stale };
       }).filter((entry): entry is NonNullable<typeof entry> => Boolean(entry))
         .sort((x, y) => state.messages.findIndex(m => m.id === x.result.sourceId) - state.messages.findIndex(m => m.id === y.result.sourceId));
@@ -1233,7 +1248,9 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
           const proposal = toSinglePassProposal(next, result.sourceId, checkpoint, finding);
           next = adventureReducer(next, { type: "ADD_MEMORY_PROPOSAL", proposal });
           const stored = next.activeState.memoryProposals.find(p => p.id === proposal.id);
-          dispositions.push({ index, status: !stored ? "suppressed" : stored.status === "approved" ? "accepted" : "review", proposalId: stored?.id });
+          dispositions.push({ index, status: !stored ? "suppressed" : stored.status === "approved" ? "accepted" : "review", proposalId: stored?.id,
+            ...(finding.autonomous ? { reason: !stored ? "Autonomous development suppressed by proposal validation or duplicate coverage."
+              : stored.status === "approved" ? "Approved autonomous Lore proposal." : "Valid pending autonomous Lore proposal." } : {}) });
         }
         if (MEMORY_DEBUG_LOGGING) for (const diagnostic of result.diagnostics ?? []) next = adventureReducer(next, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: {
           id: createId("decision"), sourceId: result.sourceId, createdAt: nowIso(), stage: "independent", requestStage: "singlePass", outcome: "finding_normalized",
@@ -1590,13 +1607,20 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
     case "UPDATE_STORY_CARD": {
       const previous = state.storyCards.find(card => card.id === action.storyCardId);
       if (!previous) return state;
+      if (Object.keys(action.patch).length === 1 && Object.hasOwn(action.patch, "autonomousDevelopment")) {
+        return touchAdventure(state, { storyCards: updateById(state.storyCards, action.storyCardId,
+          card => touch({ ...card, autonomousDevelopment: action.patch.autonomousDevelopment === true })) });
+      }
       const patched = mergePatch<StoryCard>(previous, action.patch);
+      if (patched.type === "lore" && previous.lore?.autonomous) {
+        patched.lore = { ...(patched.lore ?? previous.lore), autonomous: previous.lore.autonomous };
+      }
       const next = migrateStoryCard(previous.eventMemory ? { ...patched, memoryMode: "historical", autoUpdate: false } : patched);
       if (relationshipWriteError(state.storyCards, previous, next)) return state;
       return touchAdventure(state, { storyCards: updateById(state.storyCards, action.storyCardId, () => next) });
     }
     case "APPLY_STORY_CARD_UPDATE":
-      if (state.storyCards.some(card => card.id === action.storyCardId && card.type === "relationship")) return state;
+      if (state.storyCards.some(card => card.id === action.storyCardId && (card.type === "relationship" || card.lore?.autonomous))) return state;
       if (action.content === undefined && (!action.patch || Object.keys(action.patch).length === 0)) return state;
       return touchAdventure(state, {
         storyCards: updateById(state.storyCards, action.storyCardId, (item) => {
@@ -1612,7 +1636,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
           }) : item.lore;
           return recordStoryCardMemoryUpdate(
             item,
-            guardStoryCard({ ...item, ...action.patch, content, lore }),
+            guardStoryCard({ ...item, ...action.patch, autonomousDevelopment: item.autonomousDevelopment, content, lore }),
             { source: "aiMemoryUpdate", operation: action.content !== undefined ? "append" : "patch", sourceTurnId: source?.id },
           );
         }),
@@ -1768,6 +1792,8 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
         candidate: { kind: action.proposal.storyCardType ?? action.proposal.proposedType, title: action.proposal.title, content: action.proposal.content.slice(0, 4000), evidence: (action.proposal.sourceText ?? "").slice(0, 4000), rationale: (action.proposal.rationale ?? "").slice(0, 600) },
       } });
       if (!clean) return suppressed("Proposal sanitization rejected the candidate.");
+      if (clean.lore?.autonomous && (placementValidationError(state, clean) || !clean.evaluationSource || clean.status !== "pending"))
+        return suppressed("Autonomous Lore requires a validated generation-context binding.");
       const relationError = relationshipProposalError(state, clean);
       if (relationError) return suppressed(relationError);
       if (clean.storyCardType === "relationship") {
@@ -1815,7 +1841,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
       if (Boolean(clean.eventMemory) && !clean.targetId && [...state.storyCards.filter(isHistoricalLore), ...state.activeState.memoryProposals.filter(p => Boolean(p.eventMemory))].some(c => sameEventMemory(c, clean))) return suppressed("Duplicate historical event already recorded.");
       if (proposalCoverage(state, clean)) return suppressed("Factual delta already recorded or considered.");
 
-      if (clean.proposedType === "storyCard" && !clean.targetId && !(clean.storyCardType === "lore" && loreEventDateKey(clean))) {
+      if (clean.proposedType === "storyCard" && !clean.targetId && !clean.lore?.autonomous && !(clean.storyCardType === "lore" && loreEventDateKey(clean))) {
         clean.title = uniqueStoryCardTitle(state, clean.title, clean.storyCardType ?? "lore");
         if (clean.placementValidation) clean.placementValidation = { ...clean.placementValidation, fingerprint: placementFingerprint(clean) };
       }
@@ -1893,7 +1919,15 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
         duplicatesPending ? "Duplicate pending proposal" : duplicatesDismissed ? "Duplicate rejected or ignored proposal" : duplicatesCard ? "Story Card title already exists" : duplicatesStoryCardContent ? "Duplicate proposal content" : duplicatesExistingCardContent ? "Duplicate existing Story Card content" : duplicatesExistingTargetContent ? "Target already contains this content" : "Current pressure already contains this content");
       const autoApprove = clean.proposedType === "storyCard" ? storyCardAutoApprovalBlockers(state, clean).length === 0
         : !placementValidationError(state, clean) && suggestionSourceValid(state, clean) && shouldAutoApprove(state, clean);
-      if (autoApprove && !clean.requiresReview) {
+      if (clean.lore?.autonomous) {
+        const next = touchAdventure(state, { activeState: { ...state.activeState,
+          memoryProposals: [clean, ...state.activeState.memoryProposals] } });
+        return autoApprove && !clean.requiresReview
+          ? adventureReducer(next, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: clean.id, automatic: true }) : next;
+      }
+      if (autoApprove && !clean.requiresReview && !(clean.proposedType === "storyCard" && clean.storyCardType === "lore"
+        && !clean.targetId && state.storyCards.some(card => card.lore?.autonomous && loreSubjectKey(card) === loreSubjectKey(clean)
+          && (!loreEventDateKey(clean) || sameLoreEventDate(card, clean))))) {
         const approved = updateMemoryProposal(clean, { status: "approved" });
         const applied = applyApprovedMemoryProposal(state, approved);
         return touchAdventure(state, {
@@ -1914,6 +1948,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
     case "UPDATE_MEMORY_PROPOSAL": {
       const current = state.activeState.memoryProposals.find(p => p.id === action.proposalId);
       if (!current || current.status === "approved" || (action.expectedFingerprint && action.expectedFingerprint !== placementFingerprint(current))) return state;
+      if (autonomousEditChangesOrigin(current, action.patch)) return state;
       if (current.manualDraft && (action.patch.userInitiated !== undefined || action.patch.manualDraft !== undefined
         || action.patch.proposedType !== undefined && action.patch.proposedType !== current.proposedType
         || "targetId" in action.patch && action.patch.targetId !== current.targetId
@@ -1942,6 +1977,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
       const fail = (reason: string) => touchAdventure(state, { activeState: { ...state.activeState,
         memoryProposals: state.activeState.memoryProposals.map(p => p.id === existing.id
           ? { ...p, approvalFeedback: `Unable to apply — ${reason}` } : p) } });
+      if (autonomousEditChangesOrigin(existing, action.editedProposal)) return fail("autonomous generation provenance and destination are fixed.");
       const draft = { ...proposalWithEdits(existing, action.editedProposal), ...(existing.manualDraft ? { manualDraft: existing.manualDraft, userInitiated: true } : {}) };
       const relationError = relationshipProposalError(state, draft);
       if (relationError) return fail(relationError);
@@ -2002,12 +2038,13 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
         proposal = bindPlacement(state, proposal, { ...validation, kind: proposal.targetId ? "append" : "create" }, validation.sources.map(s => s.id));
         proposal.evaluationSource = { ...proposal.evaluationSource!, target: proposal.placementValidation?.target };
       }
-      if (loreCreateTitleConflict(state, proposal))
-        return fail("an equivalent Story Card title or active CREATE suggestion already exists. Select an existing card or edit the title.");
+      if (loreCreateTitleConflict(state, proposal)) return fail(proposal.lore?.autonomous
+        ? "an equivalent Story Card title or active CREATE suggestion already exists. Edit the event title if this is a distinct event."
+        : "an equivalent Story Card title or active CREATE suggestion already exists. Select an existing card or edit the title.");
       if (!action.automatic && proposal.proposedType === "storyCard" && proposal.targetId
         && !state.storyCards.some(card => card.id === proposal.targetId)) return fail("destination card is missing. Select CREATE or an existing Story Card.");
       if (action.automatic && proposal.proposedType === "storyCard" && storyCardAutoApprovalBlockers(state, proposal).length) return state;
-      if ((action.automatic || Boolean(proposal.targetId) || proposal.storyCardType === "relationship") && proposalCoverage(state, proposal, false)) {
+      if ((action.automatic || Boolean(proposal.targetId) || proposal.storyCardType === "relationship" || Boolean(proposal.lore?.autonomous)) && proposalCoverage(state, proposal, false)) {
         const next = touchAdventure(state, { activeState: { ...state.activeState,
           memoryProposals: state.activeState.memoryProposals.map(p => p.id === proposal.id ? { ...updateMemoryProposal(proposal, { status: "approved" }), approvalFeedback: "Approved — no new memory content." } : p) } });
         return adventureReducer(next, { type: "RECORD_MEMORY_DIAGNOSTIC", entry: { id: createId("decision"), sourceId: proposal.sourceTurnId,
@@ -2049,6 +2086,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
       const approved = updateMemoryProposal(proposal, { status: "approved" });
       const applied = applyApprovedMemoryProposal(state, approved, !action.automatic);
       if (approved.storyCardType === "relationship" && !applied.storyCards) return fail("the relationship update could not be applied.");
+      if (approved.lore?.autonomous && !applied.storyCards) return fail("the autonomous Lore card could not be created.");
       approved.approvalFeedback = Object.entries(applied).some(([key, value]) => JSON.stringify(state[key as keyof Adventure]) !== JSON.stringify(value))
         ? "Approved — memory updated." : "Approved — no new memory content.";
       return touchAdventure(state, {

@@ -1063,3 +1063,13 @@ describe("one-hop chained Story Cards", () => {
    expect(result.sections.find(s => s.id === "recentMessages")?.items.map(i => i.id)).toEqual(expect.arrayContaining(["old-msg", "new-msg"]));
    expect(result.totalEstimatedTokens).toBeLessThanOrEqual(adventure.tokenBudgetSettings.maxContextTokens);
  });
+
+it("does not change narration context when a nonmatching card gains autonomous authorization", () => {
+  const adventure = createDefaultAdventure();
+  const subject = makeStoryCard({ title: "Eastern Annex", type: "location", keys: ["shutters"], content: "The wardens manage its shutters." });
+  adventure.storyCards = [subject];
+  const before = buildContext(adventure, { currentInput: "I read by the fireplace." });
+  const after = buildContext({ ...adventure, storyCards: [{ ...subject, autonomousDevelopment: true }] }, { currentInput: "I read by the fireplace." });
+  expect(after.messages).toEqual(before.messages);
+  expect(after.sections.find(section => section.id === "storyCards")?.items).toEqual([]);
+});

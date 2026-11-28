@@ -166,3 +166,33 @@ it("requires confirmation before applying a deletion recommendation", async () =
     expect(JSON.parse(screen.getByTestId("cleanup-state").textContent!).storyCards).toHaveLength(1);
   } finally { confirm.mockRestore(); }
 });
+
+it.each(["character", "location", "object", "lore", "relationship", "custom"] as const)(
+  "offers autonomous authorization without changing context controls for %s", async type => {
+    const a = createDefaultAdventure();
+    const card = makeStoryCard({ title: "Eastern Annex", content: "The annex stays closed.", type, keys: ["shutters"] });
+    a.storyCards = [card];
+    function Harness() {
+      const [adventure, dispatch] = useReducer(adventureReducer, a);
+      return <><StoryCardsPage adventure={adventure} dispatch={dispatch} /><output data-testid="subject">{JSON.stringify(adventure.storyCards[0])}</output></>;
+    }
+    render(<Harness />);
+    const user = userEvent.setup();
+    await user.click(document.querySelector(".story-card-editor-item > summary")!);
+    await user.click(screen.getByText("Context, automation, and ordering", { selector: "summary" }));
+    expect(screen.queryByText("Autonomous Subject")).not.toBeInTheDocument();
+    await user.click(screen.getByLabelText("Autonomous World Development"));
+    expect(screen.getByText("Autonomous Subject")).toBeVisible();
+    const saved = JSON.parse(screen.getByTestId("subject").textContent!);
+    expect(saved).toEqual(JSON.parse(JSON.stringify({ ...card, updatedAt: saved.updatedAt, autonomousDevelopment: true })));
+  },
+);
+
+it("labels autonomous Lore separately and displays a missing subject ID", async () => {
+  const { a, proposal } = await (await import("../test/autonomousLore")).autonomousLoreFixture();
+  a.storyCards = [makeStoryCard({ title: proposal.title, content: proposal.content, type: "lore", lore: proposal.lore })];
+  render(<StoryCardsPage adventure={a} dispatch={vi.fn()} />);
+  expect(screen.getByText("Autonomous Lore", { exact: true })).toBeVisible();
+  expect(screen.queryByText("Autonomous Subject")).not.toBeInTheDocument();
+  expect(screen.getByText(/custom \(subject card missing\)/)).toBeInTheDocument();
+});

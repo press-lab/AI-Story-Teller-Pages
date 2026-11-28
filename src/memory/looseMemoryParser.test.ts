@@ -148,3 +148,25 @@ it("keeps category words in multiline factual continuation sentences", () => {
   const content = "I should inspect the experiment.\nBrain cells respond to x = y.\nCurrent arc measurements require z = 3.";
   expect(parse("brain: George Weasley = " + content, ["S1"]).operations).toEqual([expected({ content })]);
 });
+
+it.each(["NONE", "Annex wardens; Gate guards; Annex wardens"])("parses standalone autonomous event metadata: %s", knowledge => {
+  const { operations, diagnostics } = parse(
+    "S1\n(storyCard.lore.autonomous:\nAnnex repairs = Work began overnight.\nIt continued past dawn. || a1 + A2 || " + knowledge + ")", ["S1"]);
+  expect(diagnostics).toEqual([]);
+  expect(operations).toEqual([expect.objectContaining({ subtype: "autonomousLore", subject: "Annex repairs",
+    content: "Work began overnight.\nIt continued past dawn.", autonomous: {
+      subjectAliases: ["A1", "A2"], knownTo: knowledge === "NONE" ? [] : ["Annex wardens", "Gate guards"],
+    } })]);
+});
+
+it.each([
+  ["autonomous", " || || Wardens"], ["autonomous", " || A0 || Wardens"], ["autonomous", " || A1 + a1 || Wardens"],
+  ["autonomous", " || A1"], ["autonomous", " || A1 || "], ["autonomous", " || A1 || Wardens;"],
+  ["autonomous.update", " || A1 || Wardens"], ["autonomous.append", " || A1 || Wardens"],
+  ["autonomous.replace", " || A1 || Wardens"], ["autonomous.create", " || A1 || Wardens"],
+])("rejects invalid autonomous metadata without swallowing an ordinary sibling: %s %s", (label, metadata) => {
+  const result = parse("S1\n(storyCard.lore." + label + ": Repairs = Work began." + metadata
+    + ")\n(storyCard.lore: Survey = The survey ended.)", ["S1"]);
+  expect(result.operations.map(operation => operation.subject)).toEqual(["Survey"]);
+  expect(result.diagnostics).toEqual([expect.objectContaining({ reason: expect.stringContaining("Malformed autonomous") })]);
+});

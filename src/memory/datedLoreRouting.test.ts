@@ -118,3 +118,17 @@ it("does not borrow a later clock date for an undated backlog source", () => {
   a.storyClock = { origin: "established", current: { text: "2001-09-05", date: "2001-09-05", precision: "day" }, sourceMessageId: ids[1] };
   expect(establishedLoreTime(a, { sourceTurnId: old.id })).toBeUndefined();
 });
+
+it("dates autonomous creation from source context and keeps it out of append evidence", async () => {
+  const { a, proposal, sourceId } = await (await import("../test/autonomousLore")).autonomousLoreFixture();
+  const { originalLoreEvidence, sameDayLoreCards } = await import("./datedLoreRouting");
+  const source = a.messages.find(message => message.id === sourceId)!;
+  expect(routeDatedLoreProposal(a, proposal).lore?.occurredAt).toBeUndefined();
+  source.storyTime = { date: "2001-09-12", text: "2001-09-12", precision: "day" };
+  const routed = routeDatedLoreProposal(a, proposal);
+  expect(routed).toMatchObject({ title: "[2001-09-12] Annex shutter repairs", cardOperation: "create", lore: { occurredAt: source.storyTime } });
+  const card = makeStoryCard({ type: "lore", title: routed.title, content: routed.content, lore: routed.lore, sourceTurnIds: [sourceId] });
+  a.storyCards.push(card);
+  expect(originalLoreEvidence(a, card)).toEqual([]);
+  expect(sameDayLoreCards(a, sourceId)).not.toContain(card);
+});

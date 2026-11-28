@@ -37,7 +37,7 @@ function dayKey(time?: StoryTime): string | undefined {
 export function sameDayLoreCards(a: Adventure, sourceTurnId: string): StoryCard[] {
   const sourceDay = dayKey(establishedLoreTime(a, { sourceTurnId }));
   if (!sourceDay) return [];
-  return a.storyCards.filter(card => card.type === "lore" && dayKey(card.lore?.occurredAt) === sourceDay);
+  return a.storyCards.filter(card => card.type === "lore" && !card.lore?.autonomous && dayKey(card.lore?.occurredAt) === sourceDay);
 }
 
 export function loreAppendDayError(a: Adventure, p: MemoryProposal): string | undefined {
@@ -57,11 +57,13 @@ export function routeDatedLoreProposal(a: Adventure, p: MemoryProposal): MemoryP
   if (p.proposedType !== "storyCard" || p.storyCardType !== "lore" || p.userInitiated) return p;
   const time = establishedLoreTime(a, p);
   const sourceDay = dayKey(time);
-  const target = a.storyCards.find(card => card.id === p.targetId && card.type === "lore");
+  const target = p.lore?.autonomous ? undefined : a.storyCards.find(card => card.id === p.targetId && card.type === "lore");
   const targetDay = dayKey(target?.lore?.occurredAt);
   if (target && (!sourceDay || !targetDay)) {
     return { ...p, requiresReview: true };
   }
+  if (p.lore?.autonomous && time && time.precision !== "unknown" && !sourceDay)
+    return { ...p, lore: { ...p.lore, occurredAt: time, lastChangedAt: time } };
   if (!time || !sourceDay) return p.lore ? { ...p, lore: { ...p.lore, occurredAt: undefined, lastChangedAt: undefined } } : p;
   const lore = { ...p.lore, status: p.lore?.status ?? "unresolved", sourceMessageIds: p.lore?.sourceMessageIds ?? [], occurredAt: time, lastChangedAt: time };
   const appendTarget = target && targetDay === sourceDay ? target : undefined;
@@ -77,6 +79,7 @@ export function routeDatedLoreProposal(a: Adventure, p: MemoryProposal): MemoryP
 }
 
 export function originalLoreEvidence(a: Adventure, card: StoryCard) {
+  if (card.lore?.autonomous) return [];
   const ids = new Set([...(card.sourceTurnIds ?? []), ...(card.lore?.sourceMessageIds ?? [])]);
   return a.messages.filter(message => ids.has(message.id)).slice(0, 1)
     .map(({ id, content, storyTime }) => ({ id, content, storyTime }));
@@ -85,6 +88,7 @@ export function originalLoreEvidence(a: Adventure, card: StoryCard) {
 export function loreOriginalEventError(a: Adventure, p: MemoryProposal): string | undefined {
   const target = a.storyCards.find(card => card.id === p.targetId && card.type === "lore");
   if (!target || p.userInitiated) return undefined;
+  if (target.lore?.autonomous) return "Automatic Lore cannot append to an autonomous event.";
   const original = originalLoreEvidence(a, target)[0];
   if (!original) return "Original Lore event evidence is unavailable; select a destination manually.";
   const originalDay = dayKey(original.storyTime);

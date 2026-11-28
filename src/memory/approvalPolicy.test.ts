@@ -91,3 +91,21 @@ describe("uncertain Story Card approval", () => {
     expect(next.storyCards).toHaveLength(enabled ? 1 : 0);
   });
 });
+
+it.each([[false, false], [true, false], [false, true], [true, true]])(
+  "isolates ordinary Lore (%s) and Autonomous Lore approval (%s)", async (ordinary, autonomous) => {
+    const { a, proposal, sourceId } = await (await import("../test/autonomousLore")).autonomousLoreFixture();
+    a.memoryAutoApprove = { ...a.memoryAutoApprove, loreStoryCard: ordinary, autonomousLoreStoryCard: autonomous };
+    const normal = reviewedProposal(a, approvalProposal("loreStoryCard", {
+      id: "ordinary-lore", sourceTurnId: sourceId, title: "Ministry report deadline", content: "The Ministry expects the research report tomorrow.",
+    }));
+    expect(getApprovalCategory(a, proposal)).toBe("autonomousLoreStoryCard");
+    expect(shouldAutoApprove(a, normal)).toBe(ordinary);
+    expect(shouldAutoApprove(a, proposal)).toBe(autonomous);
+    const withOrdinary = reduce(a, { type: "ADD_MEMORY_PROPOSAL", proposal: normal });
+    expect(withOrdinary.activeState.memoryProposals.find(entry => entry.id === normal.id)?.status).toBe(ordinary ? "approved" : "pending");
+    const next = reduce(withOrdinary, { type: "ADD_MEMORY_PROPOSAL", proposal });
+    expect(next.activeState.memoryProposals[0]?.status).toBe(autonomous ? "approved" : "pending");
+    expect(next.storyCards.some(card => card.lore?.autonomous)).toBe(autonomous);
+  },
+);

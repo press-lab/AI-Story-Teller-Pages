@@ -5,7 +5,8 @@ import type { RelationshipMetadata, Adventure, ComponentType, SinglePassMemoryBa
 import type { PreparedSinglePassMemoryBatch } from "./singlePassMemory";
 import type { LooseMemoryOperation, LooseMemoryParseResult } from "./looseMemoryParser";
 import { singlePassCharacterCard, normalizeSinglePassFinding } from "./singlePassMemory";
-import { validateSinglePassSource } from "./singlePassMemoryValidation";
+import { eligibleAutonomousSubjects } from "./autonomousLore";
+import { validateSinglePassFinding, validateSinglePassSource } from "./singlePassMemoryValidation";
 import { safeLoreAppendTarget, storyCardTargets } from "./storyCardSuggestions";
 import { matchingStoryCardEntities, characterParticipants } from "./storyCardEntities";
 import { generatedStoryCardTriggers } from "./resolveMemoryTarget";
@@ -44,6 +45,7 @@ export function resolveLooseSource(a: Adventure, batch: PreparedSinglePassMemory
 }
 /** Stage 2: validate the complete taxonomy; unsupported component intents stay components. */
 export function resolveLooseCategory(op: LooseMemoryOperation): Resolution<LooseCategory> {
+  if (op.category === "storyCard" && op.subtype === "autonomousLore") return { value: { category: "storyCard", subtype: "lore" } };
   if (op.category === "unclassified") return { value: { category: "storyCard", subtype: "lore" } };
   const subtype = op.subtype ?? (op.category === "brain" ? "thoughts" : op.category === "storyCard" ? "lore" : "");
   const allowed = op.category === "brain" ? brainFields : op.category === "storyCard" ? cardTypes : componentTypes;
@@ -58,6 +60,7 @@ export function resolveLooseDestination(a: Adventure, source: Source, op: LooseM
   if (category.category === "component" && category.subtype === "activePressure") {
     return { value: { category, targetId: null, operation: "replace", suppressed: true, diagnostic: "Active Pressure is retired." } };
   }
+  if (op.autonomous) return { value: { category, targetId: null, operation: "create", candidates: [] } };
   const subject = normalize(op.loreAppend?.destination ?? op.subject);
   if (category.category === "brain") {
     const eligible = a.brains.filter(b => b.active && Object.values(source.brains).some(entry => entry.id === b.id));
@@ -100,7 +103,7 @@ export function resolveLooseDestination(a: Adventure, source: Source, op: LooseM
     return { value: { category, targetId: matches[0]?.id ?? null, operation: matches.length ? "append" : "create",
       relationship: { characterIds: canonicalRelationshipIds(ids) } } };
   }
-  const cards = a.storyCards.filter(c => c.type === category.subtype);
+  const cards = a.storyCards.filter(c => c.type === category.subtype && !c.lore?.autonomous);
   let matches = cards.filter(c => normalize(c.title) === subject);
   if (!matches.length) matches = cards.filter(c => c.keys.some(alias => normalize(alias) === subject));
   if (category.subtype === "character" && !matches.length) matches = matchingStoryCardEntities(cards, op.subject, op.content);
@@ -205,7 +208,10 @@ export function buildLooseFinding(a: Adventure, source: Source, op: LooseMemoryO
 }
 /** Stage 5: existing source/finding validation and coverage, without persistence or paid work. */
 export function routeLooseMemoryOperations(a: Adventure, batch: PreparedSinglePassMemoryBatch, parsed: LooseMemoryParseResult): SinglePassMemoryBatchResult {
+  const eligibleSubjects = new Set(eligibleAutonomousSubjects(a).map(card => card.id));
   return { sources: Object.entries(batch.outputAliases).map(([alias, manifest]) => {
+    const checkpoint = batch.checkpoints.find(c => c.sourceId === manifest.sourceId)?.checkpoint;
+    const usedSubjects = new Set<string>();
     const ops = parsed.operations.filter(op => op.sourceAlias === alias);
     const result: SinglePassMemoryBatchResult["sources"][number] = { sourceId: manifest.sourceId, findings: [], findingIndexes: [],
       rejected: [], diagnostics: [], parsedCount: ops.length, routedCount: 0, suppressedIndexes: [] };
@@ -222,6 +228,42 @@ export function routeLooseMemoryOperations(a: Adventure, batch: PreparedSinglePa
       result.routedCount!++;
       if (destination.value.diagnostic) result.diagnostics!.push({ index: op.ordinal, reason: destination.value.diagnostic });
       if (destination.value.suppressed) { result.suppressedIndexes!.push(op.ordinal); continue; }
+      if (op.autonomous) {
+        const reject = (reason: string) => result.rejected.push({ index: op.ordinal, reason });
+        if (!manifest.autonomousSubjects || !checkpoint?.autonomousSubjects) {
+          reject("Missing autonomous subject manifest.");
+          continue;
+        }
+        const subjectIds = op.autonomous.subjectAliases.map(alias => checkpoint.autonomousSubjects!.find(subject =>
+          subject.alias === alias && subject.cardId === manifest.autonomousSubjects![alias]?.id)?.cardId);
+        if (op.explicitCreation || op.explicitUpdate || op.loreAppend || subjectIds.some(id => !id || !eligibleSubjects.has(id))) {
+          reject("Unauthorized autonomous subject or destination.");
+          continue;
+        }
+        const ids = [...new Set(subjectIds as string[])].sort();
+        if (ids.some(id => usedSubjects.has(id))) {
+          reject("Duplicate autonomous development for a subject in this evaluation.");
+          continue;
+        }
+        const finding: SinglePassMemoryFinding = {
+          kind: "storyCard", storyCardType: "lore", targetId: null, operation: "create",
+          title: op.subject, content: op.content, reason: "Authorized autonomous world development.",
+          candidateOnly: false, evidenceQuotes: [], memoryMode: "static", eventStatus: "unresolved",
+          suggestedTriggers: generatedStoryCardTriggers(a, op.subject, op.content, undefined, undefined, "static", "lore"),
+          participants: characterParticipants(a.storyCards, op.content),
+          autonomous: {
+            knownTo: op.autonomous.knownTo,
+            provenance: { origin: "autonomous", subjectCardIds: ids, generationSourceId: manifest.sourceId,
+              generationSourceRevision: checkpoint.sourceRevision, generationBatchId: batch.batchId },
+          },
+        };
+        const error = validateSinglePassFinding(a, manifest.sourceId, checkpoint, finding);
+        if (error) { reject(error); continue; }
+        ids.forEach(id => usedSubjects.add(id));
+        result.findings.push(finding);
+        result.findingIndexes!.push(op.ordinal);
+        continue;
+      }
       const finding = buildLooseFinding(a, source.value, op, destination.value);
       if (!finding) result.rejected.push({ index: op.ordinal, reason: "Locally constructed finding failed schema validation." });
       else { result.findings.push(finding); result.findingIndexes!.push(op.ordinal); }
@@ -229,7 +271,6 @@ export function routeLooseMemoryOperations(a: Adventure, batch: PreparedSinglePa
     if (!parsed.evaluatedSources.includes(alias) || parsed.incompleteSources.includes(alias)) {
       result.failureReason = "Source absent, unattributable or contains only malformed operations.";
     }
-    const checkpoint = batch.checkpoints.find(c => c.sourceId === manifest.sourceId)?.checkpoint;
     if (!checkpoint) result.failureReason = "Missing source checkpoint.";
     else {
       const validated = validateSinglePassSource(a, result, checkpoint);

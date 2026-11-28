@@ -474,3 +474,33 @@ it("OFF keeps exact in-flight sources, references and evidence, then compacts su
   } finally { debugLogging.MEMORY_DEBUG_LOGGING = true; }
 });
 import { singlePassReferenceState as singlePassReferenceStateForTest } from "./singlePassMemory";
+
+it("adds autonomous context only for the latest normally scheduled source", async () => {
+  const { a, ids, sourceId, batch, finding, proposal } = await (await import("../test/autonomousLore")).autonomousLoreFixture();
+  const { makeStoryCard } = await import("../state/defaults");
+  expect(batch.checkpoints.map(({ checkpoint }) => Boolean(checkpoint.autonomousSubjects))).toEqual([false, false, true]);
+  expect(buildSinglePassMemoryMessages(batch)[0].content).toContain("AUTONOMOUS WORLD DEVELOPMENT");
+  for (const extraction of [await prepareSinglePassMemoryBatch(a, [sourceId]), await prepareSinglePassMemoryBatch(a, ids.slice(0, -1), { allowAutonomousDevelopment: true })]) {
+    expect(Object.values(extraction.outputAliases).every(source => !source.autonomousSubjects)).toBe(true);
+    expect(buildSinglePassMemoryMessages(extraction)[0].content).not.toContain("AUTONOMOUS WORLD DEVELOPMENT");
+  }
+  const provenance = finding.autonomous!.provenance;
+  a.storyCards.push(makeStoryCard({ type: "lore", title: "Approved", content: "The western shutters were replaced.", lore: proposal.lore }));
+  a.messages.push({ ...a.messages.at(-1)!, id: "later", memoryEvaluation: undefined });
+  a.storyCards.push(makeStoryCard({ type: "lore", title: "Future", content: "The Annex is dismantled.", lore: { ...proposal.lore!,
+    autonomous: { ...provenance, generationSourceId: "later" } } }));
+  a.activeState.memoryProposals = [{ ...proposal, title: "Pending" }, { ...proposal, id: "rejected", title: "Rejected", status: "rejected" }];
+  a.messages.at(-1)!.inputMode = "comms";
+  const next = await prepareSinglePassMemoryBatch(a, ids, { allowAutonomousDevelopment: true });
+  const reference = next.payload.references[next.outputAliases.S3.autonomousSubjects!.A1.reference];
+  expect(reference).toMatchObject({ content: a.storyCards[5].content,
+    approvedDevelopments: [expect.objectContaining({ title: "Approved", provenance })],
+    consideredDevelopmentsNotCanon: [expect.objectContaining({ status: "pending" }), expect.objectContaining({ status: "rejected" })] });
+  const json = JSON.stringify({ sources: [{ sourceId, findings: [finding] }] });
+  expect(parseSinglePassMemoryResponse(json, [sourceId], a).sources[0].findings).toEqual([]);
+  expect(parseSinglePassMemoryCommands("MEM S3 autonomousLore NEW\nTEXT\nAn event.\nEND\nDONE S3", batch.outputAliases, a).sources[2].findings).toEqual([]);
+  a.storyCards[5].autonomousDevelopment = false;
+  const empty = await prepareSinglePassMemoryBatch(a, ids, { allowAutonomousDevelopment: true });
+  expect(empty.outputAliases.S3.autonomousSubjects).toBeUndefined();
+  expect(buildSinglePassMemoryMessages(empty)[0].content).not.toContain("AUTONOMOUS WORLD DEVELOPMENT");
+});

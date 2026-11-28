@@ -1,3 +1,4 @@
+import { isAutonomousLore } from "./autonomousLore";
 import type { Adventure, LoreMetadata, MemoryProposal, StoryCard, StoryCardType, LegacyStoryCardType } from "../types/adventure";
 import { canonicalRelationshipIds, relationshipIdError } from "./relationshipCards";
 import { formatStoryTime } from "./storyTime";
@@ -23,6 +24,7 @@ export function mergeLoreMetadata(previous: LoreMetadata | undefined, next: Lore
     occurredAt: previous?.occurredAt ?? next.occurredAt,
     lastChangedAt: older ? previous.lastChangedAt : next.lastChangedAt ?? previous?.lastChangedAt,
     knownTo: next.knownTo ?? previous?.knownTo,
+    ...(previous?.autonomous ? { autonomous: previous.autonomous } : {}),
     sourceMessageIds: Array.from(new Set([...(previous?.sourceMessageIds ?? []), ...next.sourceMessageIds])),
   };
 }
@@ -30,15 +32,18 @@ export function mergeLoreMetadata(previous: LoreMetadata | undefined, next: Lore
 export function migrateStoryCard(card: Omit<StoryCard, "type"> & { type: StoryCardType | LegacyStoryCardType }): StoryCard {
   const historical = card.type === "event";
   const type = primaryStoryCardType(card.type);
-  const lore = type === "lore" ? card.lore ?? {
+  const { autonomous, ...loreFields } = card.lore ?? {};
+  const validLore = card.lore ? { ...loreFields, ...(type === "lore" && isAutonomousLore(autonomous) ? { autonomous } : {}) } as LoreMetadata : undefined;
+  const lore = type === "lore" ? validLore ?? {
     status: historical || card.memoryMode === "historical" ? "completed" : "unresolved",
     sourceMessageIds: card.eventMemory?.sourceMessageIds ?? card.sourceTurnIds ?? [],
-  } satisfies LoreMetadata : card.lore;
-  const { relationship, ...rest } = card;
+  } satisfies LoreMetadata : validLore;
+  const { relationship, lore: _lore, ...fields } = card;
+  const rest = { ...fields, autonomousDevelopment: card.autonomousDevelopment === true };
   if (type === "relationship") {
     const ids = relationship?.characterIds;
     return {
-      ...rest, type, keys: [], matchType: "phrase", inclusionPolicy: "triggered", memoryMode: "static",
+      ...rest, type, ...(validLore ? { lore: validLore } : {}), keys: [], matchType: "phrase", inclusionPolicy: "triggered", memoryMode: "static",
       relationship: ids && !relationshipIdError(ids) ? { characterIds: canonicalRelationshipIds(ids) } : relationship,
     };
   }
@@ -53,7 +58,7 @@ export function proposalLore(adventure: Adventure, proposal: MemoryProposal): Lo
     status: proposal.memoryMode === "historical" || proposal.eventMemory ? "completed" : "unresolved",
     ...proposal.lore,
     ...(time ? { occurredAt: time, lastChangedAt: proposal.lore?.lastChangedAt ?? time } : {}),
-    sourceMessageIds: Array.from(new Set([...(proposal.lore?.sourceMessageIds ?? []), ...(proposal.eventMemory?.sourceMessageIds ?? []), ...(source ? [source.id] : sourceContent && proposal.sourceTurnId ? [proposal.sourceTurnId] : [])])),
+    sourceMessageIds: proposal.lore?.autonomous ? [] : Array.from(new Set([...(proposal.lore?.sourceMessageIds ?? []), ...(proposal.eventMemory?.sourceMessageIds ?? []), ...(source ? [source.id] : sourceContent && proposal.sourceTurnId ? [proposal.sourceTurnId] : [])])),
   };
 }
 

@@ -1,3 +1,4 @@
+import { autonomousProposalError } from "./autonomousLore";
 import { relationshipIdError, relationshipKey, relationshipProposalError, relationshipTitle } from "./relationshipCards";
 import type { Adventure, MemoryProposal, MemoryPlacementValidation } from "../types/adventure";
 import { memoryTargetMatches, memoryTargetSnapshot } from "./memoryCycleState";
@@ -23,10 +24,12 @@ export function characterProfileChangeError(a: Adventure, targetId: string, chan
 
 export function placementFingerprint(p: MemoryProposal): string {
   return JSON.stringify([p.proposedType, p.storyCardType, p.title, p.content, p.targetId, p.memoryMode,
-    p.cardOperation, p.appendContent, p.sourceTurnId, p.sourceText, p.lore?.knownTo, p.eventMemory, ...(p.storyCardType === "relationship" && p.relationship ? [relationshipIdError(p.relationship.characterIds) ? p.relationship : relationshipKey(p.relationship.characterIds)] : [])]);
+    p.cardOperation, p.appendContent, p.sourceTurnId, p.sourceText, p.lore?.knownTo, p.eventMemory, ...(p.lore?.autonomous ? [p.lore.autonomous] : []), ...(p.storyCardType === "relationship" && p.relationship ? [relationshipIdError(p.relationship.characterIds) ? p.relationship : relationshipKey(p.relationship.characterIds)] : [])]);
 }
 
 export function placementValidationError(a: Adventure, p: MemoryProposal): string | undefined {
+  const autonomousError = autonomousProposalError(p);
+  if (autonomousError) return autonomousError;
   const relationError = relationshipProposalError(a, p);
   if (relationError) return relationError;
   if (p.proposedType !== "storyCard" || p.userInitiated) return undefined;
@@ -36,6 +39,14 @@ export function placementValidationError(a: Adventure, p: MemoryProposal): strin
     || !Array.isArray(v.sources) || v.sources.some(s => !s || typeof s.id !== "string" || typeof s.content !== "string")) return "Placement needs validation against the current draft.";
   if (v.fingerprint !== placementFingerprint(p)) return "The draft or destination changed since placement was validated.";
   if (!v.sources.length || v.sources.some(s => !a.messages.some(m => m.id === s.id && m.content === s.content))) return "The source evidence changed since placement was validated.";
+  const autonomous = p.lore?.autonomous;
+  if (autonomous) {
+    const source = a.messages.find(message => message.id === autonomous.generationSourceId);
+    if (!source || source.role !== "assistant" || source.inputMode === "comms"
+      || source.memoryEvaluation?.revision !== autonomous.generationSourceRevision
+      || !v.sources.some(bound => bound.id === source.id && bound.content === source.content))
+      return "Autonomous generation context or revision changed.";
+  }
   if (v.target && !memoryTargetMatches(a, v.target)) return "The reviewed destination changed since placement was validated.";
   const target = p.targetId ? a.storyCards.find(c => c.id === p.targetId) : undefined;
   if (p.targetId && (!v.target || v.target.id !== p.targetId)) return "The reviewed destination snapshot is missing.";

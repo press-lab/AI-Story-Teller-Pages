@@ -426,7 +426,7 @@ export function useAdventureRuntime(
             initial = cleared;
           }
         }
-        batch = await prepareSinglePassMemoryBatch(initial, ids);
+        batch = await prepareSinglePassMemoryBatch(initial, ids, { allowAutonomousDevelopment: sourceIds === undefined });
         if (!currentJob()) return;
         const claimed = await persistActions([{ type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints, manual: Boolean(sourceIds) }]);
         if (!claimed || !currentJob() || !ids.every(id => claimed.messages.find(m => m.id === id)?.memoryEvaluation?.singlePass?.batchId === batch!.batchId)) return;
@@ -1008,6 +1008,7 @@ export function useAdventureRuntime(
     if (!adventure) return;
     const proposal = adventure.activeState.memoryProposals.find((p) => p.id === proposalId);
     if (!proposal) return;
+    if (proposal.lore?.autonomous) throw new Error("Autonomous Lore cannot use ordinary proposal regeneration.");
     const reviewedPatch = await regenerateProposalContent(proposal, adventure, activeProviderConfig, convertToLore);
     if (!reviewedPatch.content) return;
     applyActionsAndPersist([{ type: "UPDATE_MEMORY_PROPOSAL", proposalId, expectedFingerprint: placementFingerprint(proposal), patch: reviewedPatch }]);

@@ -1,3 +1,4 @@
+import { sameAutonomousSubjects } from "./autonomousLore";
 import { relationshipIdError, relationshipKey, relationshipMatches, relationshipTitle } from "./relationshipCards";
 import { factsCovered, loreFactsCovered, loreTitleKey, loreOccurrenceDate, loreSubjectKey } from "./factCoverage";
 import type { Adventure, MemoryProposal, Message, RelationshipMetadata, StoryCardType } from "../types/adventure";
@@ -110,7 +111,7 @@ export function suggestionSourceValid(adventure: Adventure, proposal: MemoryProp
  * Aliases must exactly name the proposed topic and contain a non-person topical term. */
 export function safeLoreAppendTarget(adventure: Adventure, finding: { title: string }): string | undefined {
   const subject = normalizeMemoryText(finding.title);
-  const lore = adventure.storyCards.filter(c => c.type === "lore");
+  const lore = adventure.storyCards.filter(c => c.type === "lore" && !c.lore?.autonomous);
   const exact = lore.filter(c => normalizeMemoryText(c.title) === subject);
   if (exact.length) return exact.length === 1 ? exact[0].id : undefined;
   const people = new Set(adventure.storyCards.filter(c => c.type === "character")
@@ -220,6 +221,10 @@ export function scanStoryCardExchange(adventure: Adventure, source: Message): Me
 /** Merge the two detectors by source + event meaning, not just shared participants. */
 export function equivalentStoryCardSuggestions(a: MemoryProposal, b: MemoryProposal): boolean {
   if (a.proposedType !== "storyCard" || b.proposedType !== "storyCard" || (a.storyCardType ?? "lore") !== (b.storyCardType ?? "lore")) return false;
+  const leftOrigin = a.lore?.autonomous, rightOrigin = b.lore?.autonomous;
+  if (leftOrigin || rightOrigin) {
+    if (!leftOrigin || !rightOrigin || !sameAutonomousSubjects(leftOrigin, rightOrigin)) return false;
+  }
   if ((a.storyCardType ?? "lore") === "lore") {
     const sameSubject = a.targetId && b.targetId ? a.targetId === b.targetId : loreSubjectKey(a) === loreSubjectKey(b);
     const leftDate = loreOccurrenceDate(a), rightDate = loreOccurrenceDate(b);
@@ -246,6 +251,7 @@ export function equivalentStoryCardSuggestions(a: MemoryProposal, b: MemoryPropo
 }
 
 export function mergeStoryCardSuggestions(existing: MemoryProposal, incoming: MemoryProposal): MemoryProposal {
+  if (existing.lore?.autonomous || incoming.lore?.autonomous) return existing;
   const preferModel = incoming.storyCardReview?.origin === "model" && !incoming.storyCardReview.candidateOnly;
   const chosen = preferModel ? incoming : existing;
   // A merge is not a fresh review of the older evidence. Keep unresolved restrictions.
@@ -284,7 +290,8 @@ export function uniqueStoryCardTitle(adventure: Adventure, title: string, type: 
   const occupied = new Set([
     ...adventure.storyCards.map(c => loreTitleKey(c.title)),
     ...adventure.activeState.memoryProposals.filter(p => p.proposedType === "storyCard" && !p.targetId
-      && (p.storyCardType ?? "lore") === type && ["pending", "approved"].includes(p.status)).map(p => loreTitleKey(p.title)),
+      && (p.storyCardType ?? "lore") === type && ["pending", "approved"].includes(p.status)
+      && !(p.lore?.autonomous && p.status === "pending")).map(p => loreTitleKey(p.title)),
   ]);
   let result = title;
   for (let suffix = 2; occupied.has(loreTitleKey(result)); suffix++) result = `${title} (${suffix})`;

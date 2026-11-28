@@ -290,3 +290,22 @@ it("merging clean findings preserves unresolved candidate or destination review,
   }
   expect(mergeStoryCardSuggestions(clean, clean)).toMatchObject({ requiresReview: false, storyCardReview: { candidateOnly: false } });
 });
+
+it("separates autonomous and ordinary suggestion identity and coverage", async () => {
+  const { a, proposal } = await (await import("../test/autonomousLore")).autonomousLoreFixture();
+  const { equivalentStoryCardSuggestions, mergeStoryCardSuggestions } = await import("./storyCardSuggestions");
+  const { loreNovelty } = await import("./factCoverage");
+  const ordinary = { ...proposal, id: "ordinary", lore: { ...proposal.lore!, autonomous: undefined } };
+  const repeated = { ...proposal, id: "repeated" };
+  expect(equivalentStoryCardSuggestions(proposal, repeated)).toBe(true);
+  expect(mergeStoryCardSuggestions(proposal, repeated).lore?.autonomous).toEqual(proposal.lore?.autonomous);
+  expect(equivalentStoryCardSuggestions(proposal, { ...repeated, content: "The wardens secured the northern gate." })).toBe(false);
+  expect(equivalentStoryCardSuggestions(proposal, ordinary)).toBe(false);
+  for (const status of ["pending", "rejected", "ignored"] as const) {
+    a.activeState.memoryProposals = [{ ...proposal, status }];
+    expect(loreNovelty(a, ordinary).status).toBe("new");
+    expect(loreNovelty(a, repeated).status).toBe("covered");
+  }
+  a.activeState.memoryProposals = [ordinary];
+  expect(loreNovelty(a, proposal).status).toBe("covered");
+});

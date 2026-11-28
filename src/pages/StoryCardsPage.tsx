@@ -1,3 +1,4 @@
+import { autonomousSubjectNames, isAutonomousLore } from "../memory/autonomousLore";
 import { RelationshipParticipants } from "./RelationshipParticipants";
 import { linkedRelationships, relationshipCardError, relationshipMatches, relationshipTitle, relationshipWriteError, validateRelationshipIds } from "../memory/relationshipCards";
 import { StoryCardTriggerCleanup } from "./StoryCardTriggerCleanup";
@@ -42,6 +43,8 @@ function CardSummary({ card, query, participantNames }: { card: StoryCard; query
       </span>
       <span className="story-card-badges">
         <span className="badge badge-type">{TYPE_LABELS[card.type]}</span>
+        {card.autonomousDevelopment === true && <span className="badge">Autonomous Subject</span>}
+        {card.type === "lore" && isAutonomousLore(card.lore?.autonomous) && <span className="badge">Autonomous Lore</span>}
         {!card.active && <span className="badge badge-inactive">Inactive</span>}
         {card.pinned && <span className="badge badge-pinned">Pinned</span>}
         {card.protected && <span className="badge badge-protected">Protected</span>}
@@ -772,6 +775,14 @@ export function StoryCardsPage({
                       onChange={(checked) => dispatch({ type: checked ? "PIN_STORY_CARD" : "UNPIN_STORY_CARD", storyCardId: card.id })}
                     />
                   </div>
+                  <CheckboxField
+                    label="Autonomous World Development"
+                    checked={card.autonomousDevelopment === true}
+                    onChange={(checked) => dispatch({ type: "UPDATE_STORY_CARD", storyCardId: card.id, patch: { autonomousDevelopment: checked } })}
+                  />
+                  <p className="muted">Allow the memory model to generate independent off-screen developments involving this subject.</p>
+                  {card.type === "lore" && isAutonomousLore(card.lore?.autonomous) &&
+                    <p>Originating subjects: {autonomousSubjectNames(adventure, card.lore.autonomous).join(", ")}</p>}
                   <div className="grid two">
                     <CheckboxField
                       label={card.type === "relationship" ? "Protected (first choice of remaining context budget)" : "Protected (cannot be dropped by token truncation)"}

@@ -143,7 +143,9 @@ Use the Character Self switch in the permanent Memory Suggestions panel. Valid n
 
 ## Adventure approval
 
-Auto-approval belongs to each adventure. New adventures start with all five switches OFF: Plot Essentials, Character Self, Story Cards — Lore, Story Cards — Relationships, and Story Cards — Everything Else. The permanent panel appears at the top of Memory Suggestions, including when its queue is empty. Settings has no approval controls, and global localStorage approval properties are discarded.
+Auto-approval belongs to each adventure. New adventures start with auto-approval off. Memory Suggestions has independent switches for Current Arc State, Plot Essentials, Character Self, Lore, Autonomous Lore, Relationships, and Everything Else. The permanent panel appears at the top of Memory Suggestions, including when its queue is empty. Settings has no approval controls, and global localStorage approval properties are discarded.
+
+The [Autonomous Lore](autonomous-world-development.md) switch applies only to new off-screen Lore with saved autonomous provenance and defaults off even when ordinary Lore auto-approval is on.
 
 The shared policy reads only `adventure.memoryAutoApprove`. Existing cards use their stored type. Lore uses `loreStoryCard`; character, location, legacy plot, and custom use `otherStoryCard`. Unknown new card types wait for classification. Missing-Brain card fallbacks use the card category. Existing pending proposals are never replayed when a switch changes. Evidence, duplicate, destination, protection, chronology, and companion-proposal checks remain in the reducer pipeline.
 

@@ -15,6 +15,7 @@ export interface LooseMemoryOperation {
   explicitUpdate: boolean;
   relationshipParticipants?: string[];
   enduringReason?: string;
+  autonomous?: { subjectAliases: string[]; knownTo: string[] };
   loreAppend?: { destination: string; reason: string };
 }
 export interface LooseMemoryParseResult {
@@ -25,6 +26,7 @@ export interface LooseMemoryParseResult {
 }
 type Label = Pick<LooseMemoryOperation, "category" | "subtype">;
 const key = (s: string) => s.toLowerCase().replace(/[\s._-]+/g, "");
+const autonomousLabelVariant = (label: string) => /^(?:storycard)?(?:lore)?autonomous/.test(key(label));
 const brains = ["thoughts", "currentState", "relationshipPressure", "emotionalInterpretation", "recentDevelopments", "notes"];
 const cards = ["lore", "character", "location", "object", "relationship", "custom"];
 const components = ["currentArcPlan", "currentArcState", "plotEssentials", "activePressure", "immediateMomentum", "narrationRules", "aiInstructions", "authorNote", "memory", "custom"];
@@ -50,6 +52,8 @@ for (const subtype of components) {
   if (!["memory", "custom"].includes(subtype)) labels([subtype], "component", subtype);
 }
 function label(raw: string): Label {
+  if (raw.trim() === "storyCard.lore.autonomous") return { category: "storyCard", subtype: "autonomousLore" };
+  if (autonomousLabelVariant(raw)) return { category: "storyCard", subtype: "invalidAutonomousLore" };
   const normalized = key(raw);
   if (aliases[normalized]) return aliases[normalized];
   if (/^relationship[.\s_-]/i.test(raw)) return { category: "storyCard", subtype: normalized };
@@ -66,7 +70,7 @@ function head(raw: string): { label: Label; subject: string; rest: string; creat
   const firstColon = /:+/.exec(value);
   if (firstColon) {
     const left = value.slice(0, firstColon.index).trim();
-    if (!aliases[key(left.replace(/[.\s_-]+(?:create|new|update)$/i, ""))]) {
+    if (!autonomousLabelVariant(left) && !aliases[key(left.replace(/[.\s_-]+(?:create|new|update)$/i, ""))]) {
       const words = left.split(/\s+/);
       for (let count = words.length - 1; count > 0; count--) {
         const category = aliases[key(words.slice(0, count).join(" "))];
@@ -79,9 +83,11 @@ function head(raw: string): { label: Label; subject: string; rest: string; creat
   if (equal) {
     const left = value.slice(0, equal.index).trim();
     const colon = /:+/.exec(left);
-    const category = colon ? label(left.slice(0, colon.index).replace(/[.\s_-]+(?:create|new|update)$/i, "")) : { category: "unclassified" as const };
-    const subject = colon ? left.slice(colon.index + colon[0].length) : left;
     const rawLabel = colon ? left.slice(0, colon.index) : "";
+    const category = colon ? label(rawLabel.replace(/[.\s_-]+(?:create|new|update)$/i, ""))
+      : /^story[.\s_-]*card[.\s_-]+lore[.\s_-]+autonomous\b/i.test(left) ? label("invalid autonomous")
+        : { category: "unclassified" as const };
+    const subject = colon ? left.slice(colon.index + colon[0].length) : left;
     return { label: category, subject: cleanEdge(subject.replace(/^[:=]+\s*/, "")),
       rest: value.slice(equal.index + equal[0].length).replace(/^\s*[:=]+\s*/, ""),
       creation: /(?:^|[.\s_-])(?:new|create)(?:[.\s_-]|$)/i.test(rawLabel),
@@ -96,7 +102,7 @@ function recognizableStart(raw: string): boolean {
   // A known label with missing assignment is a malformed operation boundary.
   // Ordinary continuation sentences beginning "Brain ..." are still factual content.
   const prefix = /^([^:=\n]+):+/.exec(s.replace(/^[([{]\s*/, ""));
-  return Boolean(prefix && Object.hasOwn(aliases, key(prefix[1].replace(/[.\s_-]+(?:create|new|update)$/i, ""))));
+  return Boolean(prefix && (autonomousLabelVariant(prefix[1]) || Object.hasOwn(aliases, key(prefix[1].replace(/[.\s_-]+(?:create|new|update)$/i, "")))));
 }
 export function parseLooseMemoryOperations(text: string, allowedSourceAliases: readonly string[]): LooseMemoryParseResult {
   const result: LooseMemoryParseResult = { operations: [], evaluatedSources: [], diagnostics: [], incompleteSources: [] };
@@ -143,6 +149,23 @@ export function parseLooseMemoryOperations(text: string, allowedSourceAliases: r
       if (content.split(closing).length > content.split(opening).length) content = content.slice(0, closer.index).trim();
     }
     content = cleanEdge(content);
+    if (h.label.subtype === "autonomousLore" || h.label.subtype === "invalidAutonomousLore") {
+      const fields = content.split("||").map(field => field.trim());
+      const [event, aliases, knowledge] = fields;
+      const subjectAliases = aliases?.split("+").map(alias => alias.trim().toUpperCase()) ?? [];
+      const knownTo = knowledge === "NONE" ? [] : knowledge?.split(";").map(name => name.trim()) ?? [];
+      if (h.label.subtype !== "autonomousLore" || h.creation || h.update || !h.subject || fields.length !== 3 || !event || !knowledge
+        || !subjectAliases.length || subjectAliases.some(alias => !/^A[1-9]\d*$/.test(alias))
+        || new Set(subjectAliases).size !== subjectAliases.length
+        || knownTo.some(name => !name || /^NONE$/i.test(name) || /[|\r\n]/.test(name))) {
+        reject("Malformed autonomous operation: expected a new event, distinct source aliases and knowledge holders.", pendingSource, index);
+        return;
+      }
+      result.operations.push({ sourceAlias: pendingSource, ...h.label, subject: h.subject, content: event, ordinal: index,
+        explicitCreation: false, explicitUpdate: false, autonomous: { subjectAliases, knownTo: [...new Set(knownTo)] } });
+      evaluated.add(pendingSource);
+      return;
+    }
     const relationshipParticipants = h.label.subtype === "relationship" ? h.subject.split(/\s+\+\s+/).map(name => name.trim()) : undefined;
     if (relationshipParticipants && (h.creation || h.update || raw.includes("||")
       || relationshipParticipants.length < 2 || relationshipParticipants.some(name => !relationshipNameKey(name) || name.includes("+"))

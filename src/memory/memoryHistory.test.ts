@@ -231,3 +231,14 @@ it("OFF does not scan completed evaluations or resolved proposals for new archiv
 
 // Isolated legacy writer coverage; this override never applies to the shipped build.
 vi.mock("../config/memoryHistoryCompression", () => ({ ENABLE_HISTORY_COMPRESSION: true }));
+
+it("keeps authorization and provenance in compacted records and the history codec", async () => {
+  const { a, proposal, sourceId, finding, checkpoint } = await (await import("../test/autonomousLore")).autonomousPersistenceFixture();
+  const { compactHistoricalEvaluation, compactHistoricalProposal } = await import("./memoryHistory");
+  const value = { ...a.messages.find(message => message.id === sourceId)!.memoryEvaluation!,
+    singlePass: { ...checkpoint, findings: [finding] } };
+  expect(compactHistoricalEvaluation(value, "archive").singlePass?.autonomousSubjects).toEqual(checkpoint.autonomousSubjects);
+  expect(compactHistoricalProposal(proposal, "archive").lore?.autonomous).toEqual(proposal.lore?.autonomous);
+  const record = { kind: "evaluation", id: sourceId, value } as const;
+  expect(await decompressHistory(await compressHistory(record))).toMatchObject(record);
+});

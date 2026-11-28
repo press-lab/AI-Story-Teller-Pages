@@ -192,3 +192,14 @@ describe("adventureDb IndexedDB persistence", () => {
   });
 
 });
+
+it("persists autonomous authorization, settings, Lore provenance and checkpoint fields", async () => {
+  const { a, proposal, sourceId, checkpoint } = await (await import("../test/autonomousLore")).autonomousPersistenceFixture();
+  await saveAdventure(a);
+  const loaded = await getAdventure(a.id);
+  expect(loaded?.storyCards.find(card => card.id === "custom")?.autonomousDevelopment).toBe(true);
+  expect(loaded?.storyCards.find(card => card.id === "recorded-development")?.lore).toEqual(proposal.lore);
+  expect(loaded?.activeState.memoryProposals[0].lore).toEqual(proposal.lore);
+  expect(loaded?.memoryAutoApprove.autonomousLoreStoryCard).toBe(true);
+  expect(loaded?.messages.find(message => message.id === sourceId)?.memoryEvaluation?.singlePass?.autonomousSubjects).toEqual(checkpoint.autonomousSubjects);
+});

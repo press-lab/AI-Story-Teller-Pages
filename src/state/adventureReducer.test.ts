@@ -1987,3 +1987,68 @@ it("blocks saved Lore CREATE approval against another pending CREATE without cha
   expect(a.storyCards).toEqual(before);
   expect(a.activeState.memoryProposals[0]).toEqual({ ...p, approvalFeedback: expect.stringContaining("equivalent Story Card title") });
 });
+
+it("persists autonomous Lore through explicit review and protects its provenance", async () => {
+  const { a, sourceId, proposal } = await (await import("../test/autonomousLore")).autonomousLoreFixture();
+  const subject = a.storyCards[5];
+  let next = adventureReducer(a, { type: "ADD_MEMORY_PROPOSAL", proposal });
+  expect(next.storyCards).toEqual(a.storyCards);
+  expect(next.activeState.memoryProposals[0].status).toBe("pending");
+  const update = (patch: Partial<typeof proposal>) => adventureReducer(next, { type: "UPDATE_MEMORY_PROPOSAL", proposalId: proposal.id, patch });
+  for (const patch of [{ lore: undefined }, { storyCardType: "custom" as const }, { targetId: subject.id }, { cardOperation: "append" as const }])
+    expect(update(patch)).toBe(next);
+  for (const type of ["REJECT_MEMORY_PROPOSAL", "IGNORE_MEMORY_PROPOSAL"] as const)
+    expect(adventureReducer(next, { type, proposalId: proposal.id }).storyCards).toEqual(a.storyCards);
+  next = update({ content: "The wardens replaced the eastern Annex shutters before sunset." });
+  next = adventureReducer(next, { type: "UPDATE_STORY_CARD", storyCardId: subject.id, patch: { autonomousDevelopment: false } });
+  expect(next.storyCards[5].autonomousDevelopment).toBe(false);
+  next = adventureReducer(next, { type: "UPDATE_STORY_CARD", storyCardId: subject.id, patch: { autonomousDevelopment: true } });
+  expect(next.storyCards[5]).toEqual({ ...subject, updatedAt: next.storyCards[5].updatedAt });
+  next = adventureReducer(next, { type: "DELETE_STORY_CARD", storyCardId: subject.id });
+  next = adventureReducer(next, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id });
+  expect(next.activeState.memoryProposals[0].status).toBe("approved");
+  expect(next.storyCards.find(card => card.lore?.autonomous)).toMatchObject({
+    title: proposal.title, content: "The wardens replaced the eastern Annex shutters before sunset.", autonomousDevelopment: false,
+    sourceTurnIds: [], lore: { sourceMessageIds: [], autonomous: { generationSourceId: sourceId, subjectCardIds: [subject.id] } },
+  });
+});
+
+it("rejects stale autonomous batch references and cannot replay a committed batch", async () => {
+  const { a, batch, checkpoint, result, sourceId } = await (await import("../test/autonomousLore")).autonomousLoreFixture();
+  a.memoryAutoApprove.autonomousLoreStoryCard = true;
+  const { singlePassReferenceState } = await import("../memory/singlePassMemory");
+  checkpoint.referenceState = singlePassReferenceState(a, sourceId, true);
+  const claimed = adventureReducer(a, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
+  expect(claimed.messages.find(message => message.id === sourceId)?.memoryEvaluation?.status).toBe("running");
+  const action = { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId, sources: [{ result, checkpoint }] } as const;
+  const commit = (state: typeof a) => adventureReducer(state, { ...action, sources: [...action.sources] });
+  const changed = adventureReducer(claimed, { type: "UPDATE_STORY_CARD", storyCardId: a.storyCards[5].id, patch: { content: "Changed" } });
+  expect(commit(changed).messages.find(message => message.id === sourceId)?.memoryEvaluation?.lastError).toMatch(/stale autonomous/i);
+  const advanced = { ...claimed, messages: [...claimed.messages, { ...claimed.messages.at(-1)!, id: "newer-narrator",
+    content: "The room remains quiet.", memoryEvaluation: undefined }] };
+  const saved = commit(advanced);
+  expect(saved.storyCards.filter(card => card.lore?.autonomous)).toHaveLength(1);
+  expect(commit(saved)).toBe(saved);
+});
+it.each(["pending", "rejected"] as const)("records narrated facts independently of a %s invention", async status => {
+  const { a, proposal, finding, sourceId } = await (await import("../test/autonomousLore")).autonomousLoreFixture();
+  const { prepareSinglePassMemoryBatch, parseSinglePassMemoryResponse } = await import("../memory/singlePassMemory");
+  let state = adventureReducer(a, { type: "ADD_MEMORY_PROPOSAL", proposal });
+  if (status === "rejected") state = adventureReducer(state, { type: "REJECT_MEMORY_PROPOSAL", proposalId: proposal.id });
+  const source = state.messages.find(message => message.id === sourceId)!;
+  const narratedId = "later-narration";
+  state = { ...state, messages: [...state.messages, { ...source, id: narratedId, content: finding.content!,
+    memoryEvaluation: { ...source.memoryEvaluation!, revision: "later-revision" } }] };
+  const batch = await prepareSinglePassMemoryBatch(state, [narratedId]);
+  const result = parseSinglePassMemoryResponse(
+    "(storyCard.lore.create: " + finding.title + " = " + finding.content + ")", [narratedId], state, batch.outputAliases, batch);
+  state = adventureReducer(state, { type: "CLAIM_SINGLE_PASS_MEMORY_BATCH", checkpoints: batch.checkpoints });
+  state = adventureReducer(state, { type: "COMMIT_SINGLE_PASS_MEMORY_BATCH", batchId: batch.batchId,
+    sources: [{ result: result.sources[0], checkpoint: batch.checkpoints[0].checkpoint }] });
+  expect(state.activeState.memoryProposals.find(entry => entry.id === proposal.id)?.status).toBe(status);
+  expect(state.storyCards.filter(card => card.title === finding.title)).toEqual([expect.objectContaining({
+    content: finding.content, lore: expect.objectContaining({ sourceMessageIds: [narratedId] }),
+  })]);
+  const lateApproval = adventureReducer(state, { type: "APPROVE_MEMORY_PROPOSAL", proposalId: proposal.id });
+  expect(lateApproval.storyCards).toEqual(state.storyCards);
+});

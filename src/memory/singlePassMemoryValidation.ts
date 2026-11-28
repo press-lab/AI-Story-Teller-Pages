@@ -1,3 +1,4 @@
+import { autonomousSubjectSnapshot } from "./autonomousLore";
 import { arcReferenceState, eligibleArc } from "./currentArc";
 import { relationshipMatches, relationshipProposalError, validateRelationshipIds } from "./relationshipCards";
 import { originalLoreEvidence, routeDatedLoreProposal } from "./datedLoreRouting";
@@ -27,6 +28,20 @@ export function validateSinglePassFinding(a: Adventure, sourceId: string, checkp
   if (f.kind === "activePressure") return "Active Pressure is retired.";
   const schemaError = singlePassFindingSchemaError(f);
   if (schemaError) return schemaError;
+  if (f.autonomous) {
+    if (!checkpoint.evidence.some(source => source.id === sourceId)) return "Missing saved in-story narrator source.";
+    const { provenance } = f.autonomous;
+    if (provenance.generationSourceId !== sourceId || provenance.generationSourceRevision !== checkpoint.sourceRevision
+      || provenance.generationBatchId !== checkpoint.batchId) return "Autonomous generation source, revision or batch mismatch.";
+    if (!checkpoint.autonomousSubjects?.length) return "Missing autonomous subject manifest.";
+    for (const id of provenance.subjectCardIds) {
+      const authorization = checkpoint.autonomousSubjects.find(subject => subject.cardId === id);
+      const card = a.storyCards.find(subject => subject.id === id);
+      if (!authorization || !card?.active || card.autonomousDevelopment !== true) return "Unauthorized autonomous subject.";
+      if (autonomousSubjectSnapshot(card) !== authorization.snapshot) return "Stale autonomous subject reference.";
+    }
+    return memoryUpdateShapeError("storyCard", f.content ?? "");
+  }
   const evidence = memoryEvidenceWindow(a, sourceId);
   if (f.evidenceQuotes.some(q => !evidence.some(m => m.id === q.messageId && m.content.includes(q.quote)))) return "Quote is not verbatim in the permitted historical evidence.";
   if (!f.evidenceQuotes.some(q => q.messageId === sourceId)) return "Missing establishing narrator evidence.";
@@ -41,6 +56,7 @@ export function validateSinglePassFinding(a: Adventure, sourceId: string, checkp
   if (f.kind === "storyCard") {
     if (f.identityChange && f.storyCardType !== "character") return "Character profile corrections require Character placement and author review.";
     const target = a.storyCards.find(c => c.id === f.targetId);
+    if (target?.lore?.autonomous) return "Automatic Lore cannot append to an autonomous event.";
     if (f.targetId && (!target || target.type !== f.storyCardType || f.operation !== "append")) return "Invalid destination type or append operation.";
     if (!f.targetId && f.operation !== "create") return "New Story Cards require create.";
     if (f.storyCardType === "relationship") {
@@ -78,7 +94,7 @@ export function toSinglePassProposal(a: Adventure, sourceId: string, checkpoint:
   const target = f.targetId ? memoryTargetSnapshot(a, targetKind, f.targetId) : undefined;
   const protectedTarget = f.kind === "storyCard" ? a.storyCards.find(c => c.id === f.targetId)?.protected
     : f.kind === "brain" ? a.brains.find(b => b.id === f.targetId)?.protected : a.components.find(c => c.id === f.targetId)?.protected;
-  const meaningReason = f.kind === "storyCard" ? storyCardMeaningReviewReason(f, checkpoint.evidence
+  const meaningReason = f.kind === "storyCard" && !f.autonomous ? storyCardMeaningReviewReason(f, checkpoint.evidence
     .filter(e => ids.includes(e.id) && a.messages.some(m => m.id === e.id && m.role === "assistant"))) : undefined;
   const reviewReasons = [
     f.kind !== "storyCard" && f.candidateOnly ? "Uncertain finding or recovered metadata: " + f.reason : undefined,
@@ -94,10 +110,13 @@ export function toSinglePassProposal(a: Adventure, sourceId: string, checkpoint:
       reason: f.reason, type: f.storyCardType, relationship: f.relationship, targetId: f.targetId ?? undefined, triggers: f.suggestedTriggers, participants: f.participants,
       candidateOnly: f.candidateOnly, evidenceReviewed: true, origin: "model" });
     // Routing chooses placement. The helper supplies chronology and established trigger generation.
-    const choices = f.destinationCandidates ?? storyCardTargets(a, { title: f.title, content: f.content!, participants: f.participants, relationship: f.relationship, targetId: f.targetId ?? undefined, type: f.storyCardType }).filter(id => a.storyCards.some(c => c.id === id && c.type === f.storyCardType));
+    const choices = f.autonomous ? [] : f.destinationCandidates ?? storyCardTargets(a, { title: f.title, content: f.content!, participants: f.participants, relationship: f.relationship, targetId: f.targetId ?? undefined, type: f.storyCardType }).filter(id => a.storyCards.some(c => c.id === id && c.type === f.storyCardType));
     p = { ...p, content: f.content!, title: f.title, relationship: f.relationship, targetId: f.targetId ?? undefined, storyCardType: f.storyCardType, memoryMode: f.memoryMode,
       cardOperation: f.operation === "append" ? "append" : "create", appendContent: f.operation === "append" ? true : undefined, requiresReview: review || reviewReasons.length > 0,
-      lore: f.storyCardType === "lore" ? { ...p.lore, status: f.eventStatus!, sourceMessageIds: ids } : undefined };
+      lore: f.autonomous ? { status: f.eventStatus ?? "unresolved", sourceMessageIds: [],
+        knownTo: f.autonomous.knownTo, autonomous: f.autonomous.provenance }
+        : f.storyCardType === "lore" ? { ...p.lore, status: f.eventStatus!, sourceMessageIds: ids } : undefined };
+    if (f.autonomous) p = { ...p, sourceText: checkpoint.sourceContent, userInitiated: false, status: "pending" };
     if (p.storyCardReview) p.storyCardReview = { ...p.storyCardReview, candidateOnly: f.candidateOnly, operation: f.operation === "append" ? "update" : "create",
       targetCandidates: choices,
       additionalSources: checkpoint.evidence.filter(m => ids.includes(m.id) && m.id !== sourceId) };
@@ -107,7 +126,7 @@ export function toSinglePassProposal(a: Adventure, sourceId: string, checkpoint:
     const loreTarget = f.loreContinuation === "identified" && p.targetId && a.storyCards.find(card => card.id === p.targetId && card.type === "lore");
     const original = loreTarget ? originalLoreEvidence(a, loreTarget)[0] : undefined;
     p = bindPlacement(a, p, { kind: p.targetId ? "append" : "create", reason: f.reason, newFact: f.content!, identityChange: f.identityChange,
-      ...(original ? { loreOriginalSourceId: original.id } : {}) }, original ? [...ids, original.id] : ids);
+      ...(original ? { loreOriginalSourceId: original.id } : {}) }, f.autonomous ? [sourceId] : original ? [...ids, original.id] : ids);
   } else {
     const types = { currentArcState: "currentArcStateUpdate", brain: "brainUpdate", plotEssentials: "plotEssentialsUpdate", activePressure: "plotPressureUpdate", immediateMomentum: "plotMomentumUpdate" } as const;
     p = { id: createId("proposal"), sourceTurnId: sourceId, sourceText: f.evidenceQuotes.map(q => q.quote).join("\n"), proposedType: types[f.kind],

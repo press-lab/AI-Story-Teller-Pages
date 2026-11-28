@@ -389,3 +389,22 @@ it.each(["continue", "distinct", "next day", "uncertain"] as const)("routes game
     if (mode !== "uncertain") expect(saved.storyCards[1].content).toBe(fact);
   }
 });
+
+it("resolves only an authorized active subject and attaches local provenance", async () => {
+  const { autonomousLoreFixture, autonomousEvent } = await import("../test/autonomousLore");
+  const { a, batch, finding, checkpoint, sourceId } = await autonomousLoreFixture();
+  const subject = a.storyCards[5];
+  expect(finding).toMatchObject({ targetId: null, operation: "create", evidenceQuotes: [], storyCardType: "lore", autonomous: {
+    knownTo: ["Annex wardens"], provenance: { origin: "autonomous", subjectCardIds: [subject.id], generationSourceId: sourceId,
+      generationBatchId: batch.batchId, generationSourceRevision: checkpoint.sourceRevision },
+  } });
+  const route = (text: string) => routeLooseMemoryOperations(a, batch, parseLooseMemoryOperations(text, ["S1", "S2", "S3"])).sources;
+  expect(route("S1\n" + autonomousEvent)[0].rejected[0].reason).toMatch(/manifest/i);
+  expect(route("S3\n" + autonomousEvent.replace("A1", "A2"))[2].rejected[0].reason).toMatch(/unauthorized/i);
+  expect(route("S3\n" + autonomousEvent + "\n" + autonomousEvent)[2].rejected[0].reason).toMatch(/duplicate/i);
+  subject.active = false;
+  expect(route("S3\n" + autonomousEvent)[2].rejected[0].reason).toMatch(/unauthorized/i);
+  subject.active = true;
+  subject.autonomousDevelopment = false;
+  expect(route("S3\n" + autonomousEvent)[2].rejected[0].reason).toMatch(/unauthorized/i);
+});

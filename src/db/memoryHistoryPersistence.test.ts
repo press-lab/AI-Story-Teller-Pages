@@ -80,3 +80,15 @@ it("explicit cleanup persists without the previous archive merge resurrecting bl
   await saveAdventure(adventureReducer(later, { type: "ARCHIVE_MEMORY_HISTORY", adventureId: later.id, record, block }));
   expect((await getAdventure(later.id))!.activeState.compressedMemoryHistory).toBeUndefined();
 });
+
+it("keeps autonomous provenance visible after saving a compressed decision", async () => {
+  const { a, proposal } = await (await import("../test/autonomousLore")).autonomousPersistenceFixture();
+  const value = { ...proposal, status: "rejected" as const };
+  const record = { kind: "proposal", id: value.id, value } as const;
+  const archived = await withArchivedRecord(a, record);
+  await saveAdventure(archived);
+  const loaded = (await getAdventure(a.id))!;
+  expect(loaded.activeState.memoryProposals[0].lore?.autonomous).toEqual(proposal.lore?.autonomous);
+  const block = Object.values(loaded.activeState.compressedMemoryHistory!.blocks)[0];
+  expect(await decompressHistory(block)).toMatchObject({ value: { lore: proposal.lore } });
+});

@@ -17,6 +17,7 @@ export function storyCardApprovalCategory(type: string | undefined): ApprovalCat
 /** Resolve the same destination used by application, including the missing-Brain fallback. */
 export function getApprovalCategory(adventure: Adventure, proposal: MemoryProposal): ApprovalCategory | undefined {
   if (proposal.proposedType === "storyCard") {
+    if (proposal.storyCardType === "lore" && proposal.lore?.autonomous?.origin === "autonomous") return "autonomousLoreStoryCard";
     if (proposal.storyCardType === "relationship") return "relationshipStoryCard";
     const target = adventure.storyCards.find(card => card.id === proposal.targetId)
       ?? adventure.storyCards.find(card => card.type !== "relationship" && cardMatchesName(card, proposal.title));

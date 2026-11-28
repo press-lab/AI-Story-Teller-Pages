@@ -94,13 +94,14 @@ export const defaultMemoryAutoApproveSettings: MemoryAutoApproveSettings = {
   brainUpdate: false,
   loreStoryCard: false,
   relationshipStoryCard: false,
+  autonomousLoreStoryCard: false,
   otherStoryCard: false,
 };
 
 /** Migrate approval preferences without widening the types the user authorized. */
 export function normalizeMemoryAutoApproveSettings(input: unknown = {}): MemoryAutoApproveSettings {
   const old = input && typeof input === "object" ? input as Record<string, unknown> : {};
-  const current = Object.keys(defaultMemoryAutoApproveSettings).every(key => key === "relationshipStoryCard" || key === "currentArcStateUpdate" || key in old)
+  const current = Object.keys(defaultMemoryAutoApproveSettings).every(key => key === "relationshipStoryCard" || key === "autonomousLoreStoryCard" || key === "currentArcStateUpdate" || key in old)
     && !["characterStoryCard", "storyCard", "summaryUpdate", "plotMomentumUpdate"].some(key => key in old);
   const split = "characterStoryCard" in old || "otherStoryCard" in old;
   return {
@@ -110,6 +111,7 @@ export function normalizeMemoryAutoApproveSettings(input: unknown = {}): MemoryA
     brainUpdate: old.brainUpdate === true,
     loreStoryCard: old.loreStoryCard !== undefined ? old.loreStoryCard === true : old.storyCard === true,
     relationshipStoryCard: old.relationshipStoryCard === true,
+    autonomousLoreStoryCard: old.autonomousLoreStoryCard === true,
     otherStoryCard: current ? old.otherStoryCard === true
       : split ? old.characterStoryCard === true && old.otherStoryCard === true
       : old.storyCard === true,
@@ -291,6 +293,7 @@ export function makeStoryCard(overrides: Omit<Partial<StoryCard>, "type"> & { ty
     type: overrides.type ?? "custom",
     eventMemory: overrides.eventMemory,
     lore: overrides.lore,
+    autonomousDevelopment: overrides.autonomousDevelopment === true,
     relationship: overrides.relationship,
     memoryMode,
     compactKind: overrides.compactKind,

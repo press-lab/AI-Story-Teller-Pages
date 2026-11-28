@@ -33,3 +33,15 @@ describe("normalizeAdventure", () => {
     expect(card?.protected).toBe(false);
   });
 });
+
+it("defaults old saves safely and preserves explicit authorization for every card type", () => {
+  const a = createDefaultAdventure();
+  a.storyCards = (["character", "location", "object", "lore", "relationship", "custom"] as const)
+    .map(type => makeStoryCard({ title: type, content: type, type, autonomousDevelopment: true }));
+  delete a.memoryAutoApprove.autonomousLoreStoryCard;
+  a.memoryAutoApprove.otherStoryCard = true;
+  delete a.storyCards[0].autonomousDevelopment;
+  const saved = normalizeAdventure(a);
+  expect(saved.storyCards.map(card => card.autonomousDevelopment)).toEqual([false, true, true, true, true, true]);
+  expect(saved.memoryAutoApprove).toMatchObject({ autonomousLoreStoryCard: false, otherStoryCard: true });
+});

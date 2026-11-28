@@ -119,6 +119,7 @@ export interface MemoryGroupWork {
 }
 export type MemoryPipelineMode = "singlePass" | "legacy";
 export interface SinglePassMemoryFinding {
+  autonomous?: { provenance: AutonomousLoreProvenance; knownTo: string[] };
   kind: "storyCard" | "brain" | "currentArcState" | "plotEssentials" | "activePressure" | "immediateMomentum";
   targetId: string | null;
   title: string;
@@ -154,7 +155,14 @@ export interface SinglePassMemoryBatchResult {
   sources: SinglePassMemorySourceResult[];
   usage?: ProviderUsage;
 }
+export interface AutonomousSubjectAuthorization {
+  alias: string;
+  cardId: string;
+  snapshot: string;
+}
+
 export interface SinglePassMemoryCheckpoint {
+  autonomousSubjects?: AutonomousSubjectAuthorization[];
   batchId: string;
   sourceContent: string;
   sourceRevision?: string;
@@ -328,7 +336,16 @@ export interface RelationshipMetadata {
   characterIds: string[];
 }
 
+export interface AutonomousLoreProvenance {
+  origin: "autonomous";
+  subjectCardIds: string[];
+  generationSourceId: string;
+  generationSourceRevision?: string;
+  generationBatchId: string;
+}
+
 export interface LoreMetadata {
+  autonomous?: AutonomousLoreProvenance;
   occurredAt?: StoryTime;
   lastChangedAt?: StoryTime;
   status: "completed" | "ongoing" | "unresolved" | "superseded";
@@ -360,6 +377,8 @@ export interface EventMemory {
 }
 
 export interface StoryCard {
+  /** Author permission to generate independent off-screen developments involving this subject. */
+  autonomousDevelopment?: boolean;
   id: string;
   title: string;
   keys: string[];
@@ -979,6 +998,7 @@ export interface Adventure {
 }
 
 export interface MemoryAutoApproveSettings {
+  autonomousLoreStoryCard?: boolean;
   plotEssentialsUpdate: boolean;
   currentArcStateUpdate?: boolean;
   plotPressureUpdate: boolean;

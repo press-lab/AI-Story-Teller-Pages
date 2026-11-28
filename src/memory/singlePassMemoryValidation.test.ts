@@ -529,3 +529,21 @@ it("auto-approves uncertain-event interpretation without the disclosure veto", a
     sources: [{ checkpoint: batch.checkpoints[0].checkpoint, result: { sourceId: ids[0], findings: [finding], rejected: [] } }] });
   expect(a.activeState.memoryProposals[0]).toMatchObject({ status: "approved", requiresReview: false });
 });
+
+it("validates autonomous authorization without quotes and isolates malformed siblings", async () => {
+  const { a, sourceId, checkpoint, finding, proposal } = await (await import("../test/autonomousLore")).autonomousLoreFixture();
+  expect(validateSinglePassFinding(a, sourceId, checkpoint, finding)).toBeUndefined();
+  expect(proposal.lore).toMatchObject({ knownTo: ["Annex wardens"], sourceMessageIds: [], autonomous: finding.autonomous!.provenance });
+  expect(proposal.sourceText).toBe(checkpoint.sourceContent);
+  const rejected = [
+    { ...finding, storyCardType: "custom" as const }, { ...finding, targetId: "custom" },
+    ...[{ origin: "fake" as never }, { generationSourceId: "other" }, { generationSourceRevision: "other" }, { generationBatchId: "other" }]
+      .map(patch => ({ ...finding, autonomous: { ...finding.autonomous!, provenance: { ...finding.autonomous!.provenance, ...patch } } })),
+  ];
+  const checked = validateSinglePassSource(a, { sourceId, findings: [finding, ...rejected], rejected: [] }, checkpoint);
+  expect(checked.proposals).toHaveLength(1);
+  expect(checked.rejected).toHaveLength(rejected.length);
+  expect(validateSinglePassFinding(a, sourceId, { ...checkpoint, autonomousSubjects: undefined }, finding)).toMatch(/manifest/i);
+  a.storyCards[5].content += " Changed.";
+  expect(validateSinglePassFinding(a, sourceId, checkpoint, finding)).toMatch(/stale/i);
+});

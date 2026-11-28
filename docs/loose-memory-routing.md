@@ -77,6 +77,12 @@ grammar splits the enduring reason after ||. Factual sentences are never
 reconstructed, arbitrary paragraphs without a boundary are not promoted to
 memories, and text is never executed.
 
+Autonomous Lore uses the exact creation label `storyCard.lore.autonomous`. It has three fields for
+event content, source-scoped subject aliases joined with `+`, and semicolon-separated
+knowledge holders or `NONE`. The parser removes these metadata fields from the Lore body.
+The router rejects unauthorized aliases and creates new Lore without selecting an
+existing destination. See [Autonomous World Development](autonomous-world-development.md).
+
 The parser result is transient. Optional finding/checkpoint fields are
 backward-compatible and require no database migration or adventure rewrite.
 

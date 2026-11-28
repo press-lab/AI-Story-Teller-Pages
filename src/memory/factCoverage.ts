@@ -1,3 +1,4 @@
+import { sameAutonomousSubjects } from "./autonomousLore";
 import { relationshipIdError, relationshipKey, relationshipMatches } from "./relationshipCards";
 import type { Adventure, MemoryProposal } from "../types/adventure";
 
@@ -53,7 +54,7 @@ export function proposalCoverage(a: Adventure, p: MemoryProposal, includeProposa
 export function relevantProposalCoverage(a: Adventure, excerpt: string, targetIds: string[] = [], sourceIds: string[] = []) {
   const excerptKey = factKey(excerpt);
   const words = new Set(excerptKey.split(" ").filter(w => w.length > 3));
-  return a.activeState.memoryProposals.filter(p => p.proposedType === "storyCard" && p.storyCardType !== "relationship" && (
+  return a.activeState.memoryProposals.filter(p => p.proposedType === "storyCard" && p.storyCardType !== "relationship" && (!p.lore?.autonomous || p.status === "approved") && (
     Boolean(p.targetId && targetIds.includes(p.targetId)) || sourceIds.includes(p.sourceTurnId)
     || p.storyCardReview?.participants.some(name => excerptKey.includes(factKey(name)))
     || facts(p.title + " " + p.content + " " + p.suggestedTriggers.join(" ")).some(f => f.split(" ").filter(w => words.has(w)).length >= 2)
@@ -112,9 +113,16 @@ export function loreNovelty(a: Adventure, p: MemoryProposal, includeProposals = 
   const titles = new Set([loreSubjectKey(p), ...(target ? [loreSubjectKey(target)] : [])]);
   const date = loreOccurrenceDate(p);
   const sameOccurrence = (other: { lore?: MemoryProposal["lore"] }) => !date || date === loreOccurrenceDate(other);
-  const cards = a.storyCards.filter(c => c.type === "lore" && sameOccurrence(c) && (p.targetId ? c.id === p.targetId : titles.has(loreSubjectKey(c))));
+  const autonomous = p.lore?.autonomous;
+  const identical = (other: { content: string }) => loreFactsCovered(p.content, [other.content]) && loreFactsCovered(other.content, [p.content]);
+  const cards = a.storyCards.filter(c => c.type === "lore" && (
+    (autonomous || c.lore?.autonomous) && identical(c) && (!date || !loreOccurrenceDate(c) || sameOccurrence(c))
+    || sameOccurrence(c) && (p.targetId ? c.id === p.targetId : titles.has(loreSubjectKey(c)))));
   const proposals = includeProposals ? a.activeState.memoryProposals.filter(q => q.id !== p.id && q.proposedType === "storyCard" && (q.storyCardType ?? "lore") === "lore"
-    && sameOccurrence(q) && (p.targetId && q.targetId ? p.targetId === q.targetId : titles.has(loreSubjectKey(q)))) : [];
+    && (q.lore?.autonomous
+      ? q.status !== "approved" && Boolean(autonomous && sameAutonomousSubjects(autonomous, q.lore.autonomous) && identical(q))
+      : autonomous ? identical(q) && (!date || !loreOccurrenceDate(q) || sameOccurrence(q))
+        : sameOccurrence(q) && (p.targetId && q.targetId ? p.targetId === q.targetId : titles.has(loreSubjectKey(q))))) : [];
   const known = [...cards.map(c => c.content), ...proposals.map(q => q.content)].flatMap(loreStatements).map(loreFactKey);
   const coveredFacts = incoming.filter(f => known.includes(loreFactKey(f)));
   const newFacts = incoming.filter(f => !known.includes(loreFactKey(f)));
