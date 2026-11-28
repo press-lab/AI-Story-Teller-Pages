@@ -504,3 +504,12 @@ it("adds autonomous context only for the latest normally scheduled source", asyn
   expect(empty.outputAliases.S3.autonomousSubjects).toBeUndefined();
   expect(buildSinglePassMemoryMessages(empty)[0].content).not.toContain("AUTONOMOUS WORLD DEVELOPMENT");
 });
+it("authorizes every enabled non-Lore type in card order and excludes saved Lore flags", async () => {
+  const { a, ids } = singlePassFixture(1);
+  const { makeStoryCard } = await import("../state/defaults");
+  a.storyCards = (["character", "location", "lore", "object", "relationship", "custom"] as const)
+    .map(type => makeStoryCard({ id: type, title: type, content: type, type, autonomousDevelopment: true }));
+  const batch = await prepareSinglePassMemoryBatch(a, ids, { allowAutonomousDevelopment: true });
+  expect(Object.values(batch.outputAliases.S1.autonomousSubjects ?? {}).map(subject => subject.id))
+    .toEqual(["character", "location", "object", "relationship", "custom"]);
+});

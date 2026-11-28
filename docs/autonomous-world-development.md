@@ -1,6 +1,6 @@
 # Autonomous World Development
 
-Open a Story Card and expand **Context, automation, and ordering**. Enable **Autonomous World Development** to let the memory model propose off-screen events involving that card. All Story Card types support this setting. The card must also be active. an enabled subject can be considered even when its triggers do not match the scene.
+Open a Character, Location, Object, Relationship, or Custom Story Card. **Autonomous World Development** is at the top of its editor. Enable it to let the memory model propose off-screen events involving that card. Active enabled subjects are considered even when their triggers do not match the scene. Lore stores the resulting events.
 
 The existing single-pass memory request handles both ordinary extraction and autonomous generation. Only the newest selected narrator entry can authorize autonomous generation, and only when it is the latest finalized in-story narrator entry in the Chronicle. The normal idle flush follows the same rule. A historical catch-up batch or explicit retry extracts ordinary memory only. Loading or importing an adventure does not initiate generation. Communications and the manual Memory Suggestion Builder do not authorize it.
 

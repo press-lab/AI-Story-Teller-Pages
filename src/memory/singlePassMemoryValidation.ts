@@ -1,4 +1,4 @@
-import { autonomousSubjectSnapshot } from "./autonomousLore";
+import { autonomousSubjectSnapshot, isEligibleAutonomousSubject } from "./autonomousLore";
 import { arcReferenceState, eligibleArc } from "./currentArc";
 import { relationshipMatches, relationshipProposalError, validateRelationshipIds } from "./relationshipCards";
 import { originalLoreEvidence, routeDatedLoreProposal } from "./datedLoreRouting";
@@ -37,7 +37,7 @@ export function validateSinglePassFinding(a: Adventure, sourceId: string, checkp
     for (const id of provenance.subjectCardIds) {
       const authorization = checkpoint.autonomousSubjects.find(subject => subject.cardId === id);
       const card = a.storyCards.find(subject => subject.id === id);
-      if (!authorization || !card?.active || card.autonomousDevelopment !== true) return "Unauthorized autonomous subject.";
+      if (!authorization || !card || !isEligibleAutonomousSubject(card)) return "Unauthorized autonomous subject.";
       if (autonomousSubjectSnapshot(card) !== authorization.snapshot) return "Stale autonomous subject reference.";
     }
     return memoryUpdateShapeError("storyCard", f.content ?? "");

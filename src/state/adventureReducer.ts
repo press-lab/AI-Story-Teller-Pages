@@ -1608,6 +1608,7 @@ function reduceAdventure(state: Adventure, action: AdventureAction): Adventure {
       const previous = state.storyCards.find(card => card.id === action.storyCardId);
       if (!previous) return state;
       if (Object.keys(action.patch).length === 1 && Object.hasOwn(action.patch, "autonomousDevelopment")) {
+        if (previous.type === "lore") return state;
         return touchAdventure(state, { storyCards: updateById(state.storyCards, action.storyCardId,
           card => touch({ ...card, autonomousDevelopment: action.patch.autonomousDevelopment === true })) });
       }

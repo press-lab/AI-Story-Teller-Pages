@@ -23,8 +23,12 @@ export function autonomousProposalError(p: MemoryProposal): string | undefined {
   return undefined;
 }
 
+export function isEligibleAutonomousSubject(card: StoryCard): boolean {
+  return card.type !== "lore" && card.active && card.autonomousDevelopment === true;
+}
+
 export function eligibleAutonomousSubjects(adventure: Adventure): StoryCard[] {
-  return adventure.storyCards.filter(card => card.active && card.autonomousDevelopment === true);
+  return adventure.storyCards.filter(isEligibleAutonomousSubject);
 }
 
 export function autonomousSubjectSnapshot(card: StoryCard): string {
